@@ -8,8 +8,8 @@ services:
       context: ./backend
     command: python manage.py runserver 0.0.0.0:8000
     environment:
-      DJANGO_SETTINGS_MODULE: healthos.settings.development
-      DATABASE_URL: postgres://healthos:healthos@postgres:5432/healthos
+      DJANGO_SETTINGS_MODULE: vitali.settings.development
+      DATABASE_URL: postgres://vitali:vitali@postgres:5432/vitali
       REDIS_URL: redis://redis:6379/0
       DEBUG: "True"
     volumes:
@@ -18,15 +18,15 @@ services:
       - "8000:8000"
 
   celery-worker:
-    command: celery -A healthos worker -l debug --concurrency 2
+    command: celery -A vitali worker -l debug --concurrency 2
     environment:
-      DJANGO_SETTINGS_MODULE: healthos.settings.development
+      DJANGO_SETTINGS_MODULE: vitali.settings.development
     volumes:
       - ./backend:/app
 
   celery-beat:
     environment:
-      DJANGO_SETTINGS_MODULE: healthos.settings.development
+      DJANGO_SETTINGS_MODULE: vitali.settings.development
     volumes:
       - ./backend:/app
 

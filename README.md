@@ -1,4 +1,4 @@
-# HealthOS
+# Vitali
 
 > Plataforma Hospitalar SaaS — ERP + EMR + AI
 > Django 5 · Next.js 14 · PostgreSQL 16 (schema-per-tenant) · Celery · Redis
@@ -51,9 +51,9 @@ Acesse:
 ## Estrutura do Projeto
 
 ```
-healthos/
+vitali/
 ├── backend/
-│   ├── healthos/          # Django project (settings, urls, wsgi)
+│   ├── vitali/            # Django project (settings, urls, wsgi)
 │   ├── apps/
 │   │   ├── core/          # Multi-tenancy, users, roles, audit, feature flags
 │   │   ├── emr/           # Prontuário eletrônico (Sprint 2+)
@@ -137,4 +137,4 @@ make create-tenant   # Criar nova clínica
 
 ---
 
-*HealthOS — Tornando sistemas hospitalares enterprise acessíveis para todos.*
+*Vitali — Tornando sistemas hospitalares enterprise acessíveis para todos.*

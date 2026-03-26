@@ -22,7 +22,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"healthos/settings/*.py" = ["F401", "F403", "F405", "E402"]
+"vitali/settings/*.py" = ["F401", "F403", "F405", "E402"]
 "*/migrations/*.py" = ["E501"]
 
 [tool.ruff.format]
@@ -37,10 +37,10 @@ warn_unused_ignores = true
 strict = false
 
 [tool.django-stubs]
-django_settings_module = "healthos.settings.development"
+django_settings_module = "vitali.settings.development"
 
 [tool.pytest.ini_options]
-DJANGO_SETTINGS_MODULE = "healthos.settings.development"
+DJANGO_SETTINGS_MODULE = "vitali.settings.development"
 python_files = ["tests.py", "test_*.py", "*_tests.py"]
 addopts = "--reuse-db -v --cov=apps --cov-report=term-missing"
 

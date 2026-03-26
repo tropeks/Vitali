@@ -1,4 +1,4 @@
-# HealthOS — API Specification
+# Vitali — API Specification
 
 > **Refs:** [ARCHITECTURE.md](./ARCHITECTURE.md) | [DATA_MODEL.md](./DATA_MODEL.md) |
 > [SECURITY.md](./SECURITY.md)
@@ -14,7 +14,7 @@
 - **Filtering:** query params (`?status=active&date_from=2026-01-01`)
 - **Versioning:** URL path (`/api/v1/`, `/api/v2/`)
 - **Auth:** Bearer JWT in Authorization header (access token)
-- **Tenant:** Resolved from subdomain (clinica-aurora.healthos.com.br) — no tenant_id in requests
+- **Tenant:** Resolved from subdomain (clinica-aurora.vitali.com.br) — no tenant_id in requests
 - **Errors:** Consistent format (see below)
 - **OpenAPI 3.1** docs auto-generated via drf-spectacular
 

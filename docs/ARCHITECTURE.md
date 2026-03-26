@@ -1,4 +1,4 @@
-# HealthOS — Architecture Document
+# Vitali — Architecture Document
 
 > **Refs:** [PROJECT_BRIEF.md](./PROJECT_BRIEF.md) | [DATA_MODEL.md](./DATA_MODEL.md) |
 > [SECURITY.md](./SECURITY.md) | [API_SPEC.md](./API_SPEC.md)
