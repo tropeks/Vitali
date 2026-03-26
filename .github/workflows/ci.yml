@@ -1,0 +1,152 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "20"
+
+jobs:
+  # ─── Backend: Lint + Type Check ─────────────────────────────────────────────
+  backend-lint:
+    name: Backend — Lint & Types
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dev dependencies
+        run: pip install -r requirements/development.txt
+
+      - name: Ruff lint
+        run: ruff check .
+
+      - name: Ruff format check
+        run: ruff format --check .
+
+      - name: mypy
+        run: mypy apps/ healthos/ --ignore-missing-imports
+
+  # ─── Backend: Tests ──────────────────────────────────────────────────────────
+  backend-test:
+    name: Backend — Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: healthos_test
+          POSTGRES_USER: healthos
+          POSTGRES_PASSWORD: healthos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://healthos:healthos@localhost:5432/healthos_test
+      REDIS_URL: redis://localhost:6379/0
+      DJANGO_SETTINGS_MODULE: healthos.settings.development
+      SECRET_KEY: ci-test-secret-key-not-for-production
+      FIELD_ENCRYPTION_KEY: UXVhbHF1ZXIgY2hhdmUgcGFyYSBkZXNlbnZvbHZpbWVudG8=
+      CELERY_TASK_ALWAYS_EAGER: "True"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements/development.txt
+
+      - name: Run migrations
+        run: python manage.py migrate_schemas --shared
+
+      - name: Run tests
+        run: pytest --cov=apps --cov-report=xml -v
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          files: ./coverage.xml
+          flags: backend
+
+  # ─── Frontend: Lint + Type Check ─────────────────────────────────────────────
+  frontend-lint:
+    name: Frontend — Lint & Types
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: TypeScript check
+        run: npm run type-check
+
+  # ─── Docker Build Validation ─────────────────────────────────────────────────
+  docker-validate:
+    name: Docker — Validate Build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate docker-compose config
+        run: docker compose config
+
+      - name: Build backend image
+        run: docker build ./backend -t healthos-backend:ci
+
+      - name: Build frontend image
+        run: docker build ./frontend -t healthos-frontend:ci

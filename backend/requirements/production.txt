@@ -1,0 +1,5 @@
+-r base.txt
+
+# Production extras
+sentry-sdk==2.21
+whitenoise==6.9

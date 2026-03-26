@@ -1,0 +1,42 @@
+# docker-compose.override.yml — Development overrides
+# Applied automatically when running `docker-compose up` locally.
+# NOT used in production (use docker-compose.yml directly).
+
+version: '3.9'
+
+services:
+  django:
+    build:
+      context: ./backend
+    command: python manage.py runserver 0.0.0.0:8000
+    environment:
+      DJANGO_SETTINGS_MODULE: healthos.settings.development
+      DATABASE_URL: postgres://healthos:healthos@postgres:5432/healthos
+      REDIS_URL: redis://redis:6379/0
+      DEBUG: "True"
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+
+  celery-worker:
+    command: celery -A healthos worker -l debug --concurrency 2
+    environment:
+      DJANGO_SETTINGS_MODULE: healthos.settings.development
+    volumes:
+      - ./backend:/app
+
+  celery-beat:
+    environment:
+      DJANGO_SETTINGS_MODULE: healthos.settings.development
+    volumes:
+      - ./backend:/app
+
+  nextjs:
+    command: npm run dev
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000

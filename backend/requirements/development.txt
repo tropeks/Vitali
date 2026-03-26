@@ -1,0 +1,19 @@
+-r base.txt
+
+# Dev tools
+ipython==8.32
+django-extensions==3.2
+Werkzeug==3.1
+
+# Testing
+pytest==8.3
+pytest-django==4.10
+pytest-cov==6.0
+factory-boy==3.3
+faker==33.3
+
+# Linting (managed via pyproject.toml/ruff)
+ruff==0.9
+mypy==1.15
+django-stubs==5.1
+djangorestframework-stubs==3.15
