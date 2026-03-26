@@ -1,0 +1,7 @@
+feat: Sprint 0 - foundation and infrastructure
+
+Django 5 + django-tenants + Next.js 14 monorepo.
+Core models (Tenant, User, Role, AuditLog, FeatureFlag),
+Docker Compose, CI/CD GitHub Actions, Makefile.
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
