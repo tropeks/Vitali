@@ -2,8 +2,6 @@
 # Applied automatically when running `docker-compose up` locally.
 # NOT used in production (use docker-compose.yml directly).
 
-version: '3.9'
-
 services:
   django:
     build:
