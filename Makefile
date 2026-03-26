@@ -3,8 +3,8 @@
 # Default target
 help:
 	@echo ""
-	@echo "  HealthOS — Makefile Commands"
-	@echo "  ════════════════════════════"
+	@echo "  Vitali — Makefile Commands"
+	@echo "  ══════════════════════════"
 	@echo "  make up              Start all services (dev mode)"
 	@echo "  make down            Stop all services"
 	@echo "  make build           Rebuild Docker images"
@@ -70,13 +70,13 @@ test-cov:
 	@echo "Coverage report: backend/htmlcov/index.html"
 
 lint:
-	docker compose exec django ruff check apps/ healthos/
+	docker compose exec django ruff check apps/ vitali/
 
 fmt:
-	docker compose exec django ruff format apps/ healthos/
+	docker compose exec django ruff format apps/ vitali/
 
 typecheck:
-	docker compose exec django mypy apps/ healthos/ --ignore-missing-imports
+	docker compose exec django mypy apps/ vitali/ --ignore-missing-imports
 
 # ─── Tenant Management ───────────────────────────────────────────────────────
 
@@ -106,7 +106,7 @@ run-dev:
 	cd backend && python manage.py runserver
 
 run-worker:
-	cd backend && celery -A healthos worker -l debug
+	cd backend && celery -A vitali worker -l debug
 
 run-beat:
-	cd backend && celery -A healthos beat -l debug --scheduler django_celery_beat.schedulers:DatabaseScheduler
+	cd backend && celery -A vitali beat -l debug --scheduler django_celery_beat.schedulers:DatabaseScheduler

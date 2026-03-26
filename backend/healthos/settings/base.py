@@ -1,5 +1,5 @@
 """
-HealthOS — Base Settings
+Vitali — Base Settings
 Django 5.2 + django-tenants (schema-per-tenant)
 """
 import environ
@@ -61,8 +61,8 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-ROOT_URLCONF = "healthos.urls"
-PUBLIC_SCHEMA_URLCONF = "healthos.urls_public"
+ROOT_URLCONF = "vitali.urls"
+PUBLIC_SCHEMA_URLCONF = "vitali.urls_public"
 
 TEMPLATES = [
     {
@@ -80,13 +80,13 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = "healthos.wsgi.application"
+WSGI_APPLICATION = "vitali.wsgi.application"
 
 # ─── Database ─────────────────────────────────────────────────────────────────
 DATABASES = {
     "default": env.db(
         "DATABASE_URL",
-        default="postgres://healthos:healthos@localhost:5435/healthos",
+        default="postgres://vitali:vitali@localhost:5435/vitali",
     )
 }
 DATABASES["default"]["ENGINE"] = "django_tenants.postgresql_backend"
@@ -148,7 +148,7 @@ SIMPLE_JWT = {
 
 # ─── DRF Spectacular (OpenAPI) ────────────────────────────────────────────────
 SPECTACULAR_SETTINGS = {
-    "TITLE": "HealthOS API",
+    "TITLE": "Vitali API",
     "DESCRIPTION": "Plataforma Hospitalar SaaS — ERP + EMR + AI",
     "VERSION": "0.1.0",
     "SERVE_INCLUDE_SCHEMA": False,

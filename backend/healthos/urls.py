@@ -1,5 +1,5 @@
 """
-HealthOS — URL Configuration (tenant schemas)
+Vitali — URL Configuration (tenant schemas)
 """
 from django.contrib import admin
 from django.urls import path, include

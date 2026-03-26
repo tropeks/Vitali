@@ -1,4 +1,4 @@
-# HealthOS — Security & Compliance Document
+# Vitali — Security & Compliance Document
 
 > **Refs:** [ARCHITECTURE.md](./ARCHITECTURE.md) | [DATA_MODEL.md](./DATA_MODEL.md)
 
@@ -152,7 +152,7 @@ add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style
 - [x] Incident response plan: breach notification within 72h to ANPD
 
 ### 4.4 Organizational Measures
-- [ ] DPO designation (required for tenant, HealthOS provides tooling)
+- [ ] DPO designation (required for tenant, Vitali provides tooling)
 - [ ] Data Processing Agreement (DPA) template for tenants
 - [ ] Privacy Impact Assessment (RIPD) for high-risk processing
 - [ ] Employee training on data protection

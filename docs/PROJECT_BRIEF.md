@@ -1,4 +1,4 @@
-# HealthOS — Project Brief
+# Vitali — Project Brief
 
 > **Status:** Validado | **Data:** 2026-03-26 | **Autor:** Romulo + Claude (System Architect)
 
@@ -6,7 +6,7 @@
 
 ## 1. Visão do Produto
 
-**HealthOS** é uma plataforma hospitalar SaaS multi-tenant que integra ERP + EMR + AI numa
+**Vitali** é uma plataforma hospitalar SaaS multi-tenant que integra ERP + EMR + AI numa
 solução única, acessível e profissional. O produto mira clínicas e hospitais particulares de
 pequeno e médio porte que não podem pagar os big-players (Tasy, MV, TOTVS Saúde) mas
 precisam de um sistema robusto, compliant e moderno.

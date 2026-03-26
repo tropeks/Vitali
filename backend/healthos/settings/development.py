@@ -1,5 +1,5 @@
 """
-HealthOS — Development Settings
+Vitali — Development Settings
 """
 from .base import *  # noqa: F401, F403
 import environ
@@ -7,7 +7,7 @@ import environ
 env = environ.Env()
 
 DEBUG = True
-SECRET_KEY = env("SECRET_KEY", default="dev-insecure-key-change-in-production-healthos-2026")
+SECRET_KEY = env("SECRET_KEY", default="dev-insecure-key-change-in-production-vitali-2026")
 ALLOWED_HOSTS = ["*"]
 
 # Show all tenant schemas in development

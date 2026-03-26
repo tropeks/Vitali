@@ -1,4 +1,4 @@
-# HealthOS — Data Model
+# Vitali — Data Model
 
 > **Refs:** [ARCHITECTURE.md](./ARCHITECTURE.md) | [API_SPEC.md](./API_SPEC.md)
 

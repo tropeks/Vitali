@@ -38,7 +38,7 @@ jobs:
         run: ruff format --check .
 
       - name: mypy
-        run: mypy apps/ healthos/ --ignore-missing-imports
+        run: mypy apps/ vitali/ --ignore-missing-imports
 
   # ─── Backend: Tests ──────────────────────────────────────────────────────────
   backend-test:
@@ -52,9 +52,9 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_DB: healthos_test
-          POSTGRES_USER: healthos
-          POSTGRES_PASSWORD: healthos
+          POSTGRES_DB: vitali_test
+          POSTGRES_USER: vitali
+          POSTGRES_PASSWORD: vitali
         ports:
           - 5432:5432
         options: >-
@@ -74,9 +74,9 @@ jobs:
           --health-retries 5
 
     env:
-      DATABASE_URL: postgres://healthos:healthos@localhost:5432/healthos_test
+      DATABASE_URL: postgres://vitali:vitali@localhost:5432/vitali_test
       REDIS_URL: redis://localhost:6379/0
-      DJANGO_SETTINGS_MODULE: healthos.settings.development
+      DJANGO_SETTINGS_MODULE: vitali.settings.development
       SECRET_KEY: ci-test-secret-key-not-for-production
       FIELD_ENCRYPTION_KEY: UXVhbHF1ZXIgY2hhdmUgcGFyYSBkZXNlbnZvbHZpbWVudG8=
       CELERY_TASK_ALWAYS_EAGER: "True"
@@ -146,7 +146,7 @@ jobs:
         run: docker compose config
 
       - name: Build backend image
-        run: docker build ./backend -t healthos-backend:ci
+        run: docker build ./backend -t vitali-backend:ci
 
       - name: Build frontend image
-        run: docker build ./frontend -t healthos-frontend:ci
+        run: docker build ./frontend -t vitali-frontend:ci

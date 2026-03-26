@@ -1,4 +1,4 @@
-# HealthOS — Epics, Stories & Roadmap
+# Vitali — Epics, Stories & Roadmap
 
 > **Refs:** [PROJECT_BRIEF.md](./PROJECT_BRIEF.md) | [ARCHITECTURE.md](./ARCHITECTURE.md) |
 > [DATA_MODEL.md](./DATA_MODEL.md)

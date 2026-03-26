@@ -1,5 +1,5 @@
 """
-HealthOS — Production Settings
+Vitali — Production Settings
 """
 from .base import *  # noqa: F401, F403
 import environ
@@ -31,7 +31,7 @@ EMAIL_PORT = env.int("EMAIL_PORT", default=587)
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
-DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="noreply@healthos.com.br")
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="noreply@vitali.com.br")
 
 # Sentry
 SENTRY_DSN = env("SENTRY_DSN", default="")

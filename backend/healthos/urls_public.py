@@ -1,5 +1,5 @@
 """
-HealthOS — URL Configuration (public schema)
+Vitali — URL Configuration (public schema)
 Handles platform-level routes: tenant onboarding, admin, health check.
 """
 from django.contrib import admin
@@ -8,7 +8,7 @@ from django.http import JsonResponse
 
 
 def health_check(request):
-    return JsonResponse({"status": "ok", "service": "healthos"})
+    return JsonResponse({"status": "ok", "service": "vitali"})
 
 
 urlpatterns = [

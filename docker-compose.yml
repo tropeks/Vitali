@@ -4,16 +4,16 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: healthos
-      POSTGRES_USER: healthos
-      POSTGRES_PASSWORD: healthos
+      POSTGRES_DB: vitali
+      POSTGRES_USER: vitali
+      POSTGRES_PASSWORD: vitali
     ports:
       - "5435:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U healthos -d healthos"]
+      test: ["CMD-SHELL", "pg_isready -U vitali -d vitali"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -41,9 +41,9 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      DATABASE_URL: postgres://healthos:healthos@postgres:5432/healthos
+      DATABASE_URL: postgres://vitali:vitali@postgres:5432/vitali
       REDIS_URL: redis://redis:6379/0
-      DJANGO_SETTINGS_MODULE: healthos.settings.production
+      DJANGO_SETTINGS_MODULE: vitali.settings.production
     ports:
       - "8000:8000"
     volumes:
@@ -67,12 +67,12 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     restart: unless-stopped
-    command: celery -A healthos worker -l info --concurrency 4
+    command: celery -A vitali worker -l info --concurrency 4
     env_file: .env
     environment:
-      DATABASE_URL: postgres://healthos:healthos@postgres:5432/healthos
+      DATABASE_URL: postgres://vitali:vitali@postgres:5432/vitali
       REDIS_URL: redis://redis:6379/0
-      DJANGO_SETTINGS_MODULE: healthos.settings.production
+      DJANGO_SETTINGS_MODULE: vitali.settings.production
     depends_on:
       postgres:
         condition: service_healthy
@@ -85,12 +85,12 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     restart: unless-stopped
-    command: celery -A healthos beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    command: celery -A vitali beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     env_file: .env
     environment:
-      DATABASE_URL: postgres://healthos:healthos@postgres:5432/healthos
+      DATABASE_URL: postgres://vitali:vitali@postgres:5432/vitali
       REDIS_URL: redis://redis:6379/0
-      DJANGO_SETTINGS_MODULE: healthos.settings.production
+      DJANGO_SETTINGS_MODULE: vitali.settings.production
     depends_on:
       postgres:
         condition: service_healthy
