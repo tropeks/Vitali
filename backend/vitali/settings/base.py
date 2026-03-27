@@ -27,6 +27,7 @@ SHARED_APPS = [
 # Apps that live in each TENANT schema (per-clinic data isolation)
 TENANT_APPS = [
     "apps.emr",
+    "apps.analytics",
     "apps.billing",
     "apps.pharmacy",
     "apps.ai",

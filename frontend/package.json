@@ -24,7 +24,8 @@
     "react-hook-form": "^7.54",
     "zod": "^3.23",
     "@hookform/resolvers": "^3.9",
-    "jose": "^5.9"
+    "jose": "^5.9",
+    "recharts": "^2.13"
   },
   "devDependencies": {
     "typescript": "^5",
