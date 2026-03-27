@@ -1,11 +1,11 @@
 import uuid
 from django.db import models
+from django.utils import timezone
 from encrypted_model_fields.fields import EncryptedCharField
 
 
 def generate_mrn():
     """Auto-generate medical record number: PAC-YYYY-NNNNN"""
-    from django.utils import timezone
     year = timezone.now().year
     last = Patient.objects.filter(
         medical_record_number__startswith=f'PAC-{year}-'
@@ -73,7 +73,6 @@ class Patient(models.Model):
 
     @property
     def age(self):
-        from django.utils import timezone
         today = timezone.now().date()
         b = self.birth_date
         return today.year - b.year - ((today.month, today.day) < (b.month, b.day))
@@ -159,10 +158,9 @@ class Professional(models.Model):
 
 
 class ScheduleConfig(models.Model):
-    """Configuração de agenda por profissional"""
     professional = models.OneToOneField(Professional, on_delete=models.CASCADE, related_name='schedule_config')
     slot_duration_minutes = models.IntegerField(default=30)
-    working_days = models.JSONField(default=list)  # [0,1,2,3,4] = seg-sex
+    working_days = models.JSONField(default=list)
     working_hours_start = models.TimeField(default='08:00')
     working_hours_end = models.TimeField(default='18:00')
     lunch_start = models.TimeField(null=True, blank=True)
@@ -178,26 +176,19 @@ class ScheduleConfig(models.Model):
 
 class Appointment(models.Model):
     STATUS_CHOICES = [
-        ('scheduled', 'Agendado'),
-        ('confirmed', 'Confirmado'),
-        ('waiting', 'Aguardando'),
-        ('in_progress', 'Em atendimento'),
-        ('completed', 'Concluído'),
-        ('cancelled', 'Cancelado'),
+        ('scheduled', 'Agendado'), ('confirmed', 'Confirmado'),
+        ('waiting', 'Aguardando'), ('in_progress', 'Em atendimento'),
+        ('completed', 'Concluído'), ('cancelled', 'Cancelado'),
         ('no_show', 'Não compareceu'),
     ]
     TYPE_CHOICES = [
-        ('consultation', 'Consulta'),
-        ('return', 'Retorno'),
-        ('exam', 'Exame'),
-        ('procedure', 'Procedimento'),
+        ('consultation', 'Consulta'), ('return', 'Retorno'),
+        ('exam', 'Exame'), ('procedure', 'Procedimento'),
         ('telemedicine', 'Telemedicina'),
     ]
     SOURCE_CHOICES = [
-        ('receptionist', 'Recepcionista'),
-        ('whatsapp', 'WhatsApp'),
-        ('web', 'Portal Web'),
-        ('phone', 'Telefone'),
+        ('receptionist', 'Recepcionista'), ('whatsapp', 'WhatsApp'),
+        ('web', 'Portal Web'), ('phone', 'Telefone'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -243,7 +234,7 @@ class Appointment(models.Model):
             end_time__gt=self.start_time,
         ).exclude(pk=self.pk)
         if overlapping.exists():
-            raise ValidationError({'start_time': 'TIME_SLOT_UNAVAILABLE: Horário já ocupado para este profissional.'})
+            raise ValidationError({'start_time': 'TIME_SLOT_UNAVAILABLE'})
 
     def save(self, *args, **kwargs):
         self.full_clean()
@@ -251,3 +242,113 @@ class Appointment(models.Model):
 
     def __str__(self):
         return f'{self.patient} com {self.professional} em {self.start_time}'
+
+
+# ─── Sprint 4: EMR Core ───────────────────────────────────────────────────────
+
+class Encounter(models.Model):
+    """Consulta clínica — ponto central do EMR"""
+    STATUS_CHOICES = [
+        ('open', 'Em Aberto'),
+        ('signed', 'Assinada'),
+        ('cancelled', 'Cancelada'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    patient = models.ForeignKey(Patient, on_delete=models.PROTECT, related_name='encounters')
+    professional = models.ForeignKey(Professional, on_delete=models.PROTECT, related_name='encounters')
+    appointment = models.OneToOneField(
+        Appointment, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='encounter'
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open')
+    encounter_date = models.DateTimeField(default=timezone.now)
+    chief_complaint = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-encounter_date']
+        indexes = [
+            models.Index(fields=['patient', 'encounter_date']),
+            models.Index(fields=['professional', 'encounter_date']),
+            models.Index(fields=['status', 'encounter_date']),
+        ]
+
+    def __str__(self):
+        return f'Consulta {self.patient} — {self.encounter_date:%d/%m/%Y %H:%M}'
+
+
+class SOAPNote(models.Model):
+    """Nota SOAP vinculada a uma consulta"""
+    encounter = models.OneToOneField(Encounter, on_delete=models.CASCADE, related_name='soap_note')
+    subjective = models.TextField(blank=True, help_text='Queixa do paciente, história atual')
+    objective = models.TextField(blank=True, help_text='Exame físico, sinais vitais, achados')
+    assessment = models.TextField(blank=True, help_text='Diagnóstico, CID-10, impressão clínica')
+    plan = models.TextField(blank=True, help_text='Conduta, prescrição, retorno')
+    cid10_codes = models.JSONField(default=list, help_text='Lista de códigos CID-10')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f'SOAP — {self.encounter}'
+
+
+class VitalSigns(models.Model):
+    """Sinais vitais do encontro"""
+    encounter = models.OneToOneField(Encounter, on_delete=models.CASCADE, related_name='vital_signs')
+    weight_kg = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    height_cm = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    blood_pressure_systolic = models.PositiveSmallIntegerField(null=True, blank=True)
+    blood_pressure_diastolic = models.PositiveSmallIntegerField(null=True, blank=True)
+    heart_rate = models.PositiveSmallIntegerField(null=True, blank=True)
+    temperature_celsius = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
+    oxygen_saturation = models.PositiveSmallIntegerField(null=True, blank=True)
+    recorded_at = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def bmi(self):
+        if self.weight_kg and self.height_cm:
+            h = float(self.height_cm) / 100
+            return round(float(self.weight_kg) / (h * h), 1)
+        return None
+
+    def __str__(self):
+        return f'Sinais Vitais — {self.encounter}'
+
+
+class ClinicalDocument(models.Model):
+    """Documento clínico assinado — atestado, receita, encaminhamento"""
+    DOC_TYPES = [
+        ('certificate', 'Atestado Médico'),
+        ('prescription', 'Receita'),
+        ('referral', 'Encaminhamento'),
+        ('exam_request', 'Solicitação de Exame'),
+        ('report', 'Laudo'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    encounter = models.ForeignKey(Encounter, on_delete=models.CASCADE, related_name='documents')
+    doc_type = models.CharField(max_length=20, choices=DOC_TYPES)
+    content = models.TextField()
+    signed_at = models.DateTimeField(null=True, blank=True)
+    signed_by = models.ForeignKey(
+        'core.User', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='signed_documents'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def sign(self, user):
+        self.signed_at = timezone.now()
+        self.signed_by = user
+        self.save(update_fields=['signed_at', 'signed_by'])
+
+    @property
+    def is_signed(self):
+        return self.signed_at is not None
+
+    def __str__(self):
+        return f'{self.get_doc_type_display()} — {self.encounter}'

@@ -10,11 +10,16 @@ from django.utils import timezone
 
 from apps.core.permissions import HasPermission
 from apps.core.models import AuditLog
-from .models import Patient, Allergy, MedicalHistory, Professional, Appointment, ScheduleConfig
+from .models import (
+    Patient, Allergy, MedicalHistory, Professional, Appointment, ScheduleConfig,
+    Encounter, SOAPNote, VitalSigns, ClinicalDocument,
+)
 from .serializers import (
     PatientSerializer, PatientListSerializer, PatientCreateSerializer,
     AllergySerializer, MedicalHistorySerializer, ProfessionalSerializer,
     AppointmentSerializer, ScheduleConfigSerializer,
+    EncounterSerializer, EncounterListSerializer,
+    SOAPNoteSerializer, VitalSignsSerializer, ClinicalDocumentSerializer,
 )
 from .filters import PatientFilter
 
@@ -70,7 +75,6 @@ class PatientViewSet(viewsets.ModelViewSet):
                   old_data=old, new_data=PatientSerializer(patient).data)
 
     def perform_destroy(self, instance):
-        # Soft delete
         old_data = {'is_active': True}
         instance.is_active = False
         instance.save()
@@ -79,12 +83,21 @@ class PatientViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def timeline(self, request, pk=None):
         patient = self.get_object()
-        # Placeholder — encounters serão adicionados no Sprint 4
-        return Response({
-            'patient_id': str(patient.id),
-            'events': [],
-            'message': 'Timeline disponível no Sprint 4 com encounters clínicos.',
-        })
+        encounters = Encounter.objects.filter(patient=patient).select_related(
+            'professional__user'
+        ).order_by('-encounter_date')[:20]
+        events = [
+            {
+                'type': 'encounter',
+                'id': str(e.id),
+                'date': e.encounter_date.isoformat(),
+                'status': e.status,
+                'professional': e.professional.user.full_name,
+                'chief_complaint': e.chief_complaint,
+            }
+            for e in encounters
+        ]
+        return Response({'patient_id': str(patient.id), 'events': events})
 
     @action(detail=True, methods=['get', 'post'])
     def allergies(self, request, pk=None):
@@ -163,7 +176,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             msg = str(exc)
             if 'TIME_SLOT_UNAVAILABLE' in msg:
                 from rest_framework.exceptions import ValidationError as DRFValidationError
-                raise DRFValidationError({'start_time': 'TIME_SLOT_UNAVAILABLE: Horário já ocupado para este profissional.'})
+                raise DRFValidationError({'start_time': 'TIME_SLOT_UNAVAILABLE'})
             raise
         log_audit(self.request, 'appointment_create', 'Appointment', appointment.id,
                   new_data={'patient': str(appointment.patient_id), 'start_time': str(appointment.start_time)})
@@ -174,8 +187,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         qs = Appointment.objects.select_related('patient', 'professional__user').filter(
             start_time__date=today
         ).order_by('start_time')
-        serializer = AppointmentSerializer(qs, many=True)
-        return Response(serializer.data)
+        return Response(AppointmentSerializer(qs, many=True).data)
 
     @action(detail=True, methods=['patch'], url_path='status')
     def update_status(self, request, pk=None):
@@ -196,7 +208,6 @@ class AppointmentViewSet(viewsets.ModelViewSet):
 
 
 class AvailableSlotsView(APIView):
-    """GET /api/v1/professionals/{professional_id}/available-slots?date=YYYY-MM-DD&duration=30"""
     permission_classes = [IsAuthenticated]
 
     def get(self, request, professional_id):
@@ -215,10 +226,7 @@ class AvailableSlotsView(APIView):
             professional = Professional.objects.get(id=professional_id, is_active=True)
             config = professional.schedule_config
         except Professional.DoesNotExist:
-            return Response(
-                {'error': {'code': 'NOT_FOUND', 'message': 'Profissional não encontrado'}},
-                status=404,
-            )
+            return Response({'error': {'code': 'NOT_FOUND', 'message': 'Profissional não encontrado'}}, status=404)
         except ScheduleConfig.DoesNotExist:
             return Response({'slots': [], 'message': 'Profissional sem agenda configurada'})
 
@@ -237,28 +245,21 @@ class AvailableSlotsView(APIView):
             start_time__date=target_date,
             status__in=['scheduled', 'confirmed', 'waiting', 'in_progress'],
         ).values_list('start_time', 'end_time'))
-
-        # Strip timezone from booked times for naive comparison
-        booked_naive = []
-        for s, e in booked:
-            s_naive = s.replace(tzinfo=None) if s.tzinfo else s
-            e_naive = e.replace(tzinfo=None) if e.tzinfo else e
-            booked_naive.append((s_naive, e_naive))
-
+        booked_naive = [
+            (s.replace(tzinfo=None) if s.tzinfo else s, e.replace(tzinfo=None) if e.tzinfo else e)
+            for s, e in booked
+        ]
         now_naive = timezone.now().replace(tzinfo=None)
 
         while current + slot_delta <= end:
             slot_end = current + slot_delta
-            # Skip lunch break
             if config.lunch_start and config.lunch_end:
                 lunch_s = datetime.combine(target_date, config.lunch_start)
                 lunch_e = datetime.combine(target_date, config.lunch_end)
                 if current < lunch_e and slot_end > lunch_s:
                     current = lunch_e
                     continue
-            is_available = not any(
-                current < e and slot_end > s for s, e in booked_naive
-            )
+            is_available = not any(current < e and slot_end > s for s, e in booked_naive)
             slots.append({
                 'start': current.isoformat(),
                 'end': slot_end.isoformat(),
@@ -266,15 +267,10 @@ class AvailableSlotsView(APIView):
             })
             current += slot_delta
 
-        return Response({
-            'date': date_str,
-            'professional_id': str(professional_id),
-            'slots': slots,
-        })
+        return Response({'date': date_str, 'professional_id': str(professional_id), 'slots': slots})
 
 
 class WaitingRoomView(APIView):
-    """GET /api/v1/waiting-room — lista de pacientes aguardando hoje"""
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -284,3 +280,147 @@ class WaitingRoomView(APIView):
             status__in=['scheduled', 'confirmed', 'waiting'],
         ).order_by('start_time')
         return Response(AppointmentSerializer(waiting, many=True).data)
+
+
+# ─── Sprint 4: EMR Core views ─────────────────────────────────────────────────
+
+class EncounterViewSet(viewsets.ModelViewSet):
+    """Consultas clínicas — ponto central do EMR"""
+    permission_classes = [IsAuthenticated, HasPermission('emr.read')]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    ordering = ['-encounter_date']
+
+    def get_queryset(self):
+        qs = Encounter.objects.select_related(
+            'patient', 'professional__user', 'appointment',
+        ).prefetch_related(
+            'soap_note', 'vital_signs', 'documents', 'patient__allergies'
+        )
+
+        patient_id = self.request.query_params.get('patient_id')
+        if patient_id:
+            qs = qs.filter(patient_id=patient_id)
+
+        professional_id = self.request.query_params.get('professional_id')
+        if professional_id:
+            qs = qs.filter(professional_id=professional_id)
+
+        enc_status = self.request.query_params.get('status')
+        if enc_status:
+            qs = qs.filter(status=enc_status)
+
+        date_param = self.request.query_params.get('date')
+        if date_param:
+            try:
+                d = datetime.strptime(date_param, '%Y-%m-%d').date()
+                qs = qs.filter(encounter_date__date=d)
+            except ValueError:
+                pass
+
+        return qs
+
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return EncounterListSerializer
+        return EncounterSerializer
+
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'sign'):
+            return [IsAuthenticated(), HasPermission('emr.write')]
+        if self.action == 'destroy':
+            return [IsAuthenticated(), HasPermission('admin')]
+        return super().get_permissions()
+
+    def perform_create(self, serializer):
+        encounter = serializer.save()
+        # Auto-create empty SOAP note and vital signs
+        SOAPNote.objects.get_or_create(encounter=encounter)
+        VitalSigns.objects.get_or_create(encounter=encounter)
+        log_audit(self.request, 'encounter_create', 'Encounter', encounter.id,
+                  new_data={
+                      'patient': str(encounter.patient_id),
+                      'professional': str(encounter.professional_id),
+                      'encounter_date': str(encounter.encounter_date),
+                  })
+
+    def perform_update(self, serializer):
+        encounter = serializer.save()
+        log_audit(self.request, 'encounter_update', 'Encounter', encounter.id)
+
+    @action(detail=True, methods=['post'])
+    def sign(self, request, pk=None):
+        """POST /encounters/{id}/sign/ — assina a consulta"""
+        encounter = self.get_object()
+        if encounter.status != 'open':
+            return Response(
+                {'error': {'code': 'ENCOUNTER_NOT_OPEN', 'message': 'Apenas consultas abertas podem ser assinadas.'}},
+                status=400,
+            )
+        encounter.status = 'signed'
+        encounter.save(update_fields=['status', 'updated_at'])
+        log_audit(request, 'encounter_sign', 'Encounter', encounter.id,
+                  new_data={'status': 'signed', 'signed_by': str(request.user.id)})
+        return Response(EncounterSerializer(encounter).data)
+
+
+class SOAPNoteViewSet(viewsets.ModelViewSet):
+    """Notas SOAP — somente PATCH, nunca DELETE"""
+    queryset = SOAPNote.objects.select_related('encounter').all()
+    serializer_class = SOAPNoteSerializer
+    permission_classes = [IsAuthenticated, HasPermission('emr.write')]
+    http_method_names = ['get', 'patch', 'head', 'options']
+
+    def perform_update(self, serializer):
+        soap = serializer.save()
+        log_audit(self.request, 'soap_note_update', 'SOAPNote', soap.id,
+                  new_data={
+                      'encounter': str(soap.encounter_id),
+                      'updated_at': str(soap.updated_at),
+                  })
+
+
+class VitalSignsViewSet(viewsets.ModelViewSet):
+    """Sinais vitais"""
+    queryset = VitalSigns.objects.select_related('encounter').all()
+    serializer_class = VitalSignsSerializer
+    permission_classes = [IsAuthenticated, HasPermission('emr.write')]
+    http_method_names = ['get', 'patch', 'head', 'options']
+
+    def perform_update(self, serializer):
+        vs = serializer.save()
+        log_audit(self.request, 'vital_signs_update', 'VitalSigns', vs.id,
+                  new_data={'encounter': str(vs.encounter_id)})
+
+
+class ClinicalDocumentViewSet(viewsets.ModelViewSet):
+    """Documentos clínicos — atestado, receita, encaminhamento"""
+    queryset = ClinicalDocument.objects.select_related('encounter', 'signed_by').all()
+    serializer_class = ClinicalDocumentSerializer
+    permission_classes = [IsAuthenticated, HasPermission('emr.write')]
+    filter_backends = [DjangoFilterBackend]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        encounter_id = self.request.query_params.get('encounter_id')
+        if encounter_id:
+            qs = qs.filter(encounter_id=encounter_id)
+        return qs
+
+    def perform_create(self, serializer):
+        doc = serializer.save()
+        log_audit(self.request, 'document_create', 'ClinicalDocument', doc.id,
+                  new_data={'doc_type': doc.doc_type, 'encounter': str(doc.encounter_id)})
+
+    @action(detail=True, methods=['post'])
+    def sign(self, request, pk=None):
+        """POST /documents/{id}/sign/ — assina o documento"""
+        doc = self.get_object()
+        if doc.is_signed:
+            return Response(
+                {'error': {'code': 'ALREADY_SIGNED', 'message': 'Documento já está assinado.'}},
+                status=400,
+            )
+        doc.sign(request.user)
+        log_audit(request, 'document_sign', 'ClinicalDocument', doc.id,
+                  new_data={'signed_by': str(request.user.id), 'signed_at': str(doc.signed_at)})
+        return Response(ClinicalDocumentSerializer(doc).data)

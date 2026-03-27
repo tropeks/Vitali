@@ -1,6 +1,10 @@
 import re
 from rest_framework import serializers
-from .models import Patient, Allergy, MedicalHistory, Professional, Appointment, ScheduleConfig
+from .models import (
+    Patient, Allergy, MedicalHistory, Professional,
+    Appointment, ScheduleConfig,
+    Encounter, SOAPNote, VitalSigns, ClinicalDocument,
+)
 
 
 def validate_cpf(cpf: str) -> str:
@@ -146,3 +150,85 @@ class AppointmentSerializer(serializers.ModelSerializer):
             if data['end_time'] <= data['start_time']:
                 raise serializers.ValidationError({'end_time': 'Horário de fim deve ser após o início.'})
         return data
+
+
+# ─── Sprint 4: EMR Core serializers ──────────────────────────────────────────
+
+class VitalSignsSerializer(serializers.ModelSerializer):
+    bmi = serializers.FloatField(read_only=True)
+
+    class Meta:
+        model = VitalSigns
+        fields = [
+            'id', 'encounter', 'weight_kg', 'height_cm',
+            'blood_pressure_systolic', 'blood_pressure_diastolic',
+            'heart_rate', 'temperature_celsius', 'oxygen_saturation',
+            'bmi', 'recorded_at',
+        ]
+        read_only_fields = ['id', 'recorded_at', 'bmi']
+
+
+class SOAPNoteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SOAPNote
+        fields = [
+            'id', 'encounter', 'subjective', 'objective',
+            'assessment', 'plan', 'cid10_codes',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class ClinicalDocumentSerializer(serializers.ModelSerializer):
+    is_signed = serializers.BooleanField(read_only=True)
+    doc_type_display = serializers.CharField(source='get_doc_type_display', read_only=True)
+    signed_by_name = serializers.CharField(source='signed_by.full_name', read_only=True, default=None)
+
+    class Meta:
+        model = ClinicalDocument
+        fields = [
+            'id', 'encounter', 'doc_type', 'doc_type_display',
+            'content', 'is_signed', 'signed_at', 'signed_by', 'signed_by_name',
+            'created_at',
+        ]
+        read_only_fields = ['id', 'signed_at', 'signed_by', 'created_at']
+
+
+class EncounterListSerializer(serializers.ModelSerializer):
+    patient_name = serializers.CharField(source='patient.full_name', read_only=True)
+    patient_mrn = serializers.CharField(source='patient.medical_record_number', read_only=True)
+    professional_name = serializers.CharField(source='professional.user.full_name', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+
+    class Meta:
+        model = Encounter
+        fields = [
+            'id', 'patient', 'patient_name', 'patient_mrn',
+            'professional', 'professional_name',
+            'encounter_date', 'status', 'status_display',
+            'chief_complaint', 'created_at',
+        ]
+        read_only_fields = ['id', 'created_at']
+
+
+class EncounterSerializer(serializers.ModelSerializer):
+    patient_detail = PatientListSerializer(source='patient', read_only=True)
+    professional_name = serializers.CharField(source='professional.user.full_name', read_only=True)
+    professional_specialty = serializers.CharField(source='professional.specialty', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    soap_note = SOAPNoteSerializer(read_only=True)
+    vital_signs = VitalSignsSerializer(read_only=True)
+    documents = ClinicalDocumentSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Encounter
+        fields = [
+            'id', 'patient', 'patient_detail',
+            'professional', 'professional_name', 'professional_specialty',
+            'appointment',
+            'encounter_date', 'status', 'status_display',
+            'chief_complaint',
+            'soap_note', 'vital_signs', 'documents',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
