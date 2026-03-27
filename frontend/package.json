@@ -13,11 +13,18 @@
     "next": "14.2.29",
     "react": "^18",
     "react-dom": "^18",
+    "@radix-ui/react-avatar": "^1.1",
+    "@radix-ui/react-dropdown-menu": "^2.1",
     "@radix-ui/react-slot": "^1.1",
+    "@radix-ui/react-toast": "^1.2",
     "class-variance-authority": "^0.7",
     "clsx": "^2.1",
     "tailwind-merge": "^2.5",
-    "lucide-react": "^0.469"
+    "lucide-react": "^0.469",
+    "react-hook-form": "^7.54",
+    "zod": "^3.23",
+    "@hookform/resolvers": "^3.9",
+    "jose": "^5.9"
   },
   "devDependencies": {
     "typescript": "^5",

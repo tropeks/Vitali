@@ -1,8 +1,10 @@
-"""Core URLs — public schema routes (platform admin)."""
+"""Core URLs — public schema routes (platform admin + tenant onboarding)."""
 from django.urls import path
-from .serializers import TenantSerializer
 from rest_framework import generics, permissions
+
 from .models import Tenant
+from .serializers import TenantSerializer
+from .views import TenantRegistrationView
 
 
 class TenantListView(generics.ListAPIView):
@@ -12,5 +14,6 @@ class TenantListView(generics.ListAPIView):
 
 
 urlpatterns = [
-    path("tenants/", TenantListView.as_view(), name="tenant-list"),
+    path("platform/tenants", TenantRegistrationView.as_view(), name="tenant-register"),
+    path("platform/tenants/", TenantListView.as_view(), name="tenant-list"),
 ]
