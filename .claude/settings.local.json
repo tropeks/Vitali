@@ -5,7 +5,8 @@
       "Bash(git add:*)",
       "Bash(git commit -m \"feat: Sprint 0 — foundation & infrastructure:*)",
       "Bash(docker compose:*)",
-      "Bash(git commit -m \"fix: remove obsolete version from docker-compose files:*)"
+      "Bash(git commit -m \"fix: remove obsolete version from docker-compose files:*)",
+      "Bash(find \"/c/dev/HealthOS/.claude/worktrees/mystifying-wescoff/frontend/app/\\(dashboard\\)\" -type f -o -type d)"
     ]
   }
 }

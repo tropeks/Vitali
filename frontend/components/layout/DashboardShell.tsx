@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Users,
   Calendar,
+  ClipboardList,
   FileText,
   Pill,
   Receipt,
@@ -29,8 +30,9 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Pacientes", href: "/dashboard/pacientes", icon: Users, module: "emr" },
-  { label: "Agenda", href: "/dashboard/agenda", icon: Calendar, module: "emr" },
+  { label: "Pacientes", href: "/patients", icon: Users, module: "emr" },
+  { label: "Agenda", href: "/appointments", icon: Calendar, module: "emr" },
+  { label: "Sala de Espera", href: "/waiting-room", icon: ClipboardList, module: "emr" },
   { label: "Prontuário", href: "/dashboard/prontuario", icon: FileText, module: "emr" },
   { label: "Farmácia", href: "/dashboard/farmacia", icon: Pill, module: "pharmacy" },
   { label: "Faturamento", href: "/dashboard/faturamento", icon: Receipt, module: "billing" },

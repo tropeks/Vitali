@@ -156,3 +156,98 @@ class Professional(models.Model):
 
     def __str__(self):
         return f'{self.user.full_name} - {self.council_type} {self.council_number}/{self.council_state}'
+
+
+class ScheduleConfig(models.Model):
+    """Configuração de agenda por profissional"""
+    professional = models.OneToOneField(Professional, on_delete=models.CASCADE, related_name='schedule_config')
+    slot_duration_minutes = models.IntegerField(default=30)
+    working_days = models.JSONField(default=list)  # [0,1,2,3,4] = seg-sex
+    working_hours_start = models.TimeField(default='08:00')
+    working_hours_end = models.TimeField(default='18:00')
+    lunch_start = models.TimeField(null=True, blank=True)
+    lunch_end = models.TimeField(null=True, blank=True)
+    max_simultaneous = models.IntegerField(default=1)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f'Agenda de {self.professional}'
+
+
+class Appointment(models.Model):
+    STATUS_CHOICES = [
+        ('scheduled', 'Agendado'),
+        ('confirmed', 'Confirmado'),
+        ('waiting', 'Aguardando'),
+        ('in_progress', 'Em atendimento'),
+        ('completed', 'Concluído'),
+        ('cancelled', 'Cancelado'),
+        ('no_show', 'Não compareceu'),
+    ]
+    TYPE_CHOICES = [
+        ('consultation', 'Consulta'),
+        ('return', 'Retorno'),
+        ('exam', 'Exame'),
+        ('procedure', 'Procedimento'),
+        ('telemedicine', 'Telemedicina'),
+    ]
+    SOURCE_CHOICES = [
+        ('receptionist', 'Recepcionista'),
+        ('whatsapp', 'WhatsApp'),
+        ('web', 'Portal Web'),
+        ('phone', 'Telefone'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name='appointments')
+    professional = models.ForeignKey(Professional, on_delete=models.CASCADE, related_name='appointments')
+    start_time = models.DateTimeField(db_index=True)
+    end_time = models.DateTimeField()
+    type = models.CharField(max_length=20, choices=TYPE_CHOICES, default='consultation')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='scheduled')
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default='receptionist')
+    notes = models.TextField(blank=True)
+    whatsapp_reminder_sent = models.BooleanField(default=False)
+    whatsapp_confirmed = models.BooleanField(default=False)
+    cancelled_by = models.ForeignKey(
+        'core.User', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='cancelled_appointments'
+    )
+    cancellation_reason = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        'core.User', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='created_appointments'
+    )
+
+    class Meta:
+        ordering = ['start_time']
+        indexes = [
+            models.Index(fields=['professional', 'start_time']),
+            models.Index(fields=['patient', 'start_time']),
+            models.Index(fields=['status', 'start_time']),
+            models.Index(fields=['start_time', 'end_time']),
+        ]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.end_time and self.start_time and self.end_time <= self.start_time:
+            raise ValidationError({'end_time': 'Horário de fim deve ser após o início.'})
+        overlapping = Appointment.objects.filter(
+            professional=self.professional,
+            status__in=['scheduled', 'confirmed', 'waiting', 'in_progress'],
+            start_time__lt=self.end_time,
+            end_time__gt=self.start_time,
+        ).exclude(pk=self.pk)
+        if overlapping.exists():
+            raise ValidationError({'start_time': 'TIME_SLOT_UNAVAILABLE: Horário já ocupado para este profissional.'})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'{self.patient} com {self.professional} em {self.start_time}'

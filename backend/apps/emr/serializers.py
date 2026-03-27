@@ -1,6 +1,6 @@
 import re
 from rest_framework import serializers
-from .models import Patient, Allergy, MedicalHistory, Professional
+from .models import Patient, Allergy, MedicalHistory, Professional, Appointment, ScheduleConfig
 
 
 def validate_cpf(cpf: str) -> str:
@@ -108,3 +108,41 @@ class ProfessionalSerializer(serializers.ModelSerializer):
             'specialty', 'cbo_code', 'cnes_code', 'is_active', 'created_at',
         ]
         read_only_fields = ['id', 'created_at']
+
+
+class ScheduleConfigSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ScheduleConfig
+        fields = '__all__'
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class AppointmentSerializer(serializers.ModelSerializer):
+    patient_name = serializers.CharField(source='patient.full_name', read_only=True)
+    patient_mrn = serializers.CharField(source='patient.medical_record_number', read_only=True)
+    professional_name = serializers.CharField(source='professional.user.full_name', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    type_display = serializers.CharField(source='get_type_display', read_only=True)
+    duration_minutes = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Appointment
+        fields = [
+            'id', 'patient', 'patient_name', 'patient_mrn',
+            'professional', 'professional_name',
+            'start_time', 'end_time', 'duration_minutes',
+            'type', 'type_display', 'status', 'status_display',
+            'source', 'notes', 'whatsapp_reminder_sent', 'whatsapp_confirmed',
+            'cancellation_reason', 'created_at',
+        ]
+        read_only_fields = ['id', 'created_at']
+
+    def get_duration_minutes(self, obj):
+        delta = obj.end_time - obj.start_time
+        return int(delta.total_seconds() / 60)
+
+    def validate(self, data):
+        if data.get('end_time') and data.get('start_time'):
+            if data['end_time'] <= data['start_time']:
+                raise serializers.ValidationError({'end_time': 'Horário de fim deve ser após o início.'})
+        return data
