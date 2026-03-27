@@ -6,7 +6,20 @@
       "Bash(git commit -m \"feat: Sprint 0 — foundation & infrastructure:*)",
       "Bash(docker compose:*)",
       "Bash(git commit -m \"fix: remove obsolete version from docker-compose files:*)",
-      "Bash(find \"/c/dev/HealthOS/.claude/worktrees/mystifying-wescoff/frontend/app/\\(dashboard\\)\" -type f -o -type d)"
+      "Bash(find \"/c/dev/HealthOS/.claude/worktrees/mystifying-wescoff/frontend/app/\\(dashboard\\)\" -type f -o -type d)",
+      "Bash(git -C /c/dev/healthos log --oneline -10)",
+      "Bash(grep -n \"Prescription|Drug|pharmacy\" /c/dev/healthos/backend/apps/emr/urls.py)",
+      "Bash(grep -n \"class|import\" /c/dev/healthos/backend/apps/pharmacy/apps.py)",
+      "Bash(find /c/dev/healthos/frontend/components -name \"*.tsx\")",
+      "Bash(bun run:*)",
+      "Bash(/c/Users/halfk/AppData/Roaming/npm/bun run:*)",
+      "Bash(/c/Users/halfk/.bun/bin/bun run:*)",
+      "Bash(~/.bun/bin/bun run:*)",
+      "Bash(~/.bun/bin/bun test:*)",
+      "Bash(for f:*)",
+      "Bash(do head:*)",
+      "Bash(grep -r \"logging\\\\|logger\\\\|sentry\\\\|datadog\\\\|prometheus\\\\|structlog\" /c/dev/healthos/backend --include=*.py -l)",
+      "Bash(grep -r \"LOGGING\\\\|Sentry\\\\|sentry_sdk\" /c/dev/healthos/backend --include=*.py -l)"
     ]
   }
 }
