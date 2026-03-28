@@ -22,6 +22,7 @@ SHARED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.admin",
+    "django_celery_beat",      # global scheduler — must live in public schema
 ]
 
 # Apps that live in each TENANT schema (per-clinic data isolation)
@@ -36,7 +37,6 @@ TENANT_APPS = [
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
     "drf_spectacular",
-    "django_celery_beat",
     "django_filters",
 ]
 
@@ -45,7 +45,7 @@ INSTALLED_APPS = list(SHARED_APPS) + [
 ]
 
 TENANT_MODEL = "core.Tenant"
-DOMAIN_MODEL = "core.Domain"
+TENANT_DOMAIN_MODEL = "core.Domain"
 DATABASE_ROUTERS = ["django_tenants.routers.TenantSyncRouter"]
 
 # ─── Auth ─────────────────────────────────────────────────────────────────────
