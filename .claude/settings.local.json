@@ -28,7 +28,17 @@
       "Bash(bun -e \"JSON.parse\\(await Bun.stdin.text\\(\\)\\)\")",
       "Bash(~/.bun/bin/bun -e \"JSON.parse\\(await Bun.stdin.text\\(\\)\\)\")",
       "Bash(PATH=\"$HOME/.bun/bin:$PATH\" ~/.claude/skills/gstack/bin/gstack-review-read 2>&1)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Read(//tmp/**)",
+      "Bash(python3 -c \":*)",
+      "Read(//c/tmp/**)",
+      "Bash(python3:*)",
+      "Bash(ls /c/dev/healthos/.env*)",
+      "Bash(ls:*)",
+      "Bash(grep -v \"^#[0-9]* [0-9]*\\\\.[0-9]* $\")",
+      "Bash(docker run:*)",
+      "Bash(git diff:*)",
+      "Skill(gstack-qa)"
     ]
   }
 }
