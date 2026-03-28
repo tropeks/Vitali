@@ -19,9 +19,15 @@ RUN pip install --no-cache-dir -r requirements/production.txt
 
 COPY . .
 
-# collectstatic needs a SECRET_KEY — use a throwaway value at build time only
+# collectstatic needs SECRET_KEY + ALLOWED_HOSTS - use throwaway values at build time only
 ARG SECRET_KEY=build-time-placeholder-not-used-in-production
+ARG ALLOWED_HOSTS=localhost
+ARG DATABASE_URL=sqlite:///tmp/build.db
+ARG REDIS_URL=redis://localhost:6379/0
 ENV SECRET_KEY=${SECRET_KEY}
+ENV ALLOWED_HOSTS=${ALLOWED_HOSTS}
+ENV DATABASE_URL=${DATABASE_URL}
+ENV REDIS_URL=${REDIS_URL}
 RUN python manage.py collectstatic --noinput
 
 EXPOSE 8000
