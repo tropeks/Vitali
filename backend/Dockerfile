@@ -19,6 +19,9 @@ RUN pip install --no-cache-dir -r requirements/production.txt
 
 COPY . .
 
+# collectstatic needs a SECRET_KEY — use a throwaway value at build time only
+ARG SECRET_KEY=build-time-placeholder-not-used-in-production
+ENV SECRET_KEY=${SECRET_KEY}
 RUN python manage.py collectstatic --noinput
 
 EXPOSE 8000
