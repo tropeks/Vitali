@@ -4,6 +4,7 @@ django-tenants>=3.5,<4.0
 django-environ==0.12
 djangorestframework-simplejwt==5.5
 django-encrypted-model-fields==0.6.5
+django-filter==24.3
 redis==5.2
 celery==5.5
 django-celery-beat==2.8

@@ -37,6 +37,7 @@ TENANT_APPS = [
     "rest_framework_simplejwt.token_blacklist",
     "drf_spectacular",
     "django_celery_beat",
+    "django_filters",
 ]
 
 INSTALLED_APPS = list(SHARED_APPS) + [
@@ -186,7 +187,7 @@ SESSION_CACHE_ALIAS = "default"
 # ─── Encryption (LGPD — campos sensíveis) ────────────────────────────────────
 FIELD_ENCRYPTION_KEY = env(
     "FIELD_ENCRYPTION_KEY",
-    default="UXVhbHF1ZXIgY2hhdmUgcGFyYSBkZXNlbnZvbHZpbWVudG8=",
+    default="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
 )
 
 # ─── Logging ──────────────────────────────────────────────────────────────────

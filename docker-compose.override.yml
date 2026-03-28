@@ -31,7 +31,8 @@ services:
       - ./backend:/app
 
   nextjs:
-    command: npm run dev
+    # Install deps into the node_modules volume on first start, then run dev server
+    command: sh -c "npm install && npm run dev"
     volumes:
       - ./frontend:/app
       - /app/node_modules
