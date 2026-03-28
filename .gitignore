@@ -83,3 +83,4 @@ dmypy.json
 # gstack binaries
 .claude/skills/gstack/bin/
 .claude/skills/gstack/node_modules/
+.gstack/
