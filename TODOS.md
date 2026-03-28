@@ -1,5 +1,21 @@
 # TODOS
 
+## Security
+
+### Upgrade Next.js from 14.2.29 (security vulnerability)
+
+**What:** Upgrade `next` from `14.2.29` to the latest patched version.
+
+**Why:** `next@14.2.29` has a known security vulnerability. See https://nextjs.org/blog/security-update-2025-12-11. npm flags it as 4 high severity vulnerabilities.
+
+**Context:** Discovered during `npm install` on 2026-03-28. Run `npm audit` in `frontend/` for details. Upgrade may include breaking changes — test the build and all pages after upgrading. Run `npm install next@latest` and resolve any peer dep conflicts.
+
+**Effort:** S (human: ~2h) → S with CC+gstack (~15 min)
+**Priority:** P1
+**Depends on:** None
+
+---
+
 ## Pharmacy / Prescriptions
 
 ### PDF archival: cache-on-first-print for signed prescriptions
