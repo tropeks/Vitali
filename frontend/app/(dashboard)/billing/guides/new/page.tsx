@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { getAccessToken } from '@/lib/auth';
+import TUSSCodeSearch, { TUSSOption } from '@/components/billing/TUSSCodeSearch';
 
 function apiFetch(path: string) {
   const token = getAccessToken();
@@ -12,13 +13,20 @@ function apiFetch(path: string) {
   }).then(r => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); });
 }
 
-interface Item {
-  quantity: number;
+interface GuideItem {
+  tuss_code: TUSSOption | null;
   description: string;
+  quantity: number;
+  unit_value: string;
 }
+
+const emptyItem = (): GuideItem => ({ tuss_code: null, description: '', quantity: 1, unit_value: '' });
 
 export default function NewGuidePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const prefillEncounter = searchParams.get('encounter') ?? '';
+
   const [patients, setPatients] = useState<any[]>([]);
   const [providers, setProviders] = useState<any[]>([]);
   const [loadingOptions, setLoadingOptions] = useState(true);
@@ -26,19 +34,17 @@ export default function NewGuidePage() {
   const [error, setError] = useState('');
 
   const [form, setForm] = useState({
-    encounter_id: '',
+    encounter_id: prefillEncounter,
     patient_id: '',
     provider_id: '',
     insured_card_number: '',
-    competency: '',
+    competency: new Date().toISOString().slice(0, 7), // default YYYY-MM
     guide_type: 'sadt',
   });
 
-  const [items, setItems] = useState<Item[]>([{ quantity: 1, description: '' }]);
+  const [items, setItems] = useState<GuideItem[]>([emptyItem()]);
 
   useEffect(() => {
-    const token = getAccessToken();
-    if (!token) { setError('Sessão expirada'); setLoadingOptions(false); return; }
     Promise.all([
       apiFetch('/emr/patients/?page_size=200'),
       apiFetch('/billing/providers/'),
@@ -51,17 +57,50 @@ export default function NewGuidePage() {
       .finally(() => setLoadingOptions(false));
   }, []);
 
+  // Prefill patient/provider if encounter param is present
+  useEffect(() => {
+    if (!prefillEncounter) return;
+    apiFetch(`/emr/encounters/${prefillEncounter}/`)
+      .then((enc: any) => {
+        if (enc.patient) setForm(f => ({ ...f, patient_id: enc.patient }));
+      })
+      .catch(() => {});
+  }, [prefillEncounter]);
+
   const setField = (key: string, value: string) => setForm(f => ({ ...f, [key]: value }));
 
-  const addItem = () => setItems(i => [...i, { quantity: 1, description: '' }]);
+  const addItem = () => setItems(i => [...i, emptyItem()]);
   const removeItem = (idx: number) => setItems(i => i.filter((_, ii) => ii !== idx));
-  const updateItem = (idx: number, key: keyof Item, value: any) =>
+  const updateItem = <K extends keyof GuideItem>(idx: number, key: K, value: GuideItem[K]) =>
     setItems(i => i.map((item, ii) => ii === idx ? { ...item, [key]: value } : item));
+
+  // When TUSS code is selected, auto-fill description from it
+  const handleTUSSSelect = (idx: number, opt: TUSSOption | null) => {
+    setItems(i => i.map((item, ii) => {
+      if (ii !== idx) return item;
+      return {
+        ...item,
+        tuss_code: opt,
+        description: opt ? opt.description.slice(0, 300) : item.description,
+      };
+    }));
+  };
+
+  const itemTotal = (item: GuideItem) => {
+    const val = parseFloat(item.unit_value || '0');
+    return isNaN(val) ? 0 : val * item.quantity;
+  };
+
+  const grandTotal = items.reduce((s, i) => s + itemTotal(i), 0);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.patient_id || !form.provider_id) { setError('Paciente e operadora são obrigatórios.'); return; }
-    if (items.some(i => !i.description)) { setError('Todos os procedimentos precisam de descrição.'); return; }
+    if (items.some(i => !i.tuss_code)) { setError('Todos os procedimentos precisam de um código TUSS.'); return; }
+    if (items.some(i => !i.unit_value || parseFloat(i.unit_value) <= 0)) {
+      setError('Todos os procedimentos precisam de valor unitário maior que zero.');
+      return;
+    }
     const token = getAccessToken();
     if (!token) { setError('Sessão expirada'); return; }
     setSaving(true);
@@ -73,7 +112,12 @@ export default function NewGuidePage() {
         insured_card_number: form.insured_card_number,
         competency: form.competency,
         guide_type: form.guide_type,
-        items,
+        items: items.map(i => ({
+          tuss_code: i.tuss_code!.id,
+          description: i.description,
+          quantity: i.quantity,
+          unit_value: i.unit_value,
+        })),
       };
       if (form.encounter_id) body.encounter = form.encounter_id;
       const res = await fetch('/api/v1/billing/guides/', {
@@ -97,7 +141,7 @@ export default function NewGuidePage() {
     }
   };
 
-  const totalItems = items.reduce((s, i) => s + i.quantity, 0);
+  const fmtBRL = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
   return (
     <div className="space-y-6">
@@ -156,30 +200,25 @@ export default function NewGuidePage() {
             {/* Convênio */}
             <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
               <h2 className="font-semibold text-gray-900">Convênio</h2>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Operadora *</label>
-                {loadingOptions ? (
-                  <div className="h-9 bg-gray-100 rounded animate-pulse" />
-                ) : (
-                  <select
-                    value={form.provider_id}
-                    onChange={e => setField('provider_id', e.target.value)}
-                    required
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                  >
-                    <option value="">Selecione a operadora...</option>
-                    {providers.map(p => (
-                      <option key={p.id} value={p.id}>{p.name ?? p.provider_name ?? p.id}</option>
-                    ))}
-                  </select>
-                )}
-              </div>
-            </div>
-
-            {/* Detalhes TISS */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-              <h2 className="font-semibold text-gray-900">Detalhes TISS</h2>
               <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Operadora *</label>
+                  {loadingOptions ? (
+                    <div className="h-9 bg-gray-100 rounded animate-pulse" />
+                  ) : (
+                    <select
+                      value={form.provider_id}
+                      onChange={e => setField('provider_id', e.target.value)}
+                      required
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    >
+                      <option value="">Selecione a operadora...</option>
+                      {providers.map(p => (
+                        <option key={p.id} value={p.id}>{p.name ?? p.provider_name ?? p.id}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Nº Carteirinha</label>
                   <input
@@ -190,6 +229,8 @@ export default function NewGuidePage() {
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                   />
                 </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Competência (AAAA-MM)</label>
                   <input
@@ -201,17 +242,17 @@ export default function NewGuidePage() {
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                   />
                 </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Guia</label>
-                <select
-                  value={form.guide_type}
-                  onChange={e => setField('guide_type', e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                >
-                  <option value="sadt">SADT</option>
-                  <option value="consulta">Consulta</option>
-                </select>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Guia</label>
+                  <select
+                    value={form.guide_type}
+                    onChange={e => setField('guide_type', e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  >
+                    <option value="sadt">SADT</option>
+                    <option value="consulta">Consulta</option>
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -219,44 +260,79 @@ export default function NewGuidePage() {
             <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="font-semibold text-gray-900">Procedimentos</h2>
-                <button
-                  type="button"
-                  onClick={addItem}
-                  className="text-sm text-blue-600 hover:underline"
-                >
+                <button type="button" onClick={addItem} className="text-sm text-blue-600 hover:underline">
                   + Adicionar
                 </button>
               </div>
+
               {items.map((item, idx) => (
-                <div key={idx} className="flex gap-3 items-start">
-                  <div className="w-20">
-                    <label className="block text-xs text-gray-500 mb-1">Qtd</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={item.quantity}
-                      onChange={e => updateItem(idx, 'quantity', Number(e.target.value))}
-                      className="w-full border border-gray-200 rounded-lg px-2 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                <div key={idx} className="border border-gray-100 rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Item {idx + 1}</span>
+                    {items.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeItem(idx)}
+                        className="text-red-400 hover:text-red-600 text-xs"
+                      >
+                        Remover
+                      </button>
+                    )}
+                  </div>
+
+                  {/* TUSS code */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Código TUSS *</label>
+                    <TUSSCodeSearch
+                      value={item.tuss_code}
+                      onChange={opt => handleTUSSSelect(idx, opt)}
                     />
                   </div>
-                  <div className="flex-1">
-                    <label className="block text-xs text-gray-500 mb-1">Descrição *</label>
+
+                  {/* Description */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Descrição</label>
                     <input
                       type="text"
                       value={item.description}
                       onChange={e => updateItem(idx, 'description', e.target.value)}
-                      placeholder="Ex: Consulta médica, Raio-X..."
+                      placeholder="Descrição do procedimento..."
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                     />
                   </div>
-                  {items.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => removeItem(idx)}
-                      className="mt-5 text-red-400 hover:text-red-600 text-xs"
-                    >
-                      Remover
-                    </button>
+
+                  {/* Qty + unit value */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Quantidade</label>
+                      <input
+                        type="number"
+                        min={1}
+                        step="0.01"
+                        value={item.quantity}
+                        onChange={e => updateItem(idx, 'quantity', Number(e.target.value))}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Valor Unitário (R$) *</label>
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        value={item.unit_value}
+                        onChange={e => updateItem(idx, 'unit_value', e.target.value)}
+                        placeholder="0,00"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Item subtotal */}
+                  {item.unit_value && (
+                    <div className="text-right text-xs text-gray-500">
+                      Subtotal: <span className="font-medium text-gray-800">{fmtBRL(itemTotal(item))}</span>
+                    </div>
                   )}
                 </div>
               ))}
@@ -277,7 +353,7 @@ export default function NewGuidePage() {
                 <div className="flex justify-between">
                   <span>Operadora</span>
                   <span className="text-gray-900 font-medium text-right max-w-[140px] truncate">
-                    {providers.find(p => p.id === form.provider_id)?.name ?? providers.find(p => p.id === form.provider_id)?.provider_name ?? '—'}
+                    {providers.find(p => p.id === form.provider_id)?.name ?? '—'}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -290,9 +366,17 @@ export default function NewGuidePage() {
                 </div>
                 <div className="flex justify-between">
                   <span>Procedimentos</span>
-                  <span className="text-gray-900 font-medium">{items.length} item(s) / {totalItems} qtd</span>
+                  <span className="text-gray-900 font-medium">{items.length} item(s)</span>
                 </div>
               </div>
+              {grandTotal > 0 && (
+                <div className="pt-3 border-t border-gray-100">
+                  <div className="flex justify-between text-sm font-semibold">
+                    <span>Total</span>
+                    <span className="text-blue-700">{fmtBRL(grandTotal)}</span>
+                  </div>
+                </div>
+              )}
               <div className="pt-3 border-t border-gray-100 space-y-2">
                 <button
                   type="submit"
