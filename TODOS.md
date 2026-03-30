@@ -1,17 +1,10 @@
 # TODOS
 
-## P1 — TUSS XSD Schema File Missing (Sprint 6b)
+## ~~P1 — TISS XSD Schema File Missing~~ DONE
 
-The XML validation engine in `xml_engine.py:validate_xml()` expects the ANS TISS XSD at
-`backend/apps/billing/schemas/tissV4_01_00.xsd`. This file must be downloaded from
-`padrao.tiss.ans.gov.br`. Without it, validation is skipped (function returns a warning
-list instead of actual errors) — guides can be generated but not XSD-validated locally.
-
-**Fix:** Download `tissV4_01_00.xsd` from the ANS portal and commit it at the expected path.
-Also add integration test: `generate_guide_xml(guide) → validate_xml() → 0 errors`.
-
-**Deferred from plan:** `docs/PLAN_SPRINT6.md` — S-022.
-**Priority:** P1 — needed before pilot clinic submits guides to convênio.
+All 6 schema files committed to `backend/apps/billing/schemas/` (ANS + W3C xmldsig).
+`validate_xml()` now performs real XSD validation. Tested via docker.
+Commit: `feat(billing): add ANS TISS 4.01.00 XSD schema files`.
 
 ---
 
