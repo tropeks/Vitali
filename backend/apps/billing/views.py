@@ -12,7 +12,7 @@ from django.http import FileResponse, Http404
 from django.utils import timezone
 from decimal import Decimal
 
-from django.db.models import Sum
+from django.db.models import Count, Sum
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
@@ -52,7 +52,7 @@ class TUSSCodeViewSet(viewsets.ReadOnlyModelViewSet):
     """
 
     serializer_class = TUSSCodeSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsFaturistaOrAdmin]
     pagination_class = TUSSCodePagination
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["code", "description", "group"]
@@ -91,7 +91,7 @@ class PriceTableViewSet(viewsets.ModelViewSet):
     ordering = ["-valid_from"]
 
     def get_queryset(self):
-        qs = PriceTable.objects.select_related("provider")
+        qs = PriceTable.objects.select_related("provider").annotate(item_count=Count("items"))
         provider = self.request.query_params.get("provider")
         if provider:
             qs = qs.filter(provider=provider)
@@ -228,19 +228,22 @@ class TISSBatchViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="close")
     def close(self, request, pk=None):
-        """Close a batch (open → closed). Recalculates total_value."""
+        """Close a batch (open → closed). Recalculates total_value atomically."""
+        from django.db import transaction as db_transaction
+
         batch = self.get_object()
         if batch.status != "open":
             return Response(
                 {"detail": f"Batch is already '{batch.status}', cannot close."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        total = batch.guides.aggregate(total=Sum("total_value"))["total"] or Decimal("0")
-        batch.status = "closed"
-        batch.closed_at = timezone.now()
-        batch.total_value = total
-        batch.save(update_fields=["status", "closed_at", "total_value"])
-        batch.guides.filter(status="pending").update(status="submitted")
+        with db_transaction.atomic():
+            total = batch.guides.aggregate(total=Sum("total_value"))["total"] or Decimal("0")
+            batch.status = "closed"
+            batch.closed_at = timezone.now()
+            batch.total_value = total
+            batch.save(update_fields=["status", "closed_at", "total_value"])
+            batch.guides.filter(status="pending").update(status="submitted")
         return Response(TISSBatchSerializer(batch).data)
 
     @action(detail=True, methods=["post"], url_path="export")
@@ -314,12 +317,19 @@ class TISSBatchViewSet(viewsets.ModelViewSet):
         """
         from .services.retorno_parser import parse_retorno
 
+        _MAX_RETORNO_BYTES = 10 * 1024 * 1024  # 10 MB — enough for any realistic TISS retorno
+
         batch = self.get_object()
         uploaded = request.FILES.get("retorno_xml")
         if not uploaded:
             return Response(
                 {"detail": "retorno_xml file is required."},
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+        if uploaded.size > _MAX_RETORNO_BYTES:
+            return Response(
+                {"detail": f"retorno_xml too large ({uploaded.size} bytes). Maximum is 10 MB."},
+                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             )
         xml_bytes = uploaded.read()
         result = parse_retorno(xml_bytes)

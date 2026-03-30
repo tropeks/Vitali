@@ -72,7 +72,7 @@ class PriceTableSerializer(serializers.ModelSerializer):
 class PriceTableListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for list view — no nested items."""
     provider_name = serializers.CharField(source="provider.name", read_only=True)
-    item_count = serializers.SerializerMethodField()
+    item_count = serializers.IntegerField(read_only=True)  # populated by annotate(item_count=Count("items"))
 
     class Meta:
         model = PriceTable
@@ -81,9 +81,6 @@ class PriceTableListSerializer(serializers.ModelSerializer):
             "valid_from", "valid_until", "is_active", "item_count", "created_at",
         ]
         read_only_fields = fields
-
-    def get_item_count(self, obj):
-        return obj.items.count()
 
 
 # ─── Guides ───────────────────────────────────────────────────────────────────
