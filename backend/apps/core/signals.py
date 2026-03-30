@@ -3,7 +3,8 @@ Core signals — auto-create FeatureFlags, audit logging for model changes.
 """
 import logging
 
-from django.db.models.signals import post_save, post_delete
+from django.db.models.deletion import ProtectedError
+from django.db.models.signals import post_save, post_delete, pre_delete
 from django.dispatch import receiver
 
 logger = logging.getLogger(__name__)
@@ -102,6 +103,34 @@ def register_audit_signals():
             post_delete.connect(handle_post_delete, sender=model, weak=False)
         except LookupError:
             pass  # App not yet loaded
+
+
+# ─── TUSSCode cross-schema PROTECT ───────────────────────────────────────────
+# PostgreSQL does not enforce FK integrity across schemas (public → tenant).
+# This signal provides the application-layer PROTECT equivalent.
+
+@receiver(pre_delete, sender="core.TUSSCode")
+def protect_tuss_code_deletion(sender, instance, **kwargs):
+    """Block deletion of a TUSSCode that is referenced by billing data in any tenant."""
+    from django_tenants.utils import get_tenant_model, schema_context
+
+    TenantModel = get_tenant_model()
+    for tenant in TenantModel.objects.exclude(schema_name="public"):
+        with schema_context(tenant.schema_name):
+            from apps.billing.models import TISSGuideItem, PriceTableItem
+
+            if TISSGuideItem.objects.filter(tuss_code=instance).exists():
+                raise ProtectedError(
+                    f"TUSSCode {instance.code} is referenced by TISSGuideItem in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+            if PriceTableItem.objects.filter(tuss_code=instance).exists():
+                raise ProtectedError(
+                    f"TUSSCode {instance.code} is referenced by PriceTableItem in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
 
 
 # ─── Subscription → FeatureFlags ─────────────────────────────────────────────
