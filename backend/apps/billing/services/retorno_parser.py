@@ -82,8 +82,8 @@ def parse_retorno(xml_bytes: bytes) -> dict:
     except etree.XMLSyntaxError as exc:
         return {"batch_number": "", "guides_updated": 0, "glosas_created": 0, "errors": [str(exc)]}
 
-    # Locate retornoLote
-    retorno_lote = root.find(".//ans:retornoLote", NS)
+    # Locate retornoLote — try namespaced first, fall back for non-conforming senders
+    retorno_lote = root.find(".//ans:retornoLote", NS) or root.find(".//retornoLote")
     if retorno_lote is None:
         return {
             "batch_number": "",
