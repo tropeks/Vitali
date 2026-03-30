@@ -15,17 +15,11 @@ Also add integration test: `generate_guide_xml(guide) → validate_xml() → 0 e
 
 ---
 
-## P1 — PatientInsurance API Endpoint Missing (Sprint 6b)
+## ~~P1 — PatientInsurance API Endpoint Missing~~ DONE
 
-`PatientInsurance` model exists (emr/migrations/0004) but there is no REST endpoint for
-creating/editing insurance cards. The guide creation form at `/billing/guides/new` relies on
-an inline card input that calls `POST /api/v1/emr/patients/{id}/insurance/` — this 404s.
-
-**Fix:** Add `PatientInsuranceViewSet` to `emr/views.py` and wire in `emr/urls.py`.
-Fields: `patient`, `provider`, `card_number`, `plan_name`, `is_active`.
-
-**Deferred from plan:** `docs/PLAN_SPRINT6.md` — S-022.
-**Priority:** P1 — guide creation with insurance prefill broken without this.
+Endpoints shipped: `GET/POST /api/v1/emr/patients/{id}/insurance/` and
+`PATCH/DELETE /api/v1/emr/patients/{id}/insurance/{card_id}/`.
+Commit: `feat(emr): add PatientInsurance REST endpoints`.
 
 ---
 
