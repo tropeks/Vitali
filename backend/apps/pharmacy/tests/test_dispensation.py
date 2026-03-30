@@ -289,3 +289,42 @@ class TestFEFOIntegration(TenantTestCase):
         drug = _make_drug()
         resp = c.get(f'/api/v1/pharmacy/stock/availability/?drug={drug.id}')
         self.assertEqual(resp.status_code, 403)
+
+    def test_stock_availability_missing_drug_param_returns_400(self):
+        """GET /pharmacy/stock/availability/ without ?drug= must return 400."""
+        resp = self._client(self.farmaceutico).get('/api/v1/pharmacy/stock/availability/')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_dispense_prescription_item_not_found_returns_404(self):
+        """Dispensing against a non-existent PrescriptionItem UUID must return 404."""
+        import uuid
+        resp = self._client(self.farmaceutico).post('/api/v1/pharmacy/dispense/', {
+            'prescription_item_id': str(uuid.uuid4()),
+            'quantity': '1',
+        }, format='json')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_prescription_status_updated_after_partial_dispense(self):
+        """Prescription.status must become 'partially_dispensed' after a partial fill."""
+        drug = _make_drug()
+        _make_lot(drug, Decimal('20'), days_until_expiry=30)
+        rx, rx_item = _make_prescription(self.patient, self.prescriber, self.encounter, drug, qty=Decimal('10'))
+        self.assertEqual(rx.status, 'signed')
+        self._client(self.farmaceutico).post('/api/v1/pharmacy/dispense/', {
+            'prescription_item_id': str(rx_item.id),
+            'quantity': '6',
+        }, format='json')
+        rx.refresh_from_db()
+        self.assertEqual(rx.status, 'partially_dispensed')
+
+    def test_prescription_status_updated_after_full_dispense(self):
+        """Prescription.status must become 'dispensed' after all items are fully filled."""
+        drug = _make_drug()
+        _make_lot(drug, Decimal('20'), days_until_expiry=30)
+        rx, rx_item = _make_prescription(self.patient, self.prescriber, self.encounter, drug, qty=Decimal('10'))
+        self._client(self.farmaceutico).post('/api/v1/pharmacy/dispense/', {
+            'prescription_item_id': str(rx_item.id),
+            'quantity': '10',
+        }, format='json')
+        rx.refresh_from_db()
+        self.assertEqual(rx.status, 'dispensed')

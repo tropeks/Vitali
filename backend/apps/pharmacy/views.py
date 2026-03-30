@@ -185,6 +185,7 @@ class StockAlertsView(APIView):
         import json
         from django.conf import settings
         schema = getattr(request.tenant, 'schema_name', 'public')
+        cache_available = True
         try:
             import redis
             r = redis.from_url(getattr(settings, 'CELERY_BROKER_URL', 'redis://localhost:6379/0'))
@@ -195,9 +196,11 @@ class StockAlertsView(APIView):
         except Exception:
             expiry_items = []
             min_stock_items = []
+            cache_available = False
         return Response({
             'expiry_alerts': expiry_items,
             'min_stock_alerts': min_stock_items,
+            'cache_available': cache_available,
         })
 
 
@@ -385,5 +388,22 @@ class DispenseView(APIView):
                 performed_by=request.user,
             )
             remaining -= take
+
+        # Update Prescription.status inside the lock so reporting sees correct state.
+        # Recompute total dispensed across ALL items on this Rx to determine new status.
+        from apps.emr.models import Prescription as _Rx
+        rx_locked = _Rx.objects.select_for_update().get(pk=prescription.pk)
+        all_items = rx_locked.items.all()
+        all_fully_dispensed = all(
+            (DispensationLot.objects.filter(
+                dispensation__prescription_item=item
+            ).aggregate(total=Sum('quantity'))['total'] or Decimal('0')) >= item.quantity
+            for item in all_items
+        )
+        if all_fully_dispensed:
+            rx_locked.status = 'dispensed'
+        else:
+            rx_locked.status = 'partially_dispensed'
+        rx_locked.save(update_fields=['status'])
 
         return dispensation

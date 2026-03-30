@@ -103,3 +103,34 @@ class TestCatalogAPI(TenantTestCase):
         self.assertEqual(response.status_code, 200)
         results = response.data.get('results', response.data)
         self.assertTrue(len(results) >= 1)
+
+    def test_drug_patch_updates_name(self):
+        """perform_update() logs audit and persists the change."""
+        drug = Drug.objects.create(name='Original Name', is_active=True)
+        resp = self._client(self.farmaceutico).patch(
+            f'/api/v1/pharmacy/drugs/{drug.id}/',
+            {'name': 'Updated Name'},
+            format='json',
+        )
+        self.assertEqual(resp.status_code, 200)
+        drug.refresh_from_db()
+        self.assertEqual(drug.name, 'Updated Name')
+
+    def test_drug_delete_sets_inactive(self):
+        """perform_destroy() soft-deletes: is_active → False, row still exists."""
+        drug = Drug.objects.create(name='Delete Me', is_active=True)
+        resp = self._client(self.farmaceutico).delete(f'/api/v1/pharmacy/drugs/{drug.id}/')
+        self.assertEqual(resp.status_code, 204)
+        drug.refresh_from_db()
+        self.assertFalse(drug.is_active)
+
+    def test_drug_controlled_filter(self):
+        """?controlled=true returns only controlled-class drugs."""
+        Drug.objects.create(name='Controlled', controlled_class='A1', is_active=True)
+        Drug.objects.create(name='Free', controlled_class='none', is_active=True)
+        resp = self._client(self.farmaceutico).get('/api/v1/pharmacy/drugs/?controlled=true')
+        self.assertEqual(resp.status_code, 200)
+        results = resp.data.get('results', resp.data)
+        names = [d['name'] for d in results]
+        self.assertIn('Controlled', names)
+        self.assertNotIn('Free', names)
