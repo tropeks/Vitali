@@ -117,7 +117,7 @@ Blocked by: `retorno_xml_file` field (Sprint 6, now added).
 
 ---
 
-## P2 — Guide Double-Submit Protection (Sprint 6b)
+## ~~P2 — Guide Double-Submit Protection~~ DONE
 
 A `TISSGuide` can currently be added to multiple `TISSBatch` objects via the M2M relationship.
 This means the same guide could be submitted to the convênio twice in different batches —
@@ -155,7 +155,7 @@ established in Sprint 6 are the reference implementation.
 
 ---
 
-## P2 — PatientInsurance CRUD on Patient Detail Page (Sprint 6b)
+## ~~P2 — PatientInsurance CRUD on Patient Detail Page~~ DONE
 
 The `PatientInsurance` model introduced in Sprint 6 allows inline card registration during
 guide creation, but there is no management UI. Patients with two convênios can't add a second
@@ -169,7 +169,7 @@ endpoint family introduced in Sprint 6.
 
 ---
 
-## P2 — Faturamento Card on Encounter Detail (Sprint 6)
+## ~~P2 — Faturamento Card on Encounter Detail~~ DONE
 
 The encounter detail page needs a "Faturamento" card as its last section, showing linked TISS
 guides and a `[+ Criar Guia TISS →]` button. This is a cross-app UI concern — it lives in the
@@ -188,7 +188,7 @@ Full spec: see "Decision 7c" in `docs/PLAN_SPRINT6.md` Pass 7 section.
 
 ---
 
-## P2 — TISSBatch.save() No Retry Loop (Sprint 6b)
+## ~~P2 — TISSBatch.save() No Retry Loop~~ DONE
 
 `TISSBatch.save()` calls `generate_batch_number()` with `select_for_update()` but has no
 `IntegrityError` retry loop. If two batches are created concurrently on an empty month, the

@@ -325,9 +325,19 @@ class TISSBatch(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.batch_number:
-            with transaction.atomic():
-                self.batch_number = self.generate_batch_number()
-                super().save(*args, **kwargs)
+            from django.db import IntegrityError
+            for _attempt in range(3):
+                with transaction.atomic():
+                    self.batch_number = self.generate_batch_number()
+                    try:
+                        super().save(*args, **kwargs)
+                        return
+                    except IntegrityError:
+                        self.batch_number = ""
+                        continue
+            raise IntegrityError(
+                "Failed to generate a unique batch number after 3 attempts."
+            )
         else:
             super().save(*args, **kwargs)
 
@@ -349,6 +359,26 @@ class TISSBatch(models.Model):
 
     def __str__(self):
         return f"Lote {self.batch_number} — {self.provider.name}"
+
+
+def _tissbatch_m2m_changed(sender, instance, action, pk_set, **kwargs):
+    """
+    Enforce double-submit protection when guides are added via M2M directly
+    (bypasses the serializer layer). Runs on m2m_changed signal for
+    TISSBatch.guides through-table.
+    """
+    if action != "pre_add" or not pk_set:
+        return
+    for guide_pk in pk_set:
+        try:
+            guide = TISSGuide.objects.get(pk=guide_pk)
+        except TISSGuide.DoesNotExist:
+            continue
+        instance.check_guide_not_double_submitted(guide)
+
+
+from django.db.models.signals import m2m_changed  # noqa: E402
+m2m_changed.connect(_tissbatch_m2m_changed, sender=TISSBatch.guides.through)
 
 
 # ─── Glosas ───────────────────────────────────────────────────────────────────
