@@ -38,7 +38,26 @@
       "Bash(grep -v \"^#[0-9]* [0-9]*\\\\.[0-9]* $\")",
       "Bash(docker run:*)",
       "Bash(git diff:*)",
-      "Skill(gstack-qa)"
+      "Skill(gstack-qa)",
+      "WebSearch",
+      "Bash(find /c/dev/healthos/backend -name requirements*.txt -o -name Pipfile -o -name setup.cfg)",
+      "Bash(pip show:*)",
+      "Bash(pip3 show:*)",
+      "Bash(git fetch:*)",
+      "Bash(git merge:*)",
+      "Bash(/dev/null find:*)",
+      "Bash(docker exec:*)",
+      "Bash(docker cp:*)",
+      "Bash(1 docker:*)",
+      "Bash(head -10 echo \"---\" ls /c/dev/healthos/frontend/app/\\\\\\(dashboard\\\\\\)/)",
+      "Bash(find \"C:/dev/healthos/frontend/app/\\(dashboard\\)/billing\" -name \"*.tsx\")",
+      "Bash(ls /c/dev/healthos/frontend/app/\\\\\\(dashboard\\\\\\)/billing/)",
+      "Bash(ls /c/dev/healthos/frontend/app/\\\\\\(dashboard\\\\\\)/billing/guides/)",
+      "Bash(ls /c/dev/healthos/frontend/app/\\\\\\(dashboard\\\\\\)/billing/batches/)",
+      "Bash(npx next:*)",
+      "Bash(curl -s -o /dev/null -w '%{http_code}' http://localhost:3001/login)",
+      "Bash(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/login)",
+      "Bash(curl -v http://localhost:3001/login)"
     ]
   }
 }
