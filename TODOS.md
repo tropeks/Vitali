@@ -1,31 +1,189 @@
 # TODOS
 
-## Security
+## P2 — TISSGuide.total_value Drift (Sprint 6b)
 
-### Upgrade Next.js from 14.2.29 (security vulnerability)
+`TISSGuide.total_value` is set on guide creation but not recalculated when `TISSGuideItem`
+records are edited or deleted post-creation. The guide XML uses `total_value` for TISS reporting.
+Stale value = incorrect XML = potential insurer rejection or overpayment claim.
 
-**What:** Upgrade `next` from `14.2.29` to the latest patched version.
+**Fix:** Override `TISSGuideItem.save()` and `delete()` to recalculate and save the parent
+guide's `total_value`:
+```python
+def save(self, *args, **kwargs):
+    self.total_value = self.unit_value * self.quantity
+    super().save(*args, **kwargs)
+    self.guide.total_value = self.guide.items.aggregate(t=Sum('total_value'))['t'] or 0
+    self.guide.save(update_fields=['total_value', 'updated_at'])
+```
+Apply same recalculation in a `post_delete` signal on `TISSGuideItem`.
 
-**Why:** `next@14.2.29` has a known security vulnerability. See https://nextjs.org/blog/security-update-2025-12-11. npm flags it as 4 high severity vulnerabilities.
-
-**Context:** Discovered during `npm install` on 2026-03-28. Run `npm audit` in `frontend/` for details. Upgrade may include breaking changes — test the build and all pages after upgrading. Run `npm install next@latest` and resolve any peer dep conflicts.
-
-**Effort:** S (human: ~2h) → S with CC+gstack (~15 min)
-**Priority:** P1
-**Depends on:** None
+**Priority:** P2 — Sprint 6b. Pilot has simple guide workflows (create + submit, rarely edit).
 
 ---
 
-## Pharmacy / Prescriptions
+## P2 — TISSBatch M2M Provider Homogeneity (Sprint 6b)
 
-### PDF archival: cache-on-first-print for signed prescriptions
+`TISSBatch.guides` M2M allows adding guides from any provider. TISS submission is per-provider;
+a mixed-provider batch produces invalid XML that will fail at the insurer portal.
 
-**What:** Store generated WeasyPrint PDFs in object storage (S3/MinIO) on first print, keyed by `prescription_id`. Subsequent prints serve the stored file.
+**Fix:** Add validation to the batch creation/update serializer:
+```python
+for guide in validated_guides:
+    if guide.provider_id != provider.id:
+        raise ValidationError(f"Guide {guide.guide_number} belongs to a different provider.")
+```
 
-**Why:** WeasyPrint regenerates the same bytes on every call to `GET /api/v1/emr/prescriptions/{id}/print/`. Since prescriptions are immutable after signing, the cache never expires. At 500+ renders/day across 50 clinics, regeneration becomes a scaling cost. Object storage also provides an audit-proof PDF archive for clinics.
+**Priority:** P2 — Sprint 6b. Pilot clinic uses one provider; mixing can't happen with one provider.
+Blocked by: nothing. Bundle with double-submit protection cleanup.
 
-**Context:** WeasyPrint decided over browser print CSS in Sprint 6 (Decision #17 in `docs/PLAN_SPRINT6.md`) for reliable prescription output. The `print/` endpoint currently calls WeasyPrint on every request. Implementation: on first print, store the PDF bytes to object storage keyed by `prescription_id`; set a `pdf_url` field on Prescription (nullable FK or separate `PrescriptionPDF` model); on subsequent requests, redirect to the stored URL instead of regenerating. Requires object storage setup (S3 or MinIO) which is not yet configured for Vitali.
+---
 
-**Effort:** M (human: ~2 days) → S with CC+gstack (~20 min once object storage is set up)
-**Priority:** P2
-**Depends on:** Object storage configuration (not in any current sprint)
+## P2 — TISSGuide Status Bypass via Direct PATCH (Sprint 6b)
+
+`PATCH /api/v1/billing/guides/{id}/` accepts `{"status": "paid"}` — the serializer doesn't
+restrict the status field. Dedicated action endpoints (`/submit`, close via batch) enforce
+lifecycle rules, but a buggy client can bypass them.
+
+**Fix:** Add `status` to `read_only_fields` in `TISSGuideSerializer`. Status changes must go
+through dedicated action endpoints only. Same for `TISSBatch.status`.
+
+**Priority:** P2 — Sprint 6b. Single faturista pilot = low risk. Required before multi-user.
+Blocked by: nothing.
+
+---
+
+## P2 — Retorno Upload Not Idempotent (Sprint 6b)
+
+Uploading the same retorno XML twice (double-click, network retry) processes it twice,
+creating duplicate `Glosa` records for each denied item. Duplicate glosas inflate denial
+counts in analytics and are hard to clean up in financial records.
+
+**Fix:** Add idempotency check at the start of `upload_retorno`:
+```python
+if batch.retorno_xml_file:
+    return Response(
+        {"detail": "Retorno already processed for this batch. Use ?force=true to reprocess."},
+        status=status.HTTP_409_CONFLICT,
+    )
+```
+
+**Priority:** P2 — Sprint 6b. Pilot won't accidentally double-upload retornos.
+Blocked by: `retorno_xml_file` field (Sprint 6, now added).
+
+---
+
+## P2 — Guide Double-Submit Protection (Sprint 6b)
+
+A `TISSGuide` can currently be added to multiple `TISSBatch` objects via the M2M relationship.
+This means the same guide could be submitted to the convênio twice in different batches —
+a compliance risk (double billing).
+
+**Fix:** Add a `clean()` validator on `TISSBatch` (or a pre-add M2M signal) that checks:
+```python
+if TISSBatch.objects.filter(
+    guides=guide, status__in=["closed", "submitted"]
+).exclude(pk=self.pk).exists():
+    raise ValidationError(f"Guide {guide.guide_number} already in a submitted batch")
+```
+Alternatively, add a `batch = models.ForeignKey(TISSBatch, null=True)` on `TISSGuide` and
+enforce uniqueness that way — cleaner than M2M for this constraint.
+
+**Priority:** P2 — not needed for pilot demo but must be fixed before multiple clinics use billing.
+**Update (2026-03-30 eng review):** Serializer-layer protection is already in place
+(`serializers.py:184` calls `check_guide_not_double_submitted()`). What remains: direct
+`.guides.add(guide)` calls bypass the serializer check. The TODOS item stands for adding
+an M2M signal or FK constraint to close this gap.
+
+---
+
+## P2 — DESIGN.md (after Sprint 6 ships)
+
+No design system is documented in the repo. After Sprint 6 UI is built, run `/design-consultation`
+to extract established patterns (color tokens, component vocabulary, copy tone, spacing scale) into
+a `DESIGN.md` file.
+
+**Why now matters:** Sprint 7 (AI TUSS screens), Sprint 8 (Pharmacy), and Sprint 9 (WhatsApp)
+will all build UI. Without a shared design system, each sprint diverges. The billing screens
+established in Sprint 6 are the reference implementation.
+
+**Priority:** P2 — run immediately after Sprint 6 UI is in production. 30-minute session.
+
+---
+
+## P2 — PatientInsurance CRUD on Patient Detail Page (Sprint 6b)
+
+The `PatientInsurance` model introduced in Sprint 6 allows inline card registration during
+guide creation, but there is no management UI. Patients with two convênios can't add a second
+card. Existing cards can't be updated or deactivated from the patient page.
+
+**Fix:** Add a "Convênios" tab to `/patients/[id]/page.tsx` showing all insurance cards with
+edit / add / deactivate actions. Uses the same `POST/PATCH /api/v1/emr/patients/{id}/insurance/`
+endpoint family introduced in Sprint 6.
+
+**Priority:** P2 — Sprint 6b alongside ICP-Brasil cert management. Blocked by: PatientInsurance model (Sprint 6).
+
+---
+
+## P2 — Faturamento Card on Encounter Detail (Sprint 6)
+
+The encounter detail page needs a "Faturamento" card as its last section, showing linked TISS
+guides and a `[+ Criar Guia TISS →]` button. This is a cross-app UI concern — it lives in the
+EMR app (`app/(dashboard)/emr/encounters/[id]/page.tsx`) but is not covered by any billing story
+task. Easy to ship all billing stories and still leave faturistas with no entry point from the
+clinical workflow.
+
+**Fix:** Add Faturamento card to `app/(dashboard)/emr/encounters/[id]/page.tsx`:
+- No guides: "Nenhuma guia TISS criada." + `[+ Criar Guia TISS →]` primary button linking to `/billing/guides/new?encounter={id}`
+- 1+ guides: list each as `Guia #{number} — {StatusBadge}` with link to guide detail + `[+ Nova Guia]` ghost button
+- Role guard: only render card if user has `billing.read` permission (hidden for roles without billing access)
+
+Full spec: see "Decision 7c" in `docs/PLAN_SPRINT6.md` Pass 7 section.
+
+**Priority:** P2 — Sprint 6, required for end-to-end faturista workflow demo.
+
+---
+
+## P2 — TISSBatch.save() No Retry Loop (Sprint 6b)
+
+`TISSBatch.save()` calls `generate_batch_number()` with `select_for_update()` but has no
+`IntegrityError` retry loop. If two batches are created concurrently on an empty month, the
+second will throw an unhandled `IntegrityError`. Inconsistent with `TISSGuide.save()` which
+has a 3-attempt retry.
+
+**Fix:** Wrap `TISSBatch.save()` in the same retry pattern used by `TISSGuide.save()`.
+
+**Priority:** P2 — Sprint 6b. Low risk for pilot (one faturista rarely creates batches
+simultaneously) but required for correctness at scale.
+
+---
+
+## P2 — Retorno Parser: TISS Namespace Fallback (Sprint 6b)
+
+`retorno_parser.py` uses `root.find(".//ans:retornoLote", NS)` with the full ANS namespace.
+Some TISS implementations (older insurers, test environments) send XML without the `ans:`
+namespace prefix. The parser returns `errors=["<retornoLote> not found"]` instead of parsing
+the file.
+
+**Fix:** If the namespaced find returns None, fall back to a namespace-agnostic search:
+```python
+retorno_lote = root.find(".//ans:retornoLote", NS) or root.find(".//retornoLote")
+```
+
+**Priority:** P2 — Sprint 6b. Affects compatibility with non-conforming TISS senders.
+
+---
+
+## P3 — TUSS Table Update Checker (Sprint 7)
+
+The TUSS table is published by ANS periodically (~quarterly). The `import_tuss` management
+command is idempotent but there is no automated check or alert when a new TUSS version is available.
+
+**Fix:** Add a scheduled task (Celery Beat) that checks the ANS TUSS version endpoint and
+logs a warning if the local version is older than 90 days. Optionally, auto-download and
+re-import if running in a non-prod environment.
+
+This belongs in Sprint 7 alongside the AI TUSS auto-coding work — both require the TUSS
+table to be current for accurate suggestions.
+
+**Priority:** P3 — informational. Stale TUSS codes cause guide validation failures, not
+silent errors. The faturista will notice if a code is missing.
