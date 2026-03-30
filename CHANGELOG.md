@@ -2,6 +2,31 @@
 
 All notable changes to Vitali Health are documented here.
 
+## [0.3.0] — 2026-03-30
+
+### Added
+- **Pharmacy app (Sprint 7):** Full pharmacy module — catalog, stock management, dispensation
+  - **S-026 Drug & Material Catalog:** `Drug` model with ANVISA code, barcode, controlled-substance classification (ANVISA lists A1–C5), and soft-delete; `Material` model for non-drug hospital supplies; full CRUD REST API with search, permission-gated writes (`pharmacy.catalog_manage`)
+  - **S-027 Stock Management:** `StockItem` (lot ledger) + `StockMovement` (append-only movement log); FEFO-ready lot ordering; `CheckConstraint(quantity >= 0)` at DB level; F()-based atomic quantity updates preventing race conditions; stock adjustment endpoint (`POST /pharmacy/stock/items/{id}/adjust/`) requiring `pharmacy.stock_manage`; `StockAlertsView` reading pre-computed expiry + low-stock alerts from Redis; Celery tasks (`check_expiry_alerts`, `check_min_stock_alerts`) writing tenant-scoped Redis keys
+  - **S-028 Dispensation:** Atomic FEFO multi-lot dispensation (`POST /pharmacy/dispense/`) with `select_for_update()` on both `PrescriptionItem` (over-dispense guard) and stock lots; controlled-substance gate (`pharmacy.dispense_controlled`); mandatory notes for controlled drugs; `Dispensation` + `DispensationLot` models; stock availability query endpoint
+  - **Prescription items (EMR):** `Prescription` + `PrescriptionItem` models with sign/cancel lifecycle; `MinValueValidator(Decimal('0.001'))` on item quantity; serializer blocks adding items to signed prescriptions; REST API under `/api/v1/` with permission guards
+  - **Pharmacy frontend (Sprint 7):** 5 pages under `/farmacia/`
+    - Catalog page (drug + material tabs, search, inline creation form, clickable rows)
+    - Drug detail page (view/edit/deactivate, controlled-class badge)
+    - Material detail page (view/edit/deactivate)
+    - Stock list page (KPI alert cards, filters, entry form with drug search, clickable rows)
+    - Stock item detail page (quantity/min/expiry KPI cards, adjustment form, movement history)
+  - **Pharmacy nav link** in `DashboardShell`
+
+### Fixed
+- **Stock adjust permission gap:** `adjust` action on `StockItemViewSet` previously fell through to `pharmacy.read`; now correctly requires `pharmacy.stock_manage`
+- **PrescriptionItem `MinValueValidator`:** Changed from string `'0.001'` to `Decimal('0.001')` to avoid `TypeError` on decimal field comparison
+
+### Changed
+- API version bumped from `0.2.0` → `0.3.0`
+
+---
+
 ## [0.2.0] — 2026-03-30
 
 ### Added
