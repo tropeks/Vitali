@@ -323,6 +323,14 @@ class TISSBatchViewSet(viewsets.ModelViewSet):
         _MAX_RETORNO_BYTES = 10 * 1024 * 1024  # 10 MB — enough for any realistic TISS retorno
 
         batch = self.get_object()
+
+        # Idempotency guard — prevent double-processing the same batch
+        if batch.retorno_xml_file and not request.query_params.get("force"):
+            return Response(
+                {"detail": "Retorno já processado para este lote. Use ?force=true para reprocessar."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
         uploaded = request.FILES.get("retorno_xml")
         if not uploaded:
             return Response(

@@ -12,6 +12,7 @@ apps/core/signals.py) compensates by checking live references.
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models, transaction
+from django.db.models import Sum
 from django.utils import timezone
 
 
@@ -259,9 +260,19 @@ class TISSGuideItem(models.Model):
         verbose_name = "Item de Guia"
         verbose_name_plural = "Itens de Guia"
 
+    def _recalc_guide_total(self):
+        total = self.guide.items.aggregate(t=Sum("total_value"))["t"] or 0
+        self.guide.total_value = total
+        self.guide.save(update_fields=["total_value", "updated_at"])
+
     def save(self, *args, **kwargs):
         self.total_value = self.unit_value * self.quantity
         super().save(*args, **kwargs)
+        self._recalc_guide_total()
+
+    def delete(self, *args, **kwargs):
+        super().delete(*args, **kwargs)
+        self._recalc_guide_total()
 
     def __str__(self):
         return f"{self.tuss_code.code} × {self.quantity} — Guia {self.guide.guide_number}"

@@ -45,7 +45,7 @@ encounter, patient, and professional from the query param.
 
 ---
 
-## P2 — TISSGuide.total_value Drift (Sprint 6b)
+## ~~P2 — TISSGuide.total_value Drift~~ DONE
 
 `TISSGuide.total_value` is set on guide creation but not recalculated when `TISSGuideItem`
 records are edited or deleted post-creation. The guide XML uses `total_value` for TISS reporting.
@@ -66,7 +66,7 @@ Apply same recalculation in a `post_delete` signal on `TISSGuideItem`.
 
 ---
 
-## P2 — TISSBatch M2M Provider Homogeneity (Sprint 6b)
+## ~~P2 — TISSBatch M2M Provider Homogeneity~~ DONE
 
 `TISSBatch.guides` M2M allows adding guides from any provider. TISS submission is per-provider;
 a mixed-provider batch produces invalid XML that will fail at the insurer portal.
@@ -83,7 +83,7 @@ Blocked by: nothing. Bundle with double-submit protection cleanup.
 
 ---
 
-## P2 — TISSGuide Status Bypass via Direct PATCH (Sprint 6b)
+## ~~P2 — TISSGuide Status Bypass via Direct PATCH~~ DONE
 
 `PATCH /api/v1/billing/guides/{id}/` accepts `{"status": "paid"}` — the serializer doesn't
 restrict the status field. Dedicated action endpoints (`/submit`, close via batch) enforce
@@ -97,7 +97,7 @@ Blocked by: nothing.
 
 ---
 
-## P2 — Retorno Upload Not Idempotent (Sprint 6b)
+## ~~P2 — Retorno Upload Not Idempotent~~ DONE
 
 Uploading the same retorno XML twice (double-click, network retry) processes it twice,
 creating duplicate `Glosa` records for each denied item. Duplicate glosas inflate denial
@@ -202,7 +202,7 @@ simultaneously) but required for correctness at scale.
 
 ---
 
-## P2 — Retorno Parser: TISS Namespace Fallback (Sprint 6b)
+## ~~P2 — Retorno Parser: TISS Namespace Fallback~~ DONE
 
 `retorno_parser.py` uses `root.find(".//ans:retornoLote", NS)` with the full ANS namespace.
 Some TISS implementations (older insurers, test environments) send XML without the `ans:`
