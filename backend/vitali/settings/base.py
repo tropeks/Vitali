@@ -18,6 +18,7 @@ SHARED_APPS = [
     "apps.core",               # Tenant, Domain, Plan, Subscription, User, Role, FeatureFlag
     "django.contrib.contenttypes",
     "django.contrib.auth",
+    "django.contrib.postgres",  # SearchVectorField, GinIndex — required for TUSS fuzzy search
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
@@ -158,7 +159,7 @@ SIMPLE_JWT = {
 SPECTACULAR_SETTINGS = {
     "TITLE": "Vitali API",
     "DESCRIPTION": "Plataforma Hospitalar SaaS — ERP + EMR + AI",
-    "VERSION": "0.1.0",
+    "VERSION": "0.2.0",
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
 }
