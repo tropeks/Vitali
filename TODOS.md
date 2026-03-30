@@ -1,5 +1,63 @@
 # TODOS
 
+## P1 — TUSS XSD Schema File Missing (Sprint 6b)
+
+The XML validation engine in `xml_engine.py:validate_xml()` expects the ANS TISS XSD at
+`backend/apps/billing/schemas/tissV4_01_00.xsd`. This file must be downloaded from
+`padrao.tiss.ans.gov.br`. Without it, validation is skipped (function returns a warning
+list instead of actual errors) — guides can be generated but not XSD-validated locally.
+
+**Fix:** Download `tissV4_01_00.xsd` from the ANS portal and commit it at the expected path.
+Also add integration test: `generate_guide_xml(guide) → validate_xml() → 0 errors`.
+
+**Deferred from plan:** `docs/PLAN_SPRINT6.md` — S-022.
+**Priority:** P1 — needed before pilot clinic submits guides to convênio.
+
+---
+
+## P1 — PatientInsurance API Endpoint Missing (Sprint 6b)
+
+`PatientInsurance` model exists (emr/migrations/0004) but there is no REST endpoint for
+creating/editing insurance cards. The guide creation form at `/billing/guides/new` relies on
+an inline card input that calls `POST /api/v1/emr/patients/{id}/insurance/` — this 404s.
+
+**Fix:** Add `PatientInsuranceViewSet` to `emr/views.py` and wire in `emr/urls.py`.
+Fields: `patient`, `provider`, `card_number`, `plan_name`, `is_active`.
+
+**Deferred from plan:** `docs/PLAN_SPRINT6.md` — S-022.
+**Priority:** P1 — guide creation with insurance prefill broken without this.
+
+---
+
+## P1 — TUSSCodeSearch Frontend Combobox Missing (Sprint 6b)
+
+Guide and price-table creation forms need a TUSS code search combobox (debounce 300ms,
+calls `GET /api/v1/billing/tuss/?q=`). Without it, faturistas must type codes manually
+and the inline add-item UX on the guide form is incomplete.
+
+**Fix:** Create `frontend/components/billing/TUSSCodeSearch.tsx` (combobox with debounce),
+wire into `guides/new/page.tsx` items table and `price-tables/` item form.
+
+**Deferred from plan:** `docs/PLAN_SPRINT6.md` — S-021.
+**Priority:** P1 — Sprint 6b.
+
+---
+
+## P1 — [Criar Guia TISS →] Button on Encounter Detail (Sprint 6b)
+
+The encounter detail page (`/encounters/[id]`) has no link to create a TISS guide from
+that encounter. Faturistas must navigate to `/billing/guides/new` and manually select the
+encounter — losing context.
+
+**Fix:** Add a "Criar Guia TISS →" button to `frontend/app/(dashboard)/encounters/[id]/page.tsx`
+that navigates to `/billing/guides/new?encounter={id}`. The guide form should prefill
+encounter, patient, and professional from the query param.
+
+**Deferred from plan:** `docs/PLAN_SPRINT6.md` — S-022.
+**Priority:** P1 — Sprint 6b.
+
+---
+
 ## P2 — TISSGuide.total_value Drift (Sprint 6b)
 
 `TISSGuide.total_value` is set on guide creation but not recalculated when `TISSGuideItem`
