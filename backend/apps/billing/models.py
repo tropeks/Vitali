@@ -316,7 +316,9 @@ class TISSBatch(models.Model):
         if not self.batch_number:
             with transaction.atomic():
                 self.batch_number = self.generate_batch_number()
-        super().save(*args, **kwargs)
+                super().save(*args, **kwargs)
+        else:
+            super().save(*args, **kwargs)
 
     def check_guide_not_double_submitted(self, guide: TISSGuide) -> None:
         """Raise ValidationError if the guide is already in a closed/submitted batch."""
