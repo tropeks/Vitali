@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
   if (!djangoResp.ok) {
     const response = NextResponse.json({ error: "Token inválido." }, { status: 401 });
     // Clear stale cookies
-    for (const name of ["access_token", "refresh_token", "vitali_user"]) {
+    for (const name of ["access_token", "access_token_js", "refresh_token", "vitali_user"]) {
       response.cookies.set(name, "", { path: "/", maxAge: 0 });
     }
     return response;
@@ -41,6 +41,14 @@ export async function POST(req: NextRequest) {
 
   response.cookies.set("access_token", data.access, {
     httpOnly: true,
+    secure: IS_PROD,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 15 * 60,
+  });
+
+  response.cookies.set("access_token_js", data.access, {
+    httpOnly: false,
     secure: IS_PROD,
     sameSite: "lax",
     path: "/",

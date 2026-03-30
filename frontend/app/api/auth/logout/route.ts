@@ -31,9 +31,9 @@ export async function POST(req: NextRequest) {
   const response = NextResponse.json({ detail: "Logout realizado." });
 
   // Clear all auth cookies
-  for (const cookieName of ["access_token", "refresh_token", "vitali_user"]) {
+  for (const cookieName of ["access_token", "access_token_js", "refresh_token", "vitali_user"]) {
     response.cookies.set(cookieName, "", {
-      httpOnly: cookieName !== "vitali_user",
+      httpOnly: cookieName === "access_token" || cookieName === "refresh_token",
       path: "/",
       maxAge: 0,
     });

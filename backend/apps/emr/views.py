@@ -12,7 +12,7 @@ from apps.core.permissions import HasPermission
 from apps.core.models import AuditLog
 from .models import (
     Patient, Allergy, MedicalHistory, Professional, Appointment, ScheduleConfig,
-    Encounter, SOAPNote, VitalSigns, ClinicalDocument,
+    Encounter, SOAPNote, VitalSigns, ClinicalDocument, PatientInsurance,
 )
 from .serializers import (
     PatientSerializer, PatientListSerializer, PatientCreateSerializer,
@@ -20,6 +20,7 @@ from .serializers import (
     AppointmentSerializer, ScheduleConfigSerializer,
     EncounterSerializer, EncounterListSerializer,
     SOAPNoteSerializer, VitalSignsSerializer, ClinicalDocumentSerializer,
+    PatientInsuranceSerializer,
 )
 from .filters import PatientFilter
 
@@ -123,6 +124,49 @@ class PatientViewSet(viewsets.ModelViewSet):
         record = serializer.save(patient=patient)
         log_audit(request, 'medical_history_create', 'MedicalHistory', record.id)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get', 'post'], url_path='insurance')
+    def insurance(self, request, pk=None):
+        """
+        GET  /api/v1/emr/patients/{id}/insurance/  — list all insurance cards for patient
+        POST /api/v1/emr/patients/{id}/insurance/  — add a new insurance card
+        """
+        patient = self.get_object()
+        if request.method == 'GET':
+            serializer = PatientInsuranceSerializer(
+                patient.insurance_cards.all(), many=True
+            )
+            return Response(serializer.data)
+        serializer = PatientInsuranceSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        card = serializer.save(patient=patient)
+        log_audit(request, 'insurance_create', 'PatientInsurance', card.id,
+                  new_data={'provider_ans_code': card.provider_ans_code,
+                            'provider_name': card.provider_name})
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(
+        detail=True,
+        methods=['patch', 'delete'],
+        url_path=r'insurance/(?P<card_pk>[^/.]+)',
+    )
+    def insurance_detail(self, request, pk=None, card_pk=None):
+        """
+        PATCH  /api/v1/emr/patients/{id}/insurance/{card_id}/  — update a card
+        DELETE /api/v1/emr/patients/{id}/insurance/{card_id}/  — remove a card
+        """
+        patient = self.get_object()
+        try:
+            card = patient.insurance_cards.get(pk=card_pk)
+        except PatientInsurance.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        if request.method == 'DELETE':
+            card.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        serializer = PatientInsuranceSerializer(card, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
 
 
 class ProfessionalViewSet(viewsets.ModelViewSet):

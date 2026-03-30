@@ -37,7 +37,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Consultas", href: "/encounters", icon: Stethoscope, module: "emr" },
   { label: "Prontuário", href: "/dashboard/prontuario", icon: FileText, module: "emr" },
   { label: "Farmácia", href: "/dashboard/farmacia", icon: Pill, module: "pharmacy" },
-  { label: "Faturamento", href: "/dashboard/faturamento", icon: Receipt, module: "billing" },
+  { label: "Faturamento", href: "/billing", icon: Receipt, module: "billing" },
   { label: "Inteligência Artificial", href: "/dashboard/ia", icon: Sparkles, module: "ai_tuss" },
   { label: "Configurações", href: "/dashboard/configuracoes", icon: Settings },
 ];

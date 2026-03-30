@@ -1,0 +1,40 @@
+{# SP/SADT Guide fragment — TISS 4.01.00 #}
+<ans:guiaSP_SADT>
+  <ans:cabecalhoGuia>
+    <ans:registroANS>{{ guide.provider.ans_code }}</ans:registroANS>
+    <ans:numeroGuiaPrestador>{{ guide.guide_number }}</ans:numeroGuiaPrestador>
+    <ans:numeroGuiaOperadora>{{ guide.guide_number }}</ans:numeroGuiaOperadora>
+    <ans:dataAutorizacao>{{ guide.created_at | format_date }}</ans:dataAutorizacao>
+    <ans:senhaAutorizacao>{{ guide.authorization_number or '' }}</ans:senhaAutorizacao>
+    <ans:dataValidadeSenha>{{ guide.created_at | format_date }}</ans:dataValidadeSenha>
+    <ans:numeroCarteira>{{ guide.insured_card_number }}</ans:numeroCarteira>
+    <ans:nomeBeneficiario>{{ guide.patient.full_name | truncate(70, false, '') }}</ans:nomeBeneficiario>
+    <ans:dataNascimentoBeneficiario>{{ guide.patient.birth_date | format_date }}</ans:dataNascimentoBeneficiario>
+    <ans:codigoCBO>{{ professional.cbo_code if professional else '225120' }}</ans:codigoCBO>
+    <ans:CNES>{{ professional.cnes_code if professional else '' }}</ans:CNES>
+    <ans:dataInicioFaturamento>{{ guide.created_at | format_date }}</ans:dataInicioFaturamento>
+    <ans:dataFinalFaturamento>{{ guide.created_at | format_date }}</ans:dataFinalFaturamento>
+  </ans:cabecalhoGuia>
+  <ans:dadosSolicitacaoExame>
+{% for item in guide.items.all() %}
+    <ans:procedimentosSolicitados>
+      <ans:codigoTabela>22</ans:codigoTabela>
+      <ans:codigoProcedimento>{{ item.tuss_code.code }}</ans:codigoProcedimento>
+      <ans:descricaoProcedimento>{{ item.description | truncate(100, false, '') }}</ans:descricaoProcedimento>
+      <ans:quantidadeSolicitada>{{ item.quantity | format_decimal }}</ans:quantidadeSolicitada>
+    </ans:procedimentosSolicitados>
+{% endfor %}
+  </ans:dadosSolicitacaoExame>
+  <ans:dadosExecutante>
+    <ans:CNES>{{ professional.cnes_code if professional else '' }}</ans:CNES>
+  </ans:dadosExecutante>
+  <ans:valorTotal>
+    <ans:valorTotalGeral>{{ guide.total_value | format_currency }}</ans:valorTotalGeral>
+  </ans:valorTotal>
+{% for cid in guide.cid10_codes %}
+  <ans:diagnostico>
+    <ans:codigoDiagnostico>{{ cid.code }}</ans:codigoDiagnostico>
+    <ans:indicadorAcidente>N</ans:indicadorAcidente>
+  </ans:diagnostico>
+{% endfor %}
+</ans:guiaSP_SADT>

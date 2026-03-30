@@ -1,0 +1,37 @@
+{# Consulta Guide fragment — TISS 4.01.00 #}
+<ans:guiaConsulta>
+  <ans:cabecalhoGuia>
+    <ans:registroANS>{{ guide.provider.ans_code }}</ans:registroANS>
+    <ans:numeroGuiaPrestador>{{ guide.guide_number }}</ans:numeroGuiaPrestador>
+    <ans:numeroGuiaOperadora>{{ guide.guide_number }}</ans:numeroGuiaOperadora>
+    <ans:dataAutorizacao>{{ guide.created_at | format_date }}</ans:dataAutorizacao>
+    <ans:senhaAutorizacao>{{ guide.authorization_number or '' }}</ans:senhaAutorizacao>
+    <ans:numeroCarteira>{{ guide.insured_card_number }}</ans:numeroCarteira>
+    <ans:nomeBeneficiario>{{ guide.patient.full_name | truncate(70, false, '') }}</ans:nomeBeneficiario>
+    <ans:dataNascimentoBeneficiario>{{ guide.patient.birth_date | format_date }}</ans:dataNascimentoBeneficiario>
+    <ans:codigoCBO>{{ professional.cbo_code if professional else '225120' }}</ans:codigoCBO>
+    <ans:CNES>{{ professional.cnes_code if professional else '' }}</ans:CNES>
+    <ans:dataAtendimento>{{ guide.encounter.encounter_date | format_date }}</ans:dataAtendimento>
+  </ans:cabecalhoGuia>
+  <ans:dadosConsulta>
+{% for item in guide.items.all() %}
+    <ans:procedimentoRealizado>
+      <ans:codigoTabela>22</ans:codigoTabela>
+      <ans:codigoProcedimento>{{ item.tuss_code.code }}</ans:codigoProcedimento>
+      <ans:descricaoProcedimento>{{ item.description | truncate(100, false, '') }}</ans:descricaoProcedimento>
+      <ans:quantidadeRealizada>{{ item.quantity | format_decimal }}</ans:quantidadeRealizada>
+      <ans:valorUnitario>{{ item.unit_value | format_currency }}</ans:valorUnitario>
+      <ans:valorTotal>{{ item.total_value | format_currency }}</ans:valorTotal>
+    </ans:procedimentoRealizado>
+{% endfor %}
+  </ans:dadosConsulta>
+  <ans:valorTotal>
+    <ans:valorTotalGeral>{{ guide.total_value | format_currency }}</ans:valorTotalGeral>
+  </ans:valorTotal>
+{% for cid in guide.cid10_codes %}
+  <ans:diagnostico>
+    <ans:codigoDiagnostico>{{ cid.code }}</ans:codigoDiagnostico>
+    <ans:indicadorAcidente>N</ans:indicadorAcidente>
+  </ans:diagnostico>
+{% endfor %}
+</ans:guiaConsulta>

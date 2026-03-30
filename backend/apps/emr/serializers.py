@@ -4,6 +4,7 @@ from .models import (
     Patient, Allergy, MedicalHistory, Professional,
     Appointment, ScheduleConfig,
     Encounter, SOAPNote, VitalSigns, ClinicalDocument,
+    PatientInsurance,
 )
 
 
@@ -232,3 +233,19 @@ class EncounterSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+
+class PatientInsuranceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PatientInsurance
+        fields = [
+            'id', 'patient',
+            'provider_ans_code', 'provider_name',
+            'card_number', 'valid_until', 'is_active',
+            'created_at',
+        ]
+        read_only_fields = ['id', 'created_at']
+        extra_kwargs = {
+            'patient': {'read_only': True},  # set from URL, not body
+        }

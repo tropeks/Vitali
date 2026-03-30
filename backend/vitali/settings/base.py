@@ -18,10 +18,12 @@ SHARED_APPS = [
     "apps.core",               # Tenant, Domain, Plan, Subscription, User, Role, FeatureFlag
     "django.contrib.contenttypes",
     "django.contrib.auth",
+    "django.contrib.postgres",  # SearchVectorField, GinIndex — required for TUSS fuzzy search
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.admin",
+    "django_celery_beat",      # global scheduler — must live in public schema
 ]
 
 # Apps that live in each TENANT schema (per-clinic data isolation)
@@ -36,7 +38,7 @@ TENANT_APPS = [
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
     "drf_spectacular",
-    "django_celery_beat",
+    "django_filters",
 ]
 
 INSTALLED_APPS = list(SHARED_APPS) + [
@@ -44,7 +46,7 @@ INSTALLED_APPS = list(SHARED_APPS) + [
 ]
 
 TENANT_MODEL = "core.Tenant"
-DOMAIN_MODEL = "core.Domain"
+TENANT_DOMAIN_MODEL = "core.Domain"
 DATABASE_ROUTERS = ["django_tenants.routers.TenantSyncRouter"]
 
 # ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -157,7 +159,7 @@ SIMPLE_JWT = {
 SPECTACULAR_SETTINGS = {
     "TITLE": "Vitali API",
     "DESCRIPTION": "Plataforma Hospitalar SaaS — ERP + EMR + AI",
-    "VERSION": "0.1.0",
+    "VERSION": "0.2.0",
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
 }
@@ -186,7 +188,7 @@ SESSION_CACHE_ALIAS = "default"
 # ─── Encryption (LGPD — campos sensíveis) ────────────────────────────────────
 FIELD_ENCRYPTION_KEY = env(
     "FIELD_ENCRYPTION_KEY",
-    default="UXVhbHF1ZXIgY2hhdmUgcGFyYSBkZXNlbnZvbHZpbWVudG8=",
+    default="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
 )
 
 # ─── Logging ──────────────────────────────────────────────────────────────────

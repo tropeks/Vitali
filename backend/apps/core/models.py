@@ -1,7 +1,7 @@
 """
 HealthOS Core Models
 ====================
-Public schema: Tenant, Domain, Plan, PlanModule, Subscription, FeatureFlag
+Public schema: Tenant, Domain, Plan, PlanModule, Subscription, FeatureFlag, TUSSCode
 Per-tenant: User, Role, AuditLog
 
 Multi-tenancy via django-tenants (schema-per-tenant — ADR-004).
@@ -10,6 +10,8 @@ LGPD: CPF armazenado criptografado via django-encrypted-model-fields.
 import uuid
 
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
+from django.contrib.postgres.indexes import GinIndex
+from django.contrib.postgres.search import SearchVectorField
 from django.db import models
 from django_tenants.models import TenantMixin, DomainMixin
 from encrypted_model_fields.fields import EncryptedCharField
@@ -166,6 +168,34 @@ class FeatureFlag(models.Model):
     def __str__(self):
         status = "✓" if self.is_enabled else "✗"
         return f"{status} {self.tenant.schema_name} — {self.module_key}"
+
+
+class TUSSCode(models.Model):
+    """
+    ANS TUSS procedure/material/fee code table. Lives in the public schema,
+    shared across all tenants. ~6-8k rows imported via `import_tuss` command.
+
+    Cross-schema FK note: PostgreSQL does NOT enforce referential integrity
+    across schemas. on_delete=PROTECT on references to this model is
+    application-layer only. A pre-delete signal compensates (see signals.py).
+    """
+
+    code = models.CharField(max_length=20, unique=True, db_index=True)
+    description = models.TextField()
+    group = models.CharField(max_length=100)        # procedimento, material, diária, taxa…
+    subgroup = models.CharField(max_length=100, blank=True)
+    version = models.CharField(max_length=20)       # e.g. "2024-01"
+    active = models.BooleanField(default=True, db_index=True)
+    search_vector = SearchVectorField(null=True)    # pg_trgm + tsvector for fuzzy search
+
+    class Meta:
+        app_label = "core"
+        verbose_name = "Código TUSS"
+        verbose_name_plural = "Códigos TUSS"
+        indexes = [GinIndex(fields=["search_vector"])]
+
+    def __str__(self):
+        return f"{self.code} — {self.description[:60]}"
 
 
 # ─── Per-Tenant Models ────────────────────────────────────────────────────────

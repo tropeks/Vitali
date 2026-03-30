@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { getAccessToken } from "@/lib/auth";
 import {
   LineChart,
   Line,
@@ -138,10 +139,7 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchAll = async () => {
-    const token =
-      typeof window !== "undefined"
-        ? localStorage.getItem("access_token")
-        : null;
+    const token = getAccessToken();
     if (!token) {
       setError("Sessão expirada. Faça login novamente.");
       setLoading(false);

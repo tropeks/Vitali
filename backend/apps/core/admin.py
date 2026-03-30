@@ -11,6 +11,7 @@ from .models import (
     Role,
     Subscription,
     Tenant,
+    TUSSCode,
     User,
 )
 
@@ -109,3 +110,16 @@ class AuditLogAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+@admin.register(TUSSCode)
+class TUSSCodeAdmin(admin.ModelAdmin):
+    list_display = ["code", "description_short", "group", "subgroup", "version", "active"]
+    list_filter = ["active", "group", "version"]
+    search_fields = ["code", "description", "group"]
+    readonly_fields = ["search_vector"]
+    ordering = ["code"]
+
+    def description_short(self, obj):
+        return obj.description[:80]
+    description_short.short_description = "Descrição"

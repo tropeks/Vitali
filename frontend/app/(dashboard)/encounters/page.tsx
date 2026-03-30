@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { getAccessToken } from '@/lib/auth';
 
 interface Encounter {
   id: string;
@@ -25,7 +26,7 @@ const STATUS_STYLES: Record<string, string> = {
 };
 
 async function apiFetch(path: string) {
-  const token = localStorage.getItem('access_token');
+  const token = getAccessToken();
   const res = await fetch(`/api/v1${path}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -34,7 +35,7 @@ async function apiFetch(path: string) {
 }
 
 async function apiPost(path: string, body: Record<string, unknown>) {
-  const token = localStorage.getItem('access_token');
+  const token = getAccessToken();
   const res = await fetch(`/api/v1${path}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },

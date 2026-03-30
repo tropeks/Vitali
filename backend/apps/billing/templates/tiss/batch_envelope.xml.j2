@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+{# TISS 4.01.00 batch envelope — mensagemTISS #}
+<ans:mensagemTISS
+  xmlns:ans="http://www.ans.gov.br/padroes/tiss/schemas"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.ans.gov.br/padroes/tiss/schemas tissV4_01_00.xsd">
+
+  <ans:cabecalho>
+    <ans:identificacaoTransacao>
+      <ans:tipoTransacao>ENVIO_LOTE_GUIAS</ans:tipoTransacao>
+      <ans:sequencialTransacao>{{ batch.batch_number }}</ans:sequencialTransacao>
+      <ans:dataRegistroTransacao>{{ now | format_date }}</ans:dataRegistroTransacao>
+      <ans:horaRegistroTransacao>{{ now | format_time }}</ans:horaRegistroTransacao>
+    </ans:identificacaoTransacao>
+    <ans:origem>
+      <ans:identificacaoPrestador>
+        <ans:CNES>{{ clinic_cnes }}</ans:CNES>
+      </ans:identificacaoPrestador>
+    </ans:origem>
+    <ans:destino>
+      <ans:registroANS>{{ batch.provider.ans_code }}</ans:registroANS>
+    </ans:destino>
+    <ans:Padrao>4.01.00</ans:Padrao>
+  </ans:cabecalho>
+
+  <ans:prestadorParaOperadora>
+    <ans:loteGuias>
+      <ans:numeroLote>{{ batch.batch_number }}</ans:numeroLote>
+      <ans:competenciaLote>{{ competency }}</ans:competenciaLote>
+{% for guide in guides %}
+{{ guide_xml[guide.guide_number] }}
+{% endfor %}
+    </ans:loteGuias>
+  </ans:prestadorParaOperadora>
+
+  <ans:epilogo>
+    <ans:hash>{{ xml_hash }}</ans:hash>
+  </ans:epilogo>
+
+</ans:mensagemTISS>

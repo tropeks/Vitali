@@ -352,3 +352,33 @@ class ClinicalDocument(models.Model):
 
     def __str__(self):
         return f'{self.get_doc_type_display()} — {self.encounter}'
+
+
+# ─── Sprint 6: Insurance Cards ────────────────────────────────────────────────
+
+class PatientInsurance(models.Model):
+    """
+    Patient's health insurance (convênio) card data. Per-tenant.
+
+    provider_ans_code is a plain CharField (not FK to apps.billing.InsuranceProvider)
+    to keep apps.emr free of any dependency on apps.billing.
+    card_number is encrypted at rest (LGPD — PII).
+    """
+
+    patient = models.ForeignKey(
+        Patient, on_delete=models.CASCADE, related_name='insurance_cards'
+    )
+    provider_ans_code = models.CharField(max_length=20)   # código ANS da operadora
+    provider_name = models.CharField(max_length=200)      # denormalised for display
+    card_number = EncryptedCharField(max_length=50)       # carteirinha (LGPD)
+    valid_until = models.DateField(null=True, blank=True)
+    is_active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-is_active', '-created_at']
+        verbose_name = 'Convênio do Paciente'
+        verbose_name_plural = 'Convênios dos Pacientes'
+
+    def __str__(self):
+        return f'{self.provider_name} — {self.patient}'

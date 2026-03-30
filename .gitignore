@@ -17,6 +17,7 @@ develop-eggs/
 .installed.cfg
 lib/
 lib64/
+!frontend/lib/
 
 # ─── Virtual environments ─────────────────────────────────────────────────────
 venv/
@@ -83,3 +84,4 @@ dmypy.json
 # gstack binaries
 .claude/skills/gstack/bin/
 .claude/skills/gstack/node_modules/
+.gstack/
