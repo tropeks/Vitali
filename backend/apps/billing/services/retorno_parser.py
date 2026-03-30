@@ -36,9 +36,12 @@ TISS 4.01.00 retorno envelope structure (simplified):
 import logging
 from decimal import Decimal, InvalidOperation
 
+from django.db import transaction
 from lxml import etree
 
-from apps.billing.models import Glosa, TISSBatch, TISSGuide
+from apps.billing.models import GLOSA_REASON_CODES, Glosa, TISSBatch, TISSGuide
+
+_VALID_REASON_CODES = {code for code, _ in GLOSA_REASON_CODES}
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +104,8 @@ def parse_retorno(xml_bytes: bytes) -> dict:
         except TISSBatch.DoesNotExist:
             errors.append(f"Batch '{batch_number}' not found in database.")
 
-    # Process each guide result
+    # Process each guide result inside a single atomic block so partial failures
+    # don't leave the batch in an inconsistent state.
     retorno_guias = retorno_lote.find("ans:retornoGuias", NS)
     if retorno_guias is None:
         return {
@@ -111,59 +115,67 @@ def parse_retorno(xml_bytes: bytes) -> dict:
             "errors": errors,
         }
 
-    for guide_el in retorno_guias:
-        guide_number_el = guide_el.find("ans:numeroGuiaPrestador", NS)
-        if guide_number_el is None:
-            errors.append(f"Guide element <{guide_el.tag}> missing numeroGuiaPrestador")
-            continue
+    with transaction.atomic():
+        for guide_el in retorno_guias:
+            guide_number_el = guide_el.find("ans:numeroGuiaPrestador", NS)
+            if guide_number_el is None:
+                errors.append(f"Guide element <{guide_el.tag}> missing numeroGuiaPrestador")
+                continue
 
-        guide_number = (guide_number_el.text or "").strip()
-        try:
-            guide = TISSGuide.objects.get(guide_number=guide_number)
-        except TISSGuide.DoesNotExist:
-            errors.append(f"Guide '{guide_number}' not found in database.")
-            continue
+            guide_number = (guide_number_el.text or "").strip()
+            try:
+                guide = TISSGuide.objects.get(guide_number=guide_number)
+            except TISSGuide.DoesNotExist:
+                errors.append(f"Guide '{guide_number}' not found in database.")
+                continue
 
-        situacao_el = guide_el.find("ans:situacaoGuia", NS)
-        situacao = (situacao_el.text or "").strip() if situacao_el is not None else ""
-        new_status = SITUACAO_TO_STATUS.get(situacao, "submitted")
-
-        guide.status = new_status
-        guide.save(update_fields=["status", "updated_at"])
-        guides_updated += 1
-
-        # Create Glosa records for denied items
-        glosas_el = guide_el.find("ans:glosas", NS)
-        if glosas_el is not None:
-            for glosa_el in glosas_el.findall("ans:glosa", NS):
-                codigo_el = glosa_el.find("ans:codigoGlosa", NS)
-                descricao_el = glosa_el.find("ans:descricaoGlosa", NS)
-                valor_el = glosa_el.find("ans:valorGlosa", NS)
-
-                reason_code = (codigo_el.text or "99").strip() if codigo_el is not None else "99"
-                reason_desc = (descricao_el.text or "").strip() if descricao_el is not None else ""
-                try:
-                    value_denied = Decimal((valor_el.text or "0").strip())
-                except InvalidOperation:
-                    value_denied = Decimal("0")
-
-                Glosa.objects.create(
-                    guide=guide,
-                    reason_code=reason_code[:5],
-                    reason_description=reason_desc,
-                    value_denied=value_denied,
+            situacao_el = guide_el.find("ans:situacaoGuia", NS)
+            situacao = (situacao_el.text or "").strip() if situacao_el is not None else ""
+            if situacao not in SITUACAO_TO_STATUS:
+                errors.append(
+                    f"Guide '{guide_number}': unknown situacaoGuia code '{situacao}' — guide status unchanged."
                 )
-                glosas_created += 1
+                continue
+            new_status = SITUACAO_TO_STATUS[situacao]
 
-                # Update guide status to denied if any glosa exists
-                if guide.status == "paid" and value_denied > 0:
-                    guide.status = "denied"
-                    guide.save(update_fields=["status", "updated_at"])
+            guide.status = new_status
+            guide.save(update_fields=["status", "updated_at"])
+            guides_updated += 1
 
-    # Update batch status to processed
-    if batch:
-        batch.status = "processed"
-        batch.save(update_fields=["status"])
+            # Create Glosa records for denied items
+            glosas_el = guide_el.find("ans:glosas", NS)
+            if glosas_el is not None:
+                for glosa_el in glosas_el.findall("ans:glosa", NS):
+                    codigo_el = glosa_el.find("ans:codigoGlosa", NS)
+                    descricao_el = glosa_el.find("ans:descricaoGlosa", NS)
+                    valor_el = glosa_el.find("ans:valorGlosa", NS)
+
+                    raw_code = (codigo_el.text or "").strip() if codigo_el is not None else ""
+                    # Validate reason code against known TISS codes; default to "99" (Outro)
+                    reason_code = raw_code[:5] if raw_code[:5] in _VALID_REASON_CODES else "99"
+                    reason_desc = (descricao_el.text or "").strip() if descricao_el is not None else ""
+                    try:
+                        value_denied = Decimal((valor_el.text or "0").strip())
+                    except InvalidOperation:
+                        value_denied = Decimal("0")
+
+                    Glosa.objects.create(
+                        guide=guide,
+                        reason_code=reason_code,
+                        reason_description=reason_desc,
+                        value_denied=value_denied,
+                    )
+                    glosas_created += 1
+
+                    # Update guide status to denied if any glosa with value exists
+                    if guide.status == "paid" and value_denied > 0:
+                        guide.status = "denied"
+                        guide.save(update_fields=["status", "updated_at"])
+
+        # Update batch status to processed
+        if batch:
+            batch.status = "processed"
+            batch.save(update_fields=["status"])
 
     return {
         "batch_number": batch_number,
