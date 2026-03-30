@@ -23,7 +23,7 @@ Commit: `feat(emr): add PatientInsurance REST endpoints`.
 
 ---
 
-## P1 — TUSSCodeSearch Frontend Combobox Missing (Sprint 6b)
+## ~~P1 — TUSSCodeSearch Frontend Combobox Missing~~ DONE
 
 Guide and price-table creation forms need a TUSS code search combobox (debounce 300ms,
 calls `GET /api/v1/billing/tuss/?q=`). Without it, faturistas must type codes manually
