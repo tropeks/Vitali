@@ -1,12 +1,13 @@
 """
 Sprint 1 — Auth tests.
 
-Run: python manage.py test apps.core.tests.test_auth --settings=healthos.settings.development
+Run: python manage.py test apps.core.tests.test_auth
 """
 from unittest.mock import patch
 
+from django.core.cache import cache
 from django.test import TestCase, override_settings
-from django.urls import reverse
+from django_tenants.test.cases import TenantTestCase
 from rest_framework.test import APIClient
 
 from apps.core.models import AuditLog, Role, User
@@ -15,11 +16,16 @@ from apps.core.models import AuditLog, Role, User
 @override_settings(
     CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
 )
-class AuthTestCase(TestCase):
-    """Base class — creates a tenant schema (handled by django-tenants test runner)."""
+class AuthTestCase(TenantTestCase):
+    """Auth tests — run inside a tenant schema via django-tenants TenantTestCase."""
 
     def setUp(self):
+        # Clear cache between tests so login-attempt counters don't bleed across tests.
+        cache.clear()
+        # Route requests to the test tenant's domain so TenantMainMiddleware
+        # finds the correct schema instead of falling back to the public schema.
         self.client = APIClient()
+        self.client.defaults["SERVER_NAME"] = self.__class__.domain.domain
         self.role = Role.objects.create(
             name="admin",
             permissions=["emr.read", "emr.write"],
