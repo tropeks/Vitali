@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { getAccessToken } from '@/lib/auth';
 
 interface SOAPNote {
   id: number;
@@ -21,7 +22,7 @@ interface SOAPEditorProps {
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 async function patchSoap(id: number, data: Partial<SOAPNote>): Promise<void> {
-  const token = localStorage.getItem('access_token');
+  const token = getAccessToken();
   const res = await fetch(`/api/v1/soap-notes/${id}/`, {
     method: 'PATCH',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },

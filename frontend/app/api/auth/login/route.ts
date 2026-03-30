@@ -58,6 +58,16 @@ export async function POST(req: NextRequest) {
     maxAge: accessMaxAge,
   });
 
+  // Non-httpOnly mirror so client JS can attach Bearer tokens to direct API calls.
+  // Same value and expiry as the httpOnly cookie above.
+  response.cookies.set("access_token_js", access, {
+    httpOnly: false,
+    secure: IS_PROD,
+    sameSite: "lax",
+    path: "/",
+    maxAge: accessMaxAge,
+  });
+
   response.cookies.set("refresh_token", refresh, {
     httpOnly: true,
     secure: IS_PROD,
