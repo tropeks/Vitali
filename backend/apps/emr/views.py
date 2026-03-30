@@ -13,6 +13,7 @@ from apps.core.models import AuditLog
 from .models import (
     Patient, Allergy, MedicalHistory, Professional, Appointment, ScheduleConfig,
     Encounter, SOAPNote, VitalSigns, ClinicalDocument, PatientInsurance,
+    Prescription, PrescriptionItem,
 )
 from .serializers import (
     PatientSerializer, PatientListSerializer, PatientCreateSerializer,
@@ -21,6 +22,7 @@ from .serializers import (
     EncounterSerializer, EncounterListSerializer,
     SOAPNoteSerializer, VitalSignsSerializer, ClinicalDocumentSerializer,
     PatientInsuranceSerializer,
+    PrescriptionSerializer, PrescriptionItemSerializer,
 )
 from .filters import PatientFilter
 
@@ -468,3 +470,87 @@ class ClinicalDocumentViewSet(viewsets.ModelViewSet):
         log_audit(request, 'document_sign', 'ClinicalDocument', doc.id,
                   new_data={'signed_by': str(request.user.id), 'signed_at': str(doc.signed_at)})
         return Response(ClinicalDocumentSerializer(doc).data)
+
+
+# ─── Sprint 7 (S-015): Prescription ──────────────────────────────────────────
+
+class PrescriptionViewSet(viewsets.ModelViewSet):
+    """Receitas médicas — criação, listagem, assinatura."""
+    serializer_class = PrescriptionSerializer
+
+    def get_queryset(self):
+        qs = Prescription.objects.select_related(
+            'encounter', 'patient', 'prescriber', 'signed_by'
+        ).prefetch_related('items__drug')
+        patient_id = self.request.query_params.get('patient')
+        if patient_id:
+            qs = qs.filter(patient_id=patient_id)
+        encounter_id = self.request.query_params.get('encounter')
+        if encounter_id:
+            qs = qs.filter(encounter_id=encounter_id)
+        rx_status = self.request.query_params.get('status')
+        if rx_status:
+            qs = qs.filter(status=rx_status)
+        return qs
+
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'destroy', 'sign'):
+            return [IsAuthenticated(), HasPermission('emr.write')]
+        return [IsAuthenticated(), HasPermission('emr.read')]
+
+    def perform_create(self, serializer):
+        rx = serializer.save()
+        log_audit(self.request, 'prescription_create', 'Prescription', rx.id,
+                  new_data={'patient': str(rx.patient_id), 'encounter': str(rx.encounter_id)})
+
+    @action(detail=True, methods=['post'])
+    def sign(self, request, pk=None):
+        """POST /prescriptions/{id}/sign/ — assina a receita (requer emr.sign)."""
+        if not (request.user.is_superuser or (
+            hasattr(request.user, 'role') and request.user.role and
+            'emr.sign' in request.user.role.permissions
+        )):
+            return Response(
+                {'detail': 'Permissão emr.sign necessária para assinar receita.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        rx = self.get_object()
+        if rx.is_signed:
+            return Response(
+                {'detail': 'Receita já assinada.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        rx.sign(request.user)
+        log_audit(request, 'prescription_sign', 'Prescription', rx.id,
+                  new_data={'signed_by': str(request.user.id), 'signed_at': str(rx.signed_at)})
+        return Response(PrescriptionSerializer(rx).data)
+
+
+class PrescriptionItemViewSet(viewsets.ModelViewSet):
+    """Itens de receita — CRUD dentro de uma receita."""
+    serializer_class = PrescriptionItemSerializer
+
+    def get_permissions(self):
+        return [IsAuthenticated(), HasPermission('emr.write')]
+
+    def get_queryset(self):
+        qs = PrescriptionItem.objects.select_related('prescription', 'drug')
+        prescription_id = self.request.query_params.get('prescription')
+        if prescription_id:
+            qs = qs.filter(prescription_id=prescription_id)
+        return qs
+
+    def perform_create(self, serializer):
+        from apps.emr.models import Prescription
+        prescription_id = self.request.data.get('prescription')
+        try:
+            rx = Prescription.objects.get(pk=prescription_id)
+        except Prescription.DoesNotExist:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({'prescription': 'Receita não encontrada.'})
+        if rx.status != 'draft':
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError(
+                {'prescription': 'Não é possível adicionar itens a uma receita já assinada ou cancelada.'}
+            )
+        serializer.save()

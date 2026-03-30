@@ -5,6 +5,7 @@ from .views import (
     AppointmentViewSet, ScheduleConfigViewSet,
     AvailableSlotsView, WaitingRoomView,
     EncounterViewSet, SOAPNoteViewSet, VitalSignsViewSet, ClinicalDocumentViewSet,
+    PrescriptionViewSet, PrescriptionItemViewSet,
 )
 
 router = DefaultRouter()
@@ -16,6 +17,8 @@ router.register('encounters', EncounterViewSet, basename='encounter')
 router.register('soap-notes', SOAPNoteViewSet, basename='soap-note')
 router.register('vital-signs', VitalSignsViewSet, basename='vital-signs')
 router.register('documents', ClinicalDocumentViewSet, basename='document')
+router.register('prescriptions', PrescriptionViewSet, basename='prescription')
+router.register('prescription-items', PrescriptionItemViewSet, basename='prescription-item')
 
 urlpatterns = router.urls + [
     path('professionals/<uuid:professional_id>/available-slots', AvailableSlotsView.as_view()),
