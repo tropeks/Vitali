@@ -165,7 +165,7 @@ class TISSBatchSerializer(serializers.ModelSerializer):
             "created_at", "closed_at",
         ]
         read_only_fields = [
-            "id", "batch_number", "total_value", "xml_file",
+            "id", "batch_number", "status", "total_value", "xml_file",
             "created_at", "closed_at",
         ]
 
@@ -173,8 +173,18 @@ class TISSBatchSerializer(serializers.ModelSerializer):
         return obj.guides.count()
 
     def validate_guide_ids(self, guides):
+        provider_id = (
+            self.instance.provider_id if self.instance
+            else (self.initial_data.get("provider") or None)
+        )
         for guide in guides:
-            # build a temporary batch to run double-submit check (provider not needed)
+            # Provider homogeneity: all guides must belong to the batch's provider
+            if provider_id and guide.provider_id != int(provider_id):
+                raise serializers.ValidationError(
+                    f"Guia {guide.guide_number} pertence a outra operadora "
+                    f"({guide.provider}). Lotes só podem conter guias da mesma operadora."
+                )
+            # Double-submit protection
             batch = TISSBatch()
             if self.instance:
                 batch.pk = self.instance.pk
