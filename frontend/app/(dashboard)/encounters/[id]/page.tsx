@@ -6,6 +6,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { SOAPEditor } from '@/components/encounters/SOAPEditor';
 import { getAccessToken } from '@/lib/auth';
+import Link from 'next/link';
 
 interface VitalSigns {
   id: number;
@@ -287,6 +288,87 @@ function DocumentsPanel({ documents, encounterId, readOnly, onRefresh }: {
   );
 }
 
+const GUIDE_STATUS_STYLES: Record<string, string> = {
+  draft:     'bg-gray-100 text-gray-600',
+  pending:   'bg-yellow-100 text-yellow-700',
+  submitted: 'bg-blue-100 text-blue-700',
+  paid:      'bg-green-100 text-green-700',
+  denied:    'bg-red-100 text-red-700',
+  appeal:    'bg-orange-100 text-orange-700',
+};
+
+function FaturamentoCard({ encounterId }: { encounterId: string }) {
+  const [guides, setGuides] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [hidden, setHidden] = useState(false);
+
+  useEffect(() => {
+    const token = getAccessToken();
+    if (!token) { setLoading(false); return; }
+    fetch(`/api/v1/billing/guides/?encounter=${encounterId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => {
+        if (r.status === 403) { setHidden(true); return null; }
+        if (!r.ok) throw new Error(`${r.status}`);
+        return r.json();
+      })
+      .then(data => {
+        if (!data) return;
+        setGuides(Array.isArray(data) ? data : data.results ?? []);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [encounterId]);
+
+  if (hidden) return null;
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-gray-700">Faturamento</h3>
+        <Link
+          href={`/billing/guides/new?encounter=${encounterId}`}
+          className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+        >
+          + Nova Guia TISS
+        </Link>
+      </div>
+
+      {loading ? (
+        <div className="h-8 bg-gray-100 rounded animate-pulse" />
+      ) : guides.length === 0 ? (
+        <div className="text-center py-4 space-y-3">
+          <p className="text-xs text-gray-400">Nenhuma guia TISS criada.</p>
+          <Link
+            href={`/billing/guides/new?encounter=${encounterId}`}
+            className="inline-block bg-blue-600 text-white text-xs px-4 py-2 rounded-lg font-medium hover:bg-blue-700"
+          >
+            Criar Guia TISS →
+          </Link>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {guides.map((g: any) => (
+            <Link
+              key={g.id}
+              href={`/billing/guides/${g.id}`}
+              className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 group"
+            >
+              <span className="text-sm font-mono text-gray-800 group-hover:text-blue-600">
+                Guia #{g.guide_number}
+              </span>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${GUIDE_STATUS_STYLES[g.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                {g.status_display}
+              </span>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function EncounterDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -425,6 +507,9 @@ export default function EncounterDetailPage() {
               onRefresh={load}
             />
           </div>
+
+          {/* Faturamento */}
+          <FaturamentoCard encounterId={id} />
         </div>
 
         {/* Right column — SOAP */}

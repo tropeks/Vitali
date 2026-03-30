@@ -155,6 +155,9 @@ class TISSGuideViewSet(viewsets.ModelViewSet):
         competency = self.request.query_params.get("competency")
         if competency:
             qs = qs.filter(competency=competency)
+        encounter = self.request.query_params.get("encounter")
+        if encounter:
+            qs = qs.filter(encounter=encounter)
         return qs
 
     def get_serializer_class(self):

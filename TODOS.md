@@ -1,17 +1,10 @@
 # TODOS
 
-## P1 — TUSS XSD Schema File Missing (Sprint 6b)
+## ~~P1 — TISS XSD Schema File Missing~~ DONE
 
-The XML validation engine in `xml_engine.py:validate_xml()` expects the ANS TISS XSD at
-`backend/apps/billing/schemas/tissV4_01_00.xsd`. This file must be downloaded from
-`padrao.tiss.ans.gov.br`. Without it, validation is skipped (function returns a warning
-list instead of actual errors) — guides can be generated but not XSD-validated locally.
-
-**Fix:** Download `tissV4_01_00.xsd` from the ANS portal and commit it at the expected path.
-Also add integration test: `generate_guide_xml(guide) → validate_xml() → 0 errors`.
-
-**Deferred from plan:** `docs/PLAN_SPRINT6.md` — S-022.
-**Priority:** P1 — needed before pilot clinic submits guides to convênio.
+All 6 schema files committed to `backend/apps/billing/schemas/` (ANS + W3C xmldsig).
+`validate_xml()` now performs real XSD validation. Tested via docker.
+Commit: `feat(billing): add ANS TISS 4.01.00 XSD schema files`.
 
 ---
 
@@ -23,7 +16,7 @@ Commit: `feat(emr): add PatientInsurance REST endpoints`.
 
 ---
 
-## P1 — TUSSCodeSearch Frontend Combobox Missing (Sprint 6b)
+## ~~P1 — TUSSCodeSearch Frontend Combobox Missing~~ DONE
 
 Guide and price-table creation forms need a TUSS code search combobox (debounce 300ms,
 calls `GET /api/v1/billing/tuss/?q=`). Without it, faturistas must type codes manually
@@ -37,7 +30,7 @@ wire into `guides/new/page.tsx` items table and `price-tables/` item form.
 
 ---
 
-## P1 — [Criar Guia TISS →] Button on Encounter Detail (Sprint 6b)
+## ~~P1 — [Criar Guia TISS →] Button on Encounter Detail~~ DONE
 
 The encounter detail page (`/encounters/[id]`) has no link to create a TISS guide from
 that encounter. Faturistas must navigate to `/billing/guides/new` and manually select the
