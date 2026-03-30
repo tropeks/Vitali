@@ -37,7 +37,7 @@ wire into `guides/new/page.tsx` items table and `price-tables/` item form.
 
 ---
 
-## P1 — [Criar Guia TISS →] Button on Encounter Detail (Sprint 6b)
+## ~~P1 — [Criar Guia TISS →] Button on Encounter Detail~~ DONE
 
 The encounter detail page (`/encounters/[id]`) has no link to create a TISS guide from
 that encounter. Faturistas must navigate to `/billing/guides/new` and manually select the
