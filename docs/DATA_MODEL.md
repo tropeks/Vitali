@@ -26,6 +26,9 @@ PostgreSQL Instance
 │   ├── emr_prescription        — Prescriptions
 │   ├── billing_tissguide       — TISS guides
 │   ├── pharmacy_stockitem      — Inventory
+│   ├── ai_aiprompttemplate     — Versioned LLM prompt templates
+│   ├── ai_aiusagelog           — LLM call log (append-only)
+│   ├── ai_tussaisuggestion     — TUSS suggestions + acceptance feedback
 │   ├── whatsapp_conversation   — Chat history
 │   └── ...all tenant-specific tables
 │
@@ -479,43 +482,43 @@ Entity: ScheduledReminder
 
 ```
 Entity: AIPromptTemplate
-  - id: UUID (PK)
-  - feature: VARCHAR(50) NOT NULL  -- 'tuss_coding', 'clinical_scribe', 'chatbot'
-  - version: INTEGER NOT NULL
+  - id: SERIAL (PK)
+  - name: VARCHAR(100) NOT NULL
+  - version: INTEGER NOT NULL DEFAULT 1
   - system_prompt: TEXT NOT NULL
-  - user_prompt_template: TEXT NOT NULL  -- with {placeholders}
-  - model: VARCHAR(50) DEFAULT 'claude-sonnet-4-20250514'
-  - max_tokens: INTEGER DEFAULT 1000
-  - temperature: DECIMAL(3,2) DEFAULT 0.1
+  - user_prompt_template: TEXT NOT NULL  -- {description}, {guide_type}, {candidates} placeholders
   - is_active: BOOLEAN DEFAULT true
   - created_at: TIMESTAMP
-  UNIQUE: (feature, version)
+  - updated_at: TIMESTAMP
+  UNIQUE: (name, version)
+  NOTE: Bumping version auto-invalidates the Redis cache for that template.
 
 Entity: AIUsageLog
   - id: UUID (PK)
-  - tenant_id: UUID NOT NULL  -- denormalized for cross-tenant reporting
-  - user_id: UUID (FK → User) NOT NULL
-  - feature: VARCHAR(50) NOT NULL
-  - model: VARCHAR(50) NOT NULL
-  - input_tokens: INTEGER NOT NULL
-  - output_tokens: INTEGER NOT NULL
-  - cost_usd: DECIMAL(8,6) NOT NULL
-  - latency_ms: INTEGER
-  - success: BOOLEAN DEFAULT true
-  - error_message: TEXT
+  - prompt_template_id: FK → AIPromptTemplate NULLABLE (SET NULL on delete)
+  - event_type: ENUM('llm_call','zero_result','validation_dropout','degraded','cache_hit') DEFAULT 'llm_call'
+  - tokens_in: INTEGER NOT NULL DEFAULT 0
+  - tokens_out: INTEGER NOT NULL DEFAULT 0
+  - latency_ms: INTEGER NOT NULL DEFAULT 0
+  - model: VARCHAR(100) DEFAULT 'claude-haiku-4-5-20251001'
+  - input_text: TEXT
   - created_at: TIMESTAMP DEFAULT NOW()
-  INDEX: (tenant_id, created_at), (feature, created_at)
-  NOTE: Used for cost tracking and billing per tenant.
+  INDEX: (event_type, created_at), (created_at)
+  NOTE: Append-only. Logs LLM calls, zero-result events, circuit-breaker trips, and cache hits.
 
 Entity: TUSSAISuggestion
   - id: UUID (PK)
-  - input_text: TEXT NOT NULL  -- procedure description
-  - suggestions: JSONB NOT NULL  -- [{code, term, confidence}]
-  - accepted_code: VARCHAR(20)  -- which suggestion was accepted
-  - user_id: UUID (FK → User) NOT NULL
+  - usage_log_id: FK → AIUsageLog NULLABLE (SET NULL on delete)
+  - tuss_code: VARCHAR(20) NOT NULL  -- INDEXED
+  - description: VARCHAR(500) NOT NULL
+  - rank: SMALLINT NOT NULL  -- 1 = most relevant
+  - input_text: VARCHAR(500) NOT NULL  -- procedure description entered by user
+  - guide_type: VARCHAR(50)
+  - accepted: BOOLEAN NULLABLE  -- NULL = no feedback yet, True = accepted, False = rejected
+  - feedback_at: TIMESTAMP NULLABLE
   - created_at: TIMESTAMP
-  NOTE: Used to improve suggestions over time and as cache.
-  INDEX: (input_text hash for cache lookup)
+  INDEX: (tuss_code, created_at), (accepted, created_at)
+  NOTE: One row per suggestion shown. Acceptance signal drives prompt quality over time.
 ```
 
 ---

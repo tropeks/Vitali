@@ -191,6 +191,12 @@ FIELD_ENCRYPTION_KEY = env(
     default="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
 )
 
+# ─── AI / LLM ────────────────────────────────────────────────────────────────
+ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
+AI_RATE_LIMIT_PER_HOUR = env.int("AI_RATE_LIMIT_PER_HOUR", default=100)
+AI_SUGGEST_TIMEOUT_S = env.int("AI_SUGGEST_TIMEOUT_S", default=5)
+FEATURE_AI_TUSS = env.bool("FEATURE_AI_TUSS", default=False)
+
 # ─── Logging ──────────────────────────────────────────────────────────────────
 LOGGING = {
     "version": 1,
