@@ -38,10 +38,11 @@ def _make_template():
 
 def _mock_candidates(codes):
     mocks = []
-    for code, desc in codes:
+    for i, (code, desc) in enumerate(codes):
         m = MagicMock()
         m.code = code
         m.description = desc
+        m.id = i + 1  # Real integer so tuss_code_id can be pickled for Redis cache
         mocks.append(m)
     return mocks
 
