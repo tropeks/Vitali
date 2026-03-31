@@ -21,26 +21,17 @@ def is_rate_limited(tenant_schema: str) -> bool:
     key = f"ai:rate:{tenant_schema}"
 
     try:
-        count = cache.get(key, 0)
-        if count >= limit:
-            return True
+        # Atomic increment-first: avoids TOCTOU race where two concurrent requests
+        # both read count=99 and both proceed past the limit check.
+        try:
+            new_count = cache.incr(key)
+        except ValueError:
+            # Key does not exist yet — initialise with TTL, then treat as count=1.
+            cache.set(key, 1, timeout=3600)
+            new_count = 1
 
-        # Increment with 1-hour TTL (only set TTL on first increment)
-        new_count = cache.get_or_set(key, 0, timeout=3600)
-        cache.incr(key)
-        return False
+        return new_count > limit
     except Exception:
         logger.warning("Redis unavailable for rate limiter (tenant=%s) — failing open", tenant_schema)
         return False
 
-
-def increment_usage(tenant_schema: str) -> None:
-    """Increment usage counter. Called after a successful LLM call."""
-    key = f"ai:rate:{tenant_schema}"
-    try:
-        try:
-            cache.incr(key)
-        except ValueError:
-            cache.set(key, 1, timeout=3600)
-    except Exception:
-        logger.warning("Redis unavailable — could not increment AI usage counter for %s", tenant_schema)

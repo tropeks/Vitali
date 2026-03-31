@@ -51,7 +51,13 @@ class TUSSSuggestView(APIView):
 
         response_data = {
             'suggestions': [
-                {'tuss_code': s.tuss_code, 'description': s.description, 'rank': s.rank}
+                {
+                    'tuss_code': s.tuss_code,
+                    'description': s.description,
+                    'rank': s.rank,
+                    'tuss_code_id': s.tuss_code_id,
+                    'suggestion_id': s.suggestion_id,
+                }
                 for s in result.suggestions
             ],
             'degraded': result.degraded,
@@ -70,6 +76,9 @@ class TUSSSuggestFeedbackView(APIView):
         return [IsAuthenticated(), HasPermission('ai.use')]
 
     def post(self, request):
+        if not getattr(settings, 'FEATURE_AI_TUSS', False):
+            return Response({"detail": "AI TUSS coding feature is not enabled."}, status=status.HTTP_404_NOT_FOUND)
+
         serializer = TUSSSuggestFeedbackSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -102,8 +111,11 @@ class AIUsageView(APIView):
 
     def get(self, request):
         # Default to current month
-        year = int(request.query_params.get('year', date.today().year))
-        month = int(request.query_params.get('month', date.today().month))
+        try:
+            year = int(request.query_params.get('year', date.today().year))
+            month = int(request.query_params.get('month', date.today().month))
+        except (ValueError, TypeError):
+            return Response({"detail": "year and month must be integers."}, status=status.HTTP_400_BAD_REQUEST)
 
         logs = AIUsageLog.objects.filter(
             created_at__year=year,

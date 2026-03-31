@@ -12,9 +12,19 @@ class TUSSSuggestionSerializer(serializers.Serializer):
     rank = serializers.IntegerField()
 
 
+VALID_GUIDE_TYPES = {'sadt', 'sp_sadt', 'consulta', 'internacao', 'odonto', ''}
+
+
 class TUSSSuggestRequestSerializer(serializers.Serializer):
     description = serializers.CharField(min_length=3, max_length=500)
     guide_type = serializers.CharField(max_length=50, default='', allow_blank=True)
+
+    def validate_guide_type(self, value):
+        if value not in VALID_GUIDE_TYPES:
+            raise serializers.ValidationError(
+                f"guide_type must be one of: {', '.join(sorted(VALID_GUIDE_TYPES))}."
+            )
+        return value
 
 
 class TUSSSuggestResponseSerializer(serializers.Serializer):

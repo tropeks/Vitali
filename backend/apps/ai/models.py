@@ -12,7 +12,7 @@ class AIPromptTemplate(models.Model):
     Versioned prompt templates stored in DB.
     Version is embedded in the Redis cache key — bumping version auto-invalidates cache.
     """
-    name = models.CharField(max_length=100, unique=True)
+    name = models.CharField(max_length=100)
     version = models.PositiveIntegerField(default=1)
     system_prompt = models.TextField()
     user_prompt_template = models.TextField(
@@ -24,6 +24,7 @@ class AIPromptTemplate(models.Model):
 
     class Meta:
         ordering = ['name', '-version']
+        unique_together = [('name', 'version')]
 
     def __str__(self):
         return f'{self.name} v{self.version}'

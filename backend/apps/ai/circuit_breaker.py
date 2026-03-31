@@ -6,7 +6,6 @@ Cooldown: 5 minutes before allowing one probe call
 Fail-open pattern: if Redis is unavailable, circuit stays closed.
 """
 import logging
-import time
 
 from django.core.cache import cache
 
@@ -37,12 +36,10 @@ def record_failure(tenant_schema: str) -> None:
         try:
             count = cache.incr(failure_key)
         except ValueError:
+            # Key doesn't exist yet — create with TTL so the window resets automatically.
+            # cache.expire() is not part of standard Django Redis API; set timeout here.
             cache.set(failure_key, 1, timeout=FAILURE_WINDOW_S)
             count = 1
-
-        # Set TTL on first failure so the window resets automatically
-        if count == 1:
-            cache.expire(failure_key, FAILURE_WINDOW_S)
 
         if count >= TRIP_THRESHOLD:
             cache.set(open_key, 1, timeout=COOLDOWN_S)

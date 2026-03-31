@@ -34,6 +34,8 @@ class SuggestionResult:
     tuss_code: str
     description: str
     rank: int
+    tuss_code_id: int = 0         # TUSSCode DB PK — needed by frontend for guide item FK
+    suggestion_id: str = ''       # TUSSAISuggestion UUID — needed by frontend for feedback
 
 
 @dataclass
@@ -107,9 +109,13 @@ def _call_llm(
     Raises LLMGatewayError on failure.
     """
     candidate_lines = "\n".join(f"{c.code}: {c.description}" for c in candidates)
+    # Strip curly braces from user-controlled inputs before .format() to prevent
+    # prompt injection via {placeholder} patterns in description or guide_type.
+    safe_description = description.replace('{', '').replace('}', '')
+    safe_guide_type = (guide_type or "não especificado").replace('{', '').replace('}', '')
     user_prompt = template.user_prompt_template.format(
-        guide_type=guide_type or "não especificado",
-        description=description,
+        guide_type=safe_guide_type,
+        description=safe_description,
         candidates=candidate_lines,
     )
 
@@ -122,17 +128,20 @@ def _call_llm(
     )
     latency_ms = int((time.time() - t0) * 1000)
 
-    # Parse JSON response
+    # Parse JSON response — strip optional markdown code fence before parsing.
+    # Handles: ```json\n{...}\n``` and ```\n{...}\n``` and plain JSON.
     raw = raw.strip()
     if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-    data = json.loads(raw)
+        # Drop the opening fence line (e.g. "```json"), take everything after.
+        raw = raw[raw.index('\n') + 1:] if '\n' in raw else raw[3:]
+        # Drop any trailing closing fence.
+        if raw.rstrip().endswith("```"):
+            raw = raw.rstrip()[:-3]
+    data = json.loads(raw.strip())
     suggestions_raw = data.get("suggestions", [])
 
     # Build valid code set from candidates for validation gate
-    valid_codes = {c.code: c.description for c in candidates}
+    valid_codes = {c.code: {'description': c.description, 'id': c.id} for c in candidates}
 
     suggestions = []
     for item in suggestions_raw[:3]:
@@ -140,8 +149,9 @@ def _call_llm(
         if code in valid_codes:
             suggestions.append(SuggestionResult(
                 tuss_code=code,
-                description=valid_codes[code],
+                description=valid_codes[code]['description'],
                 rank=len(suggestions) + 1,
+                tuss_code_id=valid_codes[code]['id'],
             ))
 
     return suggestions, tokens_in, tokens_out, latency_ms
@@ -195,9 +205,16 @@ def suggest(
             template, description, guide_type, candidates, tenant_schema
         )
         record_success(tenant_schema)
-    except (LLMGatewayError, json.JSONDecodeError, Exception) as exc:
-        logger.warning("LLM call failed (tenant=%s): %s", tenant_schema, exc)
+    except LLMGatewayError as exc:
+        # API/transport failure — trip the circuit breaker.
+        logger.warning("LLM API call failed (tenant=%s): %s", tenant_schema, exc)
         record_failure(tenant_schema)
+        _log_usage(event_type='degraded', input_text=description)
+        return TUSSCoderResponse(suggestions=[], degraded=True, cached=False)
+    except (json.JSONDecodeError, Exception) as exc:
+        # Malformed response or unexpected error — do NOT trip the circuit breaker.
+        # JSON parse failures are a prompt/model quality issue, not an API outage.
+        logger.warning("LLM response parse failed (tenant=%s): %s", tenant_schema, exc)
         _log_usage(event_type='degraded', input_text=description)
         return TUSSCoderResponse(suggestions=[], degraded=True, cached=False)
 
@@ -223,9 +240,9 @@ def suggest(
         latency_ms=latency_ms,
     )
 
-    # Create TUSSAISuggestion records for acceptance tracking
+    # Create TUSSAISuggestion records for acceptance tracking; attach UUIDs for feedback
     for s in suggestions:
-        TUSSAISuggestion.objects.create(
+        record = TUSSAISuggestion.objects.create(
             usage_log=usage_log,
             tuss_code=s.tuss_code,
             description=s.description,
@@ -233,9 +250,19 @@ def suggest(
             input_text=description[:500],
             guide_type=guide_type,
         )
+        s.suggestion_id = str(record.id)
 
     # Cache the result
-    cache.set(key, [{'tuss_code': s.tuss_code, 'description': s.description, 'rank': s.rank} for s in suggestions], TUSS_SUGGEST_CACHE_TTL)
+    cache.set(key, [
+        {
+            'tuss_code': s.tuss_code,
+            'description': s.description,
+            'rank': s.rank,
+            'tuss_code_id': s.tuss_code_id,
+            'suggestion_id': s.suggestion_id,
+        }
+        for s in suggestions
+    ], TUSS_SUGGEST_CACHE_TTL)
 
     return TUSSCoderResponse(suggestions=suggestions, degraded=False, cached=False)
 
