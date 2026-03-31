@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { getAccessToken } from '@/lib/auth'
 
 function extractError(err: any): string {
   if (typeof err === 'string') return err
@@ -51,7 +52,8 @@ export default function DrugDetailPage() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    fetch(`/api/v1/pharmacy/drugs/${id}/`)
+    const token = getAccessToken()
+    fetch(`/api/v1/pharmacy/drugs/${id}/`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(d => { setDrug(d); setForm(d) })
       .finally(() => setLoading(false))
@@ -61,9 +63,10 @@ export default function DrugDetailPage() {
     setSaving(true)
     setError('')
     try {
+      const token = getAccessToken()
       const res = await fetch(`/api/v1/pharmacy/drugs/${id}/`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(form),
       })
       if (!res.ok) { setError(extractError(await res.json())); return }
@@ -76,8 +79,10 @@ export default function DrugDetailPage() {
 
   const handleDeactivate = async () => {
     if (!confirm('Desativar este medicamento?')) return
+    const token = getAccessToken()
     const res = await fetch(`/api/v1/pharmacy/drugs/${id}/`, {
       method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
     })
     if (res.ok || res.status === 204) router.push('/farmacia/catalog')
   }

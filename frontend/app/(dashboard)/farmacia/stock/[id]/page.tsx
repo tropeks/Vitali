@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { getAccessToken } from '@/lib/auth'
 
 function extractError(err: any): string {
   if (typeof err === 'string') return err
@@ -62,9 +63,11 @@ export default function StockItemDetailPage() {
   const refresh = async () => {
     setLoading(true)
     try {
+      const token = getAccessToken()
+      const headers = { Authorization: `Bearer ${token}` }
       const [itemRes, mvRes] = await Promise.all([
-        fetch(`/api/v1/pharmacy/stock/items/${id}/`),
-        fetch(`/api/v1/pharmacy/stock/movements/?stock_item=${id}`),
+        fetch(`/api/v1/pharmacy/stock/items/${id}/`, { headers }),
+        fetch(`/api/v1/pharmacy/stock/movements/?stock_item=${id}`, { headers }),
       ])
       const itemData = await itemRes.json()
       const mvData = await mvRes.json()
@@ -79,9 +82,10 @@ export default function StockItemDetailPage() {
     setSaving(true)
     setError('')
     try {
+      const token = getAccessToken()
       const res = await fetch(`/api/v1/pharmacy/stock/items/${id}/adjust/`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ quantity: adjustQty, notes: adjustNotes }),
       })
       if (!res.ok) { setError(extractError(await res.json())); return }

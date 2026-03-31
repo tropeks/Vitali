@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { getAccessToken } from '@/lib/auth'
 
 function extractError(err: any): string {
   if (typeof err === 'string') return err
@@ -34,7 +35,8 @@ export default function MaterialDetailPage() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    fetch(`/api/v1/pharmacy/materials/${id}/`)
+    const token = getAccessToken()
+    fetch(`/api/v1/pharmacy/materials/${id}/`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(d => { setMaterial(d); setForm(d) })
       .finally(() => setLoading(false))
@@ -44,9 +46,10 @@ export default function MaterialDetailPage() {
     setSaving(true)
     setError('')
     try {
+      const token = getAccessToken()
       const res = await fetch(`/api/v1/pharmacy/materials/${id}/`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(form),
       })
       if (!res.ok) { setError(extractError(await res.json())); return }
@@ -59,7 +62,11 @@ export default function MaterialDetailPage() {
 
   const handleDeactivate = async () => {
     if (!confirm('Desativar este material?')) return
-    await fetch(`/api/v1/pharmacy/materials/${id}/`, { method: 'DELETE' })
+    const token = getAccessToken()
+    await fetch(`/api/v1/pharmacy/materials/${id}/`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    })
     router.push('/farmacia/catalog')
   }
 

@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { getAccessToken } from '@/lib/auth'
 
 function extractError(err: any): string {
   if (typeof err === 'string') return err
@@ -66,7 +67,10 @@ export default function CatalogPage() {
     debounce(async (q: string) => {
       setLoading(true)
       try {
-        const res = await fetch(`/api/v1/pharmacy/drugs/?search=${encodeURIComponent(q)}`)
+        const token = getAccessToken()
+        const res = await fetch(`/api/v1/pharmacy/drugs/?search=${encodeURIComponent(q)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
         const data = await res.json()
         setDrugs(data.results ?? data ?? [])
       } finally { setLoading(false) }
@@ -77,7 +81,10 @@ export default function CatalogPage() {
     debounce(async (q: string) => {
       setLoading(true)
       try {
-        const res = await fetch(`/api/v1/pharmacy/materials/?search=${encodeURIComponent(q)}`)
+        const token = getAccessToken()
+        const res = await fetch(`/api/v1/pharmacy/materials/?search=${encodeURIComponent(q)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
         const data = await res.json()
         setMaterials(data.results ?? data ?? [])
       } finally { setLoading(false) }
@@ -99,10 +106,11 @@ export default function CatalogPage() {
     setSaving(true)
     setError('')
     try {
+      const token = getAccessToken()
       const endpoint = tab === 'drugs' ? '/api/v1/pharmacy/drugs/' : '/api/v1/pharmacy/materials/'
       const res = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(form),
       })
       if (!res.ok) {

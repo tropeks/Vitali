@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
+import { getAccessToken } from '@/lib/auth'
 
 function debounce(fn: Function, ms: number) {
   let timer: any
@@ -73,7 +74,10 @@ export default function DispensePage() {
       if (!q.trim()) { setPatients([]); return }
       setLoadingPatients(true)
       try {
-        const res = await fetch(`/api/v1/emr/patients/?search=${encodeURIComponent(q)}`)
+        const token = getAccessToken()
+        const res = await fetch(`/api/v1/emr/patients/?search=${encodeURIComponent(q)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
         const data = await res.json()
         setPatients(data.results ?? data ?? [])
       } finally { setLoadingPatients(false) }
@@ -86,7 +90,10 @@ export default function DispensePage() {
     setPatientQuery(patient.full_name)
     setLoadingRx(true)
     try {
-      const res = await fetch(`/api/v1/emr/prescriptions/?patient=${patient.id}&status=signed`)
+      const token = getAccessToken()
+      const res = await fetch(`/api/v1/emr/prescriptions/?patient=${patient.id}&status=signed`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
       const data = await res.json()
       setPrescriptions(data.results ?? data ?? [])
       setStep('items')
@@ -108,7 +115,10 @@ export default function DispensePage() {
       if (!drugId || !qty || parseFloat(qty) <= 0) { setLots([]); return }
       setLoadingLots(true)
       try {
-        const res = await fetch(`/api/v1/pharmacy/stock/availability/?drug=${drugId}`)
+        const token = getAccessToken()
+        const res = await fetch(`/api/v1/pharmacy/stock/availability/?drug=${drugId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
         const data = await res.json()
         setLots(data.available_lots ?? [])
       } finally { setLoadingLots(false) }
@@ -124,9 +134,10 @@ export default function DispensePage() {
     setSaving(true)
     setError('')
     try {
+      const token = getAccessToken()
       const res = await fetch('/api/v1/pharmacy/dispense/', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           prescription_item_id: selectedItem.id,
           quantity: parseFloat(quantity),
