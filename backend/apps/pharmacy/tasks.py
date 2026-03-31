@@ -5,6 +5,7 @@ Results are stored in Redis for the stock dashboard.
 """
 import json
 import logging
+from datetime import timedelta
 
 from celery import shared_task
 from django.conf import settings
@@ -37,7 +38,7 @@ def check_expiry_alerts():
 def _check_expiry_alerts_for_tenant(schema_name: str):
     from .models import StockItem
     today = timezone.now().date()
-    threshold = today + timezone.timedelta(days=30)
+    threshold = today + timedelta(days=30)
     expiring = StockItem.objects.filter(
         quantity__gt=0,
         expiry_date__isnull=False,

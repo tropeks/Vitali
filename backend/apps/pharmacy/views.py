@@ -46,8 +46,9 @@ class DrugViewSet(viewsets.ModelViewSet):
         qs = Drug.objects.all()
         search = self.request.query_params.get('search')
         if search:
+            from django.db.models import Q
             # pg_trgm fuzzy search via LIKE (trigram index picks this up)
-            qs = qs.filter(name__icontains=search) | qs.filter(generic_name__icontains=search)
+            qs = qs.filter(Q(name__icontains=search) | Q(generic_name__icontains=search))
         controlled = self.request.query_params.get('controlled')
         if controlled == 'true':
             qs = qs.exclude(controlled_class='none')
@@ -73,9 +74,10 @@ class DrugViewSet(viewsets.ModelViewSet):
         log_audit(self.request, 'update', 'Drug', drug.id, old_data=old, new_data=DrugSerializer(drug).data)
 
     def perform_destroy(self, instance):
-        log_audit(self.request, 'delete', 'Drug', instance.id, old_data=DrugSerializer(instance).data)
+        old_data = DrugSerializer(instance).data
         instance.is_active = False
         instance.save(update_fields=['is_active'])
+        log_audit(self.request, 'delete', 'Drug', instance.id, old_data=old_data)
 
 
 class MaterialViewSet(viewsets.ModelViewSet):
