@@ -83,6 +83,7 @@ export default function StockItemDetailPage() {
     setError('')
     try {
       const token = getAccessToken()
+      if (!token) { setError('Sessão expirada'); setSaving(false); return }
       const res = await fetch(`/api/v1/pharmacy/stock/items/${id}/adjust/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },

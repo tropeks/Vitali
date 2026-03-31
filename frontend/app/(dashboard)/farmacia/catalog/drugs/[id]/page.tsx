@@ -64,6 +64,7 @@ export default function DrugDetailPage() {
     setError('')
     try {
       const token = getAccessToken()
+      if (!token) { setError('Sessão expirada'); setSaving(false); return }
       const res = await fetch(`/api/v1/pharmacy/drugs/${id}/`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -80,6 +81,7 @@ export default function DrugDetailPage() {
   const handleDeactivate = async () => {
     if (!confirm('Desativar este medicamento?')) return
     const token = getAccessToken()
+    if (!token) { router.push('/login'); return }
     const res = await fetch(`/api/v1/pharmacy/drugs/${id}/`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },

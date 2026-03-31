@@ -47,6 +47,7 @@ export default function MaterialDetailPage() {
     setError('')
     try {
       const token = getAccessToken()
+      if (!token) { setError('Sessão expirada'); setSaving(false); return }
       const res = await fetch(`/api/v1/pharmacy/materials/${id}/`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -63,11 +64,12 @@ export default function MaterialDetailPage() {
   const handleDeactivate = async () => {
     if (!confirm('Desativar este material?')) return
     const token = getAccessToken()
-    await fetch(`/api/v1/pharmacy/materials/${id}/`, {
+    if (!token) { router.push('/login'); return }
+    const res = await fetch(`/api/v1/pharmacy/materials/${id}/`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
     })
-    router.push('/farmacia/catalog')
+    if (res.ok || res.status === 204) router.push('/farmacia/catalog')
   }
 
   if (loading) return <p className="text-sm text-gray-500">Carregando...</p>

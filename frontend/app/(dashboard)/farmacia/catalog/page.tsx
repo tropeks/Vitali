@@ -107,6 +107,7 @@ export default function CatalogPage() {
     setError('')
     try {
       const token = getAccessToken()
+      if (!token) { setError('Sessão expirada'); setSaving(false); return }
       const endpoint = tab === 'drugs' ? '/api/v1/pharmacy/drugs/' : '/api/v1/pharmacy/materials/'
       const res = await fetch(endpoint, {
         method: 'POST',

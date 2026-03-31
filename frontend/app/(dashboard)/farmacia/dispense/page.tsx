@@ -135,6 +135,7 @@ export default function DispensePage() {
     setError('')
     try {
       const token = getAccessToken()
+      if (!token) { setError('Sessão expirada'); setSaving(false); return }
       const res = await fetch('/api/v1/pharmacy/dispense/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },

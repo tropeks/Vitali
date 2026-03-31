@@ -91,6 +91,7 @@ export default function StockPage() {
     setError('')
     try {
       const token = getAccessToken()
+      if (!token) { setError('Sessão expirada'); setSaving(false); return }
       // 1. Create StockItem (lot) for this drug
       const itemRes = await fetch('/api/v1/pharmacy/stock/items/', {
         method: 'POST',
@@ -143,7 +144,7 @@ export default function StockPage() {
 
   const filtered = items.filter(item => {
     if (filterLow && !item.is_low_stock) return false
-    if (filterExpiring && item.expiry_date && item.expiry_date > soonThreshold) return false
+    if (filterExpiring && (!item.expiry_date || item.expiry_date > soonThreshold)) return false
     return true
   })
 
