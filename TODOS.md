@@ -218,6 +218,15 @@ retorno_lote = root.find(".//ans:retornoLote", NS) or root.find(".//retornoLote"
 
 ---
 
+## ~~P1 — Pharmacy Module (Sprint 7)~~ DONE
+
+S-026 Drug & Material catalog, S-027 Stock management (FEFO ledger, Celery alerts, Redis
+alert cache), S-028 Dispensation (atomic FEFO multi-lot, controlled-substance gate).
+Frontend: catalog page, drug/material detail pages, stock list, stock item detail with
+adjustment form and movement history.
+
+---
+
 ## P3 — TUSS Table Update Checker (Sprint 7)
 
 The TUSS table is published by ANS periodically (~quarterly). The `import_tuss` management
