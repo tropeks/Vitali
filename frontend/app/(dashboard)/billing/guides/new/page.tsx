@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getAccessToken } from '@/lib/auth';
 import TUSSCodeSearch, { TUSSOption } from '@/components/billing/TUSSCodeSearch';
+import TUSSSuggestionInline, { TUSSSuggestion } from '@/components/billing/TUSSSuggestionInline';
 
 function apiFetch(path: string) {
   const token = getAccessToken();
@@ -82,6 +83,17 @@ export default function NewGuidePage() {
         ...item,
         tuss_code: opt,
         description: opt ? opt.description.slice(0, 300) : item.description,
+      };
+    }));
+  };
+
+  const handleAISuggestionSelect = (idx: number, suggestion: TUSSSuggestion) => {
+    setItems(i => i.map((item, ii) => {
+      if (ii !== idx) return item;
+      return {
+        ...item,
+        tuss_code: { id: 0, code: suggestion.tuss_code, description: suggestion.description },
+        description: suggestion.description.slice(0, 300),
       };
     }));
   };
@@ -289,7 +301,7 @@ export default function NewGuidePage() {
                     />
                   </div>
 
-                  {/* Description */}
+                  {/* Description + AI suggestion */}
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Descrição</label>
                     <input
@@ -298,6 +310,12 @@ export default function NewGuidePage() {
                       onChange={e => updateItem(idx, 'description', e.target.value)}
                       placeholder="Descrição do procedimento..."
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                    <TUSSSuggestionInline
+                      description={item.description}
+                      guideType={form.guide_type}
+                      onSelect={suggestion => handleAISuggestionSelect(idx, suggestion)}
+                      hasExistingCode={!!item.tuss_code}
                     />
                   </div>
 

@@ -83,5 +83,6 @@ DEFAULT_ROLES = {
         "billing.read", "billing.write", "billing.full",
         "patients.limited_read",
         "emr.read",
+        "ai.use",
     ],
 }
