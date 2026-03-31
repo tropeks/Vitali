@@ -59,7 +59,7 @@ vitali/
 │   │   ├── emr/           # Prontuário eletrônico (Sprint 2+)
 │   │   ├── billing/       # Faturamento TISS/TUSS (Sprint 7+)
 │   │   ├── pharmacy/      # Farmácia & estoque (Sprint 6+)
-│   │   ├── ai/            # LLM Gateway, TUSS coding (Sprint 9+)
+│   │   ├── ai/            # LLM Gateway, TUSS coding (Sprint 8+)
 │   │   └── whatsapp/      # Patient engagement (Sprint 10+)
 │   └── requirements/
 ├── frontend/              # Next.js 14 App Router
@@ -70,6 +70,19 @@ vitali/
 ├── docker-compose.yml
 └── Makefile
 ```
+
+---
+
+## Variáveis de Ambiente — AI
+
+Para habilitar o módulo de AI TUSS, configure as seguintes variáveis no `.env`:
+
+| Variável | Padrão | Descrição |
+|----------|--------|-----------|
+| `ANTHROPIC_API_KEY` | `""` | Chave da API Anthropic (obrigatória para AI TUSS) |
+| `FEATURE_AI_TUSS` | `False` | Feature flag — habilita o endpoint de sugestão TUSS |
+| `AI_RATE_LIMIT_PER_HOUR` | `100` | Limite de chamadas LLM por tenant por hora |
+| `AI_SUGGEST_TIMEOUT_S` | `5` | Timeout em segundos para chamadas ao Claude |
 
 ---
 
@@ -123,7 +136,8 @@ make create-tenant   # Criar nova clínica
 | Sprint 4-5 | 9-13 | EMR (Prontuário) |
 | Sprint 6 | 14-16 | Farmácia |
 | Sprint 7-8 | 17-21 | Faturamento TISS/TUSS |
-| Sprint 9 | 22-23 | AI Features |
+| Sprint 8 | 20-21 | AI TUSS Auto-Coding ✅ |
+| Sprint 9 | 22-23 | AI Features (expansão) |
 | Sprint 10 | 24-26 | WhatsApp |
 
 ---

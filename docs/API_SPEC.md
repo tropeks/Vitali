@@ -309,27 +309,52 @@ POST /api/v1/pharmacy/dispensations
 ## 8. AI Endpoints
 
 ```
-POST /api/v1/ai/tuss-suggest
+POST /api/v1/ai/tuss-suggest/
   Request:
-    { "procedure_description": "Consulta médica em consultório horário normal" }
+    {
+      "description": "Consulta médica em consultório horário normal",
+      "guide_type": "consulta"  (optional — one of: sadt, sp_sadt, consulta, internacao, odonto, "")
+    }
   Response 200:
     {
       "suggestions": [
-        { "code": "10101012", "term": "Consulta em consultório (no horário normal)", "confidence": 0.95 },
-        { "code": "10101020", "term": "Consulta em consultório (fora do horário normal)", "confidence": 0.72 },
-        { "code": "10102019", "term": "Consulta em domicílio", "confidence": 0.15 }
+        {
+          "tuss_code": "10101012",
+          "description": "Consulta em consultório (no horário normal)",
+          "rank": 1,
+          "tuss_code_id": "uuid",
+          "suggestion_id": "uuid"
+        },
+        ...
       ],
       "cached": false,
-      "tokens_used": 245
+      "degraded": false
     }
-  Auth: Bearer + ai.tuss_coding (feature flag)
-  Rate limit: 30/min per tenant
+  Auth: Bearer + ai.use (requires FEATURE_AI_TUSS=True)
+  Rate limit: AI_RATE_LIMIT_PER_HOUR per tenant (default 100/hour)
+  Note: Returns 404 if FEATURE_AI_TUSS feature flag is disabled.
 
-POST /api/v1/ai/tuss-suggest/{suggestion_id}/accept
-  Request:  { "accepted_code": "10101012" }
-  Response 204
-  Auth: Bearer
-  Note: Tracks acceptance for improving prompts
+POST /api/v1/ai/tuss-suggest/feedback/
+  Request:  { "suggestion_id": "uuid", "accepted": true|false }
+  Response 200: { "status": "ok" }
+  Auth: Bearer + ai.use
+  Note: Records acceptance/rejection signal for prompt quality improvement.
+
+GET /api/v1/ai/usage/
+  Query: ?year=2026&month=3
+  Response 200:
+    {
+      "year": 2026,
+      "month": 3,
+      "llm_calls": 142,
+      "tokens_in": 58000,
+      "tokens_out": 12000,
+      "total_latency_ms": 71000,
+      "suggestions_shown": 142,
+      "suggestions_accepted": 98,
+      "acceptance_rate": 0.690
+    }
+  Auth: Bearer + users.read (admin only)
 ```
 
 ---
