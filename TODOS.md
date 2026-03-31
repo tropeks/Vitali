@@ -141,17 +141,12 @@ an M2M signal or FK constraint to close this gap.
 
 ---
 
-## P2 — DESIGN.md (after Sprint 6 ships)
+## ~~P2 — DESIGN.md (after Sprint 6 ships)~~ DONE
 
-No design system is documented in the repo. After Sprint 6 UI is built, run `/design-consultation`
-to extract established patterns (color tokens, component vocabulary, copy tone, spacing scale) into
-a `DESIGN.md` file.
-
-**Why now matters:** Sprint 7 (AI TUSS screens), Sprint 8 (Pharmacy), and Sprint 9 (WhatsApp)
-will all build UI. Without a shared design system, each sprint diverges. The billing screens
-established in Sprint 6 are the reference implementation.
-
-**Priority:** P2 — run immediately after Sprint 6 UI is in production. 30-minute session.
+`DESIGN.md` created via `/design-consultation` after Sprint 6. Vitali design system documented:
+color tokens, typography, semantic status colors, spacing, component vocabulary.
+Commit: `docs(design): add Vitali design system (DESIGN.md + HTML preview)`.
+**Completed:** v0.4.0 (2026-03-31)
 
 ---
 
@@ -224,6 +219,22 @@ S-026 Drug & Material catalog, S-027 Stock management (FEFO ledger, Celery alert
 alert cache), S-028 Dispensation (atomic FEFO multi-lot, controlled-substance gate).
 Frontend: catalog page, drug/material detail pages, stock list, stock item detail with
 adjustment form and movement history.
+
+---
+
+## P2 — TUSSSyncLog / import_tuss Refresh Documentation (Sprint 8)
+
+`import_tuss` management command exists but there is no `TUSSSyncLog` model, no management
+command to surface import status, and no `AIUsageLog` metadata extension to record last import
+timestamp. The Sprint 8 plan allowed "or log in AIUsageLog metadata" as an alternative but
+neither was implemented.
+
+**Fix:** Add `TUSSSyncLog` model (or extend `AIUsageLog` with a `metadata` JSONField) to record
+import timestamp, row count, and import source. Expose status via `GET /api/v1/ai/tuss-sync-status/`
+(admin-only) so ops can verify the TUSS table is current before enabling `FEATURE_AI_TUSS`.
+
+**Deferred from plan:** `docs/PLAN_SPRINT8.md`.
+**Priority:** P2 — required before enabling `FEATURE_AI_TUSS` in production.
 
 ---
 
