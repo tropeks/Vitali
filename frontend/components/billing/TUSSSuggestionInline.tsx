@@ -7,6 +7,8 @@ export interface TUSSSuggestion {
   tuss_code: string;
   description: string;
   rank: number;
+  tuss_code_id: number;
+  suggestion_id: string;
 }
 
 interface Props {
@@ -108,17 +110,22 @@ export default function TUSSSuggestionInline({ description, guideType = '', onSe
   const applySelection = (suggestion: TUSSSuggestion) => {
     onSelect(suggestion);
     setPendingSelect(null);
+    setState({ kind: 'idle' });
     // Post feedback (fire and forget)
     postFeedback(suggestion);
   };
 
   const postFeedback = (suggestion: TUSSSuggestion) => {
+    if (!suggestion.suggestion_id) return;
     const token = getAccessToken();
     if (!token) return;
-    // We don't have suggestion_id from the inline component (it's a search result).
-    // The backend creates TUSSAISuggestion records by tuss_code+input_text.
-    // Feedback posting would need the suggestion UUID — skip for now; acceptance
-    // rate is tracked by usage log correlation in the analytics endpoint.
+    fetch('/api/v1/ai/tuss-suggest/feedback/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ suggestion_id: suggestion.suggestion_id, accepted: true }),
+    }).catch(() => {
+      // Fire-and-forget: feedback loss is acceptable, do not surface errors to user.
+    });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent, idx: number, items: TUSSSuggestion[]) => {

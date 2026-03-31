@@ -92,7 +92,7 @@ export default function NewGuidePage() {
       if (ii !== idx) return item;
       return {
         ...item,
-        tuss_code: { id: 0, code: suggestion.tuss_code, description: suggestion.description },
+        tuss_code: { id: suggestion.tuss_code_id, code: suggestion.tuss_code, description: suggestion.description },
         description: suggestion.description.slice(0, 300),
       };
     }));
