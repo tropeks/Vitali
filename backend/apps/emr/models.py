@@ -1,4 +1,6 @@
 import uuid
+from decimal import Decimal
+from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
 from encrypted_model_fields.fields import EncryptedCharField
@@ -352,6 +354,101 @@ class ClinicalDocument(models.Model):
 
     def __str__(self):
         return f'{self.get_doc_type_display()} — {self.encounter}'
+
+
+# ─── Sprint 7 (minimal S-015): Prescription ──────────────────────────────────
+
+class Prescription(models.Model):
+    """
+    Receita médica — vinculada a um Encounter.
+    Precisa ser assinada (signed_at não nulo) antes de poder ser dispensada.
+    """
+
+    STATUS_CHOICES = [
+        ('draft', 'Rascunho'),
+        ('signed', 'Assinada'),
+        ('partially_dispensed', 'Parcialmente dispensada'),
+        ('dispensed', 'Dispensada'),
+        ('cancelled', 'Cancelada'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    encounter = models.ForeignKey(
+        Encounter, on_delete=models.CASCADE, related_name='prescriptions'
+    )
+    patient = models.ForeignKey(
+        Patient, on_delete=models.PROTECT, related_name='prescriptions'
+    )
+    prescriber = models.ForeignKey(
+        Professional, on_delete=models.PROTECT, related_name='prescriptions'
+    )
+    status = models.CharField(
+        max_length=25, choices=STATUS_CHOICES, default='draft', db_index=True
+    )
+    signed_at = models.DateTimeField(null=True, blank=True)
+    signed_by = models.ForeignKey(
+        'core.User', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='signed_prescriptions'
+    )
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['patient', 'status']),
+            models.Index(fields=['encounter', 'status']),
+        ]
+
+    @property
+    def is_signed(self):
+        return self.signed_at is not None
+
+    def sign(self, user):
+        self.signed_at = timezone.now()
+        self.signed_by = user
+        self.status = 'signed'
+        self.save(update_fields=['signed_at', 'signed_by', 'status'])
+
+    def __str__(self):
+        return f'Receita {self.id} — {self.patient} ({self.get_status_display()})'
+
+
+class PrescriptionItem(models.Model):
+    """Item de receita — um medicamento por linha."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    prescription = models.ForeignKey(
+        Prescription, on_delete=models.CASCADE, related_name='items'
+    )
+    # String FK to avoid circular import — pharmacy 0001 must run before emr 0005
+    drug = models.ForeignKey(
+        'pharmacy.Drug', on_delete=models.PROTECT, related_name='prescription_items'
+    )
+    generic_name = models.CharField(max_length=300, blank=True)
+    quantity = models.DecimalField(
+        max_digits=10, decimal_places=3,
+        validators=[MinValueValidator(Decimal('0.001'))],
+    )
+    unit_of_measure = models.CharField(max_length=20, default='un')
+    dosage_instructions = models.TextField(blank=True)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['id']
+
+    def save(self, *args, **kwargs):
+        if not self.generic_name and self.drug_id:
+            from apps.pharmacy.models import Drug
+            try:
+                self.generic_name = Drug.objects.get(pk=self.drug_id).generic_name
+            except Drug.DoesNotExist:
+                pass
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'{self.drug} × {self.quantity} {self.unit_of_measure}'
 
 
 # ─── Sprint 6: Insurance Cards ────────────────────────────────────────────────

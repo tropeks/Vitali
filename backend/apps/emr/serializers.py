@@ -5,6 +5,7 @@ from .models import (
     Appointment, ScheduleConfig,
     Encounter, SOAPNote, VitalSigns, ClinicalDocument,
     PatientInsurance,
+    Prescription, PrescriptionItem,
 )
 
 
@@ -249,3 +250,34 @@ class PatientInsuranceSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'patient': {'read_only': True},  # set from URL, not body
         }
+
+
+class PrescriptionItemSerializer(serializers.ModelSerializer):
+    drug_name = serializers.CharField(source='drug.name', read_only=True)
+    drug_generic_name = serializers.CharField(source='drug.generic_name', read_only=True)
+    drug_is_controlled = serializers.BooleanField(source='drug.is_controlled', read_only=True)
+
+    class Meta:
+        model = PrescriptionItem
+        fields = [
+            'id', 'drug', 'drug_name', 'drug_generic_name', 'drug_is_controlled',
+            'generic_name', 'quantity', 'unit_of_measure', 'dosage_instructions', 'notes',
+        ]
+        read_only_fields = ['id', 'generic_name']
+
+
+class PrescriptionSerializer(serializers.ModelSerializer):
+    items = PrescriptionItemSerializer(many=True, read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    is_signed = serializers.BooleanField(read_only=True)
+    prescriber_name = serializers.CharField(source='prescriber.user.full_name', read_only=True)
+
+    class Meta:
+        model = Prescription
+        fields = [
+            'id', 'encounter', 'patient', 'prescriber', 'prescriber_name',
+            'status', 'status_display', 'is_signed',
+            'signed_at', 'signed_by', 'notes', 'items',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'signed_at', 'signed_by', 'status', 'created_at', 'updated_at']

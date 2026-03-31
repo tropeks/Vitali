@@ -48,6 +48,7 @@ DEFAULT_ROLES = {
         "billing.read", "billing.write", "billing.full",
         "schedule.read", "schedule.write",
         "pharmacy.read", "pharmacy.dispense", "pharmacy.full",
+        "pharmacy.catalog_manage", "pharmacy.stock_manage", "pharmacy.dispense_controlled",
         "users.read", "users.write",
         "roles.read", "roles.write",
         "reports.read",
@@ -75,6 +76,7 @@ DEFAULT_ROLES = {
     "farmaceutico": [
         "emr.read",
         "pharmacy.read", "pharmacy.dispense", "pharmacy.full",
+        "pharmacy.catalog_manage", "pharmacy.stock_manage", "pharmacy.dispense_controlled",
         "patients.limited_read",
     ],
     "faturista": [

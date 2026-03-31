@@ -39,3 +39,7 @@ services:
       - /app/.next
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000
+      # Must be "development" when running next dev — the Dockerfile bakes in
+      # NODE_ENV=production for the production runner stage, but dev mode needs
+      # development so the Edge Runtime sandbox permits eval() (webpack source maps).
+      NODE_ENV: development
