@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import AIPromptTemplate, AIUsageLog, TUSSAISuggestion
+from .models import AIPromptTemplate, AIUsageLog, GlosaPrediction, TUSSAISuggestion
 
 
 @admin.register(AIPromptTemplate)
@@ -23,4 +23,14 @@ class TUSSAISuggestionAdmin(admin.ModelAdmin):
     list_filter = ['accepted', 'guide_type']
     search_fields = ['tuss_code', 'description', 'input_text']
     readonly_fields = ['id', 'created_at', 'feedback_at']
+    ordering = ['-created_at']
+
+
+@admin.register(GlosaPrediction)
+class GlosaPredictionAdmin(admin.ModelAdmin):
+    list_display = ['tuss_code', 'insurer_ans_code', 'guide_type', 'risk_level', 'risk_code', 'was_denied', 'created_at']
+    list_filter = ['risk_level', 'guide_type', 'was_denied']
+    search_fields = ['tuss_code', 'insurer_ans_code', 'risk_reason']
+    readonly_fields = ['id', 'created_at']
+    raw_id_fields = ['guide', 'usage_log']
     ordering = ['-created_at']
