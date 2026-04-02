@@ -11,6 +11,8 @@ from .models import (
     Role,
     Subscription,
     Tenant,
+    TenantAIConfig,
+    TUSSSyncLog,
     TUSSCode,
     User,
 )
@@ -110,6 +112,32 @@ class AuditLogAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+@admin.register(TUSSSyncLog)
+class TUSSSyncLogAdmin(admin.ModelAdmin):
+    list_display = ["ran_at", "status", "source", "row_count_added", "row_count_updated", "row_count_total", "duration_ms"]
+    list_filter = ["status", "source"]
+    readonly_fields = [f.name for f in TUSSSyncLog._meta.get_fields() if hasattr(f, "name")]
+    ordering = ["-ran_at"]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(TenantAIConfig)
+class TenantAIConfigAdmin(admin.ModelAdmin):
+    list_display = ["tenant", "ai_tuss_enabled", "ai_glosa_prediction_enabled", "rate_limit_per_hour", "monthly_token_ceiling", "updated_at"]
+    list_filter = ["ai_tuss_enabled", "ai_glosa_prediction_enabled"]
+    search_fields = ["tenant__name", "tenant__schema_name"]
+    readonly_fields = ["id", "created_at", "updated_at"]
+    raw_id_fields = ["tenant"]
 
 
 @admin.register(TUSSCode)

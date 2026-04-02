@@ -20,4 +20,6 @@ urlpatterns = [
     path("roles/", views.RoleListCreateView.as_view(), name="role-list"),
     # Tenant features
     path("features/", views.TenantFeaturesView.as_view(), name="tenant-features"),
+    # AI: TUSS sync status (admin-only)
+    path("ai/tuss-sync-status/", views.TUSSSyncStatusView.as_view(), name="tuss-sync-status"),
 ]

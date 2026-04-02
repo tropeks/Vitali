@@ -1,7 +1,8 @@
 """
 HealthOS Core Models
 ====================
-Public schema: Tenant, Domain, Plan, PlanModule, Subscription, FeatureFlag, TUSSCode
+Public schema: Tenant, Domain, Plan, PlanModule, Subscription, FeatureFlag, TUSSCode,
+               TUSSSyncLog, TenantAIConfig
 Per-tenant: User, Role, AuditLog
 
 Multi-tenancy via django-tenants (schema-per-tenant — ADR-004).
@@ -12,6 +13,7 @@ import uuid
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.contrib.postgres.indexes import GinIndex
 from django.contrib.postgres.search import SearchVectorField
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django_tenants.models import TenantMixin, DomainMixin
 from encrypted_model_fields.fields import EncryptedCharField
@@ -196,6 +198,104 @@ class TUSSCode(models.Model):
 
     def __str__(self):
         return f"{self.code} — {self.description[:60]}"
+
+
+class TUSSSyncLog(models.Model):
+    """
+    Records every `import_tuss` run. Lives in the PUBLIC schema (SHARED_APPS) alongside
+    TUSSCode — the TUSS table is global, so its sync log is global too.
+    Ops can verify the TUSS table is current from the billing overview badge without
+    a DB console query.
+    """
+
+    class Status(models.TextChoices):
+        SUCCESS = "success", "Sucesso"
+        PARTIAL = "partial", "Parcial"
+        ERROR = "error", "Erro"
+
+    class Source(models.TextChoices):
+        MANAGEMENT_COMMAND = "management_command", "Management Command"
+        API = "api", "API"
+        SCHEDULED = "scheduled", "Agendado"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    ran_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    source = models.CharField(
+        max_length=30,
+        choices=Source.choices,
+        default=Source.MANAGEMENT_COMMAND,
+    )
+    row_count_total = models.PositiveIntegerField(default=0)
+    row_count_added = models.PositiveIntegerField(default=0)
+    row_count_updated = models.PositiveIntegerField(default=0)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.SUCCESS)
+    error_message = models.TextField(
+        blank=True,
+        help_text="Scrubbed: connection strings stripped, max 200 chars",
+    )
+    duration_ms = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        app_label = "core"
+        verbose_name = "TUSS Sync Log"
+        verbose_name_plural = "TUSS Sync Logs"
+        ordering = ["-ran_at"]
+
+    def __str__(self):
+        return f"TUSSSyncLog {self.status} @ {self.ran_at:%Y-%m-%d %H:%M} ({self.row_count_added}+{self.row_count_updated} rows)"
+
+
+class TenantAIConfig(models.Model):
+    """
+    Per-tenant AI feature toggles and rate limits.
+    Lives in the PUBLIC schema (SHARED_APPS), FK to Tenant.
+    Django Admin runs in public schema context — tenant-schema models crash there.
+    This is the standard django-tenants pattern for per-tenant configuration.
+
+    Cache TTL: 5 minutes. Django Admin saves do NOT auto-invalidate the cache.
+    Ops enabling/disabling AI will see up to 5-minute lag before effect.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.OneToOneField(
+        Tenant,
+        on_delete=models.CASCADE,
+        related_name="ai_config",
+    )
+    ai_tuss_enabled = models.BooleanField(
+        "AI TUSS Auto-Coding ativado",
+        default=False,
+        help_text="Habilita sugestão automática de códigos TUSS via IA para este tenant.",
+    )
+    ai_glosa_prediction_enabled = models.BooleanField(
+        "AI Glosa Prediction ativado",
+        default=False,
+        help_text="Habilita predição de risco de glosa por item de guia para este tenant.",
+    )
+    rate_limit_per_hour = models.PositiveIntegerField(
+        "Limite de chamadas/hora",
+        default=500,
+        help_text=(
+            "Default 500/hr covers 10-item guide creation with edits and insurer changes. "
+            "Reduce per-tenant if cost control is needed."
+        ),
+        validators=[MinValueValidator(10), MaxValueValidator(2000)],
+    )
+    monthly_token_ceiling = models.PositiveIntegerField(
+        "Teto mensal de tokens",
+        default=500000,
+        help_text="Claude tokens/mês. A IA degrada silenciosamente quando excedido.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = "core"
+        verbose_name = "Configuração de IA por Tenant"
+        verbose_name_plural = "Configurações de IA por Tenant"
+
+    def __str__(self):
+        return f"TenantAIConfig({self.tenant.schema_name})"
 
 
 # ─── Per-Tenant Models ────────────────────────────────────────────────────────
