@@ -230,21 +230,11 @@ write sync logs. Commit: `9396995`.
 
 ---
 
-## P3 — TUSS Table Update Checker (Sprint 7)
+## ~~P3 — TUSS Table Update Checker (Sprint 7)~~ DONE
 
-The TUSS table is published by ANS periodically (~quarterly). The `import_tuss` management
-command is idempotent but there is no automated check or alert when a new TUSS version is available.
-
-**Fix:** Add a scheduled task (Celery Beat) that checks the ANS TUSS version endpoint and
-logs a warning if the local version is older than 90 days. Optionally, auto-download and
-re-import if running in a non-prod environment.
-
-This belongs in Sprint 10 — Sprint 9 ships TUSSSyncLog which tracks last sync age and
-surfaces it as a badge on the billing overview. The Celery checker builds on TUSSSyncLog.
-
-**Priority:** P3 — informational. Stale TUSS codes cause guide validation failures, not
-silent errors. The faturista will notice if a code is missing.
-**Updated:** Sprint 9 ships TUSSSyncLog foundation. Celery checker deferred to Sprint 10+.
+Shipped in Sprint 10 (S-038): `check_tuss_staleness` Celery Beat task logs INFO at 14d,
+WARNING at 30d; registered via data migration `apps.ai.0004_schedule_celery_beat_tasks`.
+Commit: `7f58cf3`.
 
 ---
 
