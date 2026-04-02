@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { getAccessToken } from '@/lib/auth';
 import TUSSCodeSearch, { TUSSOption } from '@/components/billing/TUSSCodeSearch';
 import TUSSSuggestionInline, { TUSSSuggestion } from '@/components/billing/TUSSSuggestionInline';
+import GlosaRiskBadge from '@/components/billing/GlosaRiskBadge';
 
 function apiFetch(path: string) {
   const token = getAccessToken();
@@ -44,6 +45,8 @@ export default function NewGuidePage() {
   });
 
   const [items, setItems] = useState<GuideItem[]>([emptyItem()]);
+  // Maps item index → glosa prediction_id (null if not predicted yet or degraded)
+  const [glosaPredictionIds, setGlosaPredictionIds] = useState<Record<number, string | null>>({});
 
   useEffect(() => {
     Promise.all([
@@ -71,9 +74,23 @@ export default function NewGuidePage() {
   const setField = (key: string, value: string) => setForm(f => ({ ...f, [key]: value }));
 
   const addItem = () => setItems(i => [...i, emptyItem()]);
-  const removeItem = (idx: number) => setItems(i => i.filter((_, ii) => ii !== idx));
+  const removeItem = (idx: number) => {
+    setItems(i => i.filter((_, ii) => ii !== idx));
+    setGlosaPredictionIds(prev => {
+      const next: Record<number, string | null> = {};
+      Object.entries(prev).forEach(([k, v]) => {
+        const n = Number(k);
+        if (n < idx) next[n] = v;
+        else if (n > idx) next[n - 1] = v;
+      });
+      return next;
+    });
+  };
   const updateItem = <K extends keyof GuideItem>(idx: number, key: K, value: GuideItem[K]) =>
     setItems(i => i.map((item, ii) => ii === idx ? { ...item, [key]: value } : item));
+
+  const selectedProvider = providers.find((p: any) => p.id === form.provider_id);
+  const insurerAnsCode: string | null = selectedProvider?.ans_code ?? null;
 
   // When TUSS code is selected, auto-fill description from it
   const handleTUSSSelect = (idx: number, opt: TUSSOption | null) => {
@@ -118,12 +135,14 @@ export default function NewGuidePage() {
     setSaving(true);
     setError('');
     try {
+      const predictionIds = Object.values(glosaPredictionIds).filter((id): id is string => !!id);
       const body: any = {
         patient: form.patient_id,
         provider: form.provider_id,
         insured_card_number: form.insured_card_number,
         competency: form.competency,
         guide_type: form.guide_type,
+        glosa_prediction_ids: predictionIds,
         items: items.map(i => ({
           tuss_code: i.tuss_code!.id,
           description: i.description,
@@ -298,6 +317,13 @@ export default function NewGuidePage() {
                     <TUSSCodeSearch
                       value={item.tuss_code}
                       onChange={opt => handleTUSSSelect(idx, opt)}
+                    />
+                    <GlosaRiskBadge
+                      tussCode={item.tuss_code?.code ?? null}
+                      insurerAnsCode={insurerAnsCode}
+                      insurerName={selectedProvider?.name ?? ''}
+                      guideType={form.guide_type}
+                      onPrediction={predId => setGlosaPredictionIds(prev => ({ ...prev, [idx]: predId }))}
                     />
                   </div>
 
