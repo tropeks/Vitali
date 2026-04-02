@@ -106,6 +106,14 @@ class TISSGuideSerializer(serializers.ModelSerializer):
     patient_name = serializers.CharField(source="patient.full_name", read_only=True)
     provider_name = serializers.CharField(source="provider.name", read_only=True)
     items = TISSGuideItemSerializer(many=True, read_only=True)
+    # Write-only: UUIDs of GlosaPrediction rows shown before guide submission.
+    # The view links them to the newly created guide (see billing/views.py perform_create).
+    glosa_prediction_ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        write_only=True,
+        required=False,
+        default=list,
+    )
 
     class Meta:
         model = TISSGuide
@@ -118,6 +126,7 @@ class TISSGuideSerializer(serializers.ModelSerializer):
             "competency", "cid10_codes",
             "total_value", "xml_content",
             "items",
+            "glosa_prediction_ids",
             "created_at", "updated_at",
         ]
         read_only_fields = [

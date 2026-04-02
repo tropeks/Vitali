@@ -65,3 +65,23 @@ class CircuitBreakerTest(TestCase):
                 record_failure("tenant_a")
             except Exception:
                 self.fail("record_failure raised on Redis error")
+
+    def test_feature_isolation_tuss_vs_glosa(self):
+        """Tripping the 'tuss' circuit must not trip the 'glosa' circuit and vice versa."""
+        for _ in range(TRIP_THRESHOLD):
+            record_failure("tenant_a", feature="tuss")
+        self.assertTrue(is_open("tenant_a", feature="tuss"))
+        self.assertFalse(is_open("tenant_a", feature="glosa"))
+
+        cache.clear()
+        for _ in range(TRIP_THRESHOLD):
+            record_failure("tenant_a", feature="glosa")
+        self.assertTrue(is_open("tenant_a", feature="glosa"))
+        self.assertFalse(is_open("tenant_a", feature="tuss"))
+
+    def test_feature_default_is_tuss(self):
+        """record_failure/is_open without explicit feature default to 'tuss'."""
+        for _ in range(TRIP_THRESHOLD):
+            record_failure("tenant_a")  # no feature kwarg
+        self.assertTrue(is_open("tenant_a"))  # no feature kwarg
+        self.assertFalse(is_open("tenant_a", feature="glosa"))

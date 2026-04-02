@@ -133,6 +133,22 @@ def protect_tuss_code_deletion(sender, instance, **kwargs):
                 )
 
 
+# ─── Tenant → TenantAIConfig ─────────────────────────────────────────────────
+
+@receiver(post_save, sender="core.Tenant")
+def create_tenant_ai_config_on_new_tenant(sender, instance, created, **kwargs):
+    """
+    Auto-create TenantAIConfig with all-disabled defaults whenever a new Tenant is provisioned.
+    This makes every tenant's AI config visible in Django Admin from day one.
+    'All disabled' is an explicit visible state — not a silent absence.
+    Prevents ops from misreading 'no config row' as low adoption.
+    """
+    if not created:
+        return
+    from apps.core.models import TenantAIConfig
+    TenantAIConfig.objects.get_or_create(tenant=instance)
+
+
 # ─── Subscription → FeatureFlags ─────────────────────────────────────────────
 
 @receiver(post_save, sender="core.Subscription")

@@ -1,5 +1,5 @@
 """
-AI app models — S-030 LLM Integration Layer, S-031 TUSS Auto-Coding
+AI app models — S-030 LLM Integration Layer, S-031 TUSS Auto-Coding, S-034 Glosa Prediction
 """
 import uuid
 
@@ -95,3 +95,61 @@ class TUSSAISuggestion(models.Model):
     def __str__(self):
         status = 'accepted' if self.accepted else ('rejected' if self.accepted is False else 'pending')
         return f'TUSS {self.tuss_code} rank={self.rank} [{status}]'
+
+
+class GlosaPrediction(models.Model):
+    """
+    Records every Glosa risk prediction shown to a faturista during guide creation.
+    guide is null until the guide form is submitted — the backlink is set by the guide
+    create view using the glosa_prediction_ids payload field.
+    was_denied is backfilled by retorno_parser when a denial is confirmed (guide-level).
+    """
+
+    class RiskLevel(models.TextChoices):
+        LOW = "low", "Baixo"
+        MEDIUM = "medium", "Médio"
+        HIGH = "high", "Alto"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    guide = models.ForeignKey(
+        "billing.TISSGuide",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="glosa_predictions",
+    )
+    tuss_code = models.CharField(max_length=20, db_index=True)
+    insurer_ans_code = models.CharField(max_length=20)
+    cid10_codes = models.JSONField(default=list)
+    guide_type = models.CharField(max_length=20)
+    risk_level = models.CharField(max_length=10, choices=RiskLevel.choices, db_index=True)
+    risk_reason = models.TextField()
+    risk_code = models.CharField(
+        max_length=5,
+        blank=True,
+        help_text="GLOSA_REASON_CODE best match, if applicable",
+    )
+    usage_log = models.ForeignKey(
+        AIUsageLog,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="glosa_predictions",
+    )
+    was_denied = models.BooleanField(
+        null=True,
+        blank=True,
+        help_text="Backfilled by retorno parser when denial confirmed (guide-level)",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["tuss_code", "insurer_ans_code"]),
+            models.Index(fields=["guide", "was_denied"]),
+            models.Index(fields=["created_at"]),
+        ]
+
+    def __str__(self):
+        return f"GlosaPrediction {self.risk_level} {self.tuss_code} @ {self.created_at:%Y-%m-%d}"

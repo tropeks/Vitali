@@ -172,6 +172,15 @@ def parse_retorno(xml_bytes: bytes) -> dict:
                         guide.status = "denied"
                         guide.save(update_fields=["status", "updated_at"])
 
+            # Backfill GlosaPrediction.was_denied for any predictions linked to this guide.
+            # Fail-silently: retorno processing must not break if the ai app is unavailable.
+            if guide.status == "denied":
+                try:
+                    from apps.ai.models import GlosaPrediction
+                    GlosaPrediction.objects.filter(guide=guide).update(was_denied=True)
+                except Exception:
+                    pass
+
         # Update batch status to processed
         if batch:
             batch.status = "processed"

@@ -15,7 +15,7 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView as _BaseRefreshView
 
-from .models import AuditLog, Domain, FeatureFlag, Role, Tenant, User
+from .models import AuditLog, Domain, FeatureFlag, Role, Tenant, TUSSSyncLog, User
 from .serializers import (
     ChangePasswordSerializer,
     FeatureFlagSerializer,
@@ -396,3 +396,48 @@ class TenantFeaturesView(APIView):
             return Response({"features": []})
         flags = FeatureFlag.objects.filter(tenant=request.tenant, is_enabled=True)
         return Response({"features": [f.module_key for f in flags]})
+
+
+# ─── AI: TUSS Sync Status ─────────────────────────────────────────────────────
+
+class TUSSSyncStatusView(APIView):
+    """
+    GET /api/v1/ai/tuss-sync-status/
+    Admin-only. Returns the last 5 TUSS sync log entries and table row count.
+    Used by billing overview to show the TUSS DB sync badge.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        # Admin-only: require is_staff or admin role
+        if not (request.user.is_staff or request.user.is_superuser or
+                request.user.has_role_permission("users.read")):
+            from rest_framework.response import Response as Resp
+            from rest_framework import status as drf_status
+            return Resp({"detail": "Forbidden."}, status=drf_status.HTTP_403_FORBIDDEN)
+
+        last_syncs = list(
+            TUSSSyncLog.objects.order_by("-ran_at")[:5].values(
+                "id", "ran_at", "status", "source",
+                "row_count_total", "row_count_added", "row_count_updated",
+                "duration_ms", "error_message",
+            )
+        )
+
+        # Compute age of last sync in days
+        last_sync_age_days = None
+        if last_syncs:
+            from django.utils import timezone as tz
+            age = tz.now() - last_syncs[0]["ran_at"]
+            last_sync_age_days = age.days
+
+        table_row_count = TUSSSyncLog.objects.using("default").values("id").count()
+        # row count is from TUSSCode (the table being synced)
+        from apps.core.models import TUSSCode as _TUSSCode
+        table_row_count = _TUSSCode.objects.using("default").filter(active=True).count()
+
+        return Response({
+            "last_syncs": last_syncs,
+            "table_row_count": table_row_count,
+            "last_sync_age_days": last_sync_age_days,
+        })

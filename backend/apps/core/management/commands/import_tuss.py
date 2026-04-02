@@ -21,13 +21,14 @@ for all imported rows so that the TUSS fuzzy-search API works immediately.
 
 import csv
 import logging
+import time
 from pathlib import Path
 
 from django.contrib.postgres.search import SearchVector
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from apps.core.models import TUSSCode
+from apps.core.models import TUSSSyncLog, TUSSCode
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,7 @@ class Command(BaseCommand):
         deactivate_old = options["deactivate_old"]
 
         self.stdout.write(f"Importing TUSS from {csv_path} (version={version!r}) …")
+        _start_ms = int(time.time() * 1000)
 
         codes_in_file: set[str] = set()
         created = updated = skipped = 0
@@ -134,6 +136,20 @@ class Command(BaseCommand):
             + SearchVector("description", weight="B")
             + SearchVector("group", weight="C"),
         )
+
+        duration_ms = int(time.time() * 1000) - _start_ms
+        total = TUSSCode.objects.count()
+        try:
+            TUSSSyncLog.objects.create(
+                source=TUSSSyncLog.Source.MANAGEMENT_COMMAND,
+                row_count_total=total,
+                row_count_added=created,
+                row_count_updated=updated,
+                status=TUSSSyncLog.Status.SUCCESS,
+                duration_ms=duration_ms,
+            )
+        except Exception as exc:
+            logger.warning("Could not write TUSSSyncLog: %s", exc)
 
         self.stdout.write(
             self.style.SUCCESS(

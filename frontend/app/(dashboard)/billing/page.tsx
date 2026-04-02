@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { getAccessToken } from '@/lib/auth';
+import { getAccessToken, UserDTO } from '@/lib/auth';
 
 const STATUS_BADGE: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-600',
@@ -39,12 +39,50 @@ function fmtCurrency(val: any) {
   return Number(val).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+function useTUSSSyncStatus() {
+  const [syncStatus, setSyncStatus] = useState<any>(null);
+
+  useEffect(() => {
+    apiFetch('/ai/tuss-sync-status/')
+      .then(data => setSyncStatus(data))
+      .catch(() => {}); // Non-admin users get 403 — silently ignore
+  }, []);
+
+  return syncStatus;
+}
+
+function TUSSSyncStatusBadge({ syncStatus }: { syncStatus: any }) {
+  if (!syncStatus) return null;
+  const lastSync = syncStatus.last_syncs?.[0];
+  const ageDays = syncStatus.last_sync_age_days;
+
+  const isStale = ageDays != null && ageDays > 7;
+  const badgeClass = isStale
+    ? 'bg-orange-50 border-orange-300 text-orange-700'
+    : 'bg-gray-50 border-gray-200 text-gray-500';
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs border rounded-full ${badgeClass}`}
+      title={lastSync ? `${lastSync.row_count_total} procedimentos — ${lastSync.status}` : ''}
+    >
+      <span>TUSS</span>
+      {ageDays != null ? (
+        <span>{isStale ? `⚠ ${ageDays}d sem atualização` : `✓ Atualizado há ${ageDays}d`}</span>
+      ) : (
+        <span>Sem dados</span>
+      )}
+    </span>
+  );
+}
+
 export default function BillingOverviewPage() {
   const router = useRouter();
   const [guides, setGuides] = useState<any[]>([]);
   const [batches, setBatches] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const syncStatus = useTUSSSyncStatus();
 
   useEffect(() => {
     const token = getAccessToken();
@@ -78,7 +116,10 @@ export default function BillingOverviewPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold text-gray-900">Faturamento</h1>
-        <p className="text-sm text-gray-500 mt-1 capitalize">{currentMonthLabel()}</p>
+        <div className="flex items-center gap-2 mt-1">
+          <p className="text-sm text-gray-500 capitalize">{currentMonthLabel()}</p>
+          <TUSSSyncStatusBadge syncStatus={syncStatus} />
+        </div>
       </div>
 
       {error && (
