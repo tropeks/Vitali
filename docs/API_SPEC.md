@@ -359,7 +359,42 @@ GET /api/v1/ai/usage/
 
 ---
 
-## 9. WhatsApp Endpoints (Internal)
+## 9. Analytics Endpoints (Sprint 10)
+
+```
+GET /api/v1/analytics/billing/overview/
+  Query: —
+  Response 200: { denial_rate, total_billed, total_collected, total_denied, month }
+  Auth: Bearer (IsAuthenticated)
+  Note: KPI cards locked to current month
+
+GET /api/v1/analytics/billing/monthly-revenue/
+  Query: ?period=6m  (3m | 6m | 12m, default 6m)
+  Response 200: [{ competency, billed, collected, denied }]
+  Auth: Bearer (IsAuthenticated)
+  Note: Groups by TISSGuide.competency CharField, not created_at
+
+GET /api/v1/analytics/billing/denial-by-insurer/
+  Query: ?period=6m
+  Response 200: [{ provider_name, denied_value, denied_count }]  (sorted desc)
+  Auth: Bearer (IsAuthenticated)
+  Note: Floor: insurers with ≥10 guides only
+
+GET /api/v1/analytics/billing/batch-throughput/
+  Query: ?period=6m
+  Response 200: [{ month, created, closed }]
+  Auth: Bearer (IsAuthenticated)
+
+GET /api/v1/analytics/billing/glosa-accuracy/
+  Query: ?period=6m
+  Response 200: [{ provider_name, precision, recall, total, predicted_high, denied_count, true_positives }]
+  Auth: Bearer (IsAuthenticated)
+  Note: precision=null when no high-risk predictions; excludes unresolved (was_denied=None) from denominators
+```
+
+---
+
+## 10. WhatsApp Endpoints (Internal)
 
 ```
 POST /api/v1/whatsapp/webhook  (called by Evolution API)
