@@ -5,6 +5,7 @@ Window: 1 hour (sliding, using Redis INCR + EXPIRE)
 Fail-open: if Redis is unavailable, allow the request (Decision 6 / P5 Explicit).
 """
 import logging
+from typing import Optional
 
 from django.conf import settings
 from django.core.cache import cache
@@ -12,12 +13,15 @@ from django.core.cache import cache
 logger = logging.getLogger(__name__)
 
 
-def is_rate_limited(tenant_schema: str) -> bool:
+def is_rate_limited(tenant_schema: str, limit: Optional[int] = None) -> bool:
     """
-    Returns True if the tenant has exceeded AI_RATE_LIMIT_PER_HOUR.
+    Returns True if the tenant has exceeded the per-hour rate limit.
+    limit: per-tenant override from TenantAIConfig.rate_limit_per_hour.
+           Falls back to settings.AI_RATE_LIMIT_PER_HOUR if None.
     Fail-open on Redis errors.
     """
-    limit = getattr(settings, 'AI_RATE_LIMIT_PER_HOUR', 100)
+    if limit is None:
+        limit = getattr(settings, 'AI_RATE_LIMIT_PER_HOUR', 100)
     key = f"ai:rate:{tenant_schema}"
 
     try:
@@ -34,4 +38,3 @@ def is_rate_limited(tenant_schema: str) -> bool:
     except Exception:
         logger.warning("Redis unavailable for rate limiter (tenant=%s) — failing open", tenant_schema)
         return False
-
