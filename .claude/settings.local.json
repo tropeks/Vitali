@@ -101,7 +101,15 @@
       "Skill(plan-eng-review)",
       "Skill(ship)",
       "Bash(python -m py_compile backend/apps/ai/services.py backend/apps/ai/views.py backend/apps/ai/serializers.py backend/apps/ai/tasks.py backend/apps/ai/admin.py backend/apps/billing/views.py backend/apps/billing/serializers.py backend/apps/billing/services/retorno_parser.py backend/apps/core/views.py)",
-      "Bash(python -m py_compile backend/apps/ai/management/commands/seed_prompt_templates.py backend/apps/ai/tests/test_glosa_predictor.py backend/apps/ai/tests/test_views_glosa.py backend/apps/ai/tests/test_tenant_ai_config.py backend/apps/ai/tests/test_tuss_sync_log.py)"
+      "Bash(python -m py_compile backend/apps/ai/management/commands/seed_prompt_templates.py backend/apps/ai/tests/test_glosa_predictor.py backend/apps/ai/tests/test_views_glosa.py backend/apps/ai/tests/test_tenant_ai_config.py backend/apps/ai/tests/test_tuss_sync_log.py)",
+      "Bash(docker ps:*)",
+      "Bash(head -5 grep -E \"status|provider|competency|total_value\" C:/dev/HealthOS/backend/apps/billing/models.py)",
+      "Bash(head:*)",
+      "Bash(find /c/dev/HealthOS -path */django_celery_beat/migrations -type d)",
+      "Bash(python -c \":*)",
+      "Bash(grep -r \"django.celery.beat\\\\|django_celery_beat\" C:/dev/HealthOS/backend/requirements*.txt)",
+      "Bash(grep -ri \"celery.beat\\\\|celery_beat\" C:/dev/HealthOS/backend/requirements.txt C:/dev/HealthOS/backend/requirements/*.txt)",
+      "Bash(python -m py_compile C:/dev/HealthOS/backend/apps/analytics/views.py C:/dev/HealthOS/backend/apps/analytics/serializers.py C:/dev/HealthOS/backend/apps/analytics/urls.py C:/dev/HealthOS/backend/apps/ai/tasks.py C:/dev/HealthOS/backend/apps/ai/migrations/0004_schedule_celery_beat_tasks.py C:/dev/HealthOS/backend/apps/analytics/tests/test_billing_analytics.py C:/dev/HealthOS/backend/apps/ai/tests/test_tasks.py)"
     ]
   }
 }
