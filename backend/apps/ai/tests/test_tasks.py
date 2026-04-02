@@ -18,14 +18,15 @@ class CheckTUSSStatenessTests(TestCase):
     """Tests for check_tuss_staleness task (public schema, TestCase)."""
 
     def _make_sync(self, days_ago: int, status: str = "success"):
-        ran_at = timezone.now() - timedelta(days=days_ago)
-        return TUSSSyncLog.objects.create(
+        obj = TUSSSyncLog.objects.create(
             source=TUSSSyncLog.Source.MANAGEMENT_COMMAND,
             status=status,
             row_count_total=5000,
-            row_count_new=0,
-            ran_at=ran_at,
+            row_count_added=0,
         )
+        ran_at = timezone.now() - timedelta(days=days_ago)
+        TUSSSyncLog.objects.filter(pk=obj.pk).update(ran_at=ran_at)
+        return obj
 
     def test_fresh_sync_no_log(self):
         """Sync < 14 days old: no warning/info logged, status='fresh'."""

@@ -525,12 +525,12 @@ class GlosaAccuracyView(APIView):
             .annotate(
                 total=Count("id", filter=Q(was_denied__isnull=False)),
                 predicted_high=Count("id", filter=Q(risk_level="high")),
-                was_denied=Count("id", filter=Q(was_denied=True)),
+                denied_count=Count("id", filter=Q(was_denied=True)),
                 true_positives=Count(
                     "id", filter=Q(risk_level="high", was_denied=True)
                 ),
             )
-            .order_by("-was_denied")
+            .order_by("-denied_count")
         )
 
         # Resolve insurer names in a single extra query.
@@ -541,7 +541,7 @@ class GlosaAccuracyView(APIView):
         result = []
         for r in rows:
             predicted_high = r["predicted_high"] or 0
-            was_denied = r["was_denied"] or 0
+            was_denied = r["denied_count"] or 0
             true_pos = r["true_positives"] or 0
             precision = (
                 round(true_pos / predicted_high, 3) if predicted_high else None

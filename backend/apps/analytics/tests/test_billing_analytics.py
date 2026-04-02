@@ -19,7 +19,6 @@ from apps.emr.models import Encounter, Patient, Professional
 def _make_guide(
     provider,
     patient,
-    professional,
     encounter,
     status="draft",
     total_value="1000.00",
@@ -31,7 +30,6 @@ def _make_guide(
     return TISSGuide.objects.create(
         provider=provider,
         patient=patient,
-        professional=professional,
         encounter=encounter,
         guide_type="sp_sadt",
         status=status,
@@ -88,16 +86,11 @@ class BillingAnalyticsBaseCase(TenantTestCase):
             name="Unimed Analytics",
             ans_code="111000",
         )
-        resp = self.client.post(
-            "/api/v1/auth/token/",
-            {"email": "faturista@analytics.test", "password": "Str0ng!Pass#2024"},
-        )
-        self.token = resp.data["access"]
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.token}")
+        self.client.force_authenticate(user=self.user)
 
     def _guide(self, **kwargs):
         return _make_guide(
-            self.provider, self.patient, self.professional, self.encounter, **kwargs
+            self.provider, self.patient, self.encounter, **kwargs
         )
 
 
@@ -131,7 +124,7 @@ class BillingOverviewTests(BillingAnalyticsBaseCase):
         self.assertEqual(data["denial_rate"], 0.0)
 
     def test_unauthenticated_returns_401(self):
-        self.client.credentials()
+        self.client.force_authenticate(user=None)
         resp = self.client.get("/api/v1/analytics/billing/overview/")
         self.assertEqual(resp.status_code, 401)
 
@@ -193,7 +186,7 @@ class MonthlyRevenueTests(BillingAnalyticsBaseCase):
             self.assertEqual(Decimal(bucket["billed"]), Decimal("0.00"))
 
     def test_unauthenticated_returns_401(self):
-        self.client.credentials()
+        self.client.force_authenticate(user=None)
         resp = self.client.get("/api/v1/analytics/billing/monthly-revenue/")
         self.assertEqual(resp.status_code, 401)
 
@@ -233,7 +226,7 @@ class DenialByInsurerTests(BillingAnalyticsBaseCase):
     def _add_guides(self, provider, count, status, value="100.00"):
         for _ in range(count):
             _make_guide(
-                provider, self.patient, self.professional, self.encounter,
+                provider, self.patient, self.encounter,
                 status=status, total_value=value,
             )
 
@@ -256,7 +249,7 @@ class DenialByInsurerTests(BillingAnalyticsBaseCase):
         self.assertEqual(resp.json(), [])
 
     def test_unauthenticated_returns_401(self):
-        self.client.credentials()
+        self.client.force_authenticate(user=None)
         resp = self.client.get("/api/v1/analytics/billing/denial-by-insurer/")
         self.assertEqual(resp.status_code, 401)
 
@@ -288,10 +281,10 @@ class DenialByInsurerTests(BillingAnalyticsBaseCase):
         self._add_guides(self.provider, 5, "denied", value="100.00")
         # provider2: 10 guides (8 denied × R$200 = R$1600)
         for _ in range(2):
-            _make_guide(provider2, self.patient, self.professional, self.encounter,
+            _make_guide(provider2, self.patient, self.encounter,
                         status="paid", total_value="200.00")
         for _ in range(8):
-            _make_guide(provider2, self.patient, self.professional, self.encounter,
+            _make_guide(provider2, self.patient, self.encounter,
                         status="denied", total_value="200.00")
 
         resp = self.client.get("/api/v1/analytics/billing/denial-by-insurer/?months=6")
@@ -322,7 +315,7 @@ class BatchThroughputTests(BillingAnalyticsBaseCase):
             self.assertEqual(bucket["closed_count"], 0)
 
     def test_unauthenticated_returns_401(self):
-        self.client.credentials()
+        self.client.force_authenticate(user=None)
         resp = self.client.get("/api/v1/analytics/billing/batch-throughput/")
         self.assertEqual(resp.status_code, 401)
 
@@ -385,7 +378,7 @@ class GlosaAccuracyTests(BillingAnalyticsBaseCase):
         self.assertEqual(resp.json(), [])
 
     def test_unauthenticated_returns_401(self):
-        self.client.credentials()
+        self.client.force_authenticate(user=None)
         resp = self.client.get("/api/v1/analytics/billing/glosa-accuracy/")
         self.assertEqual(resp.status_code, 401)
 
