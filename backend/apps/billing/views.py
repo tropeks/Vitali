@@ -165,6 +165,19 @@ class TISSGuideViewSet(viewsets.ModelViewSet):
             return TISSGuideListSerializer
         return TISSGuideSerializer
 
+    def perform_create(self, serializer):
+        guide = serializer.save()
+        # Link any GlosaPrediction rows that were shown before guide submission.
+        # Only link rows that are still orphaned (guide__isnull=True) — prevents
+        # a malicious or buggy client from hijacking predictions from another guide.
+        glosa_prediction_ids = serializer.validated_data.get('glosa_prediction_ids', [])
+        if glosa_prediction_ids:
+            from apps.ai.models import GlosaPrediction
+            GlosaPrediction.objects.filter(
+                id__in=glosa_prediction_ids,
+                guide__isnull=True,
+            ).update(guide=guide)
+
     @action(detail=True, methods=["post"], url_path="generate-xml")
     def generate_xml(self, request, pk=None):
         """Generate TISS XML for a single guide and validate against XSD."""
