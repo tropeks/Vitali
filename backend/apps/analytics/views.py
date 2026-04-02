@@ -1,16 +1,18 @@
 """
 Vitali — Analytics API Views
-Read-only aggregate endpoints for the KPI dashboard.
+Read-only aggregate endpoints for the KPI dashboard and billing intelligence.
 """
 from datetime import date, timedelta
+from decimal import Decimal
 
-from django.db.models import Avg, Count, Q
+from django.db.models import Avg, Count, Q, Sum
 from django.db.models.functions import TruncDate, TruncMonth
 from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.billing.models import InsuranceProvider, TISSBatch, TISSGuide
 from apps.emr.models import Appointment, Encounter, Patient, Professional
 
 
@@ -268,3 +270,294 @@ class WaitingTimeView(APIView):
             )
         except Exception:
             return Response({"average_minutes": 0, "sample_size": 0, "note": ""})
+
+
+# ─── Billing Analytics (S-035) ───────────────────────────────────────────────
+
+# Statuses that represent guides that entered the TISS billing cycle (non-draft).
+_NON_DRAFT_STATUSES = ["submitted", "paid", "denied", "appeal"]
+
+
+def _months_param(request, default: int = 6) -> int:
+    """Parse and clamp ?months= query param. Range: 1–24."""
+    try:
+        months = int(request.query_params.get("months", default))
+    except (TypeError, ValueError):
+        months = default
+    return max(1, min(months, 24))
+
+
+def _month_range_start(months: int) -> date:
+    """Return the first day of the month that is `months` months ago from today."""
+    today = _today()
+    year = today.year
+    month = today.month - months
+    while month <= 0:
+        month += 12
+        year -= 1
+    return date(year, month, 1)
+
+
+def _competency_for_month(d: date) -> str:
+    """Return competency string 'AAAA-MM' for the given date."""
+    return d.strftime("%Y-%m")
+
+
+class BillingOverviewView(APIView):
+    """GET /api/v1/analytics/billing/overview/ — current-month KPI cards."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        today = _today()
+        period = _competency_for_month(today)
+
+        qs = TISSGuide.objects.filter(competency=period)
+        totals = qs.aggregate(
+            total_billed=Sum("total_value"),
+            total_collected=Sum("total_value", filter=Q(status="paid")),
+            total_denied=Sum("total_value", filter=Q(status__in=["denied", "appeal"])),
+            guides_total=Count("id"),
+            guides_submitted=Count("id", filter=Q(status="submitted")),
+            guides_paid=Count("id", filter=Q(status="paid")),
+            guides_denied=Count("id", filter=Q(status__in=["denied", "appeal"])),
+            non_draft_count=Count("id", filter=Q(status__in=_NON_DRAFT_STATUSES)),
+        )
+
+        non_draft = totals["non_draft_count"] or 0
+        total_denied_val = totals["total_denied"] or Decimal("0.00")
+        total_billed_val = totals["total_billed"] or Decimal("0.00")
+        denial_rate = (
+            round(float(total_denied_val / total_billed_val), 3)
+            if total_billed_val
+            else 0.0
+        )
+
+        guides_total = totals["guides_total"] or 0
+        guides_submitted = totals["guides_submitted"] or 0
+        guides_paid = totals["guides_paid"] or 0
+        guides_denied = totals["guides_denied"] or 0
+        guides_draft_pending = guides_total - guides_submitted - guides_paid - guides_denied
+
+        return Response(
+            {
+                "period": period,
+                "total_billed": totals["total_billed"] or Decimal("0.00"),
+                "total_collected": totals["total_collected"] or Decimal("0.00"),
+                "total_denied": total_denied_val,
+                "denial_rate": denial_rate,
+                "guides_total": guides_total,
+                "guides_submitted": guides_submitted,
+                "guides_paid": guides_paid,
+                "guides_denied": guides_denied,
+                "guides_draft_pending": max(guides_draft_pending, 0),
+            }
+        )
+
+
+class MonthlyRevenueView(APIView):
+    """GET /api/v1/analytics/billing/monthly-revenue/?months=6"""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        months = _months_param(request)
+
+        # Build the list of competency strings for the requested range.
+        today = _today()
+        competencies = []
+        y, m = today.year, today.month
+        for _ in range(months):
+            competencies.append(f"{y:04d}-{m:02d}")
+            m -= 1
+            if m == 0:
+                m = 12
+                y -= 1
+        competencies.reverse()  # chronological order
+
+        rows = (
+            TISSGuide.objects.filter(competency__in=competencies)
+            .values("competency")
+            .annotate(
+                billed=Sum("total_value"),
+                collected=Sum("total_value", filter=Q(status="paid")),
+                denied=Sum("total_value", filter=Q(status__in=["denied", "appeal"])),
+            )
+            .order_by("competency")
+        )
+
+        by_competency = {r["competency"]: r for r in rows}
+        result = []
+        for comp in competencies:
+            row = by_competency.get(comp)
+            result.append(
+                {
+                    "period": comp,
+                    "billed": row["billed"] if row and row["billed"] else Decimal("0.00"),
+                    "collected": row["collected"] if row and row["collected"] else Decimal("0.00"),
+                    "denied": row["denied"] if row and row["denied"] else Decimal("0.00"),
+                }
+            )
+        return Response(result)
+
+
+class DenialByInsurerView(APIView):
+    """GET /api/v1/analytics/billing/denial-by-insurer/?months=6
+    Returns top insurers by denied value, excluding those with <10 non-draft guides.
+    """
+
+    permission_classes = [IsAuthenticated]
+    _VOLUME_FLOOR = 10
+
+    def get(self, request):
+        months = _months_param(request)
+        since = _month_range_start(months)
+
+        rows = (
+            TISSGuide.objects.filter(created_at__date__gte=since)
+            .values("provider_id", "provider__name", "provider__ans_code")
+            .annotate(
+                total_guides=Count(
+                    "id", filter=Q(status__in=_NON_DRAFT_STATUSES)
+                ),
+                denied_guides=Count(
+                    "id", filter=Q(status__in=["denied", "appeal"])
+                ),
+                denied_value=Sum(
+                    "total_value", filter=Q(status__in=["denied", "appeal"])
+                ),
+            )
+            .filter(total_guides__gte=self._VOLUME_FLOOR)
+            .order_by("-denied_value")
+        )
+
+        result = []
+        for r in rows:
+            total = r["total_guides"] or 0
+            denied = r["denied_guides"] or 0
+            denial_rate = round(denied / total, 3) if total else 0.0
+            result.append(
+                {
+                    "insurer_name": r["provider__name"] or "",
+                    "ans_code": r["provider__ans_code"] or "",
+                    "total_guides": total,
+                    "denied_guides": denied,
+                    "denial_rate": denial_rate,
+                    "denied_value": r["denied_value"] or Decimal("0.00"),
+                }
+            )
+        return Response(result)
+
+
+class BatchThroughputView(APIView):
+    """GET /api/v1/analytics/billing/batch-throughput/?months=6
+    Returns monthly batch creation and closure counts.
+    Uses two separate queries to correctly attribute batches:
+    created_at → creation month, closed_at → closure month.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        months = _months_param(request)
+        since = _month_range_start(months)
+
+        # Build ordered list of month dates for the range.
+        today = _today()
+        month_dates = []
+        y, m = today.year, today.month
+        for _ in range(months):
+            month_dates.append(date(y, m, 1))
+            m -= 1
+            if m == 0:
+                m = 12
+                y -= 1
+        month_dates.reverse()
+
+        # Query 1: created counts per month.
+        created_qs = (
+            TISSBatch.objects.filter(created_at__date__gte=since)
+            .annotate(month=TruncMonth("created_at"))
+            .values("month")
+            .annotate(created_count=Count("id"))
+        )
+        created_by_month = {
+            r["month"].date().replace(day=1): r["created_count"] for r in created_qs
+        }
+
+        # Query 2: closed counts per month (only batches that were closed).
+        closed_qs = (
+            TISSBatch.objects.filter(
+                closed_at__isnull=False,
+                closed_at__date__gte=since,
+            )
+            .annotate(month=TruncMonth("closed_at"))
+            .values("month")
+            .annotate(closed_count=Count("id"))
+        )
+        closed_by_month = {
+            r["month"].date().replace(day=1): r["closed_count"] for r in closed_qs
+        }
+
+        result = []
+        for d in month_dates:
+            result.append(
+                {
+                    "period": d.strftime("%Y-%m"),
+                    "created_count": created_by_month.get(d, 0),
+                    "closed_count": closed_by_month.get(d, 0),
+                }
+            )
+        return Response(result)
+
+
+class GlosaAccuracyView(APIView):
+    """GET /api/v1/analytics/billing/glosa-accuracy/ — prediction accuracy per insurer (S-037)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from apps.ai.models import GlosaPrediction
+
+        rows = (
+            GlosaPrediction.objects.filter(guide__isnull=False)
+            .values("insurer_ans_code")
+            .annotate(
+                total=Count("id", filter=Q(was_denied__isnull=False)),
+                predicted_high=Count("id", filter=Q(risk_level="high")),
+                was_denied=Count("id", filter=Q(was_denied=True)),
+                true_positives=Count(
+                    "id", filter=Q(risk_level="high", was_denied=True)
+                ),
+            )
+            .order_by("-was_denied")
+        )
+
+        # Resolve insurer names in a single extra query.
+        insurer_names = dict(
+            InsuranceProvider.objects.values_list("ans_code", "name")
+        )
+
+        result = []
+        for r in rows:
+            predicted_high = r["predicted_high"] or 0
+            was_denied = r["was_denied"] or 0
+            true_pos = r["true_positives"] or 0
+            precision = (
+                round(true_pos / predicted_high, 3) if predicted_high else None
+            )
+            recall = round(true_pos / was_denied, 3) if was_denied else None
+            ans_code = r["insurer_ans_code"]
+            result.append(
+                {
+                    "insurer_ans_code": ans_code,
+                    "insurer_name": insurer_names.get(ans_code, ans_code),
+                    "total_predictions": r["total"] or 0,
+                    "predicted_high": predicted_high,
+                    "was_denied": was_denied,
+                    "true_positives": true_pos,
+                    "precision": precision,
+                    "recall": recall,
+                }
+            )
+        return Response(result)
