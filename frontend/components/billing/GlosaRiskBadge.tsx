@@ -167,12 +167,15 @@ export default function GlosaRiskBadge({
   const label = RISK_LABEL[data.risk_level] ?? data.risk_level;
   const icon = RISK_ICON[data.risk_level] ?? '?';
 
+  const tooltipId = `glosa-tooltip-${tussCode ?? 'unknown'}`;
+
   return (
     <div className="mt-1 relative inline-block" ref={tooltipRef}>
       <button
         type="button"
         onClick={() => setTooltipVisible(v => !v)}
         aria-label={`Glosa: ${label}. Clique para detalhes.`}
+        aria-describedby={tooltipVisible && data.risk_reason ? tooltipId : undefined}
         className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium border rounded-full cursor-pointer hover:opacity-80 transition-opacity ${riskStyle}`}
       >
         <span aria-hidden="true">{icon}</span>
@@ -184,6 +187,7 @@ export default function GlosaRiskBadge({
 
       {tooltipVisible && data.risk_reason && (
         <div
+          id={tooltipId}
           role="tooltip"
           className="absolute z-50 left-0 top-6 w-64 bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-lg"
         >
