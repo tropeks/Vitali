@@ -240,12 +240,12 @@ Alternative (Metabase) is simpler but less flexible for embedding.
 │  └──────────┘ └──────────┘ └──────────┘ └──────────┘           │
 │                                                                   │
 │  ┌──────────┐ ┌──────────┐ ┌──────────────────────┐            │
-│  │    ai    │ │ whatsapp │ │   analytics (Ph2)    │            │
+│  │    ai    │ │ whatsapp │ │      analytics       │            │
 │  │ ─────── │ │ ─────── │ │ ──────────────────── │            │
-│  │ TUSS    │ │ Chatbot  │ │ KPIs / Dashboards    │            │
-│  │ Coding   │ │ Schedule │ │ AI Insights          │            │
-│  │ LLM Gate │ │ Reminder │ │ Superset Integration │            │
-│  │ Prompts  │ │ Gateway  │ │                      │            │
+│  │ TUSS    │ │ Chatbot  │ │ Billing KPIs         │            │
+│  │ Coding   │ │ Schedule │ │ Denial by Insurer    │            │
+│  │ LLM Gate │ │ Reminder │ │ Glosa AI Accuracy    │            │
+│  │ Prompts  │ │ Gateway  │ │ Revenue Trend        │            │
 │  └──────────┘ └──────────┘ └──────────────────────┘            │
 │                                                                   │
 │  [Celery Workers] ←──REDIS──→ [Celery Beat (Scheduler)]        │

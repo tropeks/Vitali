@@ -684,10 +684,13 @@ E-001 Foundation
 - E-008: S-030 (LLM integration layer), S-031 (TUSS auto-coding)
 - **Deliverable:** AI suggests TUSS codes during billing, usage tracking
 
-### Sprint 10: WhatsApp (Weeks 24-26)
-**Focus:** Patient engagement via WhatsApp
-- E-009: S-032 (Evolution API), S-033 (Scheduling chatbot), S-034 (Reminders), S-035 (LGPD opt-in)
-- **Deliverable:** Patients schedule and confirm via WhatsApp
+### Sprint 10: Billing Intelligence Dashboard (Weeks 24-26) ✓ SHIPPED v0.5.0
+**Focus:** Analytics and billing intelligence for faturistas (pivoted from WhatsApp)
+- S-035: Billing analytics API — 5 aggregate endpoints (overview KPIs, monthly revenue, denial by insurer, batch throughput, Glosa AI accuracy)
+- S-036: Billing intelligence frontend page at `/billing/analytics` — KPI cards, charts, period toggle
+- S-037: Glosa prediction accuracy tracker — precision/recall per insurer, cold-start onboarding copy
+- S-038: TUSS staleness monitor — Celery Beat daily check with INFO/WARNING thresholds
+- **Deliverable:** Faturistas have a full billing intelligence dashboard with denial analytics and AI accuracy tracking
 
 ### Sprint 11: Commercialization (Weeks 27-28)
 **Focus:** Make it sellable
@@ -705,7 +708,7 @@ E-001 Foundation
 | **Foundation** | 0-1 | 1-4 | Auth, tenancy, patient CRUD |
 | **Clinical Core** | 2-5 | 5-13 | Scheduling, EMR, prescriptions |
 | **Operations** | 6-8 | 14-21 | Pharmacy, billing TISS/TUSS |
-| **Intelligence** | 9-10 | 22-26 | AI TUSS coding, WhatsApp |
+| **Intelligence** | 9-10 | 22-26 | AI TUSS coding, Billing Intelligence Dashboard |
 | **Commercial** | 11 | 27-28 | Feature flags, subscriptions, polish |
 
 **Total estimated: ~7 months to MVP** (solo dev + AI, full-time)
