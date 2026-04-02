@@ -26,7 +26,7 @@ from django.core.cache import cache
 from django.db.models import F, Sum
 from django.utils import timezone
 
-from apps.core.models import TUSSCode
+from apps.core.models import TUSSCode, TenantAIConfig
 from .circuit_breaker import is_open, record_failure, record_success
 from .gateway import ClaudeGateway, LLMGatewayError
 from .models import AIPromptTemplate, AIUsageLog, TUSSAISuggestion
@@ -54,13 +54,11 @@ def get_tenant_ai_config(schema_name: str):
         return cached
 
     try:
-        from apps.core.models import TenantAIConfig
         config = TenantAIConfig.objects.using("default").get(tenant__schema_name=schema_name)
         cache.set(cache_key, config, TENANT_AI_CONFIG_CACHE_TTL)
         return config
     except Exception:
         # No row exists, or DB error — return safe all-disabled defaults
-        from apps.core.models import TenantAIConfig
         default_config = TenantAIConfig()  # unsaved, pk=None, all defaults
         return default_config
 
@@ -554,7 +552,7 @@ def predict_glosa(
         pred = GlosaPrediction.objects.create(
             tuss_code=tuss_code,
             insurer_ans_code=insurer_ans_code,
-            cid10_codes=cid10_codes,
+            cid10_codes=[_sanitize_cid10_code(c) for c in cid10_codes[:20]],
             guide_type=guide_type,
             risk_level=risk_level,
             risk_reason=risk_reason,
