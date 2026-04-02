@@ -122,7 +122,7 @@ def check_tuss_staleness() -> dict:
             )
             return {"status": "stale", "last_sync": None, "age_days": None}
 
-        age_days = (timezone.now() - last.ran_at).days
+        age_days = max(0, (timezone.now() - last.ran_at).days)
 
         if age_days >= 30:
             logger.warning(
