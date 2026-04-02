@@ -247,8 +247,42 @@ command is idempotent but there is no automated check or alert when a new TUSS v
 logs a warning if the local version is older than 90 days. Optionally, auto-download and
 re-import if running in a non-prod environment.
 
-This belongs in Sprint 7 alongside the AI TUSS auto-coding work — both require the TUSS
-table to be current for accurate suggestions.
+This belongs in Sprint 10 — Sprint 9 ships TUSSSyncLog which tracks last sync age and
+surfaces it as a badge on the billing overview. The Celery checker builds on TUSSSyncLog.
 
 **Priority:** P3 — informational. Stale TUSS codes cause guide validation failures, not
 silent errors. The faturista will notice if a code is missing.
+**Updated:** Sprint 9 ships TUSSSyncLog foundation. Celery checker deferred to Sprint 10+.
+
+---
+
+## P3 — Batch Glosa Prediction Endpoint (Sprint 10+)
+
+The per-row `POST /api/v1/ai/glosa-predict/` approach fires one request per TISS item in
+the guide creation form. A 10-item guide with insurer change fires 10 simultaneous predictions.
+This is fine at pilot scale but becomes rate-limit pressure at multi-item guides.
+
+**Fix:** Add `POST /api/v1/ai/glosa-predict-batch/` that accepts all guide items in one call
+and returns all risk levels in one response. Reduces rate-limit pressure 10x for multi-item guides.
+Frontend `GlosaRiskBadge` would switch from per-row to per-guide batch on form load.
+
+**Priority:** P3 — deferred until rate limit exhaustion is observed in production.
+**Blocked by:** Sprint 9 per-row implementation (batch endpoint wraps same GlosaPredictor service).
+
+---
+
+## P3 — Per-Item Glosa Label Accuracy (Sprint 11+)
+
+Sprint 9's `retorno_parser.py` backfill sets `GlosaPrediction.was_denied=True` for ALL
+predictions linked to a denied guide — regardless of which specific item caused the denial.
+This creates label noise: if a guide has 3 items and only item 2 was denied, all 3
+predictions get `was_denied=True`. Training a fine-tuned model on this data produces
+systematically noisy ground truth.
+
+**Fix:** When ANS adds item-level denial codes to TISS retorno XML extended elements,
+update `retorno_parser.py` to match per item (`guide_id + item_tuss_code`). Until then,
+filter out `was_denied` supervision data for guides with 2+ items when training (use only
+single-item guides for label-clean training data).
+
+**Priority:** P3 — matters for Sprint 11+ fine-tuned model. No impact on Sprint 9 zero-shot.
+**Blocked by:** ANS retorno XML extended element spec (TISS 4.02.00 or higher).
