@@ -12,6 +12,7 @@ import {
   FileText,
   Pill,
   Receipt,
+  BarChart2,
   Sparkles,
   Settings,
   LogOut,
@@ -38,6 +39,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Prontuário", href: "/dashboard/prontuario", icon: FileText, module: "emr" },
   { label: "Farmácia", href: "/farmacia", icon: Pill, module: "pharmacy" },
   { label: "Faturamento", href: "/billing", icon: Receipt, module: "billing" },
+  { label: "Análise", href: "/billing/analytics", icon: BarChart2, module: "billing" },
   { label: "Inteligência Artificial", href: "/dashboard/ia", icon: Sparkles, module: "ai_tuss" },
   { label: "Configurações", href: "/dashboard/configuracoes", icon: Settings },
 ];
