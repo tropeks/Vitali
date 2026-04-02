@@ -222,19 +222,11 @@ adjustment form and movement history.
 
 ---
 
-## P2 — TUSSSyncLog / import_tuss Refresh Documentation (Sprint 8)
+## ~~P2 — TUSSSyncLog / import_tuss Refresh Documentation (Sprint 8)~~ DONE
 
-`import_tuss` management command exists but there is no `TUSSSyncLog` model, no management
-command to surface import status, and no `AIUsageLog` metadata extension to record last import
-timestamp. The Sprint 8 plan allowed "or log in AIUsageLog metadata" as an alternative but
-neither was implemented.
-
-**Fix:** Add `TUSSSyncLog` model (or extend `AIUsageLog` with a `metadata` JSONField) to record
-import timestamp, row count, and import source. Expose status via `GET /api/v1/ai/tuss-sync-status/`
-(admin-only) so ops can verify the TUSS table is current before enabling `FEATURE_AI_TUSS`.
-
-**Deferred from plan:** `docs/PLAN_SPRINT8.md`.
-**Priority:** P2 — required before enabling `FEATURE_AI_TUSS` in production.
+Implemented in Sprint 9: `TUSSSyncLog` model (`core.0003`), `TUSSSyncStatusView`
+(`GET /api/v1/ai/tuss-sync-status/`), `import_tuss` management command updated to
+write sync logs. Commit: `9396995`.
 
 ---
 
