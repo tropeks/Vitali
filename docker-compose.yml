@@ -105,6 +105,7 @@ services:
     restart: unless-stopped
     environment:
       NEXT_PUBLIC_API_URL: http://django:8000
+      DJANGO_API_URL: http://django:8000
     ports:
       - "3000:3000"
     depends_on:

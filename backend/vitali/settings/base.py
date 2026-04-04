@@ -71,6 +71,13 @@ MIDDLEWARE = [
 ROOT_URLCONF = "vitali.urls"
 PUBLIC_SCHEMA_URLCONF = "vitali.urls_public"
 
+# Trust X-Forwarded-Host from Next.js server-side routes running inside Docker.
+# Node.js fetch() cannot set the Host header (Fetch API spec forbids it), so
+# the Next.js proxy routes forward the original browser Host via X-Forwarded-Host.
+# Django's request.get_host() reads this header, which django-tenants uses to
+# resolve the tenant schema.
+USE_X_FORWARDED_HOST = True
+
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",

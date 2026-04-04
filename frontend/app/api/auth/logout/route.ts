@@ -5,12 +5,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
-const DJANGO_API = process.env.DJANGO_API_URL ?? "http://localhost:8000";
+const DJANGO_API =
+  process.env.DJANGO_API_URL ??
+  process.env.NEXT_PUBLIC_API_URL ??
+  "http://localhost:8000";
 
 export async function POST(req: NextRequest) {
   const cookieStore = cookies();
   const accessToken = cookieStore.get("access_token")?.value;
   const refreshToken = cookieStore.get("refresh_token")?.value;
+
+  const rawHost = req.headers.get("host") ?? "localhost";
+  const forwardedHost = rawHost.split(":")[0];
 
   // Call Django to blacklist the refresh token
   if (refreshToken && accessToken) {
@@ -19,6 +25,7 @@ export async function POST(req: NextRequest) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "X-Forwarded-Host": forwardedHost,
           Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({ refresh: refreshToken }),
