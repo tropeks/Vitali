@@ -2,6 +2,8 @@
 from django.urls import path
 
 from . import views
+from .views_platform import TenantSubscriptionView
+from .views_onboarding import OnboardingView
 
 app_name = "core"
 
@@ -20,6 +22,10 @@ urlpatterns = [
     path("roles/", views.RoleListCreateView.as_view(), name="role-list"),
     # Tenant features
     path("features/", views.TenantFeaturesView.as_view(), name="tenant-features"),
+    # Tenant subscription status
+    path("subscription/", TenantSubscriptionView.as_view(), name="tenant-subscription"),
+    # Onboarding checklist
+    path("onboarding/", OnboardingView.as_view(), name="onboarding"),
     # AI: TUSS sync status (admin-only)
     path("ai/tuss-sync-status/", views.TUSSSyncStatusView.as_view(), name="tuss-sync-status"),
 ]

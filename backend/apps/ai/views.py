@@ -12,7 +12,9 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.core.permissions import HasPermission
+from apps.core.permissions import HasPermission, ModuleRequiredPermission
+
+_AI_TUSS_MODULE = ModuleRequiredPermission("ai_tuss")
 
 from . import services
 from .models import AIUsageLog, TUSSAISuggestion
@@ -35,7 +37,7 @@ class TUSSSuggestView(APIView):
     Requires FEATURE_AI_TUSS=True (global) and ai_tuss_enabled (per-tenant) and ai.use permission.
     """
     def get_permissions(self):
-        return [IsAuthenticated(), HasPermission('ai.use')]
+        return [IsAuthenticated(), _AI_TUSS_MODULE, HasPermission('ai.use')]
 
     def post(self, request):
         if not getattr(settings, 'FEATURE_AI_TUSS', False):
@@ -79,7 +81,7 @@ class TUSSSuggestFeedbackView(APIView):
     Ownership check: suggestion must belong to this tenant (Decision 19).
     """
     def get_permissions(self):
-        return [IsAuthenticated(), HasPermission('ai.use')]
+        return [IsAuthenticated(), _AI_TUSS_MODULE, HasPermission('ai.use')]
 
     def post(self, request):
         if not getattr(settings, 'FEATURE_AI_TUSS', False):
@@ -163,7 +165,7 @@ class GlosaPredictView(APIView):
     Fail-open: always returns a response, degraded=True when AI unavailable.
     """
     def get_permissions(self):
-        return [IsAuthenticated(), HasPermission('ai.use')]
+        return [IsAuthenticated(), _AI_TUSS_MODULE, HasPermission('ai.use')]
 
     def post(self, request):
         if not getattr(settings, 'FEATURE_AI_GLOSA', True):

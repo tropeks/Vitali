@@ -7,6 +7,7 @@ const TABS = [
   { label: 'Dispensar', href: '/farmacia/dispense' },
   { label: 'Estoque', href: '/farmacia/stock' },
   { label: 'Catálogo', href: '/farmacia/catalog' },
+  { label: 'Compras', href: '/farmacia/compras' },
 ]
 
 export default function FarmaciaLayout({ children }: { children: React.ReactNode }) {

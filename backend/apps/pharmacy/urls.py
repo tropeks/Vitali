@@ -9,6 +9,8 @@ from .views import (
     StockAvailabilityView,
     DispensationViewSet,
     DispenseView,
+    SupplierViewSet,
+    PurchaseOrderViewSet,
 )
 
 router = DefaultRouter()
@@ -17,6 +19,8 @@ router.register(r'materials', MaterialViewSet, basename='material')
 router.register(r'stock/items', StockItemViewSet, basename='stockitem')
 router.register(r'stock/movements', StockMovementViewSet, basename='stockmovement')
 router.register(r'dispensations', DispensationViewSet, basename='dispensation')
+router.register(r'suppliers', SupplierViewSet, basename='supplier')
+router.register(r'purchase-orders', PurchaseOrderViewSet, basename='purchase-order')
 
 urlpatterns = [
     path('pharmacy/', include(router.urls)),

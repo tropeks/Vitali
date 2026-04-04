@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import OnboardingWidget from "@/components/OnboardingWidget";
 import {
   LineChart,
   Line,
@@ -219,6 +220,9 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      {/* ── Onboarding widget (hidden when all steps done) ── */}
+      <OnboardingWidget />
+
       {/* ── Header ── */}
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>

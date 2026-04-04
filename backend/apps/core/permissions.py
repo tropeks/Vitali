@@ -1,7 +1,63 @@
 """
 RBAC Permission classes for Vitali.
 """
+from apps.core.utils import tenant_has_feature
 from rest_framework.permissions import BasePermission
+
+
+class IsPlatformAdmin(BasePermission):
+    """
+    Grants access only to Vitali platform operators (Django superusers).
+
+    Used for /api/v1/platform/* endpoints — plan management, subscriptions,
+    module activation. Clinic owners (even with is_staff) are never superusers.
+
+    Usage:
+        permission_classes = [IsAuthenticated, IsPlatformAdmin]
+    """
+
+    def has_permission(self, request, view):
+        return (
+            request.user
+            and request.user.is_authenticated
+            and request.user.is_superuser
+        )
+
+
+class ModuleRequiredPermission(BasePermission):
+    """
+    Checks that the current tenant has a specific module enabled via FeatureFlag.
+
+    Superusers bypass module gating (platform operators must always have access).
+    Returns 403 with a clear message if the module is inactive.
+
+    Usage:
+        _BILLING = ModuleRequiredPermission('billing')
+        permission_classes = [IsAuthenticated, _BILLING]
+
+    Note: __call__ returns self so that DRF's get_permissions() works correctly
+    when a pre-constructed instance is placed in permission_classes.
+    """
+
+    def __init__(self, module_key: str):
+        self.module_key = module_key
+
+    def __call__(self):
+        return self
+
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        if request.user.is_superuser:
+            return True
+        tenant = getattr(request, "tenant", None)
+        if tenant is None:
+            return False
+        return tenant_has_feature(tenant, self.module_key)
+
+    @property
+    def message(self):
+        return f"Module '{self.module_key}' is not active for this tenant."
 
 
 class HasPermission(BasePermission):
@@ -11,13 +67,17 @@ class HasPermission(BasePermission):
 
     Reads the user's Role.permissions list and checks for the required perm.
     Role.permissions is stored as a JSON list: ["emr.read", "emr.write", ...]
+
+    Note: __call__ returns self so that DRF's get_permissions() works correctly
+    when a pre-constructed instance is placed in permission_classes.
     """
 
     def __init__(self, permission_required: str):
         self.permission_required = permission_required
 
-    # DRF calls has_permission with view as second arg; we need to support
-    # both instantiated usage and class-level usage via get_permissions().
+    def __call__(self):
+        return self
+
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
             return False

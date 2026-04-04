@@ -20,6 +20,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.core.models import TUSSCode
+from apps.core.permissions import ModuleRequiredPermission
 
 from .models import Glosa, InsuranceProvider, PriceTable, PriceTableItem, TISSBatch, TISSGuide
 from .permissions import IsFaturistaOrAdmin
@@ -37,6 +38,8 @@ from .serializers import (
 
 logger = logging.getLogger(__name__)
 
+_BILLING_MODULE = ModuleRequiredPermission("billing")
+
 
 class TUSSCodePagination(PageNumberPagination):
     """50 results per page for combobox use. Safety net against dumping 6-8k rows."""
@@ -49,6 +52,8 @@ class TUSSCodeViewSet(viewsets.ReadOnlyModelViewSet):
     """
     Search and retrieve TUSS codes from the shared (public-schema) table.
     Supports full-text search via ?search=<query>.
+    Not gated by billing module — TUSS lookup is used in guide creation forms
+    and should be accessible to any authenticated user.
     """
 
     serializer_class = TUSSCodeSerializer
@@ -75,7 +80,7 @@ class TUSSCodeViewSet(viewsets.ReadOnlyModelViewSet):
 
 class InsuranceProviderViewSet(viewsets.ModelViewSet):
     serializer_class = InsuranceProviderSerializer
-    permission_classes = [IsAuthenticated, IsFaturistaOrAdmin]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["name", "ans_code", "cnpj"]
     ordering = ["name"]
@@ -85,7 +90,7 @@ class InsuranceProviderViewSet(viewsets.ModelViewSet):
 
 
 class PriceTableViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated, IsFaturistaOrAdmin]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["name", "provider__name"]
     ordering = ["-valid_from"]
@@ -138,7 +143,7 @@ class PriceTableViewSet(viewsets.ModelViewSet):
 
 
 class TISSGuideViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated, IsFaturistaOrAdmin]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["guide_number", "patient__full_name", "provider__name"]
     ordering_fields = ["created_at", "updated_at", "total_value", "competency"]
@@ -227,7 +232,7 @@ class TISSGuideViewSet(viewsets.ModelViewSet):
 
 class TISSBatchViewSet(viewsets.ModelViewSet):
     serializer_class = TISSBatchSerializer
-    permission_classes = [IsAuthenticated, IsFaturistaOrAdmin]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ["created_at", "total_value"]
     ordering = ["-created_at"]
@@ -383,7 +388,7 @@ class GlosaViewSet(viewsets.ReadOnlyModelViewSet):
     Use GET to list/retrieve and POST /appeal/ to file an appeal.
     """
     serializer_class = GlosaSerializer
-    permission_classes = [IsAuthenticated, IsFaturistaOrAdmin]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]
     filter_backends = [filters.OrderingFilter]
     ordering = ["-created_at"]
 

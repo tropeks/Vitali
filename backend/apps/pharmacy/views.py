@@ -12,9 +12,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.models import AuditLog
-from apps.core.permissions import HasPermission
+from apps.core.permissions import HasPermission, ModuleRequiredPermission
 
-from .models import Drug, Material, StockItem, StockMovement, Dispensation, DispensationLot
+_PHARMACY_MODULE = ModuleRequiredPermission("pharmacy")
+
+from .models import Drug, Material, StockItem, StockMovement, Dispensation, DispensationLot, Supplier, PurchaseOrder, PurchaseOrderItem
 from .serializers import (
     DrugSerializer,
     MaterialSerializer,
@@ -22,6 +24,9 @@ from .serializers import (
     StockMovementSerializer,
     DispensationSerializer,
     DispenseRequestSerializer,
+    SupplierSerializer,
+    PurchaseOrderSerializer,
+    POReceiveSerializer,
 )
 
 
@@ -61,8 +66,8 @@ class DrugViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ('create', 'update', 'partial_update', 'destroy'):
-            return [IsAuthenticated(), HasPermission('pharmacy.catalog_manage')]
-        return [IsAuthenticated(), HasPermission('pharmacy.read')]
+            return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission('pharmacy.catalog_manage')]
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission('pharmacy.read')]
 
     def perform_create(self, serializer):
         drug = serializer.save()
@@ -97,8 +102,8 @@ class MaterialViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ('create', 'update', 'partial_update', 'destroy'):
-            return [IsAuthenticated(), HasPermission('pharmacy.catalog_manage')]
-        return [IsAuthenticated(), HasPermission('pharmacy.read')]
+            return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission('pharmacy.catalog_manage')]
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission('pharmacy.read')]
 
     def perform_create(self, serializer):
         material = serializer.save()
@@ -126,8 +131,8 @@ class StockItemViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ('create', 'update', 'partial_update', 'destroy', 'adjust'):
-            return [IsAuthenticated(), HasPermission('pharmacy.stock_manage')]
-        return [IsAuthenticated(), HasPermission('pharmacy.read')]
+            return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission('pharmacy.stock_manage')]
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission('pharmacy.read')]
 
     @action(detail=True, methods=['post'], url_path='adjust')
     def adjust(self, request, pk=None):
@@ -161,7 +166,7 @@ class StockMovementViewSet(viewsets.ModelViewSet):
     http_method_names = ['get', 'post', 'head', 'options']  # no PUT/PATCH/DELETE (append-only)
 
     def get_permissions(self):
-        return [IsAuthenticated(), HasPermission('pharmacy.stock_manage')]
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission('pharmacy.stock_manage')]
 
     def get_queryset(self):
         qs = StockMovement.objects.select_related('stock_item', 'performed_by')
@@ -181,7 +186,7 @@ class StockMovementViewSet(viewsets.ModelViewSet):
 class StockAlertsView(APIView):
     """GET /pharmacy/stock/alerts/ — returns cached expiry + low-stock alert lists from Redis."""
     def get_permissions(self):
-        return [IsAuthenticated(), HasPermission('pharmacy.read')]
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission('pharmacy.read')]
 
     def get(self, request):
         import json
@@ -209,7 +214,7 @@ class StockAlertsView(APIView):
 class StockAvailabilityView(APIView):
     """GET /pharmacy/stock/availability/?drug=<uuid> — returns available lots."""
     def get_permissions(self):
-        return [IsAuthenticated(), HasPermission('pharmacy.read')]
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission('pharmacy.read')]
 
     def get(self, request):
         drug_id = request.query_params.get('drug')
@@ -233,7 +238,7 @@ class DispensationViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = DispensationSerializer
 
     def get_permissions(self):
-        return [IsAuthenticated(), HasPermission('pharmacy.dispense')]
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission('pharmacy.dispense')]
 
     def get_queryset(self):
         qs = Dispensation.objects.select_related(
@@ -255,7 +260,7 @@ class DispenseView(APIView):
     Requires signed Rx, checks controlled-substance role gate.
     """
     def get_permissions(self):
-        return [IsAuthenticated(), HasPermission('pharmacy.dispense')]
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission('pharmacy.dispense')]
 
     def post(self, request):
         serializer = DispenseRequestSerializer(data=request.data)
@@ -409,3 +414,148 @@ class DispenseView(APIView):
         rx_locked.save(update_fields=['status'])
 
         return dispensation
+
+
+# ─── S-042: Purchase Orders ───────────────────────────────────────────────────
+
+class SupplierViewSet(viewsets.ModelViewSet):
+    """CRUD for suppliers. Requires pharmacy.stock_manage."""
+    serializer_class = SupplierSerializer
+
+    def get_permissions(self):
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission('pharmacy.stock_manage')]
+
+    def get_queryset(self):
+        qs = Supplier.objects.all()
+        active = self.request.query_params.get('active')
+        if active == 'false':
+            qs = qs.filter(is_active=False)
+        else:
+            qs = qs.filter(is_active=True)
+        search = self.request.query_params.get('search')
+        if search:
+            qs = qs.filter(name__icontains=search)
+        return qs
+
+
+class PurchaseOrderViewSet(viewsets.ModelViewSet):
+    """CRUD + receive action for purchase orders."""
+    serializer_class = PurchaseOrderSerializer
+
+    def get_permissions(self):
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission('pharmacy.stock_manage')]
+
+    def get_queryset(self):
+        from django.db.models import Count
+        qs = (
+            PurchaseOrder.objects
+            .select_related('supplier', 'created_by')
+            .prefetch_related('items')
+            .annotate(item_count=Count('items'))
+        )
+        status_filter = self.request.query_params.get('status')
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        supplier_id = self.request.query_params.get('supplier')
+        if supplier_id:
+            qs = qs.filter(supplier_id=supplier_id)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+    @action(detail=True, methods=['post'], url_path='receive')
+    @transaction.atomic
+    def receive(self, request, pk=None):
+        """
+        POST /pharmacy/purchase-orders/{id}/receive/
+        Receives items from the PO: creates StockMovements and updates stock quantities.
+        Atomic — if any item fails, the whole operation rolls back.
+        """
+        try:
+            po = PurchaseOrder.objects.select_for_update().get(pk=pk)
+        except PurchaseOrder.DoesNotExist:
+            return Response({'detail': 'Pedido de compra não encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if po.status == PurchaseOrder.Status.CANCELLED:
+            return Response(
+                {'detail': 'Não é possível receber um pedido cancelado.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if po.status == PurchaseOrder.Status.RECEIVED:
+            return Response(
+                {'detail': 'Pedido já foi totalmente recebido.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = POReceiveSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        receive_items = serializer.validated_data['items']
+        lot_prefix = f"PO-{str(po.id)[:8]}"
+        movements_created = []
+
+        # Fetch all requested items in one locked query; validate before mutating.
+        item_ids = [recv['item_id'] for recv in receive_items]
+        items_by_id = {
+            str(item.pk): item
+            for item in PurchaseOrderItem.objects.select_related('drug', 'material')
+                                                  .select_for_update()
+                                                  .filter(pk__in=item_ids, po=po)
+        }
+        missing = [str(rid) for rid in item_ids if str(rid) not in items_by_id]
+        if missing:
+            return Response(
+                {'detail': f"Item(s) não encontrado(s) neste pedido: {', '.join(missing)}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        for recv in receive_items:
+            item = items_by_id[str(recv['item_id'])]
+            delta = recv['quantity_received']
+            lot_number = recv.get('lot_number') or lot_prefix
+            expiry_date = recv.get('expiry_date')
+
+            # get_or_create is safe: UniqueConstraint(nulls_distinct=False) prevents duplicate
+            # (drug/material, lot_number, expiry_date) rows even when expiry_date is NULL.
+            item_lookup = {"drug": item.drug} if item.drug else {"material": item.material}
+            stock_item, _ = StockItem.objects.get_or_create(
+                **item_lookup,
+                lot_number=lot_number,
+                expiry_date=expiry_date,
+                defaults={'quantity': Decimal('0')},
+            )
+
+            movement = StockMovement.objects.create(
+                stock_item=stock_item,
+                movement_type='purchase_order_receiving',
+                quantity=delta,
+                reference=lot_prefix,
+                notes=f"Recebimento de pedido de compra #{lot_prefix}",
+                performed_by=request.user,
+            )
+            movements_created.append(movement)
+
+            item.quantity_received += delta
+            item.save(update_fields=['quantity_received'])
+
+        # Update PO status
+        all_items = po.items.all()
+        all_received = all(
+            item.quantity_received >= item.quantity_ordered for item in all_items
+        )
+        po.status = PurchaseOrder.Status.RECEIVED if all_received else PurchaseOrder.Status.PARTIAL
+        po.save(update_fields=['status', 'updated_at'])
+
+        # Re-fetch with prefetch so the serializer doesn't trigger additional queries.
+        from django.db.models import Count
+        po = (
+            PurchaseOrder.objects
+            .prefetch_related('items__drug', 'items__material')
+            .annotate(item_count=Count('items'))
+            .get(pk=po.pk)
+        )
+        return Response(
+            PurchaseOrderSerializer(po).data,
+            status=status.HTTP_200_OK,
+        )

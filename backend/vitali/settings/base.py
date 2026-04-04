@@ -63,6 +63,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "apps.core.middleware.CurrentUserMiddleware",
     "apps.core.middleware.FeatureFlagMiddleware",
+    "apps.core.middleware.DemoModeMiddleware",  # no-op unless DEMO_MODE=true
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -196,6 +197,11 @@ ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
 AI_RATE_LIMIT_PER_HOUR = env.int("AI_RATE_LIMIT_PER_HOUR", default=100)
 AI_SUGGEST_TIMEOUT_S = env.int("AI_SUGGEST_TIMEOUT_S", default=5)
 FEATURE_AI_TUSS = env.bool("FEATURE_AI_TUSS", default=False)
+
+# ─── Demo Mode (S-043) ────────────────────────────────────────────────────────
+# When True: all write operations return 403. Auth endpoints whitelisted.
+# Set DEMO_MODE=true in .env for investor demos. Never enable in production.
+DEMO_MODE = env.bool("DEMO_MODE", default=False)
 
 # ─── Logging ──────────────────────────────────────────────────────────────────
 LOGGING = {

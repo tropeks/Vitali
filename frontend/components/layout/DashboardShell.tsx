@@ -18,16 +18,23 @@ import {
   LogOut,
   Bell,
   ChevronDown,
+  ChevronRight,
   Menu,
   X,
 } from "lucide-react";
 import type { UserDTO } from "@/lib/auth";
+import { useActiveModules } from "@/hooks/useHasModule";
 
 interface NavItem {
   label: string;
   href: string;
   icon: React.ElementType;
-  module?: string; // if set, only shown when tenant has this module
+  /** If set, only shown when useHasModule(module) is true */
+  module?: string;
+  /** Admin-only item */
+  adminOnly?: boolean;
+  /** Sub-items rendered as an indented group beneath this item */
+  children?: { label: string; href: string }[];
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -37,11 +44,27 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Sala de Espera", href: "/waiting-room", icon: ClipboardList, module: "emr" },
   { label: "Consultas", href: "/encounters", icon: Stethoscope, module: "emr" },
   { label: "Prontuário", href: "/dashboard/prontuario", icon: FileText, module: "emr" },
-  { label: "Farmácia", href: "/farmacia", icon: Pill, module: "pharmacy" },
+  {
+    label: "Farmácia",
+    href: "/farmacia",
+    icon: Pill,
+    module: "pharmacy",
+    children: [
+      { label: "Dispensar", href: "/farmacia/dispense" },
+      { label: "Estoque", href: "/farmacia/stock" },
+      { label: "Catálogo", href: "/farmacia/catalog" },
+      { label: "Compras", href: "/farmacia/compras" },
+    ],
+  },
   { label: "Faturamento", href: "/billing", icon: Receipt, module: "billing" },
   { label: "Análise", href: "/billing/analytics", icon: BarChart2, module: "billing" },
   { label: "Inteligência Artificial", href: "/dashboard/ia", icon: Sparkles, module: "ai_tuss" },
-  { label: "Configurações", href: "/dashboard/configuracoes", icon: Settings },
+  {
+    label: "Configurações",
+    href: "/configuracoes/assinatura",
+    icon: Settings,
+    adminOnly: true,
+  },
 ];
 
 interface Props {
@@ -55,9 +78,19 @@ export default function DashboardShell({ user, children }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
-  const visibleItems = NAV_ITEMS.filter(
-    (item) => !item.module || user.active_modules.includes(item.module)
-  );
+  const activeModules = useActiveModules();
+  // null = still loading; treat as all-visible (fail-open, no layout shift)
+  const moduleVisible = (item: NavItem) =>
+    !item.module || activeModules === null || activeModules.includes(item.module);
+
+  const isAdmin = user.role_name?.toLowerCase() === "admin" ||
+    user.role_name?.toLowerCase() === "administrador";
+
+  const visibleItems = NAV_ITEMS.filter((item) => {
+    if (!moduleVisible(item)) return false;
+    if (item.adminOnly && !isAdmin) return false;
+    return true;
+  });
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -106,8 +139,11 @@ export default function DashboardShell({ user, children }: Props) {
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
           {visibleItems.map((item) => {
             const Icon = item.icon;
-            const active = pathname === item.href || pathname.startsWith(item.href + "/");
-            return (
+            const active =
+              pathname === item.href || pathname.startsWith(item.href + "/");
+            const hasChildren = item.children && item.children.length > 0;
+
+            const linkEl = (
               <Link
                 key={item.href}
                 href={item.href}
@@ -119,8 +155,45 @@ export default function DashboardShell({ user, children }: Props) {
                 }`}
               >
                 <Icon size={18} />
-                {item.label}
+                <span className="flex-1">{item.label}</span>
+                {hasChildren && (
+                  <ChevronRight
+                    size={14}
+                    className={`transition-transform ${active ? "rotate-90" : ""}`}
+                  />
+                )}
               </Link>
+            );
+
+            if (!hasChildren) return linkEl;
+
+            return (
+              <div key={item.href}>
+                {linkEl}
+                {active && (
+                  <div className="ml-7 mt-0.5 space-y-0.5">
+                    {item.children!.map((child) => {
+                      const childActive =
+                        pathname === child.href ||
+                        pathname.startsWith(child.href + "/");
+                      return (
+                        <Link
+                          key={child.href}
+                          href={child.href}
+                          onClick={() => setSidebarOpen(false)}
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors ${
+                            childActive
+                              ? "bg-blue-500/30 text-white font-medium"
+                              : "text-slate-400 hover:text-white hover:bg-white/5"
+                          }`}
+                        >
+                          {child.label}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             );
           })}
         </nav>
@@ -160,7 +233,6 @@ export default function DashboardShell({ user, children }: Props) {
           {/* Tenant name placeholder */}
           <div className="flex-1">
             <span className="text-sm font-medium text-slate-700">
-              {/* In production this would come from tenant data */}
               Vitali Health
             </span>
           </div>
@@ -168,7 +240,6 @@ export default function DashboardShell({ user, children }: Props) {
           {/* Notifications */}
           <button className="relative p-2 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100">
             <Bell size={18} />
-            {/* Placeholder badge */}
             <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
           </button>
 
@@ -212,6 +283,15 @@ export default function DashboardShell({ user, children }: Props) {
                   >
                     Trocar senha
                   </Link>
+                  {isAdmin && (
+                    <Link
+                      href="/configuracoes/assinatura"
+                      className="block px-3 py-2 text-slate-700 hover:bg-slate-50"
+                      onClick={() => setUserMenuOpen(false)}
+                    >
+                      Assinatura
+                    </Link>
+                  )}
                   <div className="border-t border-slate-100 mt-1" />
                   <button
                     onClick={handleLogout}
