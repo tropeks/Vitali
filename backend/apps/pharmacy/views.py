@@ -500,7 +500,7 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         items_by_id = {
             str(item.pk): item
             for item in PurchaseOrderItem.objects.select_related('drug', 'material')
-                                                  .select_for_update()
+                                                  .select_for_update(of=('self',))
                                                   .filter(pk__in=item_ids, po=po)
         }
         missing = [str(rid) for rid in item_ids if str(rid) not in items_by_id]

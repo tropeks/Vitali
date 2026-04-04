@@ -4,7 +4,7 @@ export async function getActiveModules(): Promise<string[]> {
   const token = getAccessToken();
   if (!token) return [];
   try {
-    const res = await fetch('/api/v1/core/features/', {
+    const res = await fetch('/api/v1/features/', {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return [];
