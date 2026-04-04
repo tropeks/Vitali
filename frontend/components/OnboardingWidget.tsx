@@ -29,7 +29,7 @@ export default function OnboardingWidget() {
         return;
       }
       try {
-        const res = await fetch('/api/v1/core/onboarding/', {
+        const res = await fetch('/api/v1/onboarding/', {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok) return;
