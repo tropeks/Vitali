@@ -7,6 +7,7 @@ from django.utils import timezone
 from django_tenants.test.cases import TenantTestCase
 from rest_framework.test import APIClient
 
+from apps.core.models import FeatureFlag
 from apps.core.permissions import DEFAULT_ROLES
 from apps.pharmacy.models import Drug, StockItem, StockMovement, Dispensation, DispensationLot
 
@@ -83,6 +84,9 @@ class TestFEFOIntegration(TenantTestCase):
     def setUp(self):
         from apps.core.models import User, Role
         from apps.emr.models import Patient, Professional, Encounter
+        FeatureFlag.objects.update_or_create(
+            tenant=self.__class__.tenant, module_key='pharmacy', defaults={'is_enabled': True}
+        )
         self.farmaceutico = _make_user('farm@t.com', 'farmaceutico')
         self.enfermeiro = _make_user('enf@t.com', 'enfermeiro')
         role_md = Role.objects.create(name='medico_i', permissions=DEFAULT_ROLES['medico'])

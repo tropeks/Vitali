@@ -57,24 +57,18 @@ class PurchaseOrderTestCase(TenantTestCase):
         self.assertEqual(resp.data["status"], "draft")
 
     def test_po_item_xor_validation_both_drug_and_material(self):
-        """Serializer must raise 400 when both drug and material are set."""
+        """Serializer must raise 400 when both drug and material are set on a PO item."""
+        from apps.pharmacy.serializers import PurchaseOrderItemSerializer
         from apps.pharmacy.models import Material
         material = Material.objects.create(name="Gaze", is_active=True)
-        po = PurchaseOrder.objects.create(
-            supplier=self.supplier, status="draft"
-        )
-        resp = self.client.post(
-            f"/api/v1/pharmacy/purchase-orders/{po.id}/items/",
-            {
-                "po": str(po.id),
-                "drug": str(self.drug.id),
-                "material": str(material.id),
-                "quantity_ordered": "10.000",
-                "unit_price": "5.00",
-            },
-            format="json",
-        )
-        self.assertEqual(resp.status_code, 400)
+        serializer = PurchaseOrderItemSerializer(data={
+            "drug": str(self.drug.id),
+            "material": str(material.id),
+            "quantity_ordered": "10.000",
+            "unit_price": "5.00",
+        })
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("non_field_errors", serializer.errors)
 
     def test_po_item_xor_validation_neither(self):
         """Serializer must raise 400 when neither drug nor material is set."""

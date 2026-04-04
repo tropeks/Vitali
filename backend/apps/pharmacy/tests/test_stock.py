@@ -8,6 +8,7 @@ from django.utils import timezone
 from django_tenants.test.cases import TenantTestCase
 from rest_framework.test import APIClient
 
+from apps.core.models import FeatureFlag
 from apps.pharmacy.models import Drug, StockItem, StockMovement
 
 
@@ -162,6 +163,9 @@ class TestStockAvailabilityEndpoint(TenantTestCase):
     def setUp(self):
         from apps.core.models import User, Role
         from apps.core.permissions import DEFAULT_ROLES
+        FeatureFlag.objects.update_or_create(
+            tenant=self.__class__.tenant, module_key='pharmacy', defaults={'is_enabled': True}
+        )
         self.role = Role.objects.create(name='farmaceutico', permissions=DEFAULT_ROLES['farmaceutico'])
         self.user = User.objects.create_user(email='f@test.com', password='pw', role=self.role)
 

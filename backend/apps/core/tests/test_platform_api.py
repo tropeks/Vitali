@@ -53,7 +53,9 @@ class PlatformAPITestCase(TenantTestCase):
     def test_list_plans(self):
         resp = self.client.get("/api/v1/platform/plans/")
         self.assertEqual(resp.status_code, 200)
-        names = [p["name"] for p in resp.data]
+        # The list endpoint returns paginated data: {"count": ..., "results": [...]}
+        results = resp.data.get("results", resp.data)
+        names = [p["name"] for p in results]
         self.assertIn("Clínica Test", names)
 
     def test_create_plan(self):
@@ -142,15 +144,21 @@ class PlatformAPITestCase(TenantTestCase):
         self.assertFalse(flag.is_enabled)
 
     def test_new_tenant_signal_creates_emr_flag(self):
-        """post_save on Tenant auto-creates emr FeatureFlag."""
-        new_tenant = Tenant.objects.create(
-            name="Test Clinic Signal",
-            slug="test-clinic-signal-x1",
-            schema_name="test_clinic_signal_x1",
-        )
+        """post_save on Tenant auto-creates emr FeatureFlag.
+
+        Tests the signal handler directly rather than creating a new schema — creating
+        a new Tenant inside TenantTestCase's wrapping transaction causes
+        "cannot ALTER TABLE because it has pending trigger events" in PostgreSQL.
+        """
+        from apps.core.signals import create_tenant_defaults_on_new_tenant
+
+        tenant = self.__class__.tenant
+        FeatureFlag.objects.filter(tenant=tenant, module_key="emr").delete()
+
+        create_tenant_defaults_on_new_tenant(sender=Tenant, instance=tenant, created=True)
+
         self.assertTrue(
             FeatureFlag.objects.filter(
-                tenant=new_tenant, module_key="emr", is_enabled=True
+                tenant=tenant, module_key="emr", is_enabled=True
             ).exists()
         )
-        new_tenant.delete()

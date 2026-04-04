@@ -2,17 +2,21 @@
 S-043: DemoModeMiddleware tests.
 Run: python manage.py test apps.core.tests.test_demo_mode
 """
-from django.test import override_settings
+from django.conf import settings as django_settings
 from django_tenants.test.cases import TenantTestCase
 from rest_framework.test import APIClient
 
 from apps.core.models import Role, User
 
 
-@override_settings(DEMO_MODE=True)
 class DemoModeMiddlewareTestCase(TenantTestCase):
 
     def setUp(self):
+        # @override_settings doesn't reliably propagate into middleware with TenantTestCase.
+        # Directly patch the settings attribute and restore it via addCleanup.
+        django_settings.DEMO_MODE = True
+        self.addCleanup(setattr, django_settings, "DEMO_MODE", False)
+
         self.client = APIClient()
         self.client.defaults["SERVER_NAME"] = self.__class__.domain.domain
         role = Role.objects.create(name="admin", permissions=["patients.read"])
@@ -59,10 +63,12 @@ class DemoModeMiddlewareTestCase(TenantTestCase):
         self.assertNotEqual(response.status_code, 403)
 
 
-@override_settings(DEMO_MODE=False)
 class DemoModeOffTestCase(TenantTestCase):
 
     def setUp(self):
+        django_settings.DEMO_MODE = False
+        self.addCleanup(setattr, django_settings, "DEMO_MODE", False)
+
         self.client = APIClient()
         self.client.defaults["SERVER_NAME"] = self.__class__.domain.domain
         role = Role.objects.create(name="admin2", permissions=["patients.write"])
