@@ -162,6 +162,7 @@ export default function DashboardPage() {
 
       if (ovRes.status === 403) {
         // Analytics module not active for this tenant — show empty dashboard
+        setError(null);
         setLoading(false);
         return;
       }
