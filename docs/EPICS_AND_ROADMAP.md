@@ -692,11 +692,12 @@ E-001 Foundation
 - S-038: TUSS staleness monitor — Celery Beat daily check with INFO/WARNING thresholds
 - **Deliverable:** Faturistas have a full billing intelligence dashboard with denial analytics and AI accuracy tracking
 
-### Sprint 11: Commercialization (Weeks 27-28)
+### Sprint 11: Commercialization (Weeks 27-28) ✓ SHIPPED v0.6.0
 **Focus:** Make it sellable
 - E-010: S-039 (Module permission gating), S-040 (Platform admin subscription API), S-041 (Tenant subscription page)
-- E-007: S-042 (Purchase orders — Supplier, PO, receiving flow)
-- Polish: S-043 (seed_demo_data, demo mode, onboarding widget)
+- E-007: S-043 (Purchase orders — Supplier, PO, receiving flow with FEFO stock integration)
+- Polish: S-042 (seed_demo_data, demo mode, onboarding widget)
+- Infrastructure: Docker networking fix (X-Forwarded-Host tenant routing), catch-all proxy route replacing next.config rewrites
 - **Deliverable:** MVP ready for pilot clients — module gating enforced, POs operational, demo-ready
 
 ### Sprint 12: WhatsApp Patient Engagement (Weeks 29-31)
