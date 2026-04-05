@@ -394,25 +394,57 @@ GET /api/v1/analytics/billing/glosa-accuracy/
 
 ---
 
-## 10. WhatsApp Endpoints (Internal)
+## 10. WhatsApp Endpoints
 
 ```
-POST /api/v1/whatsapp/webhook  (called by Evolution API)
-  Request:  Evolution API webhook payload (message received)
-  Response 200
-  Auth: Webhook secret header validation
-  Note: Triggers ConversationFlow state machine
+POST /api/v1/whatsapp/webhook/
+  Request:  Evolution API webhook payload (messages.upsert, connection.update)
+  Response 200  (always 200 — Evolution API retries on non-2xx)
+  Auth: HMAC-SHA256 signature via X-Hub-Signature-256 header (fail-closed)
+  Note: Triggers ConversationFSM state machine; no JWT required (Evolution API posts directly)
 
-GET /api/v1/whatsapp/conversations
-  Query: ?patient_id=uuid&status=active
-  Response 200: [ConversationDTO]
-  Auth: Bearer + whatsapp.read
+GET /api/v1/whatsapp/health/
+  Response 200: { "status": "ok", "evolution_api": { "state": "open|connecting|close", "phone": "...", "last_seen": "..." } }
+  Response 503: { "status": "error", "detail": "..." }
+  Auth: Bearer + module:whatsapp
 
-POST /api/v1/whatsapp/send
-  Request:
-    { "phone": "+5511999999999", "template": "appointment_reminder", "params": {...} }
-  Response 200: { "message_id": "string", "status": "sent" }
-  Auth: Bearer + whatsapp.write (internal use by Celery tasks)
+POST /api/v1/whatsapp/setup-webhook/
+  Response 200: { "status": "ok", "webhook_url": "https://..." }
+  Auth: Bearer + module:whatsapp
+  Note: Registers this server's webhook URL with Evolution API; URL derived server-side (not from request body)
+
+GET /api/v1/whatsapp/contacts/
+  Query: ?search=nome_ou_telefone&page=N&page_size=N
+  Response 200: { "count": N, "results": [WhatsAppContactDTO] }
+  Auth: Bearer + module:whatsapp
+
+GET /api/v1/whatsapp/contacts/{id}/
+  Response 200: WhatsAppContactDTO
+  Auth: Bearer + module:whatsapp
+
+GET /api/v1/whatsapp/message-logs/
+  Query: ?contact=uuid&phone=+55...&page=N
+  Response 200: { "count": N, "results": [MessageLogDTO] }
+  Auth: Bearer + module:whatsapp
+
+GET /api/v1/whatsapp/message-logs/{id}/
+  Response 200: MessageLogDTO
+  Auth: Bearer + module:whatsapp
+```
+
+**DTOs:**
+```json
+WhatsAppContactDTO: {
+  "id": "uuid", "phone": "+55...", "patient_name": "string|null",
+  "opt_in": true, "opt_in_at": "ISO8601|null", "opt_out_at": "ISO8601|null",
+  "created_at": "ISO8601"
+}
+MessageLogDTO: {
+  "id": "uuid", "contact": "uuid", "contact_phone": "+55...", "patient_name": "string|null",
+  "direction": "inbound|outbound", "content_preview": "string (200 chars, CPF masked)",
+  "message_type": "text|button_reply|template", "appointment": "uuid|null",
+  "created_at": "ISO8601"
+}
 ```
 
 ---

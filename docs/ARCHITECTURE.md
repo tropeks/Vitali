@@ -421,7 +421,7 @@ suggestions. Fallback: traditional text search on TUSS database.
 
 **Key Components:**
 - `WhatsAppGateway` — Interface abstracting Evolution API / official API
-- `ConversationFlow` — State machine for chatbot conversations
+- `ConversationFSM` — 13-state finite state machine for chatbot conversations (opt-in → scheduling → confirmation)
 - `ReminderEngine` — Celery Beat tasks for appointment reminders
 - `MessageTemplate` — Pre-approved message templates (required by WhatsApp Business API)
 
