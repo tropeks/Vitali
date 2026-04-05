@@ -41,6 +41,7 @@ type Drug = {
   controlled_class: string
   controlled_class_display: string
   is_active: boolean
+  anvisa_code?: string | null
 }
 
 type Material = {
