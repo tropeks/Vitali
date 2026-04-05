@@ -1,0 +1,142 @@
+# Vitali — Staging Compose
+# ─────────────────────────────────────────────────────────────────────────────
+# Differences from docker-compose.yml (dev):
+#   - DJANGO_SETTINGS_MODULE: production (DEBUG=False, HTTPS, pooling, JSON logs)
+#   - restart: always (survived reboots + container crashes)
+#   - DB and Redis do NOT expose host ports (internal only)
+#   - Nginx with real domain config (HTTP only — terminate TLS at load balancer or
+#     configure certbot separately)
+#   - Images pulled from GHCR (built by deploy-staging.yml CI), not built locally
+#
+# Usage:
+#   cp .env.staging.example .env.staging
+#   # fill in all required vars (see docs/DEPLOY.md)
+#   docker compose -f docker-compose.staging.yml --env-file .env.staging up -d
+
+services:
+  # ─── PostgreSQL 16 ────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-vitali}
+      POSTGRES_USER: ${POSTGRES_USER:-vitali}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vitali}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # No host port exposure — reachable only within the compose network
+
+  # ─── Redis 7 ──────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: always
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # No host port exposure
+
+  # ─── Django (Gunicorn) ────────────────────────────────────────────────────
+  django:
+    image: ghcr.io/${GHCR_REPO}/vitali-backend:${IMAGE_TAG:-latest}
+    restart: always
+    env_file: .env.staging
+    environment:
+      DJANGO_SETTINGS_MODULE: vitali.settings.production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - static_files:/app/staticfiles
+      - media_files:/app/media
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health/')\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ─── Celery Worker ────────────────────────────────────────────────────────
+  celery-worker:
+    image: ghcr.io/${GHCR_REPO}/vitali-backend:${IMAGE_TAG:-latest}
+    restart: always
+    command: celery -A vitali worker --loglevel=info --concurrency=2
+    env_file: .env.staging
+    environment:
+      DJANGO_SETTINGS_MODULE: vitali.settings.production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ─── Celery Beat ──────────────────────────────────────────────────────────
+  celery-beat:
+    image: ghcr.io/${GHCR_REPO}/vitali-backend:${IMAGE_TAG:-latest}
+    restart: always
+    command: celery -A vitali beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    env_file: .env.staging
+    environment:
+      DJANGO_SETTINGS_MODULE: vitali.settings.production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ─── Next.js Frontend ─────────────────────────────────────────────────────
+  nextjs:
+    image: ghcr.io/${GHCR_REPO}/vitali-frontend:${IMAGE_TAG:-latest}
+    restart: always
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+      DJANGO_API_URL: http://django:8000
+    depends_on:
+      - django
+
+  # ─── Evolution API (WhatsApp) ─────────────────────────────────────────────
+  evolution-api:
+    image: atendai/evolution-api:latest
+    restart: always
+    environment:
+      SERVER_PORT: 8080
+      DATABASE_ENABLED: "false"
+      REDIS_ENABLED: "true"
+      REDIS_URI: redis://:${REDIS_PASSWORD}@redis:6379/1
+      AUTHENTICATION_TYPE: apikey
+      AUTHENTICATION_API_KEY: ${WHATSAPP_EVOLUTION_API_KEY}
+      WEBHOOK_GLOBAL_ENABLED: "false"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ─── Nginx Reverse Proxy ──────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - static_files:/app/staticfiles:ro
+    depends_on:
+      - django
+      - nextjs
+
+volumes:
+  postgres_data:
+  redis_data:
+  static_files:
+  media_files:
