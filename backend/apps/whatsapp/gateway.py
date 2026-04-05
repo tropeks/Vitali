@@ -138,8 +138,8 @@ def verify_webhook_signature(payload_bytes: bytes, signature_header: str) -> boo
     """
     secret = getattr(settings, "WHATSAPP_WEBHOOK_SECRET", "")
     if not secret:
-        logger.warning("WHATSAPP_WEBHOOK_SECRET not set — skipping HMAC verification")
-        return True
+        logger.warning("WHATSAPP_WEBHOOK_SECRET not set — rejecting webhook (fail-closed)")
+        return False
     if not signature_header or not signature_header.startswith("sha256="):
         return False
     expected = hmac.new(secret.encode(), payload_bytes, hashlib.sha256).hexdigest()

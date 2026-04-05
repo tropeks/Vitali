@@ -258,18 +258,20 @@ class ConversationFSM:
 
     def _state_SELECTING_SPECIALTY(self, message, message_type, intent) -> list[str]:
         session = self._session
-        specialty_id = self._parse_menu_selection(message)
-        if specialty_id is None:
+        idx = self._parse_menu_selection(message)
+        if idx is None:
             return self._unrecognized(self._send_specialty_menu())
 
         specialties = self._get_specialties()
-        if specialty_id not in [s["id"] for s in specialties]:
+        if idx < 1 or idx > len(specialties):
             return self._unrecognized(self._send_specialty_menu())
 
-        set_context(session, specialty_id=specialty_id, mismatches=0)
+        # Store the specialty name (natural key) rather than a PK
+        specialty_name = specialties[idx - 1]["name"]
+        set_context(session, specialty_id=specialty_name, mismatches=0)
         session.state = "SELECTING_PROFESSIONAL"
         session.save()
-        return self._send_professional_menu(specialty_id)
+        return self._send_professional_menu(specialty_name)
 
     def _state_SELECTING_PROFESSIONAL(self, message, message_type, intent) -> list[str]:
         session = self._session
@@ -288,12 +290,14 @@ class ConversationFSM:
     def _state_SELECTING_DATE(self, message, message_type, intent) -> list[str]:
         session = self._session
         ctx = get_context(session)
-        date_str = self._parse_date_selection(message)
 
         slots = self._get_slots(ctx.get("professional_id"))
-        if date_str not in slots:
+        sorted_dates = sorted(slots.keys())
+        idx = self._parse_date_selection(message)
+        if idx is None or idx < 1 or idx > len(sorted_dates):
             return self._unrecognized(self._send_date_menu(ctx.get("professional_id")))
 
+        date_str = sorted_dates[idx - 1]
         set_context(session, date=date_str, mismatches=0)
         session.state = "SELECTING_TIME"
         session.save()
@@ -521,18 +525,22 @@ class ConversationFSM:
 
     def _get_specialties(self) -> list[dict]:
         from apps.emr.models import Professional
-        qs = Professional.objects.filter(is_active=True).exclude(specialty="").values("pk", "specialty").distinct()
-        seen = {}
-        for p in qs:
-            if p["specialty"] not in seen:
-                seen[p["specialty"]] = {"id": p["pk"], "name": p["specialty"]}
-        return list(seen.values())
+        names = (
+            Professional.objects.filter(is_active=True)
+            .exclude(specialty="")
+            .values_list("specialty", flat=True)
+            .distinct()
+            .order_by("specialty")
+        )
+        # Sequential IDs (1, 2, 3, …) match what _parse_menu_selection returns
+        return [{"id": i + 1, "name": name} for i, name in enumerate(names)]
 
     def _get_professionals(self, specialty_id) -> list[dict]:
         from apps.emr.models import Professional
         qs = Professional.objects.filter(is_active=True).select_related("user")
         if specialty_id:
-            qs = qs.filter(specialty=Professional.objects.filter(pk=specialty_id).values_list("specialty", flat=True).first())
+            # specialty_id is the specialty name string stored in context
+            qs = qs.filter(specialty=specialty_id)
         return [{"id": p.pk, "name": p.user.full_name if hasattr(p, "user") else str(p)} for p in qs]
 
     def _get_slots(self, professional_id) -> dict:
@@ -552,12 +560,10 @@ class ConversationFSM:
         except ValueError:
             return None
 
-    def _parse_date_selection(self, message: str) -> Optional[str]:
-        """Parse number (menu position) to date string from available slots."""
-        # Returns the raw number for index lookup — caller maps to actual date
+    def _parse_date_selection(self, message: str) -> Optional[int]:
+        """Parse number (menu position) for date selection. Caller maps to ISO date string."""
         try:
-            idx = int(message.strip())
-            return idx  # type: ignore[return-value]  # caller uses it as an index into sorted(slots.keys())
+            return int(message.strip())
         except ValueError:
             return None
 

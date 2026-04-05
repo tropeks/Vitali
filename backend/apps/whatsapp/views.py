@@ -53,8 +53,8 @@ def _log_message(contact, direction: str, content: str, message_type: str = "tex
     """Create a MessageLog entry with CPF masked."""
     import re
     preview = content[:200]
-    # Mask CPF pattern NNN.NNN.NNN-NN or 11 digits
-    preview = re.sub(r"\d{3}\.?\d{3}\.?\d{3}-?\d{2}", lambda m: "***-***-**" + m.group()[-1], preview)
+    # Mask CPF pattern NNN.NNN.NNN-NN or 11 digits — fully masked, no digit leaked
+    preview = re.sub(r"\d{3}\.?\d{3}\.?\d{3}-?\d{2}", "***.***.***-**", preview)
     try:
         MessageLog.objects.create(
             contact=contact,

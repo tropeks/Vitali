@@ -13,6 +13,7 @@ import logging
 from datetime import timedelta
 
 from celery import shared_task
+from django.db import transaction
 from django.utils import timezone
 
 from .gateway import get_gateway, OptOutError
@@ -43,39 +44,40 @@ def send_appointment_reminders(self):
     # Ensure ScheduledReminder rows exist for upcoming appointments with opt-in contacts
     _ensure_reminders_exist(now)
 
-    # Fetch pending 24h reminders
-    reminders_24h = (
-        ScheduledReminder.objects
-        .filter(
-            status="pending",
-            reminder_type="24h",
-            appointment__start_time__gte=window_24h_start,
-            appointment__start_time__lte=window_24h_end,
+    # Fetch and lock pending reminders inside a transaction (select_for_update requires it)
+    with transaction.atomic():
+        reminders_24h = list(
+            ScheduledReminder.objects
+            .filter(
+                status="pending",
+                reminder_type="24h",
+                appointment__start_time__gte=window_24h_start,
+                appointment__start_time__lte=window_24h_end,
+            )
+            .select_for_update(skip_locked=True)
+            .select_related(
+                "appointment__patient",
+                "appointment__professional__user",
+            )
         )
-        .select_for_update(skip_locked=True)
-        .select_related(
-            "appointment__patient",
-            "appointment__professional__user",
-        )
-    )
 
-    reminders_2h = (
-        ScheduledReminder.objects
-        .filter(
-            status="pending",
-            reminder_type="2h",
-            appointment__start_time__gte=window_2h_start,
-            appointment__start_time__lte=window_2h_end,
+        reminders_2h = list(
+            ScheduledReminder.objects
+            .filter(
+                status="pending",
+                reminder_type="2h",
+                appointment__start_time__gte=window_2h_start,
+                appointment__start_time__lte=window_2h_end,
+            )
+            .select_for_update(skip_locked=True)
+            .select_related(
+                "appointment__patient",
+                "appointment__professional__user",
+            )
         )
-        .select_for_update(skip_locked=True)
-        .select_related(
-            "appointment__patient",
-            "appointment__professional__user",
-        )
-    )
 
-    for reminder in list(reminders_24h) + list(reminders_2h):
-        _send_reminder(gateway, reminder)
+        for reminder in reminders_24h + reminders_2h:
+            _send_reminder(gateway, reminder)
 
 
 def _ensure_reminders_exist(now):
@@ -197,40 +199,41 @@ def send_satisfaction_surveys(self):
         if not created and reminder.status != "pending":
             continue
 
-        # Lock to prevent concurrent send
-        try:
-            locked = ScheduledReminder.objects.select_for_update(skip_locked=True).get(
-                pk=reminder.pk, status="pending"
+        # Lock to prevent concurrent send — select_for_update requires transaction.atomic()
+        with transaction.atomic():
+            try:
+                locked = ScheduledReminder.objects.select_for_update(skip_locked=True).get(
+                    pk=reminder.pk, status="pending"
+                )
+            except ScheduledReminder.DoesNotExist:
+                continue
+
+            try:
+                contact = WhatsAppContact.objects.get(patient=appt.patient, opt_in=True)
+            except WhatsAppContact.DoesNotExist:
+                locked.status = "skipped"
+                locked.save(update_fields=["status"])
+                continue
+
+            pro_name = appt.professional.user.full_name if hasattr(appt.professional, "user") else str(appt.professional)
+            text = (
+                f"Olá! 😊 Como foi sua consulta com {pro_name}?\n\n"
+                f"1️⃣ 😊 Muito bom\n"
+                f"2️⃣ 😐 Ok\n"
+                f"3️⃣ 😕 Poderia ser melhor"
             )
-        except ScheduledReminder.DoesNotExist:
-            continue
-
-        try:
-            contact = WhatsAppContact.objects.get(patient=appt.patient, opt_in=True)
-        except WhatsAppContact.DoesNotExist:
-            locked.status = "skipped"
-            locked.save(update_fields=["status"])
-            continue
-
-        pro_name = appt.professional.user.full_name if hasattr(appt.professional, "user") else str(appt.professional)
-        text = (
-            f"Olá! 😊 Como foi sua consulta com {pro_name}?\n\n"
-            f"1️⃣ 😊 Muito bom\n"
-            f"2️⃣ 😐 Ok\n"
-            f"3️⃣ 😕 Poderia ser melhor"
-        )
-        try:
-            gateway.send_if_opted_in(contact, text)
-            locked.status = "sent"
-            locked.sent_at = timezone.now()
-            locked.save(update_fields=["status", "sent_at"])
-        except OptOutError:
-            locked.status = "skipped"
-            locked.save(update_fields=["status"])
-        except Exception as exc:
-            logger.error("Failed to send satisfaction survey for appt %s: %s", appt.pk, exc)
-            locked.status = "failed"
-            locked.save(update_fields=["status"])
+            try:
+                gateway.send_if_opted_in(contact, text)
+                locked.status = "sent"
+                locked.sent_at = timezone.now()
+                locked.save(update_fields=["status", "sent_at"])
+            except OptOutError:
+                locked.status = "skipped"
+                locked.save(update_fields=["status"])
+            except Exception as exc:
+                logger.error("Failed to send satisfaction survey for appt %s: %s", appt.pk, exc)
+                locked.status = "failed"
+                locked.save(update_fields=["status"])
 
 
 @shared_task
