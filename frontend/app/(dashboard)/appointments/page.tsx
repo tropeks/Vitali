@@ -18,6 +18,8 @@ interface Appointment {
   status: string
   status_display: string
   notes: string
+  whatsapp_reminder_sent: boolean
+  whatsapp_confirmed: boolean
 }
 
 interface Professional {
@@ -312,6 +314,15 @@ export default function AppointmentsPage() {
                           >
                             <div className="font-medium truncate">{appt.patient_name}</div>
                             <div className="opacity-70 truncate">{appt.type_display}</div>
+                            {(appt.whatsapp_confirmed || appt.whatsapp_reminder_sent) && (
+                              <div className={`mt-0.5 inline-block text-[9px] font-medium px-1 py-0 rounded ${
+                                appt.whatsapp_confirmed
+                                  ? 'bg-green-100 text-green-700'
+                                  : 'bg-yellow-100 text-yellow-700'
+                              }`}>
+                                {appt.whatsapp_confirmed ? 'WA ✓' : 'WA ⏳'}
+                              </div>
+                            )}
                           </button>
                         ))}
                       </td>
@@ -368,6 +379,18 @@ export default function AppointmentsPage() {
                   {detailAppt.status_display}
                 </span>
               </div>
+              {(detailAppt.whatsapp_confirmed || detailAppt.whatsapp_reminder_sent) && (
+                <div>
+                  <p className="text-slate-500 text-xs mb-1">WhatsApp</p>
+                  <span className={`inline-block text-xs px-2 py-0.5 rounded-full border ${
+                    detailAppt.whatsapp_confirmed
+                      ? 'bg-green-50 text-green-700 border-green-200'
+                      : 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                  }`}>
+                    {detailAppt.whatsapp_confirmed ? 'WhatsApp ✓' : 'Lembrete enviado'}
+                  </span>
+                </div>
+              )}
               {detailAppt.notes && (
                 <div>
                   <p className="text-slate-500 text-xs">Observações</p>

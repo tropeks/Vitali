@@ -15,6 +15,7 @@ import {
   BarChart2,
   Sparkles,
   Settings,
+  MessageCircle,
   LogOut,
   Bell,
   ChevronDown,
@@ -64,6 +65,10 @@ const NAV_ITEMS: NavItem[] = [
     href: "/configuracoes/assinatura",
     icon: Settings,
     adminOnly: true,
+    children: [
+      { label: "Assinatura", href: "/configuracoes/assinatura" },
+      { label: "WhatsApp", href: "/configuracoes/whatsapp" },
+    ],
   },
 ];
 
