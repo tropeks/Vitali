@@ -2,6 +2,21 @@
 
 All notable changes to Vitali Health are documented here.
 
+## [0.7.0] — 2026-04-05
+
+### Added
+- **WhatsApp Patient Engagement (Sprint 12, S-032/033/034/035):** Full WhatsApp appointment scheduling via conversational FSM, LGPD-compliant opt-in/opt-out, 24h and 2h automated reminders, post-visit satisfaction surveys, and receptionist conversation history panel.
+  - **S-032 WhatsApp Webhook + LGPD Consent:** `WebhookView` with HMAC-SHA256 validation (fail-closed when secret unset), per-contact rate limiting (20 msg/min, atomic `cache.incr`), `WhatsAppContact` model with opt-in lifecycle (`do_opt_in` / `do_opt_out`), `MessageLog` audit trail with CPF fully masked (`***.***.***-**`). Evolution API integration via `EvolutionAPIGateway`. REST API: `GET/POST /api/v1/whatsapp/contacts/`, `GET /api/v1/whatsapp/message-logs/`, `GET /api/v1/whatsapp/health/`, `POST /api/v1/whatsapp/setup-webhook/`. 6 test files.
+  - **S-033 Appointment Scheduling FSM:** 13-state `ConversationFSM` covering LGPD consent → specialty/professional/date/time selection → confirmation → booking. Intent detection for 30+ PT-BR phrases. Max 3 unrecognized inputs before FALLBACK_HUMAN. `select_for_update()` on Professional row prevents double-booking of empty slots. Session deleted after booking (CPF/PII gone). `slot_service.py` generates available slots from `ScheduleConfig` (working hours, lunch break, slot duration) minus booked appointments. 
+  - **S-034 Appointment Reminders:** Celery tasks `send_appointment_reminders` (24h + 2h windows, every 15 min) and `mark_no_shows` (hourly) with `select_for_update(skip_locked=True)` inside `transaction.atomic()`. `ScheduledReminder` model with `unique_together` guard prevents duplicate sends.
+  - **S-035 Satisfaction Surveys + Settings UI:** `send_satisfaction_surveys` task sends post-visit survey 2h after appointment completion. Frontend: `/configuracoes/whatsapp` settings page (QR code scan flow, connection status, conversation history with contact list + message thread), appointment badge in `/appointments` page.
+
+### Fixed
+- **WhatsApp booking flow (6 critical pre-ship bugs):** `_parse_date_selection` returned raw int instead of ISO date string; `_get_specialties` used Professional PK as specialty menu ID; `_get_professionals` had same PK-vs-menu-index bug; `select_for_update()` called outside `transaction.atomic()` in tasks (TransactionManagementError); `"2"` in global INTENT_MAP triggered opt-out from every numeric menu state; `session.save()` called after `session.delete()` on booking confirmation (IntegrityError). All fixed.
+- **Security (3 pre-ship bugs):** Webhook fail-open when `WHATSAPP_WEBHOOK_SECRET` unset (now fail-closed); `SetupWebhookView` accepted client-supplied webhook URL (SSRF, now server-side only); `_log_message` CPF mask exposed last digit via `m.group()[-1]` (now fully masked).
+- **Rate limiter race condition:** Non-atomic `cache.get`/`cache.set` in `_check_rate_limit` replaced with atomic `cache.incr()`.
+- **Pagination missing:** `WhatsAppContactViewSet` had no pagination (50k-row response risk); added `MessageLogPagination`.
+
 ## [0.6.0] — 2026-04-05
 
 ### Added
