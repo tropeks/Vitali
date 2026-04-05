@@ -77,12 +77,13 @@ class Command(BaseCommand):
         appointments = self._create_appointments(fake, patients, professionals, 20)
         encounters = self._create_encounters(fake, patients, professionals, appointments[:8])
         self._create_guides(fake, encounters[:5], patients)
+        pix_charges = self._create_pix_charges(appointments[:6])
         self._create_stock(fake, 50)
         self._create_purchase_orders(fake, 3)
 
         self.stdout.write(self.style.SUCCESS(
             f"Demo data seeded: {len(patients)} patients, {len(appointments)} appointments, "
-            f"{len(encounters)} encounters."
+            f"{len(encounters)} encounters, {len(pix_charges)} PIX charges."
         ))
 
     def _create_patients(self, fake, count):
@@ -190,6 +191,43 @@ class Command(BaseCommand):
                 )
         except Exception as e:
             self.stdout.write(self.style.WARNING(f"Skipped guide creation: {e}"))
+
+    def _create_pix_charges(self, appointments):
+        """Seed PIXCharge records: 2 paid, 2 pending, 1 expired, 1 cancelled."""
+        from apps.billing.models import PIXCharge
+        now = timezone.now()
+        charges = []
+        statuses = [
+            PIXCharge.Status.PAID,
+            PIXCharge.Status.PAID,
+            PIXCharge.Status.PENDING,
+            PIXCharge.Status.PENDING,
+            PIXCharge.Status.EXPIRED,
+            PIXCharge.Status.CANCELLED,
+        ]
+        for i, appt in enumerate(appointments):
+            if i >= len(statuses):
+                break
+            status = statuses[i]
+            try:
+                charge, created = PIXCharge.objects.get_or_create(
+                    appointment=appt,
+                    defaults={
+                        "asaas_charge_id": f"pay_demo_{i:04d}",
+                        "asaas_customer_id": f"cus_demo_{i:04d}",
+                        "amount": Decimal("150.00"),
+                        "status": status,
+                        "pix_copy_paste": f"00020126580014br.gov.bcb.pix0136DEMO{i:04d}5204000053039865802BR5913DEMO VITALI6009SAO PAULO62070503***6304DEMO",
+                        "pix_qr_code_base64": "",
+                        "expires_at": now + timedelta(minutes=30) if status == PIXCharge.Status.PENDING else now - timedelta(hours=1),
+                        "paid_at": now - timedelta(hours=random.randint(1, 48)) if status == PIXCharge.Status.PAID else None,
+                    },
+                )
+                if created:
+                    charges.append(charge)
+            except Exception as e:
+                self.stdout.write(self.style.WARNING(f"Skipped PIXCharge: {e}"))
+        return charges
 
     def _create_stock(self, fake, count):
         from apps.pharmacy.models import Drug, StockItem

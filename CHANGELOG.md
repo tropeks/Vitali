@@ -2,6 +2,24 @@
 
 All notable changes to Vitali Health are documented here.
 
+## [0.9.0] — 2026-04-05
+
+### Added
+- **First Pilot Readiness (Sprint 14, S-054–S-061):** End-to-end pilot clinic operations — onboarding wizard, real PIX payments via Asaas, transactional email confirmations, demo seed data, 5 performance indexes, mobile-responsive pages, user guide, and pilot monitoring dashboard.
+  - **S-054 Tenant Onboarding Wizard:** 5-step frontend wizard at `/setup` (clinic name, professional credentials, working hours click-to-toggle days, PIX key, completion screen). Backend: `POST /api/v1/emr/setup/professional/` (idempotent — creates/updates Professional + ScheduleConfig atomically), `GET /api/v1/emr/setup/status/`. `ProfessionalSetupSerializer` validates `council_type`, `council_state`, `working_days`, and slot duration.
+  - **S-055 PIX Payment Integration (Asaas):** `AsaasService` (LGPD: name+email only, no CPF to Asaas), `PIXCharge` model, `AsaasChargeMap` (public schema webhook routing), `PIXChargeView` (idempotent), `AsaasWebhookView` (`hmac.compare_digest`, `select_for_update()` idempotency, tenant routing). Celery task `expire_pix_charges` every 5 min. `MIGRATION_MODULES` workaround for root-owned billing migrations dir.
+  - **S-056 Transactional Email:** `EmailService.send_appointment_confirmation/reminder()`, HTML templates, signal receiver `on_appointment_paid` → `Celery.delay()`, daily 08:00 reminder beat task.
+  - **S-057 Seed Data:** `make seed-demo tenant=<schema>` seeds patients, appointments, and 6 PIXCharge records with varied statuses.
+  - **S-058 Performance Indexes:** RunSQL function index on `DATE(start_time AT TIME ZONE 'America/Sao_Paulo')`, GIN on `Patient.insurance_data`, composite `(action, created_at)` on AuditLog, `(status, expires_at)` on PIXCharge. `docs/PERFORMANCE.md`.
+  - **S-059 Mobile Responsiveness:** Appointments page day-list card view on `<md` (patient name, time, status, action button); header/legend responsive. Setup wizard mobile-first.
+  - **S-060 User Guide:** `docs/USER_GUIDE.md` — 10 sections in PT-BR including "AI em breve" section.
+  - **S-061 Pilot Monitoring Dashboard:** `GET /api/v1/platform/pilot-health/` (platform admin) with per-tenant KPIs + system health. Frontend `/platform/monitor` — 30s auto-refresh, stale indicator, sparklines.
+  - **DX:** `docs/DEVELOPMENT.md`, `docs/USER_GUIDE.md`, `.env.example` Asaas vars.
+
+### Fixed
+- `billing/models.py` missing `import uuid` for PIXCharge model.
+- `apps/core/apps.py` imports `billing.services.tasks` in `ready()` to wire `appointment_paid` signal receiver.
+
 ## [0.8.0] — 2026-04-05
 
 ### Added

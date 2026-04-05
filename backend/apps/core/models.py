@@ -423,6 +423,7 @@ class AuditLog(models.Model):
             models.Index(fields=["resource_type", "resource_id"]),
             models.Index(fields=["user", "created_at"]),
             models.Index(fields=["created_at"]),
+            models.Index(fields=["action", "created_at"], name="core_auditlog_action_created_idx"),
         ]
 
     def __str__(self):
@@ -436,3 +437,34 @@ class AuditLog(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ValueError("AuditLog entries cannot be deleted.")
+
+
+# ─── S-055: PIX Webhook Tenant Resolution (Public Schema) ─────────────────────
+
+
+class AsaasChargeMap(models.Model):
+    """
+    Maps Asaas charge IDs to tenant schemas (public schema table).
+    Enables webhook handler to resolve which tenant schema owns a given charge
+    without scanning all tenant schemas.
+
+    Created when a PIXCharge is created (signal in billing.signals).
+    Deleted when a PIXCharge is deleted.
+    """
+
+    asaas_charge_id = models.CharField(
+        "Asaas Charge ID", max_length=100, unique=True, db_index=True
+    )
+    tenant_schema = models.CharField(
+        "Tenant Schema", max_length=100, db_index=True,
+        help_text="schema_name of the tenant that owns this charge"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        app_label = "core"
+        verbose_name = "Asaas Charge Map"
+        verbose_name_plural = "Asaas Charge Maps"
+
+    def __str__(self):
+        return f"{self.asaas_charge_id} → {self.tenant_schema}"

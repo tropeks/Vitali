@@ -9,6 +9,8 @@ application-layer enforcement only. A pre-delete signal on TUSSCode (see
 apps/core/signals.py) compensates by checking live references.
 """
 
+import uuid
+
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models, transaction
@@ -379,6 +381,64 @@ def _tissbatch_m2m_changed(sender, instance, action, pk_set, **kwargs):
 
 from django.db.models.signals import m2m_changed  # noqa: E402
 m2m_changed.connect(_tissbatch_m2m_changed, sender=TISSBatch.guides.through)
+
+
+# ─── S-055: PIX Payment ───────────────────────────────────────────────────────
+
+
+class PIXCharge(models.Model):
+    """
+    Tracks a PIX payment charge created via Asaas for a self-pay appointment.
+    Per-tenant schema.
+
+    Lifecycle: pending → paid (via webhook) | expired (via Celery beat at expires_at)
+                        ↘ refunded (manual, Phase 2)
+
+    LGPD note: we store asaas_customer_id (not raw CPF). The mapping from
+    Patient → Asaas customer ID is maintained in AsaasService.get_or_create_customer().
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Aguardando pagamento"
+        PAID = "paid", "Pago"
+        EXPIRED = "expired", "Expirado"
+        CANCELLED = "cancelled", "Cancelado"
+        REFUNDED = "refunded", "Estornado"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    appointment = models.OneToOneField(
+        "emr.Appointment",
+        on_delete=models.CASCADE,
+        related_name="pix_charge",
+    )
+    # Asaas identifiers — no raw CPF stored
+    asaas_charge_id = models.CharField("Asaas Charge ID", max_length=100, unique=True)
+    asaas_customer_id = models.CharField("Asaas Customer ID", max_length=100, blank=True)
+    # Payment data
+    amount = models.DecimalField("Valor (R$)", max_digits=10, decimal_places=2)
+    status = models.CharField(
+        "Status", max_length=20, choices=Status.choices, default=Status.PENDING, db_index=True
+    )
+    pix_copy_paste = models.TextField("Código PIX copia e cola", blank=True)
+    pix_qr_code_base64 = models.TextField("QR Code (base64)", blank=True)
+    expires_at = models.DateTimeField("Expira em")
+    paid_at = models.DateTimeField("Pago em", null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Cobrança PIX"
+        verbose_name_plural = "Cobranças PIX"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "expires_at"]),
+            models.Index(fields=["asaas_charge_id"]),
+        ]
+
+    def __str__(self):
+        return f"PIX {self.asaas_charge_id} — R${self.amount} ({self.get_status_display()})"
+
+
 
 
 # ─── Glosas ───────────────────────────────────────────────────────────────────

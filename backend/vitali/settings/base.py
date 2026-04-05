@@ -225,6 +225,17 @@ WHATSAPP_WEBHOOK_SECRET = env("WHATSAPP_WEBHOOK_SECRET", default="")
 WHATSAPP_INSTANCE_NAME = env("WHATSAPP_INSTANCE_NAME", default="vitali")
 WHATSAPP_CLINIC_PHONE = env("WHATSAPP_CLINIC_PHONE", default="+5511999999999")
 
+# ─── PIX / Asaas (S-055) ─────────────────────────────────────────────────────
+ASAAS_API_KEY = env("ASAAS_API_KEY", default="")
+ASAAS_WEBHOOK_TOKEN = env("ASAAS_WEBHOOK_TOKEN", default="")
+ASAAS_ENVIRONMENT = env("ASAAS_ENVIRONMENT", default="sandbox")
+PIX_CHARGE_EXPIRY_MINUTES = env.int("PIX_CHARGE_EXPIRY_MINUTES", default=30)
+
+# billing/ migrations directory is root-owned (755). Redirect to writable package.
+MIGRATION_MODULES = {
+    "billing": "billing_migrations",
+}
+
 # ─── Demo Mode (S-043) ────────────────────────────────────────────────────────
 # When True: all write operations return 403. Auth endpoints whitelisted.
 # Set DEMO_MODE=true in .env for investor demos. Never enable in production.

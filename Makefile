@@ -1,4 +1,4 @@
-.PHONY: help up down build migrate migrate-tenant shell test lint fmt create-tenant logs ps
+.PHONY: help up down build migrate migrate-tenant shell test lint fmt create-tenant logs ps seed-demo
 
 # Default target
 help:
@@ -16,6 +16,7 @@ help:
 	@echo "  make lint            Run ruff linter"
 	@echo "  make fmt             Run ruff formatter"
 	@echo "  make create-tenant   Create a new tenant (interactive)"
+	@echo "  make seed-demo       Seed demo data (patients, appointments, PIX charges)"
 	@echo "  make logs            Follow all service logs"
 	@echo "  make ps              Show running containers"
 	@echo ""
@@ -93,6 +94,11 @@ t.save(); \
 Domain.objects.create(domain=domain, tenant=t, is_primary=True); \
 print(f'Tenant {name} created with schema {slug}') \
 "
+
+seed-demo:
+	@echo "Seeding demo data for tenant schema '$(or $(tenant),demo)'..."
+	docker compose exec django python manage.py seed_demo_data --tenant=$(or $(tenant),demo)
+	@echo "Demo data seeded. Override with: make seed-demo tenant=<schema_name>"
 
 superuser:
 	docker compose exec django python manage.py createsuperuser

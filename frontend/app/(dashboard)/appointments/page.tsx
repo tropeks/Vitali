@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import AppointmentModal from '@/components/appointments/AppointmentModal'
+import PIXModal from '@/components/appointments/PIXModal'
 
 interface Appointment {
   id: string
@@ -86,6 +87,7 @@ export default function AppointmentsPage() {
   }>({})
   const [detailAppt, setDetailAppt] = useState<Appointment | null>(null)
   const [statusUpdating, setStatusUpdating] = useState(false)
+  const [pixAppt, setPixAppt] = useState<Appointment | null>(null)
 
   const weekDates = getWeekDates(weekBase)
   const weekStart = isoDate(weekDates[0])
@@ -187,9 +189,9 @@ export default function AppointmentsPage() {
   return (
     <div className="space-y-4 h-full flex flex-col">
       {/* Header */}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Agenda</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Agenda</h1>
         </div>
         <div className="flex-1" />
 
@@ -240,8 +242,8 @@ export default function AppointmentsPage() {
         </button>
       </div>
 
-      {/* Legend */}
-      <div className="flex flex-wrap gap-3 text-xs">
+      {/* Legend — hidden on mobile */}
+      <div className="hidden sm:flex flex-wrap gap-3 text-xs">
         {[
           { status: 'scheduled', label: 'Agendado' },
           { status: 'confirmed', label: 'Confirmado' },
@@ -256,10 +258,10 @@ export default function AppointmentsPage() {
         ))}
       </div>
 
-      {/* Calendar grid */}
-      <div className="flex-1 bg-white border border-slate-200 rounded-xl overflow-auto">
+      {/* Desktop: Calendar grid (hidden on mobile) */}
+      <div className="hidden md:flex flex-1 bg-white border border-slate-200 rounded-xl overflow-auto">
         {loading ? (
-          <div className="flex items-center justify-center h-64 text-slate-400 text-sm">
+          <div className="flex items-center justify-center h-64 w-full text-slate-400 text-sm">
             Carregando agenda...
           </div>
         ) : (
@@ -335,6 +337,62 @@ export default function AppointmentsPage() {
         )}
       </div>
 
+      {/* Mobile: Day list view (visible only on mobile, < md) */}
+      <div className="flex flex-col gap-2 md:hidden">
+        {loading ? (
+          <div className="flex items-center justify-center py-12 text-slate-400 text-sm">
+            Carregando agenda...
+          </div>
+        ) : (() => {
+          // Show today's appointments on mobile, or the start of the current week
+          const todayStr = isoDate(new Date())
+          const dayStr = weekDates.find(d => isoDate(d) === todayStr) ? todayStr : isoDate(weekDates[0])
+          const dayAppts = appointments.filter(a => a.start_time.split('T')[0] === dayStr)
+          const dayDate = new Date(dayStr + 'T00:00:00')
+          return (
+            <>
+              <div className="text-sm font-medium text-slate-700 px-1">
+                {dayDate.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+              </div>
+              {dayAppts.length === 0 ? (
+                <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-slate-400 text-sm">
+                  Nenhuma consulta neste dia.
+                </div>
+              ) : (
+                dayAppts
+                  .sort((a, b) => a.start_time.localeCompare(b.start_time))
+                  .map((appt) => (
+                    <div
+                      key={appt.id}
+                      className="bg-white border border-slate-200 rounded-xl p-4 flex items-start gap-3"
+                    >
+                      {/* Time column */}
+                      <div className="text-xs font-mono text-slate-500 pt-0.5 w-12 shrink-0">
+                        {new Date(appt.start_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-slate-900 text-sm truncate">{appt.patient_name}</p>
+                        <p className="text-xs text-slate-500 truncate">{appt.type_display}</p>
+                        <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs border ${STATUS_COLORS[appt.status] ?? ''}`}>
+                          {appt.status_display}
+                        </span>
+                      </div>
+                      {/* Action */}
+                      <button
+                        onClick={() => setDetailAppt(appt)}
+                        className="shrink-0 px-3 py-1.5 text-xs font-medium text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50"
+                      >
+                        Ver
+                      </button>
+                    </div>
+                  ))
+              )}
+            </>
+          )
+        })()}
+      </div>
+
       {/* Appointment detail panel */}
       {detailAppt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -398,6 +456,16 @@ export default function AppointmentsPage() {
                 </div>
               )}
 
+              {/* PIX payment */}
+              <div className="border-t border-slate-100 pt-3">
+                <button
+                  onClick={() => { setPixAppt(detailAppt); setDetailAppt(null) }}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-green-600 text-white text-sm font-semibold rounded-xl hover:bg-green-700"
+                >
+                  Cobrar via PIX
+                </button>
+              </div>
+
               {/* Status actions */}
               <div className="border-t border-slate-100 pt-3">
                 <p className="text-slate-500 text-xs mb-2">Mudar status</p>
@@ -438,6 +506,20 @@ export default function AppointmentsPage() {
           onClose={() => setShowModal(false)}
           onCreated={() => {
             setShowModal(false)
+            fetchAppointments()
+          }}
+        />
+      )}
+
+      {/* PIX payment modal */}
+      {pixAppt && (
+        <PIXModal
+          appointmentId={pixAppt.id}
+          amount={150}
+          patientName={pixAppt.patient_name}
+          onClose={() => setPixAppt(null)}
+          onPaid={() => {
+            setPixAppt(null)
             fetchAppointments()
           }}
         />

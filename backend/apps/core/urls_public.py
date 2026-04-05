@@ -8,6 +8,7 @@ from .views import TenantRegistrationView
 from .views_platform import (
     ActivateModuleView,
     DeactivateModuleView,
+    PilotHealthView,
     PlanDetailView,
     PlanListCreateView,
     SubscriptionDetailView,
@@ -36,4 +37,7 @@ urlpatterns = [
     path("platform/subscriptions/<uuid:pk>/", SubscriptionDetailView.as_view(), name="platform-subscription-detail"),
     path("platform/subscriptions/<uuid:pk>/activate-module/", ActivateModuleView.as_view(), name="platform-activate-module"),
     path("platform/subscriptions/<uuid:pk>/deactivate-module/", DeactivateModuleView.as_view(), name="platform-deactivate-module"),
+
+    # S-061: Pilot health dashboard
+    path("platform/pilot-health/", PilotHealthView.as_view(), name="platform-pilot-health"),
 ]

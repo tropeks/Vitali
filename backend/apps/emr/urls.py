@@ -7,6 +7,7 @@ from .views import (
     EncounterViewSet, SOAPNoteViewSet, VitalSignsViewSet, ClinicalDocumentViewSet,
     PrescriptionViewSet, PrescriptionItemViewSet,
 )
+from .views_setup import WizardProfessionalSetupView, WizardStatusView
 
 router = DefaultRouter()
 router.register('patients', PatientViewSet, basename='patient')
@@ -23,4 +24,7 @@ router.register('prescription-items', PrescriptionItemViewSet, basename='prescri
 urlpatterns = router.urls + [
     path('professionals/<uuid:professional_id>/available-slots', AvailableSlotsView.as_view()),
     path('waiting-room', WaitingRoomView.as_view()),
+    # S-054: Onboarding wizard setup
+    path('setup/professional/', WizardProfessionalSetupView.as_view(), name='wizard-professional-setup'),
+    path('setup/status/', WizardStatusView.as_view(), name='wizard-status'),
 ]

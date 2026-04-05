@@ -7,8 +7,10 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    AsaasWebhookView,
     GlosaViewSet,
     InsuranceProviderViewSet,
+    PIXChargeView,
     PriceTableViewSet,
     TISSBatchViewSet,
     TISSGuideViewSet,
@@ -25,4 +27,7 @@ router.register(r"glosas", GlosaViewSet, basename="glosa")
 
 urlpatterns = [
     path("billing/", include(router.urls)),
+    path("billing/pix/charges/", PIXChargeView.as_view(), name="pix-charge-create"),
+    path("billing/pix/charges/<uuid:charge_id>/", PIXChargeView.as_view(), name="pix-charge-detail"),
+    path("billing/pix/webhook/", AsaasWebhookView.as_view(), name="asaas-webhook"),
 ]

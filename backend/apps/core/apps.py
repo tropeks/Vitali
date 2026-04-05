@@ -8,3 +8,4 @@ class CoreConfig(AppConfig):
 
     def ready(self):
         import apps.core.signals  # noqa: F401
+        import apps.billing.services.tasks  # noqa: F401 — connects appointment_paid signal

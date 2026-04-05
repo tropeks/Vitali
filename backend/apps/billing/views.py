@@ -436,3 +436,165 @@ class GlosaViewSet(viewsets.ReadOnlyModelViewSet):
             new_data={"status": "appeal", "glosa_id": glosa.pk},
         )
         return Response(GlosaSerializer(glosa).data)
+
+
+# ─── S-055: PIX Payment Views ─────────────────────────────────────────────────
+
+import hashlib  # noqa: E402
+import hmac as _hmac  # noqa: E402
+
+from .models import PIXCharge  # noqa: E402
+from .services.asaas import AsaasAPIError, AsaasService  # noqa: E402
+
+
+class PIXChargeCreateSerializer(serializers.Serializer):
+    appointment_id = serializers.UUIDField()
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value="0.01")
+
+
+class PIXChargeView(APIView):
+    """
+    POST /api/v1/billing/pix/charges/  — create PIX charge
+    GET  /api/v1/billing/pix/charges/:id/ — get charge status
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        ser = PIXChargeCreateSerializer(data=request.data)
+        if not ser.is_valid():
+            return Response(
+                {"error": {"code": "VALIDATION_ERROR", "details": ser.errors}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        from apps.emr.models import Appointment
+        try:
+            appointment = Appointment.objects.get(id=ser.validated_data["appointment_id"])
+        except Appointment.DoesNotExist:
+            return Response(
+                {"error": {"code": "NOT_FOUND", "message": "Agendamento não encontrado."}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        # Idempotent: return existing pending charge
+        existing = PIXCharge.objects.filter(
+            appointment=appointment, status=PIXCharge.Status.PENDING
+        ).first()
+        if existing:
+            return Response(_pix_charge_dict(existing))
+
+        try:
+            service = AsaasService()
+            charge_data = service.create_pix_charge(appointment, ser.validated_data["amount"])
+        except AsaasAPIError as exc:
+            return Response(exc.to_response_dict(), status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        from django.db import connection
+        from apps.core.models import AsaasChargeMap
+        with transaction.atomic():
+            charge = PIXCharge.objects.create(
+                appointment=appointment,
+                asaas_charge_id=charge_data["asaas_charge_id"],
+                asaas_customer_id=charge_data["asaas_customer_id"],
+                amount=ser.validated_data["amount"],
+                pix_copy_paste=charge_data["pix_copy_paste"],
+                pix_qr_code_base64=charge_data["pix_qr_code_base64"],
+                expires_at=charge_data["expires_at"],
+            )
+            AsaasChargeMap.objects.get_or_create(
+                asaas_charge_id=charge_data["asaas_charge_id"],
+                defaults={"tenant_schema": connection.schema_name},
+            )
+        return Response(_pix_charge_dict(charge), status=status.HTTP_201_CREATED)
+
+    def get(self, request, charge_id=None):
+        try:
+            charge = PIXCharge.objects.get(id=charge_id)
+        except PIXCharge.DoesNotExist:
+            return Response(
+                {"error": {"code": "NOT_FOUND", "message": "Cobrança não encontrada."}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(_pix_charge_dict(charge))
+
+
+def _pix_charge_dict(charge: "PIXCharge") -> dict:
+    return {
+        "id": str(charge.id),
+        "appointment_id": str(charge.appointment_id),
+        "amount": str(charge.amount),
+        "status": charge.status,
+        "pix_copy_paste": charge.pix_copy_paste,
+        "pix_qr_code_base64": charge.pix_qr_code_base64,
+        "expires_at": charge.expires_at.isoformat(),
+        "paid_at": charge.paid_at.isoformat() if charge.paid_at else None,
+    }
+
+
+class AsaasWebhookView(APIView):
+    """
+    POST /api/v1/billing/pix/webhook/
+    Public endpoint — Asaas sends PAYMENT_RECEIVED events here.
+
+    Security:
+    - Validates asaas-access-token header (constant-time compare).
+    - Validates charge exists in DB before acting (defense-in-depth).
+    - select_for_update + status check = idempotent on duplicate delivery.
+    Always returns 200 to prevent Asaas retry storms.
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        token = request.headers.get("asaas-access-token", "")
+        expected = getattr(settings, "ASAAS_WEBHOOK_TOKEN", "")
+        if not expected or not _hmac.compare_digest(token.encode(), expected.encode()):
+            logger.warning("asaas.webhook.invalid_token ip=%s", request.META.get("REMOTE_ADDR"))
+            return Response({"status": "ok"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        event_type = request.data.get("event", "")
+        payment = request.data.get("payment", {})
+        charge_id = payment.get("id", "")
+        if event_type != "PAYMENT_RECEIVED" or not charge_id:
+            return Response({"status": "ok"})
+
+        from apps.core.models import AsaasChargeMap
+        from django_tenants.utils import schema_context
+        try:
+            charge_map = AsaasChargeMap.objects.get(asaas_charge_id=charge_id)
+        except AsaasChargeMap.DoesNotExist:
+            logger.warning("asaas.webhook.unknown_charge charge_id=%s", charge_id)
+            return Response({"status": "ok"})
+
+        with schema_context(charge_map.tenant_schema):
+            _process_pix_payment_received(charge_id)
+
+        return Response({"status": "ok"})
+
+
+def _process_pix_payment_received(charge_id: str) -> None:
+    """Process PAYMENT_RECEIVED within the correct tenant schema. Idempotent."""
+    with transaction.atomic():
+        try:
+            charge = PIXCharge.objects.select_for_update().get(
+                asaas_charge_id=charge_id,
+                status=PIXCharge.Status.PENDING,
+            )
+        except PIXCharge.DoesNotExist:
+            logger.info("asaas.webhook.already_processed charge_id=%s", charge_id)
+            return
+
+        charge.status = PIXCharge.Status.PAID
+        charge.paid_at = timezone.now()
+        charge.save(update_fields=["status", "paid_at", "updated_at"])
+
+        appointment = charge.appointment
+        if appointment.status in ("scheduled", "waiting"):
+            appointment.status = "confirmed"
+            appointment.save(update_fields=["status", "updated_at"])
+
+        from .services.pix_signals import appointment_paid
+        appointment_paid.send(sender=PIXCharge, appointment=appointment)
+
+    logger.info(
+        "asaas.webhook.processed charge_id=%s appointment_id=%s",
+        charge_id, str(charge.appointment_id),
+    )
