@@ -40,13 +40,18 @@ _RATE_LIMIT_MAX = 20      # messages per window per contact
 
 
 def _check_rate_limit(phone: str) -> bool:
-    """Returns True if message is within rate limit, False if exceeded."""
+    """Returns True if message is within rate limit, False if exceeded.
+
+    Uses atomic cache.incr() to avoid TOCTOU race on concurrent requests.
+    """
     cache_key = f"wa_rate:{phone}"
-    count = cache.get(cache_key, 0)
-    if count >= _RATE_LIMIT_MAX:
-        return False
-    cache.set(cache_key, count + 1, timeout=_RATE_LIMIT_WINDOW)
-    return True
+    try:
+        count = cache.incr(cache_key)
+    except ValueError:
+        # Key did not exist — initialize then increment atomically
+        cache.set(cache_key, 1, timeout=_RATE_LIMIT_WINDOW)
+        count = 1
+    return count <= _RATE_LIMIT_MAX
 
 
 def _log_message(contact, direction: str, content: str, message_type: str = "text", appointment=None):
@@ -182,11 +187,11 @@ class SetupWebhookView(APIView):
     permission_classes = [IsAuthenticated, _WHATSAPP_MODULE]
 
     def post(self, request):
-        webhook_url = request.data.get("webhook_url")
-        if not webhook_url:
-            # Auto-build from request host
-            host = request.get_host()
-            webhook_url = f"https://{host}/api/v1/whatsapp/webhook/"
+        # Always derive the webhook URL from the server's own host — never trust
+        # a client-supplied URL (SSRF risk: arbitrary URL could redirect Evolution API
+        # to internal network endpoints).
+        host = request.get_host()
+        webhook_url = f"https://{host}/api/v1/whatsapp/webhook/"
         try:
             gateway = get_gateway()
             gateway.register_webhook(webhook_url)
@@ -205,6 +210,7 @@ class MessageLogPagination(PageNumberPagination):
 class WhatsAppContactViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = WhatsAppContactSerializer
     permission_classes = [IsAuthenticated, _WHATSAPP_MODULE]
+    pagination_class = MessageLogPagination
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["phone", "patient__full_name"]
     ordering = ["-created_at"]

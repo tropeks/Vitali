@@ -55,20 +55,18 @@ INTENT_MAP: dict[str, str] = {
     "sim": "confirmar",
     "s": "confirmar",
     "ok": "confirmar",
-    # Opt-in
+    # Opt-in (no "1" — it conflicts with numeric menu navigation in all other states)
     "aceitar": "optin",
     "aceito": "optin",
     "autorizo": "optin",
     "concordo": "optin",
-    "1": "optin",
-    # Opt-out
+    # Opt-out (no "2" — it conflicts with numeric menu navigation in all other states)
     "sair": "optout",
     "parar": "optout",
     "stop": "optout",
     "nao": "optout",
     "nao quero": "optout",
     "recusar": "optout",
-    "2": "optout",
     # Help
     "ajuda": "ajuda",
     "menu": "ajuda",
@@ -170,8 +168,10 @@ class ConversationFSM:
         handler = getattr(self, f"_state_{session.state}", self._state_unknown)
         outbound = handler(message, message_type, intent)
 
-        session.refresh_expiry()
-        session.save()
+        # session.delete() is called after a confirmed booking — don't try to save a deleted row
+        if session.pk is not None:
+            session.refresh_expiry()
+            session.save()
         return outbound
 
     # ─── State handlers ───────────────────────────────────────────────────────
@@ -193,12 +193,14 @@ class ConversationFSM:
         session = self._session
         contact = session.contact
 
-        if intent == "optin":
+        # "1" is the numeric shortcut for opt-in on the LGPD menu only (not in INTENT_MAP
+        # to avoid collisions with numeric navigation in later states)
+        if intent == "optin" or message.strip() == "1":
             contact.do_opt_in()
             session.state = "SELECTING_SELF_OR_OTHER"
             session.save()
             return [OPTED_IN_MSG + "\n\n" + SELF_OR_OTHER_MSG]
-        elif intent == "optout":
+        elif intent == "optout" or message.strip() == "2":
             contact.do_opt_out()
             session.state = "OPTED_OUT"
             session.save()
@@ -276,16 +278,18 @@ class ConversationFSM:
     def _state_SELECTING_PROFESSIONAL(self, message, message_type, intent) -> list[str]:
         session = self._session
         ctx = get_context(session)
-        professional_id = self._parse_menu_selection(message)
+        idx = self._parse_menu_selection(message)
 
         professionals = self._get_professionals(ctx.get("specialty_id"))
-        if professional_id not in [p["id"] for p in professionals]:
+        if idx is None or idx < 1 or idx > len(professionals):
             return self._unrecognized(self._send_professional_menu(ctx.get("specialty_id")))
 
-        set_context(session, professional_id=professional_id, mismatches=0)
+        # Store the actual DB PK (not the menu index) so _do_confirm_booking can look it up
+        professional_pk = professionals[idx - 1]["id"]
+        set_context(session, professional_id=professional_pk, mismatches=0)
         session.state = "SELECTING_DATE"
         session.save()
-        return self._send_date_menu(professional_id)
+        return self._send_date_menu(professional_pk)
 
     def _state_SELECTING_DATE(self, message, message_type, intent) -> list[str]:
         session = self._session
@@ -355,10 +359,13 @@ class ConversationFSM:
         return [FALLBACK_MSG_TEMPLATE.format(phone=self._clinic_phone)]
 
     def _state_OPTED_OUT(self, message, message_type, intent) -> list[str]:
-        # Patient messaged again after opting out — re-send opt-in prompt
+        # Patient messaged again after opting out — re-send opt-in prompt.
+        # Clear any stale booking context from a previous session to prevent
+        # inadvertent slot re-confirmation after opt-back-in.
         session = self._session
-        contact = session.contact
         session.state = "PENDING_OPTIN"
+        set_context(session, specialty_id=None, professional_id=None, date=None,
+                    slot_start=None, slot_end=None, mismatches=0)
         session.save()
         return [LGPD_CONSENT_MSG]
 
@@ -409,9 +416,12 @@ class ConversationFSM:
         except (KeyError, ValueError):
             return ["Horário inválido. Por favor, escolha outro horário."]
 
-        # Atomic slot reservation — re-check availability inside transaction
+        # Atomic slot reservation — lock the Professional row to serialize concurrent bookings
+        # for the same professional (select_for_update on overlapping appointments alone
+        # can't prevent two simultaneous bookings into an empty slot).
         with transaction.atomic():
-            overlapping = Appointment.objects.select_for_update().filter(
+            professional = Professional.objects.select_for_update().get(pk=professional.pk)
+            overlapping = Appointment.objects.filter(
                 professional=professional,
                 status__in=["scheduled", "confirmed", "waiting", "in_progress"],
                 start_time__lt=end,

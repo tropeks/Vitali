@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { RefreshCw, MessageCircle, Phone, CheckCircle, AlertCircle, Clock, Loader2, X } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -185,9 +185,9 @@ function ConversationsTab() {
   const [logs, setLogs] = useState<MessageLog[]>([])
   const [logsLoading, setLogsLoading] = useState(false)
 
-  const fetchContacts = useCallback(async () => {
+  const fetchContacts = useCallback(async (query: string) => {
     try {
-      const q = search ? `?search=${encodeURIComponent(search)}` : ''
+      const q = query ? `?search=${encodeURIComponent(query)}` : ''
       const r = await fetch(`/api/v1/whatsapp/contacts/${q}`)
       const d = await r.json()
       setContacts(d.results ?? d)
@@ -196,11 +196,17 @@ function ConversationsTab() {
     } finally {
       setLoading(false)
     }
-  }, [search])
+  }, [])
 
+  // Debounce search — fire at most once per 300ms to avoid per-keystroke requests
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
-    fetchContacts()
-  }, [fetchContacts])
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => fetchContacts(search), 300)
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [search, fetchContacts])
 
   const openContact = async (contact: Contact) => {
     setSelectedContact(contact)
