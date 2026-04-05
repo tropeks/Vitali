@@ -12,7 +12,7 @@ from django_tenants.test.cases import TenantTestCase
 from rest_framework.test import APIClient
 
 from apps.billing.models import InsuranceProvider, TISSBatch, TISSGuide
-from apps.core.models import Role, User
+from apps.core.models import FeatureFlag, Role, User
 from apps.emr.models import Encounter, Patient, Professional
 
 
@@ -48,6 +48,10 @@ class BillingAnalyticsBaseCase(TenantTestCase):
             pass
         self.client = APIClient()
         self.client.defaults["SERVER_NAME"] = self.__class__.domain.domain
+
+        FeatureFlag.objects.update_or_create(
+            tenant=self.__class__.tenant, module_key='billing', defaults={'is_enabled': True}
+        )
 
         role = Role.objects.create(
             name="faturista",

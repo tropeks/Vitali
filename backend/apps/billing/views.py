@@ -171,11 +171,12 @@ class TISSGuideViewSet(viewsets.ModelViewSet):
         return TISSGuideSerializer
 
     def perform_create(self, serializer):
+        # Pop write-only field before save so it doesn't reach TISSGuide.objects.create()
+        glosa_prediction_ids = serializer.validated_data.pop('glosa_prediction_ids', [])
         guide = serializer.save()
         # Link any GlosaPrediction rows that were shown before guide submission.
         # Only link rows that are still orphaned (guide__isnull=True) — prevents
         # a malicious or buggy client from hijacking predictions from another guide.
-        glosa_prediction_ids = serializer.validated_data.get('glosa_prediction_ids', [])
         if glosa_prediction_ids:
             from apps.ai.models import GlosaPrediction
             GlosaPrediction.objects.filter(

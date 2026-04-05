@@ -10,7 +10,7 @@ from rest_framework.test import APIClient
 
 from apps.ai.models import AIPromptTemplate
 from apps.ai.services import PredictionResult
-from apps.core.models import Role, User
+from apps.core.models import FeatureFlag, Role, User
 
 GLOSA_URL = "/api/v1/ai/glosa-predict/"
 
@@ -75,6 +75,9 @@ class GlosaPredictViewTest(TenantTestCase):
         self._override.enable()
         self.client = APIClient()
         self.client.defaults["SERVER_NAME"] = self.__class__.domain.domain
+        FeatureFlag.objects.update_or_create(
+            tenant=self.__class__.tenant, module_key='ai_tuss', defaults={'is_enabled': True}
+        )
         self.user = _make_user()
         self.client.force_authenticate(user=self.user)
 

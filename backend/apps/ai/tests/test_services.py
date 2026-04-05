@@ -10,6 +10,7 @@ from django.core.cache import cache
 from django.test import override_settings
 
 from apps.ai.models import AIPromptTemplate, AIUsageLog, TUSSAISuggestion
+from apps.core.models import TenantAIConfig
 
 
 def _make_template(tenant_context):
@@ -40,6 +41,10 @@ class TUSSCoderTest(TenantTestCase):
         cache.clear()
         self._override = override_settings(ANTHROPIC_API_KEY="test-key", FEATURE_AI_TUSS=True, AI_RATE_LIMIT_PER_HOUR=1000)
         self._override.enable()
+        TenantAIConfig.objects.update_or_create(
+            tenant=self.__class__.tenant,
+            defaults={"ai_tuss_enabled": True, "rate_limit_per_hour": 1000},
+        )
         self.template = _make_template(None)
         self.tenant_schema = self.tenant.schema_name
 
@@ -144,8 +149,10 @@ class TUSSCoderTest(TenantTestCase):
     def test_tenant_cache_isolation(self):
         """Tenant A's cached response must not be served to tenant B."""
         candidates = _mock_tuss_codes([("10101012", "Consulta")])
+        enabled_config = TenantAIConfig(ai_tuss_enabled=True, rate_limit_per_hour=1000)
 
         with patch("apps.ai.services._retrieve_candidates", return_value=candidates), \
+             patch("apps.ai.services.get_tenant_ai_config", return_value=enabled_config), \
              patch("apps.ai.gateway.ClaudeGateway.complete", return_value=self._claude_response(["10101012"])) as mock_claude:
             from apps.ai.services import suggest
             suggest("consulta", "consulta", "tenant_a")

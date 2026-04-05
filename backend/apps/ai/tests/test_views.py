@@ -10,7 +10,7 @@ from django_tenants.test.cases import TenantTestCase
 from rest_framework.test import APIClient
 
 from apps.ai.models import AIPromptTemplate, AIUsageLog, TUSSAISuggestion
-from apps.core.models import Role, User
+from apps.core.models import FeatureFlag, Role, TenantAIConfig, User
 
 
 def _make_user(schema_domain, role_name="faturista"):
@@ -55,6 +55,13 @@ class TUSSSuggestViewTest(TenantTestCase):
         self._override.enable()
         self.client = APIClient()
         self.client.defaults["SERVER_NAME"] = self.__class__.domain.domain
+        FeatureFlag.objects.update_or_create(
+            tenant=self.__class__.tenant, module_key='ai_tuss', defaults={'is_enabled': True}
+        )
+        TenantAIConfig.objects.update_or_create(
+            tenant=self.__class__.tenant,
+            defaults={"ai_tuss_enabled": True, "rate_limit_per_hour": 1000},
+        )
         self.user = _make_user(self.__class__.domain)
         self.client.force_authenticate(user=self.user)
         self.template = _make_template()
@@ -66,10 +73,12 @@ class TUSSSuggestViewTest(TenantTestCase):
         suggestions = [{"code": c} for c in codes]
         return json.dumps({"suggestions": suggestions}), 50, 20
 
-    def test_feature_flag_off_returns_404(self):
+    def test_feature_flag_off_returns_degraded(self):
+        """FEATURE_AI_TUSS=False returns 200 with a detail message (not 404 — avoids confusing users)."""
         with override_settings(FEATURE_AI_TUSS=False):
             resp = self.client.post('/api/v1/ai/tuss-suggest/', {'description': 'consulta'}, format='json')
-        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('detail', resp.data)
 
     def test_returns_suggestions_on_success(self):
         candidates = _mock_candidates([("10101012", "Consulta em consultório")])
@@ -113,7 +122,9 @@ class TUSSSuggestViewTest(TenantTestCase):
     def test_tenant_cache_isolation(self):
         """Requests from different schemas produce separate cache entries."""
         candidates = _mock_candidates([("10101012", "Consulta")])
+        enabled_config = TenantAIConfig(ai_tuss_enabled=True, rate_limit_per_hour=1000)
         with patch("apps.ai.services._retrieve_candidates", return_value=candidates), \
+             patch("apps.ai.services.get_tenant_ai_config", return_value=enabled_config), \
              patch("apps.ai.gateway.ClaudeGateway.complete", return_value=self._claude_response(["10101012"])) as mock_claude:
             # Same description, different schema
             from apps.ai import services
@@ -131,6 +142,9 @@ class TUSSSuggestFeedbackViewTest(TenantTestCase):
         self._override.enable()
         self.client = APIClient()
         self.client.defaults["SERVER_NAME"] = self.__class__.domain.domain
+        FeatureFlag.objects.update_or_create(
+            tenant=self.__class__.tenant, module_key='ai_tuss', defaults={'is_enabled': True}
+        )
         self.user = _make_user(self.__class__.domain)
         self.client.force_authenticate(user=self.user)
 
