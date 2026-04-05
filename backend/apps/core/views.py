@@ -9,6 +9,7 @@ from django.core.cache import cache
 from django.utils import timezone
 from django_tenants.utils import schema_context
 from rest_framework import generics, permissions, status
+from rest_framework import throttling as rest_framework_throttling
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
@@ -108,6 +109,12 @@ def _write_audit(request, user, action: str, resource_type: str = "auth", resour
 
 # ─── Auth Views ───────────────────────────────────────────────────────────────
 
+class LoginRateThrottle(rest_framework_throttling.AnonRateThrottle):
+    """5 login attempts per minute per IP — tighter than the global 100/hour."""
+    rate = "5/min"
+    scope = "login"
+
+
 class LoginView(APIView):
     """
     POST /api/v1/auth/login
@@ -115,6 +122,7 @@ class LoginView(APIView):
     Returns { access, refresh, user: UserDTO }
     """
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [LoginRateThrottle]
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data)

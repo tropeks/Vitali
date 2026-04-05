@@ -61,6 +61,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "apps.core.middleware.RequestIdMiddleware",
     "apps.core.middleware.CurrentUserMiddleware",
     "apps.core.middleware.FeatureFlagMiddleware",
     "apps.core.middleware.DemoModeMiddleware",  # no-op unless DEMO_MODE=true
@@ -145,6 +146,18 @@ REST_FRAMEWORK = {
         "rest_framework.filters.SearchFilter",
         "rest_framework.filters.OrderingFilter",
     ],
+    # Global rate limiting: anonymous (100/hour) and authenticated (1000/hour).
+    # TenantUserRateThrottle prefixes cache key with schema to prevent cross-tenant
+    # bucket collision. Login endpoint applies a tighter per-view override (5/min).
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "apps.core.throttles.TenantUserRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "100/hour",
+        "user": "1000/hour",
+        "login": "5/min",
+    },
 }
 
 # ─── JWT ─────────────────────────────────────────────────────────────────────

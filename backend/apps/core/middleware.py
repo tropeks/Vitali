@@ -1,12 +1,14 @@
 """
 HealthOS Core Middleware
 ========================
-Feature flag utilities, tenant-aware helpers, and thread-local current user.
+Feature flag utilities, tenant-aware helpers, thread-local current user,
+request ID injection, and tenant-scoped JSON log filter.
 """
 from __future__ import annotations
 
 import logging
 import threading
+import uuid
 
 from django.conf import settings
 from django.http import JsonResponse
@@ -96,6 +98,50 @@ class DemoModeMiddleware:
                     status=403,
                 )
         return self.get_response(request)
+
+
+class RequestIdMiddleware:
+    """
+    Assigns a UUID4 request ID to every HTTP request.
+
+    - Stored in thread-local (_thread_locals.request_id) so TenantRequestLogFilter
+      can inject it into every log record for the duration of the request.
+    - Echoed in the X-Request-ID response header for client-side correlation.
+    - Cleared in a finally block to prevent leakage across requests on reused threads.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        _thread_locals.request_id = str(uuid.uuid4())
+        try:
+            response = self.get_response(request)
+            response["X-Request-ID"] = _thread_locals.request_id
+        finally:
+            _thread_locals.request_id = None
+        return response
+
+
+class TenantRequestLogFilter(logging.Filter):
+    """
+    Injects `tenant` and `request_id` into every log record so that structured
+    JSON log lines are trivially grepable by clinic or request.
+
+    Celery tasks do not go through the request cycle, so connection.tenant may
+    be None — falls back to "shared" to avoid AttributeError.
+    """
+
+    def filter(self, record):
+        try:
+            from django.db import connection
+            tenant = getattr(connection, "tenant", None)
+            record.tenant = tenant.schema_name if tenant else "shared"
+        except Exception:
+            record.tenant = "shared"
+
+        record.request_id = getattr(_thread_locals, "request_id", None) or "-"
+        return True
 
 
 class FeatureFlagMiddleware:
