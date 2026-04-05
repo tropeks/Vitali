@@ -90,7 +90,7 @@ export default function PODetailPage() {
       for (const item of data.items) {
         initial[item.id] = {
           item_id: item.id,
-          quantity_received: String(item.quantity_received ?? ''),
+          quantity_received: '',  // always start empty — existing received shown as read-only context
           lot_number: '',
           expiry_date: '',
         };

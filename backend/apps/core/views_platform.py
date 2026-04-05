@@ -18,7 +18,7 @@ from .serializers_platform import PlanSerializer, SubscriptionSerializer, Tenant
 
 logger = logging.getLogger(__name__)
 
-_PLATFORM_PERMS = [IsAuthenticated, IsPlatformAdmin]
+_PLATFORM_PERMS = (IsAuthenticated, IsPlatformAdmin)
 
 
 def _get_subscription(pk, lock=False):
