@@ -2,6 +2,24 @@
 
 All notable changes to Vitali Health are documented here.
 
+## [0.6.0] — 2026-04-05
+
+### Added
+- **Commercialization Layer (Sprint 11):** Module gating, subscription management, purchase orders, and pilot readiness — the infrastructure for a real revenue model
+  - **S-039 Module Permission Layer:** `ModuleRequiredPermission` DRF permission class gates every billing, pharmacy, analytics, and AI endpoint by tenant `FeatureFlag`. Frontend `useHasModule()` hook with 5-minute `sessionStorage` TTL hides nav items for inactive modules (fail-open — all items visible until fetch completes, no layout shift). Applied to 15 ViewSets/Views across billing, analytics, pharmacy, and AI apps. `ALLOWED_MODULE_KEYS` constant in `core/constants.py` as the single source of truth. 9 tests.
+  - **S-040 Platform Admin Subscription API:** REST API for `Plan`, `PlanModule`, and `Subscription` in the public schema — the Vitali operator control plane. `IsPlatformAdmin` permission (superuser only). `ActivateModuleView` and `DeactivateModuleView` with `select_for_update()` TOCTOU protection. PATCH on `Subscription.active_modules` uses double-lock pattern to sync `FeatureFlag` rows atomically. `POST /api/v1/platform/subscriptions/{id}/activate-module/` and `deactivate-module/`. 7 tests.
+  - **S-041 Tenant Subscription Status Page:** `GET /api/v1/subscription/` returns current plan, active modules, and pricing for the tenant admin. New `/configuracoes/assinatura` page — shows plan name, active module badges, and renewal date. "Configurações" nav item (gear icon, admin-only). Graceful 404 empty-state when no subscription is configured.
+  - **S-042 Purchase Orders:** `Supplier`, `PurchaseOrder`, `PurchaseOrderItem` models. Full PO lifecycle: create → send → receive (partial or full). `POST /pharmacy/purchase-orders/{id}/receive/` creates `StockMovements` and updates `StockItem.quantity` atomically via `F()` expressions with `select_for_update()`. New `'purchase_order_receiving'` movement type added to `StockMovement.MOVEMENT_TYPES`. Frontend: PO list (`/farmacia/compras`), PO detail (`/farmacia/compras/{id}`), create PO form (`/farmacia/compras/nova`) with supplier autocomplete and drug/material search. Status badges match DESIGN.md semantic color system. 9 tests.
+  - **S-043 Pilot Readiness:** `seed_demo_data` management command populates a tenant with realistic demo data. `DemoModeMiddleware` wraps all write endpoints in 403 when `DEMO_MODE=true` (auth and platform admin paths whitelisted). `OnboardingView` (`GET /api/v1/onboarding/`) returns step completion state. `OnboardingWidget` renders on the dashboard when any step is incomplete — progress bar + step list with "Fazer agora →" CTAs. 6 tests.
+
+### Fixed
+- **Dashboard CORS failure:** Analytics fetches used `http://localhost:8000` directly — CORS blocked in browser. Now uses relative `/api/v1/analytics` path through the Next.js catch-all proxy.
+- **OnboardingWidget 404:** Widget called `/api/v1/core/onboarding/` (wrong URL). Corrected to `/api/v1/onboarding/` per `core/urls.py` routing.
+- **OnboardingWidget hidden on analytics error:** Error state rendered without `<OnboardingWidget />`. Fixed — widget now shows even when analytics returns an error.
+- **Analytics 403 not cleared:** 403 response (analytics module inactive) left `error` state set, causing a red error banner. Fixed — `setError(null)` added before the early return.
+- **Next.js proxy trailing-slash loss:** `next.config.mjs` rewrites stripped trailing slashes before forwarding, causing Django DRF 404s. Replaced with a catch-all proxy route (`app/api/[...path]/route.ts`) that preserves trailing slashes explicitly.
+- **Docker-internal tenant routing:** Server-side `fetch()` from Next.js to Django used the container hostname (`django:8000`) as the `Host` header, which didn't match any `django-tenants` `Domain` row. Fixed by forwarding `X-Forwarded-Host` (stripped port) and enabling `USE_X_FORWARDED_HOST=True` in Django settings.
+
 ## [0.5.0] — 2026-04-02
 
 ### Added
