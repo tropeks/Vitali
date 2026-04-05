@@ -268,3 +268,37 @@ single-item guides for label-clean training data).
 
 **Priority:** P3 — matters for Sprint 11+ fine-tuned model. No impact on Sprint 9 zero-shot.
 **Blocked by:** ANS retorno XML extended element spec (TISS 4.02.00 or higher).
+
+---
+
+## P3 — WhatsApp: Prescription Ready Notifications (Sprint 12 deferred)
+
+When a prescription is marked ready in the pharmacy module, notify the patient via WhatsApp.
+Deferred because it crosses the pharmacy module boundary mid-sprint.
+
+**Blocked by:** Cross-module event bus design (pharmacy → whatsapp). Needs WhatsAppGateway
+injectable into pharmacy app without circular imports.
+**Deferred from:** `docs/PLAN_SPRINT12.md` Decision #6.
+
+---
+
+## P3 — WhatsApp: Recurring Follow-up Reminders (Sprint 12 deferred)
+
+Post-surgery / chronic condition recurring reminders (e.g., "Sua próxima consulta de retorno
+é em 30 dias — deseja agendar?"). Requires appointment history analysis and frequency config
+per specialty.
+
+**Blocked by:** Appointment history query logic + per-specialty follow-up config model.
+**Deferred from:** `docs/PLAN_SPRINT12.md` Decision #7.
+
+---
+
+## P3 — WhatsApp: Bulk Broadcast to Opted-in Patients (Sprint 12 deferred)
+
+New UI surface in /comunicacao or /marketing section. Allows admin to send a message to all
+opted-in patients, or a filtered subset (e.g., by specialty or last visit date).
+
+**Requirements:** Template approval flow, send-rate throttling (Meta rate limits), unsubscribe
+tracking, send-time scheduling.
+**Deferred from:** `docs/PLAN_SPRINT12.md` Decision #8.
+**Complexity:** ~1 week. Separate epic, not E-009.

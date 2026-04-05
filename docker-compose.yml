@@ -97,6 +97,24 @@ services:
       redis:
         condition: service_healthy
 
+  # ─── Evolution API (WhatsApp Gateway) ────────────────────────────────────────
+  evolution-api:
+    image: atendai/evolution-api:latest
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 8080
+      DATABASE_ENABLED: "false"
+      REDIS_ENABLED: "true"
+      REDIS_URI: redis://redis:6379/1
+      AUTHENTICATION_TYPE: apikey
+      AUTHENTICATION_API_KEY: ${WHATSAPP_EVOLUTION_API_KEY:-change-me}
+      WEBHOOK_GLOBAL_ENABLED: "false"
+    ports:
+      - "8080:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+
   # ─── Next.js Frontend ─────────────────────────────────────────────────────
   nextjs:
     build:

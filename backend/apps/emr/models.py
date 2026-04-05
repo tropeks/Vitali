@@ -204,6 +204,7 @@ class Appointment(models.Model):
     notes = models.TextField(blank=True)
     whatsapp_reminder_sent = models.BooleanField(default=False)
     whatsapp_confirmed = models.BooleanField(default=False)
+    satisfaction_rating = models.IntegerField(null=True, blank=True)  # 1=Muito bom 2=Ok 3=Poderia melhorar
     cancelled_by = models.ForeignKey(
         'core.User', null=True, blank=True, on_delete=models.SET_NULL,
         related_name='cancelled_appointments'

@@ -205,6 +205,13 @@ AI_RATE_LIMIT_PER_HOUR = env.int("AI_RATE_LIMIT_PER_HOUR", default=100)
 AI_SUGGEST_TIMEOUT_S = env.int("AI_SUGGEST_TIMEOUT_S", default=5)
 FEATURE_AI_TUSS = env.bool("FEATURE_AI_TUSS", default=False)
 
+# ─── WhatsApp / Evolution API (S-032) ───────────────────────────────────────
+WHATSAPP_EVOLUTION_URL = env("WHATSAPP_EVOLUTION_URL", default="http://evolution-api:8080")
+WHATSAPP_EVOLUTION_API_KEY = env("WHATSAPP_EVOLUTION_API_KEY", default="")
+WHATSAPP_WEBHOOK_SECRET = env("WHATSAPP_WEBHOOK_SECRET", default="")
+WHATSAPP_INSTANCE_NAME = env("WHATSAPP_INSTANCE_NAME", default="vitali")
+WHATSAPP_CLINIC_PHONE = env("WHATSAPP_CLINIC_PHONE", default="+5511999999999")
+
 # ─── Demo Mode (S-043) ────────────────────────────────────────────────────────
 # When True: all write operations return 403. Auth endpoints whitelisted.
 # Set DEMO_MODE=true in .env for investor demos. Never enable in production.
