@@ -138,7 +138,9 @@ make create-tenant   # Criar nova clínica
 | Sprint 7-8 | 17-21 | Faturamento TISS/TUSS |
 | Sprint 8 | 20-21 | AI TUSS Auto-Coding ✅ |
 | Sprint 9 | 22-23 | AI Features (expansão) |
-| Sprint 10 | 24-26 | WhatsApp |
+| Sprint 10 | 24-26 | Billing Intelligence Dashboard ✅ v0.5.0 |
+| Sprint 11 | 27-28 | Commercialization — module gating, subscriptions, POs ✅ v0.6.0 |
+| Sprint 12 | 29-31 | WhatsApp Patient Engagement |
 
 ---
 

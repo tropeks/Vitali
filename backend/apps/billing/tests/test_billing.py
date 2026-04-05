@@ -12,7 +12,7 @@ from rest_framework.test import APIClient
 
 from apps.billing.models import Glosa, InsuranceProvider, TISSBatch, TISSGuide
 from apps.billing.services.retorno_parser import parse_retorno
-from apps.core.models import Role, User
+from apps.core.models import FeatureFlag, Role, User
 from apps.emr.models import Encounter, Patient, Professional
 
 TISS_NS = "http://www.ans.gov.br/padroes/tiss/schemas"
@@ -48,6 +48,10 @@ class BillingTestCase(TenantTestCase):
         cache.clear()
         self.client = APIClient()
         self.client.defaults["SERVER_NAME"] = self.__class__.domain.domain
+
+        FeatureFlag.objects.update_or_create(
+            tenant=self.__class__.tenant, module_key='billing', defaults={'is_enabled': True}
+        )
 
         # Roles
         self.faturista_role = Role.objects.create(
@@ -406,6 +410,10 @@ class GlosaAppealTestCase(TenantTestCase):
         self.client = APIClient()
         self.client.defaults["SERVER_NAME"] = self.__class__.domain.domain
 
+        FeatureFlag.objects.update_or_create(
+            tenant=self.__class__.tenant, module_key='billing', defaults={'is_enabled': True}
+        )
+
         faturista_role = Role.objects.create(
             name="faturista_ga",
             permissions=["billing.read", "billing.write"],
@@ -500,6 +508,10 @@ class InsuranceProviderTestCase(TenantTestCase):
         cache.clear()
         self.client = APIClient()
         self.client.defaults["SERVER_NAME"] = self.__class__.domain.domain
+
+        FeatureFlag.objects.update_or_create(
+            tenant=self.__class__.tenant, module_key='billing', defaults={'is_enabled': True}
+        )
 
         faturista_role = Role.objects.create(
             name="faturista_ip",

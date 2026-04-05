@@ -1,7 +1,10 @@
 from decimal import Decimal
 
 from rest_framework import serializers
-from .models import Drug, Material, StockItem, StockMovement, Dispensation, DispensationLot
+from .models import (
+    Drug, Material, StockItem, StockMovement, Dispensation, DispensationLot,
+    Supplier, PurchaseOrder, PurchaseOrderItem,
+)
 
 
 class DrugSerializer(serializers.ModelSerializer):
@@ -85,6 +88,10 @@ class StockMovementSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'movement_type': 'Dispensações devem ser registradas via /pharmacy/dispense/.'}
             )
+        if movement_type == 'purchase_order_receiving':
+            raise serializers.ValidationError(
+                {'movement_type': 'Recebimentos de PO devem ser registrados via /pharmacy/purchase-orders/{id}/receive/.'}
+            )
         # Validate expiry_date for entries
         if movement_type == 'entry' and stock_item and stock_item.expiry_date:
             if stock_item.expiry_date < timezone.now().date():
@@ -133,3 +140,89 @@ class DispenseRequestSerializer(serializers.Serializer):
     prescription_item_id = serializers.UUIDField()
     quantity = serializers.DecimalField(max_digits=12, decimal_places=3, min_value=Decimal('0.001'))
     notes = serializers.CharField(required=False, allow_blank=True, default='')
+
+
+# ─── S-042: Purchase Orders ───────────────────────────────────────────────────
+
+class SupplierSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Supplier
+        fields = ('id', 'name', 'cnpj', 'contact_name', 'contact_email', 'contact_phone', 'is_active')
+        read_only_fields = ('id',)
+
+
+class PurchaseOrderItemSerializer(serializers.ModelSerializer):
+    drug_name = serializers.CharField(source='drug.name', read_only=True, default=None)
+    material_name = serializers.CharField(source='material.name', read_only=True, default=None)
+
+    class Meta:
+        model = PurchaseOrderItem
+        fields = (
+            'id', 'drug', 'drug_name', 'material', 'material_name',
+            'quantity_ordered', 'quantity_received', 'unit_price',
+        )
+        read_only_fields = ('id', 'quantity_received')
+
+    def validate(self, data):
+        drug = data.get('drug')
+        material = data.get('material')
+        if drug and material:
+            raise serializers.ValidationError(
+                "Um item de pedido de compra deve ter medicamento OU material, não ambos."
+            )
+        if not drug and not material:
+            raise serializers.ValidationError(
+                "Um item de pedido de compra deve ter medicamento ou material."
+            )
+        return data
+
+
+class PurchaseOrderSerializer(serializers.ModelSerializer):
+    items = PurchaseOrderItemSerializer(many=True, required=False, default=[])
+    supplier_name = serializers.CharField(source='supplier.name', read_only=True)
+    item_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PurchaseOrder
+        fields = (
+            'id', 'supplier', 'supplier_name', 'status', 'expected_date',
+            'notes', 'created_by', 'created_at', 'updated_at',
+            'items', 'item_count',
+        )
+        read_only_fields = ('id', 'created_by', 'created_at', 'updated_at', 'item_count')
+
+    def get_item_count(self, obj):
+        # Use pre-annotated count when available (avoids N+1 on list endpoint)
+        if hasattr(obj, 'item_count'):
+            return obj.item_count
+        return obj.items.count()
+
+    def create(self, validated_data):
+        items_data = validated_data.pop('items', [])
+        po = PurchaseOrder.objects.create(**validated_data)
+        for item_data in items_data:
+            PurchaseOrderItem.objects.create(po=po, **item_data)
+        return po
+
+
+class POReceiveItemSerializer(serializers.Serializer):
+    """Input for each item in the receive action."""
+    item_id = serializers.UUIDField()
+    quantity_received = serializers.DecimalField(
+        max_digits=12, decimal_places=3, min_value=Decimal('0.001')
+    )
+    lot_number = serializers.CharField(required=False, allow_blank=True, default='')
+    expiry_date = serializers.DateField(required=False, allow_null=True, default=None)
+
+
+class POReceiveSerializer(serializers.Serializer):
+    """Input for POST /pharmacy/purchase-orders/{id}/receive/"""
+    items = POReceiveItemSerializer(many=True, min_length=1)
+
+    def validate_items(self, value):
+        ids = [str(item['item_id']) for item in value]
+        if len(ids) != len(set(ids)):
+            raise serializers.ValidationError(
+                "item_id duplicado: cada item só pode aparecer uma vez por recebimento."
+            )
+        return value

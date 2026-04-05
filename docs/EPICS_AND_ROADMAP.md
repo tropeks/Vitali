@@ -692,12 +692,18 @@ E-001 Foundation
 - S-038: TUSS staleness monitor — Celery Beat daily check with INFO/WARNING thresholds
 - **Deliverable:** Faturistas have a full billing intelligence dashboard with denial analytics and AI accuracy tracking
 
-### Sprint 11: Commercialization (Weeks 27-28)
+### Sprint 11: Commercialization (Weeks 27-28) ✓ SHIPPED v0.6.0
 **Focus:** Make it sellable
-- E-010: S-036 (Feature flags), S-037 (Subscription management)
-- E-007: S-029 (Purchase orders)
-- Polish: onboarding flow, demo mode, landing page
-- **Deliverable:** MVP ready for pilot clients
+- E-010: S-039 (Module permission gating), S-040 (Platform admin subscription API), S-041 (Tenant subscription page)
+- E-007: S-043 (Purchase orders — Supplier, PO, receiving flow with FEFO stock integration)
+- Polish: S-042 (seed_demo_data, demo mode, onboarding widget)
+- Infrastructure: Docker networking fix (X-Forwarded-Host tenant routing), catch-all proxy route replacing next.config rewrites
+- **Deliverable:** MVP ready for pilot clients — module gating enforced, POs operational, demo-ready
+
+### Sprint 12: WhatsApp Patient Engagement (Weeks 29-31)
+**Focus:** Patient communication via WhatsApp (rescheduled from Sprint 10 pivot)
+- E-009: S-032 (Evolution API integration), S-033 (Scheduling chatbot), S-034 (Appointment reminders), S-035 (LGPD opt-in)
+- **Deliverable:** Patients can schedule and confirm appointments via WhatsApp
 
 ---
 
@@ -709,7 +715,8 @@ E-001 Foundation
 | **Clinical Core** | 2-5 | 5-13 | Scheduling, EMR, prescriptions |
 | **Operations** | 6-8 | 14-21 | Pharmacy, billing TISS/TUSS |
 | **Intelligence** | 9-10 | 22-26 | AI TUSS coding, Billing Intelligence Dashboard |
-| **Commercial** | 11 | 27-28 | Feature flags, subscriptions, polish |
+| **Commercial** | 11 | 27-28 | Module gating, subscriptions, purchase orders, pilot polish |
+| **Engagement** | 12 | 29-31 | WhatsApp patient scheduling & reminders |
 
 **Total estimated: ~7 months to MVP** (solo dev + AI, full-time)
 

@@ -13,7 +13,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.billing.models import InsuranceProvider, TISSBatch, TISSGuide
+from apps.core.permissions import ModuleRequiredPermission
 from apps.emr.models import Appointment, Encounter, Patient, Professional
+
+_BILLING_MODULE = ModuleRequiredPermission("billing")
 
 
 def _today():
@@ -28,7 +31,7 @@ def _month_start():
 class OverviewView(APIView):
     """GET /api/v1/analytics/overview/ — today's and month-to-date KPIs."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE]
 
     def get(self, request):
         today = _today()
@@ -89,7 +92,7 @@ class OverviewView(APIView):
 class AppointmentsByDayView(APIView):
     """GET /api/v1/analytics/appointments-by-day/?days=30"""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE]
 
     def get(self, request):
         days = min(int(request.query_params.get("days", 30)), 365)
@@ -127,7 +130,7 @@ class AppointmentsByDayView(APIView):
 class AppointmentsByStatusView(APIView):
     """GET /api/v1/analytics/appointments-by-status/ — current month, grouped by status."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE]
 
     STATUS_LABELS = {
         "scheduled": "Agendado",
@@ -162,7 +165,7 @@ class AppointmentsByStatusView(APIView):
 class PatientsByMonthView(APIView):
     """GET /api/v1/analytics/patients-by-month/?months=6"""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE]
 
     def get(self, request):
         months = min(int(request.query_params.get("months", 6)), 24)
@@ -208,7 +211,7 @@ class PatientsByMonthView(APIView):
 class TopProfessionalsView(APIView):
     """GET /api/v1/analytics/top-professionals/?limit=5"""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE]
 
     def get(self, request):
         limit = min(int(request.query_params.get("limit", 5)), 20)
@@ -244,7 +247,7 @@ class TopProfessionalsView(APIView):
 class WaitingTimeView(APIView):
     """GET /api/v1/analytics/waiting-time/ — average wait stats this month."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE]
 
     def get(self, request):
         # Waiting time = in_progress appointments this month whose start was recorded.
@@ -306,7 +309,7 @@ def _competency_for_month(d: date) -> str:
 class BillingOverviewView(APIView):
     """GET /api/v1/analytics/billing/overview/ — current-month KPI cards."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE]
 
     def get(self, request):
         today = _today()
@@ -358,7 +361,7 @@ class BillingOverviewView(APIView):
 class MonthlyRevenueView(APIView):
     """GET /api/v1/analytics/billing/monthly-revenue/?months=6"""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE]
 
     def get(self, request):
         months = _months_param(request)
@@ -406,7 +409,7 @@ class DenialByInsurerView(APIView):
     Returns top insurers by denied value, excluding those with <10 non-draft guides.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE]
     _VOLUME_FLOOR = 10
 
     def get(self, request):
@@ -456,7 +459,7 @@ class BatchThroughputView(APIView):
     created_at → creation month, closed_at → closure month.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE]
 
     def get(self, request):
         months = _months_param(request)
@@ -514,7 +517,7 @@ class BatchThroughputView(APIView):
 class GlosaAccuracyView(APIView):
     """GET /api/v1/analytics/billing/glosa-accuracy/ — prediction accuracy per insurer (S-037)."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE]
 
     def get(self, request):
         from apps.ai.models import GlosaPrediction

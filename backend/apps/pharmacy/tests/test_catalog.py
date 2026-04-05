@@ -5,6 +5,7 @@ from django.db import IntegrityError
 from django_tenants.test.cases import TenantTestCase
 from rest_framework.test import APIClient
 
+from apps.core.models import FeatureFlag
 from apps.core.permissions import DEFAULT_ROLES
 from apps.pharmacy.models import Drug, Material
 
@@ -59,6 +60,9 @@ class TestCatalogPermissions(TenantTestCase):
 class TestCatalogAPI(TenantTestCase):
     def setUp(self):
         from apps.core.models import User, Role
+        FeatureFlag.objects.update_or_create(
+            tenant=self.__class__.tenant, module_key='pharmacy', defaults={'is_enabled': True}
+        )
         self.role_farmaceutico = Role.objects.create(
             name='farmaceutico',
             permissions=DEFAULT_ROLES['farmaceutico'],

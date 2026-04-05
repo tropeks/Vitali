@@ -133,20 +133,26 @@ def protect_tuss_code_deletion(sender, instance, **kwargs):
                 )
 
 
-# ─── Tenant → TenantAIConfig ─────────────────────────────────────────────────
+# ─── Tenant → TenantAIConfig + emr FeatureFlag ───────────────────────────────
 
 @receiver(post_save, sender="core.Tenant")
-def create_tenant_ai_config_on_new_tenant(sender, instance, created, **kwargs):
+def create_tenant_defaults_on_new_tenant(sender, instance, created, **kwargs):
     """
-    Auto-create TenantAIConfig with all-disabled defaults whenever a new Tenant is provisioned.
-    This makes every tenant's AI config visible in Django Admin from day one.
-    'All disabled' is an explicit visible state — not a silent absence.
-    Prevents ops from misreading 'no config row' as low adoption.
+    On new tenant creation:
+    1. Auto-create TenantAIConfig (all-disabled defaults — explicit state in Admin)
+    2. Auto-create emr FeatureFlag (enabled) — every tenant gets EMR from day one,
+       even before a Subscription is created. This prevents new tenants from being
+       locked out of the core clinical workflow while Vitali sets up their plan.
     """
     if not created:
         return
-    from apps.core.models import TenantAIConfig
+    from apps.core.models import TenantAIConfig, FeatureFlag
     TenantAIConfig.objects.get_or_create(tenant=instance)
+    FeatureFlag.objects.get_or_create(
+        tenant=instance,
+        module_key="emr",
+        defaults={"is_enabled": True},
+    )
 
 
 # ─── Subscription → FeatureFlags ─────────────────────────────────────────────

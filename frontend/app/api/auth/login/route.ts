@@ -6,7 +6,10 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 
-const DJANGO_API = process.env.DJANGO_API_URL ?? "http://localhost:8000";
+const DJANGO_API =
+  process.env.DJANGO_API_URL ??
+  process.env.NEXT_PUBLIC_API_URL ??
+  "http://localhost:8000";
 const IS_PROD = process.env.NODE_ENV === "production";
 
 export async function POST(req: NextRequest) {
@@ -18,11 +21,23 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Forward the original Host header so django-tenants can identify the tenant schema.
+  // Strip port — Domain rows store "localhost", not "localhost:3000".
+  // Without this, server-to-server calls from inside Docker use "django:8000" as the Host,
+  // which doesn't match any Domain row and falls through to the public schema.
+  const rawHost = req.headers.get("host") ?? "localhost";
+  const forwardedHost = rawHost.split(":")[0];
+
   let djangoResp: Response;
   try {
     djangoResp = await fetch(`${DJANGO_API}/api/v1/auth/login`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        // Node.js fetch() cannot set Host directly (Fetch API spec forbids it).
+        // Use X-Forwarded-Host instead; Django reads this when USE_X_FORWARDED_HOST=True.
+        "X-Forwarded-Host": forwardedHost,
+      },
       body: JSON.stringify({ email: body.email, password: body.password }),
     });
   } catch {
@@ -32,11 +47,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const data = await djangoResp.json();
-
   if (!djangoResp.ok) {
+    // Avoid crashing if Django returns a non-JSON error page (e.g. 404 HTML)
+    const data = await djangoResp.json().catch(() => ({
+      error: { code: "BACKEND_ERROR", message: "Erro no servidor." },
+    }));
     return NextResponse.json(data, { status: djangoResp.status });
   }
+
+  const data = await djangoResp.json();
 
   const { access, refresh, user } = data as {
     access: string;

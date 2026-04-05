@@ -117,6 +117,21 @@ class StockItem(models.Model):
             models.Index(fields=['expiry_date']),
         ]
         constraints = [
+            # Taste Decision B (revised): UniqueConstraint with nulls_distinct=False enforces
+            # uniqueness even when expiry_date is NULL — required for get_or_create safety in
+            # concurrent PO receives. PostgreSQL's legacy UNIQUE treats NULL as distinct (not
+            # equal), so unique_together would allow duplicate (drug, lot, NULL) rows.
+            # Requires Django 5.0+ and PostgreSQL 15+. Both in use here (Django 5.2, PG 16).
+            models.UniqueConstraint(
+                fields=['drug', 'lot_number', 'expiry_date'],
+                name='stockitem_drug_lot_expiry_unique',
+                nulls_distinct=False,
+            ),
+            models.UniqueConstraint(
+                fields=['material', 'lot_number', 'expiry_date'],
+                name='stockitem_material_lot_expiry_unique',
+                nulls_distinct=False,
+            ),
             models.CheckConstraint(
                 check=(
                     models.Q(drug__isnull=False, material__isnull=True) |
@@ -144,6 +159,7 @@ class StockMovement(models.Model):
 
     MOVEMENT_TYPES = [
         ('entry', 'Entrada'),
+        ('purchase_order_receiving', 'Recebimento de Pedido de Compra'),
         ('dispense', 'Dispensação'),
         ('adjustment', 'Ajuste de inventário'),
         ('return', 'Devolução'),
@@ -254,3 +270,90 @@ class DispensationLot(models.Model):
 
     def __str__(self):
         return f'{self.dispensation_id} × {self.stock_item} — {self.quantity}'
+
+
+# ─── S-042: Purchase Orders ───────────────────────────────────────────────────
+
+class Supplier(models.Model):
+    """Fornecedor de medicamentos e materiais."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField('Nome', max_length=200)
+    cnpj = models.CharField('CNPJ', max_length=18, blank=True)
+    contact_name = models.CharField('Contato', max_length=100, blank=True)
+    contact_email = models.EmailField('E-mail', blank=True)
+    contact_phone = models.CharField('Telefone', max_length=20, blank=True)
+    is_active = models.BooleanField('Ativo', default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name']
+        verbose_name = 'Fornecedor'
+        verbose_name_plural = 'Fornecedores'
+
+    def __str__(self):
+        return self.name
+
+
+class PurchaseOrder(models.Model):
+    """Pedido de compra para reposição de estoque."""
+
+    class Status(models.TextChoices):
+        DRAFT = 'draft', 'Rascunho'
+        SENT = 'sent', 'Enviado ao fornecedor'
+        PARTIAL = 'partial', 'Parcialmente recebido'
+        RECEIVED = 'received', 'Recebido'
+        CANCELLED = 'cancelled', 'Cancelado'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    supplier = models.ForeignKey(Supplier, on_delete=models.PROTECT, related_name='purchase_orders')
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.DRAFT, db_index=True
+    )
+    expected_date = models.DateField('Data prevista de entrega', null=True, blank=True)
+    notes = models.TextField('Observações', blank=True)
+    created_by = models.ForeignKey(
+        'core.User', on_delete=models.PROTECT, null=True, related_name='purchase_orders_created'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Pedido de Compra'
+        verbose_name_plural = 'Pedidos de Compra'
+
+    def __str__(self):
+        return f'PO-{str(self.id)[:8]} — {self.supplier.name} ({self.get_status_display()})'
+
+
+class PurchaseOrderItem(models.Model):
+    """Item de um pedido de compra (medicamento OU material, nunca ambos)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    po = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name='items')
+    drug = models.ForeignKey(
+        Drug, on_delete=models.PROTECT, null=True, blank=True, related_name='po_items'
+    )
+    material = models.ForeignKey(
+        Material, on_delete=models.PROTECT, null=True, blank=True, related_name='po_items'
+    )
+    quantity_ordered = models.DecimalField('Qtd pedida', max_digits=12, decimal_places=3)
+    quantity_received = models.DecimalField('Qtd recebida', max_digits=12, decimal_places=3, default=Decimal('0'))
+    unit_price = models.DecimalField('Preço unitário', max_digits=10, decimal_places=2)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(drug__isnull=False) | models.Q(material__isnull=False),
+                name='po_item_must_have_drug_or_material',
+            ),
+            models.CheckConstraint(
+                check=~(models.Q(drug__isnull=False) & models.Q(material__isnull=False)),
+                name='po_item_not_both',
+            ),
+        ]
+
+    def __str__(self):
+        item = self.drug or self.material
+        return f'{item} × {self.quantity_ordered} (recebido: {self.quantity_received})'

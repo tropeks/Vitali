@@ -5,7 +5,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
-const DJANGO_API = process.env.DJANGO_API_URL ?? "http://localhost:8000";
+const DJANGO_API =
+  process.env.DJANGO_API_URL ??
+  process.env.NEXT_PUBLIC_API_URL ??
+  "http://localhost:8000";
 const IS_PROD = process.env.NODE_ENV === "production";
 
 export async function POST(req: NextRequest) {
@@ -16,11 +19,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No refresh token." }, { status: 401 });
   }
 
+  const rawHost = req.headers.get("host") ?? "localhost";
+  const forwardedHost = rawHost.split(":")[0];
+
   let djangoResp: Response;
   try {
     djangoResp = await fetch(`${DJANGO_API}/api/v1/auth/refresh`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Forwarded-Host": forwardedHost,
+      },
       body: JSON.stringify({ refresh: refreshToken }),
     });
   } catch {

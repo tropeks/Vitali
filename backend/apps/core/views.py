@@ -389,13 +389,18 @@ class RoleListCreateView(generics.ListCreateAPIView):
 # ─── Feature flags view ───────────────────────────────────────────────────────
 
 class TenantFeaturesView(APIView):
+    """
+    GET /api/v1/core/features/
+    Returns the list of active modules for the current tenant.
+    Used by the frontend useHasModule() hook to hide/show nav items.
+    """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         if not hasattr(request, "tenant"):
-            return Response({"features": []})
+            return Response({"active_modules": []})
         flags = FeatureFlag.objects.filter(tenant=request.tenant, is_enabled=True)
-        return Response({"features": [f.module_key for f in flags]})
+        return Response({"active_modules": [f.module_key for f in flags]})
 
 
 # ─── AI: TUSS Sync Status ─────────────────────────────────────────────────────

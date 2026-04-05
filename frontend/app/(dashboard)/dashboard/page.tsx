@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import OnboardingWidget from "@/components/OnboardingWidget";
 import {
   LineChart,
   Line,
@@ -66,7 +67,9 @@ interface Professional {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+// Analytics requests go through the Next.js catch-all proxy (/api/[...path]/route.ts)
+// to avoid CORS and preserve tenant routing via X-Forwarded-Host.
+const ANALYTICS_BASE = "/api/v1/analytics";
 
 const PIE_COLORS = [
   "#3b82f6", // blue-500
@@ -150,21 +153,19 @@ export default function DashboardPage() {
 
     try {
       const [ovRes, dayRes, statusRes, monthRes, proRes] = await Promise.all([
-        fetch(`${API_BASE}/api/v1/analytics/overview/`, { headers }),
-        fetch(`${API_BASE}/api/v1/analytics/appointments-by-day/?days=30`, {
-          headers,
-        }),
-        fetch(`${API_BASE}/api/v1/analytics/appointments-by-status/`, {
-          headers,
-        }),
-        fetch(`${API_BASE}/api/v1/analytics/patients-by-month/?months=6`, {
-          headers,
-        }),
-        fetch(`${API_BASE}/api/v1/analytics/top-professionals/?limit=5`, {
-          headers,
-        }),
+        fetch(`${ANALYTICS_BASE}/overview/`, { headers }),
+        fetch(`${ANALYTICS_BASE}/appointments-by-day/?days=30`, { headers }),
+        fetch(`${ANALYTICS_BASE}/appointments-by-status/`, { headers }),
+        fetch(`${ANALYTICS_BASE}/patients-by-month/?months=6`, { headers }),
+        fetch(`${ANALYTICS_BASE}/top-professionals/?limit=5`, { headers }),
       ]);
 
+      if (ovRes.status === 403) {
+        // Analytics module not active for this tenant — show empty dashboard
+        setError(null);
+        setLoading(false);
+        return;
+      }
       if (!ovRes.ok) throw new Error("Falha ao carregar dados");
 
       const [ovData, dayData, statusData, monthData, proData] =
@@ -206,6 +207,7 @@ export default function DashboardPage() {
   if (!loading && error) {
     return (
       <div className="space-y-6">
+        <OnboardingWidget />
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
           <p className="text-slate-500 text-sm mt-1">{dateLabel}</p>
@@ -219,6 +221,9 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      {/* ── Onboarding widget (hidden when all steps done) ── */}
+      <OnboardingWidget />
+
       {/* ── Header ── */}
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
