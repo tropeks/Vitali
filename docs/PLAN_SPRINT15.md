@@ -1027,6 +1027,8 @@ HTTP POST /emr/prescriptions/{id}/items/
 
 **django-otp:** Do NOT add `django-otp` to TENANT_APPS. Build custom `TOTPDevice` model (~50 lines with pyotp). Eliminates migration sequencing risk entirely.
 
+**Run order (DX-07):** Apply with `python manage.py migrate_schemas` (django-tenants extension, NOT vanilla `migrate`). Order is enforced by Django's dependency graph, not file numbering — rows 1–3 (core, SHARED_APPS) run against the `public` schema first, then rows 4–5 (emr, TENANT_APPS) run against every tenant schema, then row 6 (ai, public schema, depends on celery_beat). For a fresh DB: `migrate_schemas --shared` first, then `migrate_schemas`. For a partial reset: `migrate_schemas --shared core` to apply only the shared core changes without touching tenants. Never run `manage.py migrate` directly — it will skip tenant schemas and leave them inconsistent.
+
 ---
 
 ## Dependency Risk Table
@@ -1365,18 +1367,20 @@ STAGE           | DEVELOPER DOES                     | FRICTION POINTS         |
 
 ---
 
-## DX Must-Fix Checklist (new — Phase 3.5)
+## DX Must-Fix Checklist (Phase 3.5 — closed 2026-04-21)
 
-- [ ] **DX-01:** Remove WebSocket from S-063. Use polling-only (`GET .../safety-check/`).
-- [ ] **DX-02:** Update `seed_demo_data.py` to create 1 patient with a known allergy + matching drug.
-- [ ] **DX-03:** Add `import_cid10` management command to S-064 scope. Document data source (DATASUS CSV).
-- [ ] **DX-04:** Add `MFA_GRACE_PERIOD_DAYS` and `PRESCRIPTION_PDF_CACHE_TTL` to `.env.example`.
-- [ ] **DX-05:** Add `MFATestMixin` with `create_totp_device(user)` helper to `apps/test_utils.py`.
-- [ ] **DX-06:** Add `fonts-liberation` to E-04 Dockerfile install block.
-- [ ] **DX-07:** Add migration run order comment to plan's migration table.
-- [ ] **DX-08:** Add CI Docker smoke test for WeasyPrint to GitHub Actions config.
+- [x] **DX-01:** Remove WebSocket from S-063. Use polling-only (`GET .../safety-check/`). _Verified: no `channels`/`websocket` imports in `apps/emr/views_safety.py`, `services/prescription_safety.py`, `signals.py`, or `tasks.py`._
+- [x] **DX-02:** Update `seed_demo_data.py` to create 1 patient with a known allergy + matching drug. _Implemented at `apps/core/management/commands/seed_demo_data.py:102` (Penicillin allergy seed)._
+- [x] **DX-03:** Add `import_cid10` management command to S-064 scope. Document data source (DATASUS CSV). _Implemented at `apps/ai/management/commands/import_cid10.py`._
+- [x] **DX-04:** Add `MFA_GRACE_PERIOD_DAYS` and `PRESCRIPTION_PDF_CACHE_TTL` to `.env.example`. _Added in chore commit_ a826f71.
+- [x] **DX-05:** Add `MFATestMixin` with `create_totp_device(user)` helper to `apps/test_utils.py`. _Implemented at `apps/test_utils.py:24` (`MFATestMixin`)._
+- [x] **DX-06:** Add `fonts-liberation` to E-04 Dockerfile install block. _Already in `backend/Dockerfile:21` (plus libcairo2-dev, libpango1.0-dev for WeasyPrint)._
+- [x] **DX-07:** Add migration run order comment to plan's migration table. _Added "Run order" paragraph after the migration table above (use `migrate_schemas`, not `migrate`)._
+- [x] **DX-08:** Add CI Docker smoke test for WeasyPrint to GitHub Actions config. _Added to `.github/workflows/ci.yml` `backend-test` job: apt install + `python -c "from weasyprint import HTML; HTML(string='<h1>CI OK</h1>').write_pdf(...)"` step before `pytest`._
 
 **Phase 3.5 complete.** 2 critical, 3 high, 3 medium DX findings. Sprint DX score: 5.5/10 → 8/10 after must-fixes. Passing to updated gate.
+
+**Closure update (2026-04-21):** All 8 DX must-fixes shipped. 6 of 8 were already in the Sprint 15 implementation commit (f135c28); DX-07 (doc) and DX-08 (CI smoke test) added in commit a826f71's successor. Sprint DX score: **8/10 actual.**
 
 ---
 
