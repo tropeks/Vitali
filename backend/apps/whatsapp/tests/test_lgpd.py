@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 from django.core.cache import cache
 from django.test import override_settings
 from django.utils import timezone
-from django_tenants.test.cases import TenantTestCase
+from apps.test_utils import TenantTestCase
 from rest_framework.test import APIClient
 
 from apps.whatsapp.models import ConversationSession, WhatsAppContact
@@ -44,7 +44,7 @@ class CPFRedactionAndSessionPurgeTests(TenantTestCase):
         log = MessageLog.objects.filter(contact=contact).first()
         self.assertIsNotNone(log)
         self.assertNotIn("529.982.247-25", log.content_preview)
-        self.assertIn("***-***-**", log.content_preview)
+        self.assertIn("***.***.***-**", log.content_preview)
 
     def test_messagelog_11digit_cpf_masked(self):
         from apps.whatsapp.models import MessageLog

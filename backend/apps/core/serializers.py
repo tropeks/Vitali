@@ -88,6 +88,15 @@ class HealthOSTokenObtainPairSerializer(TokenObtainPairSerializer):
         return token
 
 
+# ─── DPA (S-070) ─────────────────────────────────────────────────────────────
+
+class DPAStatusSerializer(serializers.Serializer):
+    is_signed = serializers.BooleanField()
+    signed_at = serializers.DateField(allow_null=True)
+    signed_by_name = serializers.CharField(allow_null=True)
+    ai_scribe_enabled = serializers.BooleanField()
+
+
 # ─── Tenant ───────────────────────────────────────────────────────────────────
 
 class TenantSerializer(serializers.ModelSerializer):

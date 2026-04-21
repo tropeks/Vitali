@@ -4,7 +4,7 @@ Tests for TenantAIConfig model and get_tenant_ai_config() service helper (S-033)
 from django.core.cache import cache
 from django.db import connection
 from django.test import override_settings
-from django_tenants.test.cases import TenantTestCase
+from apps.test_utils import TenantTestCase
 
 from apps.ai.services import TENANT_AI_CONFIG_CACHE_TTL, get_tenant_ai_config
 from apps.core.models import TenantAIConfig

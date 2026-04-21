@@ -139,9 +139,9 @@ class AppointmentSerializer(serializers.ModelSerializer):
             'start_time', 'end_time', 'duration_minutes',
             'type', 'type_display', 'status', 'status_display',
             'source', 'notes', 'whatsapp_reminder_sent', 'whatsapp_confirmed',
-            'cancellation_reason', 'created_at',
+            'cancellation_reason', 'arrived_at', 'started_at', 'created_at',
         ]
-        read_only_fields = ['id', 'created_at']
+        read_only_fields = ['id', 'arrived_at', 'started_at', 'created_at']
 
     def get_duration_minutes(self, obj):
         delta = obj.end_time - obj.start_time

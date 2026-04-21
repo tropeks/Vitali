@@ -24,7 +24,8 @@ CSRF_COOKIE_SECURE = True
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
 
 # Upload size limits (protect against large payload DoS)
-DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024   # 10 MB
+# S-073: raised to 25 MB to accommodate Whisper audio uploads
+DATA_UPLOAD_MAX_MEMORY_SIZE = 26_214_400  # 25 MB for Whisper audio upload
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024   # 10 MB
 
 # ─── Database — connection pooling ───────────────────────────────────────────

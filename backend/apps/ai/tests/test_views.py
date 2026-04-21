@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 from django.core.cache import cache
 from django.test import override_settings, TestCase
-from django_tenants.test.cases import TenantTestCase
+from apps.test_utils import TenantTestCase
 from rest_framework.test import APIClient
 
 from apps.ai.models import AIPromptTemplate, AIUsageLog, TUSSAISuggestion

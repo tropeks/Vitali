@@ -24,7 +24,7 @@ class Migration(migrations.Migration):
         # index (DATE(start_time AT TIME ZONE ...)) via models.Index.
         migrations.RunSQL(
             sql="""
-            CREATE INDEX CONCURRENTLY IF NOT EXISTS
+            CREATE INDEX IF NOT EXISTS
                 emr_appointment_start_date_saopaulo_idx
             ON emr_appointment
             (DATE(start_time AT TIME ZONE 'America/Sao_Paulo'));
@@ -36,7 +36,7 @@ class Migration(migrations.Migration):
         ),
         migrations.RunSQL(
             sql="""
-            CREATE INDEX CONCURRENTLY IF NOT EXISTS
+            CREATE INDEX IF NOT EXISTS
                 emr_patient_insurance_data_gin_idx
             ON emr_patient
             USING gin (insurance_data jsonb_path_ops);

@@ -54,6 +54,81 @@ def _check_rate_limit(phone: str) -> bool:
     return count <= _RATE_LIMIT_MAX
 
 
+def _handle_waitlist_reply(phone: str, text: str) -> bool:
+    """
+    S-066: Intercept SIM/NÃO replies from patients with a pending waitlist notification.
+
+    Returns True if the message was consumed by the waitlist handler (caller should
+    not route to ConversationFSM). Returns False if the message is unrelated to a
+    waitlist notification.
+
+    SIM → book the offered slot, set entry.status = 'booked'
+    NÃO → remove from waitlist (status = 'cancelled'), cascade to next entry
+    """
+    normalized = text.strip().upper()
+    if normalized not in ("SIM", "NÃO", "NAO", "N"):
+        return False
+
+    try:
+        from apps.emr.models import Patient, WaitlistEntry
+        from apps.emr.tasks_waitlist import notify_next_waitlist_entry
+
+        # Find the patient by phone number
+        patient = Patient.objects.filter(phone=phone).first()
+        if not patient:
+            return False
+
+        # Find their notified entry (there should be at most one at a time)
+        with transaction.atomic():
+            entry = (
+                WaitlistEntry.objects
+                .select_for_update()
+                .filter(patient=patient, status="notified")
+                .first()
+            )
+            if not entry:
+                return False
+
+            gateway = get_gateway()
+
+            if normalized == "SIM":
+                # Book the offered slot
+                entry.status = "booked"
+                entry.save(update_fields=["status"])
+                try:
+                    gateway.send_text(
+                        phone,
+                        "Ótimo! Sua consulta foi confirmada. Em breve você receberá a confirmação.",
+                    )
+                except Exception as exc:
+                    logger.error("Failed to send waitlist confirmation to %s: %s", phone, exc)
+                logger.info("WaitlistEntry %s booked by patient (SIM reply)", entry.id)
+            else:
+                # NÃO / NAO / N — cancel entry and cascade
+                professional_id = str(entry.professional_id)
+                offered_slot = entry.offered_slot or {}
+                entry.status = "cancelled"
+                entry.save(update_fields=["status"])
+                try:
+                    gateway.send_text(
+                        phone,
+                        "Tudo bem! Você foi removido(a) da fila de espera.",
+                    )
+                except Exception as exc:
+                    logger.error("Failed to send waitlist opt-out to %s: %s", phone, exc)
+                logger.info("WaitlistEntry %s cancelled by patient (NÃO reply)", entry.id)
+                # Cascade to next entry outside the transaction
+                transaction.on_commit(
+                    lambda: notify_next_waitlist_entry.delay(professional_id, offered_slot)
+                )
+
+        return True
+
+    except Exception as exc:
+        logger.error("_handle_waitlist_reply error for %s: %s", phone, exc)
+        return False
+
+
 def _log_message(contact, direction: str, content: str, message_type: str = "text", appointment=None):
     """Create a MessageLog entry with CPF masked."""
     import re
@@ -137,6 +212,12 @@ class WebhookView(APIView):
 
     def _process_message(self, phone: str, text: str, message_type: str):
         from datetime import timedelta
+
+        # S-066: Check for pending waitlist notification before routing to scheduling FSM.
+        # SIM/NÃO responses must be disambiguated: if the patient has a 'notified'
+        # WaitlistEntry, route to waitlist handler first.
+        if _handle_waitlist_reply(phone, text):
+            return
 
         with transaction.atomic():
             contact, _ = WhatsAppContact.objects.get_or_create(phone=phone)

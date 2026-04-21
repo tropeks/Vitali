@@ -3,7 +3,7 @@ S-040: Platform Admin Subscription API tests.
 Run: python manage.py test apps.core.tests.test_platform_api
 """
 import datetime
-from django_tenants.test.cases import TenantTestCase
+from apps.test_utils import TenantTestCase
 from rest_framework.test import APIClient
 
 from apps.core.models import FeatureFlag, Plan, PlanModule, Role, Subscription, Tenant, User

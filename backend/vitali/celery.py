@@ -21,4 +21,9 @@ app.conf.beat_schedule = {
         "task": "apps.billing.services.tasks.send_appointment_reminders",
         "schedule": crontab(hour=8, minute=0),
     },
+    # S-066: Check for expired waitlist notifications every 5 minutes
+    "expire-waitlist-notifications": {
+        "task": "apps.emr.tasks_waitlist.expire_waitlist_notifications",
+        "schedule": crontab(minute="*/5"),
+    },
 }

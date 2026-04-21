@@ -11,6 +11,7 @@ import threading
 import uuid
 
 from django.conf import settings
+from django.db import connection
 from django.http import JsonResponse
 
 logger = logging.getLogger(__name__)
@@ -134,7 +135,6 @@ class TenantRequestLogFilter(logging.Filter):
 
     def filter(self, record):
         try:
-            from django.db import connection
             tenant = getattr(connection, "tenant", None)
             record.tenant = tenant.schema_name if tenant else "shared"
         except Exception:
@@ -160,5 +160,57 @@ class FeatureFlagMiddleware:
             request.has_feature = lambda key: tenant_has_feature(request.tenant, key)
         response = self.get_response(request)
         return response
+
+
+# ─── S-062: MFA Required Middleware ──────────────────────────────────────────
+
+_MFA_EXEMPT_PATHS = {
+    "/auth/login",
+    "/auth/refresh",
+    "/auth/mfa/login/",
+    "/auth/mfa/setup/",
+    "/auth/mfa/verify/",
+}
+
+
+class MFARequiredMiddleware:
+    """
+    Blocks staff/superuser requests that lack the mfa_verified JWT claim.
+
+    Regular users are not blocked — MFA is only enforced for elevated accounts
+    (is_staff or is_superuser). The JWT claim 'mfa_verified' is injected by
+    MFALoginView after successful TOTP verification.
+
+    Exempt paths: login, token refresh, and all /auth/mfa/* endpoints so users
+    can complete the MFA flow without an active MFA session.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        user = getattr(request, "user", None)
+        if user and user.is_authenticated and (user.is_staff or user.is_superuser):
+            path = request.path_info
+            if not any(path.endswith(p) or path == p for p in _MFA_EXEMPT_PATHS):
+                # Check JWT claim
+                token_payload = getattr(request, "auth", None)
+                mfa_verified = False
+                if token_payload and hasattr(token_payload, "get"):
+                    mfa_verified = bool(token_payload.get("mfa_verified"))
+                elif isinstance(token_payload, dict):
+                    mfa_verified = bool(token_payload.get("mfa_verified"))
+                if not mfa_verified:
+                    from apps.core.models import TOTPDevice
+                    try:
+                        device = TOTPDevice.objects.get(user=user, is_active=True)
+                        _ = device  # MFA device exists — enforce the check
+                        return JsonResponse(
+                            {"detail": "MFA verification required.", "code": "mfa_required"},
+                            status=403,
+                        )
+                    except TOTPDevice.DoesNotExist:
+                        pass  # No device yet — don't block (grace period)
+        return self.get_response(request)
 
 

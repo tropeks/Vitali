@@ -5,7 +5,7 @@ from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 from django.utils import timezone
-from django_tenants.test.cases import TenantTestCase
+from apps.test_utils import TenantTestCase
 
 from apps.core.models import Role, User
 from apps.whatsapp.models import ScheduledReminder, WhatsAppContact

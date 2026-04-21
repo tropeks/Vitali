@@ -198,7 +198,7 @@ class PilotHealthView(APIView):
         from django.utils import timezone
         from django_tenants.utils import schema_context
 
-        tenants = list(Tenant.objects.filter(schema_name__ne="public") if hasattr(Tenant.objects, "exclude") else Tenant.objects.exclude(schema_name="public"))
+        tenants = list(Tenant.objects.exclude(schema_name="public"))
 
         tenant_stats = []
         for tenant in tenants:

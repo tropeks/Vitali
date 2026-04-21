@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from django.core.cache import cache
 from django.test import TestCase, override_settings
-from django_tenants.test.cases import TenantTestCase
+from apps.test_utils import TenantTestCase
 from rest_framework.test import APIClient
 
 from apps.core.models import AuditLog, Role, User
@@ -106,7 +106,8 @@ class AuthTestCase(TenantTestCase):
 
     # ── Account Lockout ───────────────────────────────────────────────────────
 
-    def test_login_account_lockout_after_5_failures(self):
+    @patch("apps.core.views.LoginRateThrottle.allow_request", return_value=True)
+    def test_login_account_lockout_after_5_failures(self, _mock_throttle):
         for _ in range(5):
             self.client.post(
                 self.login_url,

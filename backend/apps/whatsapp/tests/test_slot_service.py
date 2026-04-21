@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from unittest.mock import patch
 
 from django.utils import timezone
-from django_tenants.test.cases import TenantTestCase
+from apps.test_utils import TenantTestCase
 
 from apps.core.models import Role, User
 

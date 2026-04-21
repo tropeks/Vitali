@@ -19,7 +19,7 @@ class Migration(migrations.Migration):
             model_name="auditlog",
             index=models.Index(
                 fields=["action", "created_at"],
-                name="core_auditlog_action_created_idx",
+                name="core_auditlog_act_created_idx",
             ),
         ),
     ]

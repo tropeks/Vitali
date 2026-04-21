@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 from django.core.cache import cache
 from django.test import override_settings
-from django_tenants.test.cases import TenantTestCase
+from apps.test_utils import TenantTestCase
 
 from apps.ai.models import AIPromptTemplate, GlosaPrediction
 from apps.ai.services import PredictionResult, predict_glosa

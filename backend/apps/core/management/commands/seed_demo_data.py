@@ -87,9 +87,9 @@ class Command(BaseCommand):
         ))
 
     def _create_patients(self, fake, count):
-        from apps.emr.models import Patient
+        from apps.emr.models import Patient, Allergy
         patients = []
-        for _ in range(count):
+        for i in range(count):
             p = Patient.objects.create(
                 full_name=f"[DEMO] {fake.name()}",
                 date_of_birth=fake.date_of_birth(minimum_age=18, maximum_age=80),
@@ -98,6 +98,22 @@ class Command(BaseCommand):
                 email=fake.email(),
             )
             patients.append(p)
+
+        # DX-02: Seed one patient with a known Penicillin allergy so S-063 allergy
+        # cross-check tests are non-vacuous (allergy table is empty without this).
+        if patients:
+            try:
+                Allergy.objects.get_or_create(
+                    patient=patients[0],
+                    substance="Penicilina",
+                    defaults={
+                        "reaction": "Rash cutâneo e anafilaxia",
+                        "severity": "severe",
+                    },
+                )
+            except Exception:
+                pass  # Allergy model may not exist in older migrations
+
         return patients
 
     def _get_or_create_professional(self):

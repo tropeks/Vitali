@@ -202,6 +202,8 @@ class Appointment(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='scheduled')
     source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default='receptionist')
     notes = models.TextField(blank=True)
+    arrived_at = models.DateTimeField(null=True, blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
     whatsapp_reminder_sent = models.BooleanField(default=False)
     whatsapp_confirmed = models.BooleanField(default=False)
     satisfaction_rating = models.IntegerField(null=True, blank=True)  # 1=Muito bom 2=Ok 3=Poderia melhorar
@@ -480,3 +482,153 @@ class PatientInsurance(models.Model):
 
     def __str__(self):
         return f'{self.provider_name} — {self.patient}'
+
+
+# ─── S-063: AI Prescription Safety Alert ─────────────────────────────────────
+
+
+class AISafetyAlert(models.Model):
+    """
+    Tracks AI-generated drug safety alerts per prescription item.
+    Created by the check_prescription_safety Celery task after LLM analysis.
+
+    unique_together on (prescription_item, alert_type) prevents duplicate alerts
+    if the task retries (idempotency).
+    """
+
+    ALERT_TYPE_CHOICES = [
+        ('drug_interaction', 'Interação medicamentosa'),
+        ('allergy', 'Alergia cruzada'),
+        ('dose', 'Dose fora do intervalo'),
+        ('contraindication', 'Contraindicação'),
+    ]
+    SEVERITY_CHOICES = [
+        ('caution', 'Cautela'),
+        ('contraindication', 'Contraindicação'),
+    ]
+    STATUS_CHOICES = [
+        ('pending', 'Pendente'),
+        ('safe', 'Seguro'),
+        ('flagged', 'Alertado'),
+        ('acknowledged', 'Reconhecido'),
+        ('error', 'Erro'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    prescription_item = models.ForeignKey(
+        PrescriptionItem, on_delete=models.CASCADE, related_name='safety_alerts'
+    )
+    alert_type = models.CharField(max_length=30, choices=ALERT_TYPE_CHOICES)
+    severity = models.CharField(max_length=20, choices=SEVERITY_CHOICES)
+    message = models.TextField()
+    recommendation = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='flagged')
+    acknowledged_by = models.ForeignKey(
+        'core.User', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='acknowledged_safety_alerts'
+    )
+    override_reason = models.TextField(blank=True)
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        unique_together = [('prescription_item', 'alert_type')]
+        verbose_name = 'AI Safety Alert'
+        verbose_name_plural = 'AI Safety Alerts'
+
+    def __str__(self):
+        return f'{self.get_severity_display()} — {self.get_alert_type_display()} ({self.prescription_item})'
+
+    def acknowledge(self, user, reason=''):
+        from django.utils import timezone
+        self.acknowledged_by = user
+        self.override_reason = reason
+        self.acknowledged_at = timezone.now()
+        self.status = 'acknowledged'
+        self.save(update_fields=['acknowledged_by', 'override_reason', 'acknowledged_at', 'status'])
+
+
+# ─── S-064: AI CID-10 Suggestion ─────────────────────────────────────────────
+
+
+class AICIDSuggestion(models.Model):
+    """
+    Tracks CID-10 AI suggestions and acceptance outcomes.
+    Used for accuracy reporting and model performance monitoring.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    encounter = models.ForeignKey(
+        Encounter, on_delete=models.CASCADE, related_name='cid10_suggestions'
+    )
+    query_text = models.TextField()
+    suggestions = models.JSONField(
+        default=list,
+        help_text='[{code, description, confidence}, ...]'
+    )
+    accepted_code = models.CharField(max_length=10, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'AI CID-10 Suggestion'
+        verbose_name_plural = 'AI CID-10 Suggestions'
+
+    def __str__(self):
+        return f'CID10Suggest({self.encounter_id}, accepted={self.accepted_code or "none"})'
+
+
+# ─── S-066: Appointment Cancellation Waitlist ─────────────────────────────────
+
+
+class WaitlistEntry(models.Model):
+    """
+    Patient waiting for a cancellation slot with a specific professional.
+
+    Lifecycle: waiting → notified → booked (or expired/cancelled).
+    On cancellation, notify_next_waitlist_entry task picks the first matching entry.
+    Patient has 30 min (WAITLIST_TIMEOUT_MINUTES) to respond SIM before it expires
+    and the next entry is notified.
+    """
+
+    STATUS_CHOICES = [
+        ('waiting', 'Aguardando'),
+        ('notified', 'Notificado'),
+        ('booked', 'Agendado'),
+        ('expired', 'Expirado'),
+        ('cancelled', 'Cancelado'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    patient = models.ForeignKey(
+        Patient, on_delete=models.CASCADE, related_name='waitlist_entries'
+    )
+    professional = models.ForeignKey(
+        Professional, on_delete=models.CASCADE, related_name='waitlist_entries'
+    )
+    preferred_date_from = models.DateField()
+    preferred_date_to = models.DateField()
+    preferred_time_start = models.TimeField(null=True, blank=True)
+    preferred_time_end = models.TimeField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='waiting', db_index=True)
+    notified_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    # Slot offered during notification (for booking confirmation)
+    offered_slot = models.JSONField(null=True, blank=True, help_text='{"start": "ISO", "end": "ISO"}')
+    # Task ID for the expiry task (for idempotency check)
+    expiry_task_id = models.CharField(max_length=100, blank=True)
+    priority = models.PositiveIntegerField(default=0, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['priority', 'created_at']
+        verbose_name = 'Waitlist Entry'
+        verbose_name_plural = 'Waitlist Entries'
+        indexes = [
+            models.Index(fields=['professional', 'status', 'priority', 'created_at']),
+            models.Index(fields=['patient', 'status']),
+        ]
+
+    def __str__(self):
+        return f'WaitlistEntry({self.patient}, {self.professional}, {self.get_status_display()})'

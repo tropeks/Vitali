@@ -5,7 +5,7 @@ Run: python manage.py test apps.pharmacy.tests.test_purchase_orders
 import datetime
 from decimal import Decimal
 
-from django_tenants.test.cases import TenantTestCase
+from apps.test_utils import TenantTestCase
 from rest_framework.test import APIClient
 
 from apps.core.models import FeatureFlag, Role, User

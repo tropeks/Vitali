@@ -3,7 +3,7 @@ S-043: DemoModeMiddleware tests.
 Run: python manage.py test apps.core.tests.test_demo_mode
 """
 from django.conf import settings as django_settings
-from django_tenants.test.cases import TenantTestCase
+from apps.test_utils import TenantTestCase
 from rest_framework.test import APIClient
 
 from apps.core.models import Role, User

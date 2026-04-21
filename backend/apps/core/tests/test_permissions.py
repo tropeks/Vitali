@@ -2,7 +2,7 @@
 S-039: ModuleRequiredPermission + IsPlatformAdmin tests.
 Run: python manage.py test apps.core.tests.test_permissions
 """
-from django_tenants.test.cases import TenantTestCase
+from apps.test_utils import TenantTestCase
 from rest_framework.test import APIClient, APIRequestFactory
 from rest_framework.views import APIView
 from rest_framework.response import Response

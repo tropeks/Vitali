@@ -5,6 +5,8 @@ import { useParams, useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { SOAPEditor } from '@/components/encounters/SOAPEditor';
+import { PrescriptionBuilder } from '@/components/prescriptions/PrescriptionBuilder';
+import { ScribeButton } from '@/components/emr/ScribeButton';
 import { getAccessToken } from '@/lib/auth';
 import Link from 'next/link';
 
@@ -512,10 +514,24 @@ export default function EncounterDetailPage() {
           <FaturamentoCard encounterId={id} />
         </div>
 
-        {/* Right column — SOAP */}
-        <div className="lg:col-span-2">
+        {/* Right column — SOAP + Prescriptions */}
+        <div className="lg:col-span-2 space-y-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm space-y-4">
+            <SOAPEditor
+              soapNote={encounter.soap_note}
+              readOnly={isReadOnly}
+              encounterId={id}
+            />
+            {!isReadOnly && (
+              <ScribeButton
+                encounterId={id}
+                soapNoteId={encounter.soap_note?.id ?? null}
+                onApplied={load}
+              />
+            )}
+          </div>
           <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-            <SOAPEditor soapNote={encounter.soap_note} readOnly={isReadOnly} />
+            <PrescriptionBuilder encounterId={id} readOnly={isReadOnly} />
           </div>
         </div>
       </div>

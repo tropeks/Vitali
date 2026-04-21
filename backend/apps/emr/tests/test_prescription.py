@@ -3,7 +3,7 @@ S-015 Prescription — sign action, status transition, generic_name auto-populat
 """
 from decimal import Decimal
 
-from django_tenants.test.cases import TenantTestCase
+from apps.test_utils import TenantTestCase
 from rest_framework.test import APIClient
 
 from apps.core.permissions import DEFAULT_ROLES

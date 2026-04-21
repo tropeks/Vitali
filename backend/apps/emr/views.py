@@ -252,6 +252,31 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                   old_data={'status': old_status}, new_data={'status': new_status})
         return Response(AppointmentSerializer(appointment).data)
 
+    @action(detail=True, methods=['post'], url_path='check-in')
+    def check_in(self, request, pk=None):
+        """POST /appointments/{id}/check-in/ — registra chegada do paciente (idempotente)."""
+        appointment = self.get_object()
+        if appointment.arrived_at is not None:
+            # Already checked in — idempotent, return current state unchanged
+            return Response(AppointmentSerializer(appointment).data)
+        appointment.arrived_at = timezone.now()
+        appointment.status = 'waiting'
+        appointment.save(update_fields=['arrived_at', 'status', 'updated_at'])
+        log_audit(request, 'appointment_check_in', 'Appointment', appointment.id,
+                  new_data={'arrived_at': appointment.arrived_at.isoformat(), 'status': 'waiting'})
+        return Response(AppointmentSerializer(appointment).data)
+
+    @action(detail=True, methods=['post'], url_path='start')
+    def start(self, request, pk=None):
+        """POST /appointments/{id}/start/ — médico inicia o atendimento."""
+        appointment = self.get_object()
+        appointment.started_at = timezone.now()
+        appointment.status = 'in_progress'
+        appointment.save(update_fields=['started_at', 'status', 'updated_at'])
+        log_audit(request, 'appointment_start', 'Appointment', appointment.id,
+                  new_data={'started_at': appointment.started_at.isoformat(), 'status': 'in_progress'})
+        return Response(AppointmentSerializer(appointment).data)
+
 
 class AvailableSlotsView(APIView):
     permission_classes = [IsAuthenticated]

@@ -13,11 +13,12 @@ from django.utils import timezone
 from decimal import Decimal
 
 from django.db.models import Count, Sum
-from rest_framework import filters, status, viewsets
+from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.core.models import TUSSCode
 from apps.core.permissions import ModuleRequiredPermission
@@ -442,6 +443,10 @@ class GlosaViewSet(viewsets.ReadOnlyModelViewSet):
 
 import hashlib  # noqa: E402
 import hmac as _hmac  # noqa: E402
+from decimal import Decimal as _Decimal  # noqa: E402
+
+from django.conf import settings as _settings  # noqa: E402
+from django.db import transaction  # noqa: E402
 
 from .models import PIXCharge  # noqa: E402
 from .services.asaas import AsaasAPIError, AsaasService  # noqa: E402
@@ -449,7 +454,7 @@ from .services.asaas import AsaasAPIError, AsaasService  # noqa: E402
 
 class PIXChargeCreateSerializer(serializers.Serializer):
     appointment_id = serializers.UUIDField()
-    amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value="0.01")
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=_Decimal("0.01"))
 
 
 class PIXChargeView(APIView):
@@ -545,7 +550,7 @@ class AsaasWebhookView(APIView):
 
     def post(self, request):
         token = request.headers.get("asaas-access-token", "")
-        expected = getattr(settings, "ASAAS_WEBHOOK_TOKEN", "")
+        expected = getattr(_settings, "ASAAS_WEBHOOK_TOKEN", "")
         if not expected or not _hmac.compare_digest(token.encode(), expected.encode()):
             logger.warning("asaas.webhook.invalid_token ip=%s", request.META.get("REMOTE_ADDR"))
             return Response({"status": "ok"}, status=status.HTTP_401_UNAUTHORIZED)

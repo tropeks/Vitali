@@ -64,6 +64,7 @@ MIDDLEWARE = [
     "apps.core.middleware.RequestIdMiddleware",
     "apps.core.middleware.CurrentUserMiddleware",
     "apps.core.middleware.FeatureFlagMiddleware",
+    "apps.core.middleware.MFARequiredMiddleware",  # S-062: blocks staff without mfa_verified JWT
     "apps.core.middleware.DemoModeMiddleware",  # no-op unless DEMO_MODE=true
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
@@ -214,9 +215,13 @@ FIELD_ENCRYPTION_KEY = env(
 
 # ─── AI / LLM ────────────────────────────────────────────────────────────────
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
+OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 AI_RATE_LIMIT_PER_HOUR = env.int("AI_RATE_LIMIT_PER_HOUR", default=100)
 AI_SUGGEST_TIMEOUT_S = env.int("AI_SUGGEST_TIMEOUT_S", default=5)
 FEATURE_AI_TUSS = env.bool("FEATURE_AI_TUSS", default=False)
+FEATURE_AI_SCRIBE = env.bool("FEATURE_AI_SCRIBE", default=False)
+FEATURE_WHISPER_FALLBACK = env.bool("FEATURE_WHISPER_FALLBACK", default=True)
+SCRIBE_SESSION_RETENTION_DAYS = env.int("SCRIBE_SESSION_RETENTION_DAYS", default=90)
 
 # ─── WhatsApp / Evolution API (S-032) ───────────────────────────────────────
 WHATSAPP_EVOLUTION_URL = env("WHATSAPP_EVOLUTION_URL", default="http://evolution-api:8080")
@@ -230,6 +235,12 @@ ASAAS_API_KEY = env("ASAAS_API_KEY", default="")
 ASAAS_WEBHOOK_TOKEN = env("ASAAS_WEBHOOK_TOKEN", default="")
 ASAAS_ENVIRONMENT = env("ASAAS_ENVIRONMENT", default="sandbox")
 PIX_CHARGE_EXPIRY_MINUTES = env.int("PIX_CHARGE_EXPIRY_MINUTES", default=30)
+
+# ─── MFA — TOTP (S-062) ──────────────────────────────────────────────────────
+MFA_GRACE_PERIOD_DAYS = env.int("MFA_GRACE_PERIOD_DAYS", default=30)
+
+# ─── Prescription PDF (S-065) ────────────────────────────────────────────────
+PRESCRIPTION_PDF_CACHE_TTL = env.int("PRESCRIPTION_PDF_CACHE_TTL", default=3600)
 
 # billing/ migrations directory is root-owned (755). Redirect to writable package.
 MIGRATION_MODULES = {

@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 
 from django.test import override_settings
 from django.utils import timezone
-from django_tenants.test.cases import TenantTestCase
+from apps.test_utils import TenantTestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -43,14 +43,13 @@ class PIXChargeViewTest(TenantTestCase):
         self.user = User.objects.create_user(
             email="doc@test.com",
             password="pass123",
-            schema_name=self.tenant.schema_name,
         )
         self.client.force_authenticate(self.user)
 
         self.patient = Patient.objects.create(
             full_name="Test Patient",
-            date_of_birth="1990-01-01",
-            sex="M",
+            birth_date="1990-01-01",
+            gender="M",
         )
         self.professional = Professional.objects.create(
             user=self.user,
@@ -124,12 +123,11 @@ class AsaasWebhookTest(TenantTestCase):
         self.user = User.objects.create_user(
             email="doc2@test.com",
             password="pass123",
-            schema_name=self.tenant.schema_name,
         )
         patient = Patient.objects.create(
             full_name="Webhook Patient",
-            date_of_birth="1985-06-15",
-            sex="F",
+            birth_date="1985-06-15",
+            gender="F",
         )
         professional = Professional.objects.create(
             user=self.user,
@@ -238,12 +236,11 @@ class PIXChargeExpiryTaskTest(TenantTestCase):
         self.user = User.objects.create_user(
             email="doc3@test.com",
             password="pass123",
-            schema_name=self.tenant.schema_name,
         )
         patient = Patient.objects.create(
             full_name="Expiry Patient",
-            date_of_birth="1970-01-01",
-            sex="M",
+            birth_date="1970-01-01",
+            gender="M",
         )
         professional = Professional.objects.create(
             user=self.user,

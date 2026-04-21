@@ -16,7 +16,7 @@ import threading
 import uuid
 
 from django.test import TestCase, RequestFactory, override_settings
-from django_tenants.test.cases import TenantTestCase
+from apps.test_utils import TenantTestCase
 from rest_framework.test import APIClient, APIRequestFactory
 from unittest.mock import MagicMock, patch
 

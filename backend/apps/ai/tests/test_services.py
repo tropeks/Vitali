@@ -5,7 +5,7 @@ Uses TenantTestCase so tenant DB context is available.
 import json
 from unittest.mock import MagicMock, patch
 
-from django_tenants.test.cases import TenantTestCase
+from apps.test_utils import TenantTestCase
 from django.core.cache import cache
 from django.test import override_settings
 

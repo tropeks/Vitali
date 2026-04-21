@@ -5,7 +5,7 @@ from decimal import Decimal
 from unittest.mock import patch, MagicMock
 
 from django.utils import timezone
-from django_tenants.test.cases import TenantTestCase
+from apps.test_utils import TenantTestCase
 from rest_framework.test import APIClient
 
 from apps.core.models import FeatureFlag

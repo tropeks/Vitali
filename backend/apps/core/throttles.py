@@ -22,6 +22,8 @@ class TenantUserRateThrottle(UserRateThrottle):
     """
 
     def get_cache_key(self, request, view):
+        if not (request.user and request.user.is_authenticated):
+            return None
         base_key = super().get_cache_key(request, view)
         if base_key is None:
             return None

@@ -3,7 +3,7 @@ Tests for WhatsApp views — tenant routing, contacts, message logs.
 """
 from unittest.mock import MagicMock, patch
 
-from django_tenants.test.cases import TenantTestCase
+from apps.test_utils import TenantTestCase
 from rest_framework.test import APIClient
 
 from apps.core.models import FeatureFlag, Role, User
@@ -34,9 +34,10 @@ class WebhookTenantRoutingTests(TenantTestCase):
         self.client = APIClient()
         self.client.defaults["SERVER_NAME"] = self.__class__.domain.domain
 
+    @patch("apps.whatsapp.views.verify_webhook_signature", return_value=True)
     @patch("apps.whatsapp.views.ConversationFSM")
     @patch("apps.whatsapp.views.get_gateway")
-    def test_webhook_creates_contact_in_tenant_schema(self, mock_gw, mock_fsm):
+    def test_webhook_creates_contact_in_tenant_schema(self, mock_gw, mock_fsm, mock_sig):
         mock_fsm.return_value.process.return_value = []
         mock_gw.return_value = MagicMock()
         import json

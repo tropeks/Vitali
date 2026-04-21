@@ -298,6 +298,113 @@ class TenantAIConfig(models.Model):
         return f"TenantAIConfig({self.tenant.schema_name})"
 
 
+# ─── S-064: CID-10 Code Table (Public Schema) ────────────────────────────────
+
+
+class CID10Code(models.Model):
+    """
+    ICD-10 (CID-10) diagnosis code table. Lives in the PUBLIC schema,
+    shared across all tenants. Imported via `import_cid10` management command.
+    Data source: DATASUS CID10CM_tabela.csv (SUBCAT, DESCRICAO columns).
+
+    Follows the same pattern as TUSSCode (Sprint 8).
+    CID10Suggester validates all LLM suggestions against this table (anti-hallucination gate).
+    """
+
+    code = models.CharField(max_length=10, unique=True, db_index=True)
+    description = models.CharField(max_length=500)
+    active = models.BooleanField(default=True, db_index=True)
+    search_vector = SearchVectorField(null=True)
+
+    class Meta:
+        app_label = "core"
+        verbose_name = "CID-10"
+        verbose_name_plural = "CID-10 Codes"
+        indexes = [GinIndex(fields=["search_vector"])]
+
+    def __str__(self):
+        return f"{self.code} — {self.description[:60]}"
+
+
+# ─── S-063: AI DPA Status (Public Schema) ────────────────────────────────────
+
+
+class AIDPAStatus(models.Model):
+    """
+    Tracks whether a tenant has a signed Data Processing Agreement (DPA) with
+    Anthropic/OpenAI, required before enabling ai_prescription_safety feature
+    (LGPD Art. 11 — health data is 'dados sensíveis').
+
+    Without a DPA, the ai_prescription_safety feature flag must remain OFF.
+    Checked by PrescriptionSafetyChecker before any LLM call.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.OneToOneField(
+        Tenant, on_delete=models.CASCADE, related_name="ai_dpa_status"
+    )
+    dpa_signed_date = models.DateField(null=True, blank=True)
+    dpa_file_url = models.URLField(blank=True)
+    signed_by_user = models.ForeignKey(
+        "core.User", on_delete=models.SET_NULL, null=True, blank=True
+    )
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = "core"
+        verbose_name = "AI DPA Status"
+        verbose_name_plural = "AI DPA Statuses"
+
+    @property
+    def is_signed(self):
+        return self.dpa_signed_date is not None
+
+    def __str__(self):
+        status = "SIGNED" if self.is_signed else "UNSIGNED"
+        return f"AIDPAStatus({self.tenant.schema_name}, {status})"
+
+
+# ─── S-062: TOTP Device (Public Schema) ──────────────────────────────────────
+
+
+class TOTPDevice(models.Model):
+    """
+    Custom TOTP MFA device. Stores the TOTP secret encrypted at rest (LGPD).
+    Lives in the PUBLIC schema because User is in public schema (SHARED_APPS).
+
+    Build with pyotp — does NOT use django-otp to avoid migration sequencing
+    conflict with the billing_migrations workaround (plan decision D-14, E-14).
+
+    Backup codes are stored as an encrypted JSON list of hashed codes.
+    Each code is single-use: consumed codes are removed from the list.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.OneToOneField(
+        "core.User", on_delete=models.CASCADE, related_name="totp_device"
+    )
+    # Encrypted TOTP base32 secret (LGPD)
+    encrypted_secret = EncryptedCharField(max_length=200)
+    # Encrypted JSON list of hashed single-use backup codes
+    encrypted_backup_codes = EncryptedCharField(max_length=2000, default="[]")
+    is_active = models.BooleanField(default=False, db_index=True)
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = "core"
+        verbose_name = "TOTP Device"
+        verbose_name_plural = "TOTP Devices"
+
+    def __str__(self):
+        status = "active" if self.is_active else "pending"
+        return f"TOTPDevice({self.user.email}, {status})"
+
+
 # ─── Per-Tenant Models ────────────────────────────────────────────────────────
 
 
@@ -423,7 +530,7 @@ class AuditLog(models.Model):
             models.Index(fields=["resource_type", "resource_id"]),
             models.Index(fields=["user", "created_at"]),
             models.Index(fields=["created_at"]),
-            models.Index(fields=["action", "created_at"], name="core_auditlog_action_created_idx"),
+            models.Index(fields=["action", "created_at"], name="core_auditlog_act_created_idx"),
         ]
 
     def __str__(self):

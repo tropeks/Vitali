@@ -5,7 +5,7 @@ Uses Django's test email backend (in-memory outbox).
 from django.core import mail
 from django.test import override_settings
 from django.utils import timezone
-from django_tenants.test.cases import TenantTestCase
+from apps.test_utils import TenantTestCase
 
 from apps.core.models import User
 from apps.emr.models import Appointment, Patient, Professional
@@ -23,12 +23,11 @@ class EmailServiceTest(TenantTestCase):
         self.user = User.objects.create_user(
             email="doc@email.test",
             password="pass1234",
-            schema_name=self.tenant.schema_name,
         )
         self.patient = Patient.objects.create(
             full_name="Maria Souza",
-            date_of_birth="1980-03-20",
-            sex="F",
+            birth_date="1980-03-20",
+            gender="F",
             email="maria@email.test",
         )
         self.professional = Professional.objects.create(

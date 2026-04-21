@@ -2,7 +2,7 @@
 S-026 Drug & Material Catalog — test suite
 """
 from django.db import IntegrityError
-from django_tenants.test.cases import TenantTestCase
+from apps.test_utils import TenantTestCase
 from rest_framework.test import APIClient
 
 from apps.core.models import FeatureFlag
