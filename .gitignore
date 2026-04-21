@@ -125,3 +125,17 @@ do_commit*.txt
 =3.1
 nextjs_inspect.json
 frontend/tsconfig.tsbuildinfo
+
+# ─── Backend dev/debug scratch (pytest helpers, db reset scripts) ────────────
+backend/check_run*.sh
+backend/clean_restart.sh
+backend/drop_testdb.py
+backend/fix_testdb.sh
+backend/read_errors.sh
+backend/reset_and_run.sh
+backend/run_tests.sh
+backend/show_env.sh
+backend/terminate_test_db.sh
+
+# uv lockfile (project uses pip via requirements/*.txt; uv.lock is per-dev opt-in)
+backend/uv.lock

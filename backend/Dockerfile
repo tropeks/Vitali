@@ -6,12 +6,19 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# System deps for psycopg2 + cryptography
+# System deps for psycopg2 + cryptography + WeasyPrint (Cairo/Pango/fonts)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     gcc \
     python3-dev \
     build-essential \
+    libcairo2-dev \
+    libpango1.0-dev \
+    libffi-dev \
+    libjpeg-dev \
+    libpng-dev \
+    libfreetype6-dev \
+    fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements/base.txt requirements/production.txt ./requirements/
