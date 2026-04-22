@@ -30,7 +30,7 @@ const STATUS_COLORS: Record<string, string> = {
 export default function WaitingRoomPage() {
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [loading, setLoading] = useState(true)
-  const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [updating, setUpdating] = useState<string | null>(null)
 
   const fetchWaiting = useCallback(async () => {
@@ -80,7 +80,6 @@ export default function WaitingRoomPage() {
 
   // Counters
   const waitingCount = appointments.filter((a) => ['scheduled', 'confirmed', 'waiting'].includes(a.status)).length
-  const today = new Date().toISOString().split('T')[0]
 
   // Fetch all of today for the counter totals (waiting-room only returns pending)
   const [todayAll, setTodayAll] = useState<Appointment[]>([])
@@ -104,8 +103,9 @@ export default function WaitingRoomPage() {
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Sala de Espera</h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            Atualizado às {lastUpdated.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-            {' '}· atualiza automaticamente a cada 30s
+            {lastUpdated
+              ? `Atualizado às ${lastUpdated.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })} · atualiza automaticamente a cada 30s`
+              : 'Atualiza automaticamente a cada 30s'}
           </p>
         </div>
         <button

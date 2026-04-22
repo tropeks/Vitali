@@ -9,11 +9,9 @@ import {
   Calendar,
   ClipboardList,
   Stethoscope,
-  FileText,
   Pill,
   Receipt,
   BarChart2,
-  Sparkles,
   Settings,
   MessageCircle,
   LogOut,
@@ -44,7 +42,6 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Agenda", href: "/appointments", icon: Calendar, module: "emr" },
   { label: "Sala de Espera", href: "/waiting-room", icon: ClipboardList, module: "emr" },
   { label: "Consultas", href: "/encounters", icon: Stethoscope, module: "emr" },
-  { label: "Prontuário", href: "/dashboard/prontuario", icon: FileText, module: "emr" },
   {
     label: "Farmácia",
     href: "/farmacia",
@@ -59,7 +56,6 @@ const NAV_ITEMS: NavItem[] = [
   },
   { label: "Faturamento", href: "/billing", icon: Receipt, module: "billing" },
   { label: "Análise", href: "/billing/analytics", icon: BarChart2, module: "billing" },
-  { label: "Inteligência Artificial", href: "/dashboard/ia", icon: Sparkles, module: "ai_tuss" },
   {
     label: "Configurações",
     href: "/configuracoes/assinatura",
