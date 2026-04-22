@@ -1,4 +1,5 @@
 """Tests for ClaudeGateway."""
+
 from unittest.mock import MagicMock, patch
 
 from django.test import TestCase, override_settings
@@ -8,7 +9,6 @@ from apps.ai.gateway import ClaudeGateway, LLMGatewayError
 
 @override_settings(ANTHROPIC_API_KEY="test-key", AI_SUGGEST_TIMEOUT_S=5)
 class ClaudeGatewayTest(TestCase):
-
     def _mock_anthropic(self, text="test response"):
         mock_msg = MagicMock()
         mock_msg.content = [MagicMock(text=text)]
@@ -18,7 +18,9 @@ class ClaudeGatewayTest(TestCase):
 
     def test_returns_text_and_token_counts(self):
         with patch("anthropic.Anthropic") as MockClient:
-            MockClient.return_value.messages.create.return_value = self._mock_anthropic('{"suggestions": []}')
+            MockClient.return_value.messages.create.return_value = self._mock_anthropic(
+                '{"suggestions": []}'
+            )
             gw = ClaudeGateway()
             text, tokens_in, tokens_out = gw.complete(system="sys", user="usr")
 

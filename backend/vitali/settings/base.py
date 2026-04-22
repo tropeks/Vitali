@@ -2,8 +2,10 @@
 Vitali — Base Settings
 Django 5.2 + django-tenants (schema-per-tenant)
 """
-import environ
+
 from pathlib import Path
+
+import environ
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -14,8 +16,8 @@ env = environ.Env(
 # ─── Django-Tenants ───────────────────────────────────────────────────────────
 # Apps that live in the PUBLIC schema (shared across all tenants)
 SHARED_APPS = [
-    "django_tenants",          # must be first
-    "apps.core",               # Tenant, Domain, Plan, Subscription, User, Role, FeatureFlag
+    "django_tenants",  # must be first
+    "apps.core",  # Tenant, Domain, Plan, Subscription, User, Role, FeatureFlag
     "django.contrib.contenttypes",
     "django.contrib.auth",
     "django.contrib.postgres",  # SearchVectorField, GinIndex — required for TUSS fuzzy search
@@ -23,7 +25,7 @@ SHARED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.admin",
-    "django_celery_beat",      # global scheduler — must live in public schema
+    "django_celery_beat",  # global scheduler — must live in public schema
 ]
 
 # Apps that live in each TENANT schema (per-clinic data isolation)
@@ -41,9 +43,7 @@ TENANT_APPS = [
     "django_filters",
 ]
 
-INSTALLED_APPS = list(SHARED_APPS) + [
-    app for app in TENANT_APPS if app not in SHARED_APPS
-]
+INSTALLED_APPS = list(SHARED_APPS) + [app for app in TENANT_APPS if app not in SHARED_APPS]
 
 TENANT_MODEL = "core.Tenant"
 TENANT_DOMAIN_MODEL = "core.Domain"

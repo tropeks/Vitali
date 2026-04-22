@@ -6,6 +6,7 @@ cleanup_orphaned_glosa_predictions: removes GlosaPrediction rows not linked to a
 check_tuss_staleness: daily check that TUSSSyncLog has a recent successful sync (S-038).
 generate_soap_task: async SOAP generation from transcription (S-069).
 """
+
 import logging
 
 from celery import shared_task
@@ -20,10 +21,8 @@ def run_llm_task(self, prompt_template_id: int, context_json: dict) -> str | Non
     Async LLM call wrapper for non-realtime use cases.
     Returns AIUsageLog.id (str) on success, None on failure.
     """
-    import json
-    from .models import AIPromptTemplate
     from .gateway import ClaudeGateway, LLMGatewayError
-    from .models import AIUsageLog
+    from .models import AIPromptTemplate, AIUsageLog
 
     try:
         template = AIPromptTemplate.objects.get(id=prompt_template_id, is_active=True)
@@ -41,7 +40,7 @@ def run_llm_task(self, prompt_template_id: int, context_json: dict) -> str | Non
         )
         log = AIUsageLog.objects.create(
             prompt_template=template,
-            event_type='llm_call',
+            event_type="llm_call",
             tokens_in=tokens_in,
             tokens_out=tokens_out,
         )
@@ -61,6 +60,7 @@ def generate_soap_task(self, session_id: str) -> None:
     Updates AIScribeSession.status to 'completed' or 'failed'.
     """
     from django.utils import timezone
+
     from .models import AIScribeSession
     from .services_scribe import generate_soap
 
@@ -118,11 +118,15 @@ def purge_old_scribe_sessions() -> dict:
 
     for tenant in TenantModel.objects.exclude(schema_name="public"):
         with tenant_context(tenant):
-            deleted, _ = AIScribeSession.objects.filter(
-                created_at__lt=cutoff,
-            ).exclude(
-                status=AIScribeSession.Status.COMPLETED,
-            ).delete()
+            deleted, _ = (
+                AIScribeSession.objects.filter(
+                    created_at__lt=cutoff,
+                )
+                .exclude(
+                    status=AIScribeSession.Status.COMPLETED,
+                )
+                .delete()
+            )
             total_deleted += deleted
             if deleted:
                 logger.info(
@@ -184,7 +188,6 @@ def check_tuss_staleness() -> dict:
     Fail-safe: any DB exception logs error and returns gracefully.
     Scheduled by data migration (apps.ai 0004).
     """
-    from datetime import timedelta
 
     try:
         from apps.core.models import TUSSSyncLog

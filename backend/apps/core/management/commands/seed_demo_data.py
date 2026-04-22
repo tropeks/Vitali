@@ -8,6 +8,7 @@ Usage:
     python manage.py seed_demo_data --tenant=<schema_name>
     python manage.py seed_demo_data --tenant=demo --force   # re-seeds even if present
 """
+
 import random
 from datetime import timedelta
 from decimal import Decimal
@@ -37,10 +38,11 @@ class Command(BaseCommand):
         force = options["force"]
 
         from apps.core.models import Tenant
+
         try:
             tenant = Tenant.objects.get(schema_name=schema)
-        except Tenant.DoesNotExist:
-            raise CommandError(f"Tenant with schema_name='{schema}' not found.")
+        except Tenant.DoesNotExist as exc:
+            raise CommandError(f"Tenant with schema_name='{schema}' not found.") from exc
 
         with schema_context(schema):
             self._seed(tenant, schema, force)
@@ -53,8 +55,7 @@ class Command(BaseCommand):
             if not force:
                 self.stdout.write(
                     self.style.WARNING(
-                        f"Demo data already present in '{schema}'. "
-                        "Use --force to re-seed."
+                        f"Demo data already present in '{schema}'. Use --force to re-seed."
                     )
                 )
                 return
@@ -65,12 +66,12 @@ class Command(BaseCommand):
 
         try:
             from faker import Faker
+
             fake = Faker("pt_BR")
-        except ImportError:
+        except ImportError as exc:
             raise CommandError(
-                "Faker is required for seed_demo_data. "
-                "Install it: pip install faker"
-            )
+                "Faker is required for seed_demo_data. Install it: pip install faker"
+            ) from exc
 
         patients = self._create_patients(fake, 10)
         professionals = self._get_or_create_professional()
@@ -81,15 +82,18 @@ class Command(BaseCommand):
         self._create_stock(fake, 50)
         self._create_purchase_orders(fake, 3)
 
-        self.stdout.write(self.style.SUCCESS(
-            f"Demo data seeded: {len(patients)} patients, {len(appointments)} appointments, "
-            f"{len(encounters)} encounters, {len(pix_charges)} PIX charges."
-        ))
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Demo data seeded: {len(patients)} patients, {len(appointments)} appointments, "
+                f"{len(encounters)} encounters, {len(pix_charges)} PIX charges."
+            )
+        )
 
     def _create_patients(self, fake, count):
-        from apps.emr.models import Patient, Allergy
+        from apps.emr.models import Allergy, Patient
+
         patients = []
-        for i in range(count):
+        for _i in range(count):
             p = Patient.objects.create(
                 full_name=f"[DEMO] {fake.name()}",
                 date_of_birth=fake.date_of_birth(minimum_age=18, maximum_age=80),
@@ -118,19 +122,20 @@ class Command(BaseCommand):
 
     def _get_or_create_professional(self):
         from apps.emr.models import Professional
-        from apps.core.models import User
+
         try:
             return list(Professional.objects.select_related("user").all()[:3])
         except Exception:
             return []
 
     def _create_appointments(self, fake, patients, professionals, count):
-        from apps.emr.models import Appointment, Professional
+        from apps.emr.models import Appointment
+
         appointments = []
         if not professionals:
             return appointments
         now = timezone.now()
-        for i in range(count):
+        for _i in range(count):
             start = now + timedelta(days=random.randint(-30, 30), hours=random.randint(8, 16))
             try:
                 appt = Appointment.objects.create(
@@ -148,11 +153,12 @@ class Command(BaseCommand):
         return appointments
 
     def _create_encounters(self, fake, patients, professionals, appointments):
-        from apps.emr.models import Encounter, ClinicalNote
+        from apps.emr.models import ClinicalNote, Encounter
+
         encounters = []
         if not professionals:
             return encounters
-        for i, appt in enumerate(appointments[:8]):
+        for _i, appt in enumerate(appointments[:8]):
             try:
                 enc = Encounter.objects.create(
                     patient=appt.patient,
@@ -167,7 +173,7 @@ class Command(BaseCommand):
                     note_type="evolution",
                     content={
                         "subjective": f"[DEMO] {fake.paragraph(nb_sentences=3)}",
-                        "objective": f"[DEMO] PA: {random.randint(110,140)}/{random.randint(70,90)} mmHg. FC: {random.randint(60,100)} bpm.",
+                        "objective": f"[DEMO] PA: {random.randint(110, 140)}/{random.randint(70, 90)} mmHg. FC: {random.randint(60, 100)} bpm.",
                         "assessment": f"[DEMO] {fake.sentence(nb_words=8)}",
                         "plan": f"[DEMO] {fake.sentence(nb_words=10)}",
                     },
@@ -179,8 +185,9 @@ class Command(BaseCommand):
         return encounters
 
     def _create_guides(self, fake, encounters, patients):
-        from apps.billing.models import TISSGuide, TISSGuideItem, InsuranceProvider
+        from apps.billing.models import InsuranceProvider, TISSGuide, TISSGuideItem
         from apps.core.models import TUSSCode
+
         try:
             provider = InsuranceProvider.objects.first()
             tuss_codes = list(TUSSCode.objects.filter(active=True)[:10])
@@ -211,6 +218,7 @@ class Command(BaseCommand):
     def _create_pix_charges(self, appointments):
         """Seed PIXCharge records: 2 paid, 2 pending, 1 expired, 1 cancelled."""
         from apps.billing.models import PIXCharge
+
         now = timezone.now()
         charges = []
         statuses = [
@@ -235,8 +243,12 @@ class Command(BaseCommand):
                         "status": status,
                         "pix_copy_paste": f"00020126580014br.gov.bcb.pix0136DEMO{i:04d}5204000053039865802BR5913DEMO VITALI6009SAO PAULO62070503***6304DEMO",
                         "pix_qr_code_base64": "",
-                        "expires_at": now + timedelta(minutes=30) if status == PIXCharge.Status.PENDING else now - timedelta(hours=1),
-                        "paid_at": now - timedelta(hours=random.randint(1, 48)) if status == PIXCharge.Status.PAID else None,
+                        "expires_at": now + timedelta(minutes=30)
+                        if status == PIXCharge.Status.PENDING
+                        else now - timedelta(hours=1),
+                        "paid_at": now - timedelta(hours=random.randint(1, 48))
+                        if status == PIXCharge.Status.PAID
+                        else None,
                     },
                 )
                 if created:
@@ -247,6 +259,7 @@ class Command(BaseCommand):
 
     def _create_stock(self, fake, count):
         from apps.pharmacy.models import Drug, StockItem
+
         drugs = list(Drug.objects.filter(is_active=True)[:count])
         for drug in drugs:
             lot = f"[DEMO]-{fake.bothify('??###')}"
@@ -258,7 +271,8 @@ class Command(BaseCommand):
             )
 
     def _create_purchase_orders(self, fake, count):
-        from apps.pharmacy.models import Supplier, PurchaseOrder, PurchaseOrderItem, Drug
+        from apps.pharmacy.models import Drug, PurchaseOrder, PurchaseOrderItem, Supplier
+
         drugs = list(Drug.objects.filter(is_active=True)[:5])
         if not drugs:
             return
@@ -272,7 +286,7 @@ class Command(BaseCommand):
                     supplier=supplier,
                     status=PurchaseOrder.Status.RECEIVED,
                     expected_date=fake.past_date(start_date="-30d"),
-                    notes=f"[DEMO] Pedido de reposição de estoque.",
+                    notes="[DEMO] Pedido de reposição de estoque.",
                 )
                 for drug in random.sample(drugs, min(3, len(drugs))):
                     PurchaseOrderItem.objects.create(

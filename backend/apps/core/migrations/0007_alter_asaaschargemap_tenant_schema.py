@@ -4,15 +4,19 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('core', '0006_auditlog_action_index'),
+        ("core", "0006_auditlog_action_index"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='asaaschargemap',
-            name='tenant_schema',
-            field=models.CharField(db_index=True, help_text='schema_name of the tenant that owns this charge', max_length=100, verbose_name='Tenant Schema'),
+            model_name="asaaschargemap",
+            name="tenant_schema",
+            field=models.CharField(
+                db_index=True,
+                help_text="schema_name of the tenant that owns this charge",
+                max_length=100,
+                verbose_name="Tenant Schema",
+            ),
         ),
     ]

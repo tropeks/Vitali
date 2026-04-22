@@ -5,14 +5,16 @@ Two steps:
 1. Schema: change raw_transcription from TextField to EncryptedTextField.
 2. Data: re-save all existing rows so the library encrypts the plaintext value.
 """
+
 import encrypted_model_fields.fields
 from django.db import migrations
 
 
 def encrypt_existing_transcriptions(apps, schema_editor):
     from apps.ai.models import AIScribeSession  # real model, not historical
+
     for session in AIScribeSession.objects.all():
-        session.save(update_fields=['raw_transcription'])
+        session.save(update_fields=["raw_transcription"])
 
 
 def noop(apps, schema_editor):
@@ -20,7 +22,6 @@ def noop(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("ai", "0006_ai_scribe_session"),
     ]

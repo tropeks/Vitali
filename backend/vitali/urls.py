@@ -1,14 +1,16 @@
 """
 Vitali — URL Configuration (tenant schemas)
 """
+
 from django.contrib import admin
-from django.urls import path, include
 from django.http import JsonResponse
+from django.urls import include, path
 from drf_spectacular.views import (
     SpectacularAPIView,
-    SpectacularSwaggerView,
     SpectacularRedocView,
+    SpectacularSwaggerView,
 )
+
 
 def health(request):
     return JsonResponse({"status": "ok"})

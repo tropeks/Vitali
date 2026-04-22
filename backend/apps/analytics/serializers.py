@@ -3,6 +3,7 @@ Vitali — Analytics Serializers (S-035)
 Explicit DRF serializers for billing analytics endpoints.
 Defined here for future OpenAPI/Swagger generation support.
 """
+
 from rest_framework import serializers
 
 

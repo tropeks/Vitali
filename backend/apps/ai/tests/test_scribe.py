@@ -7,6 +7,7 @@ Covers:
   - ScribeStartView (view, mocked task dispatch)
   - ScribeStatusView (view)
 """
+
 import datetime
 import json
 from unittest.mock import MagicMock, patch
@@ -17,34 +18,37 @@ from rest_framework.test import APIClient
 
 from apps.test_utils import TenantTestCase
 
-
 # ─── Unit tests for _parse_soap_json ─────────────────────────────────────────
+
 
 class TestParseSoapJson(TenantTestCase):
     """Pure-unit tests — no LLM calls, no DB beyond tenant setup."""
 
     def _parse(self, raw):
         from apps.ai.services_scribe import _parse_soap_json
+
         return _parse_soap_json(raw)
 
     def test_valid_json_returned_as_dict(self):
-        raw = json.dumps({
-            "subjective": "Paciente relata dor de cabeça",
-            "objective": "PA 120/80, afebril",
-            "assessment": "Cefaleia tensional (G44.2)",
-            "plan": "Dipirona 500mg VO se dor",
-        })
+        raw = json.dumps(
+            {
+                "subjective": "Paciente relata dor de cabeça",
+                "objective": "PA 120/80, afebril",
+                "assessment": "Cefaleia tensional (G44.2)",
+                "plan": "Dipirona 500mg VO se dor",
+            }
+        )
         result = self._parse(raw)
         self.assertEqual(result["subjective"], "Paciente relata dor de cabeça")
         self.assertEqual(result["assessment"], "Cefaleia tensional (G44.2)")
 
     def test_strips_markdown_json_fence(self):
-        raw = "```json\n{\"subjective\": \"dor\", \"objective\": \"\", \"assessment\": \"\", \"plan\": \"\"}\n```"
+        raw = '```json\n{"subjective": "dor", "objective": "", "assessment": "", "plan": ""}\n```'
         result = self._parse(raw)
         self.assertEqual(result["subjective"], "dor")
 
     def test_strips_plain_code_fence(self):
-        raw = "```\n{\"subjective\": \"s\", \"objective\": \"o\", \"assessment\": \"a\", \"plan\": \"p\"}\n```"
+        raw = '```\n{"subjective": "s", "objective": "o", "assessment": "a", "plan": "p"}\n```'
         result = self._parse(raw)
         self.assertEqual(result["plan"], "p")
 
@@ -62,22 +66,26 @@ class TestParseSoapJson(TenantTestCase):
         self.assertEqual(result["plan"], "")
 
     def test_numeric_values_coerced_to_str(self):
-        result = self._parse(json.dumps({"subjective": 42, "objective": "", "assessment": "", "plan": ""}))
+        result = self._parse(
+            json.dumps({"subjective": 42, "objective": "", "assessment": "", "plan": ""})
+        )
         self.assertEqual(result["subjective"], "42")
 
     def test_empty_string_input_returns_empty(self):
         from apps.ai.services_scribe import generate_soap
+
         result = generate_soap("")
         self.assertEqual(result, {"subjective": "", "objective": "", "assessment": "", "plan": ""})
 
 
 # ─── generate_soap_task tests ─────────────────────────────────────────────────
 
-class TestGenerateSoapTask(TenantTestCase):
 
+class TestGenerateSoapTask(TenantTestCase):
     def setUp(self):
         from django.contrib.auth import get_user_model
-        from apps.emr.models import Patient, Professional, Encounter
+
+        from apps.emr.models import Encounter, Patient, Professional
 
         User = get_user_model()
         self.user = User.objects.create_user(
@@ -104,6 +112,7 @@ class TestGenerateSoapTask(TenantTestCase):
 
     def _make_session(self, transcription="Paciente com febre há 2 dias"):
         from apps.ai.models import AIScribeSession
+
         return AIScribeSession.objects.create(
             encounter=self.encounter,
             raw_transcription=transcription,
@@ -111,16 +120,19 @@ class TestGenerateSoapTask(TenantTestCase):
 
     @patch("apps.ai.services_scribe.ClaudeGateway")
     def test_task_sets_completed_on_success(self, MockGateway):
-        soap_response = json.dumps({
-            "subjective": "Febre há 2 dias",
-            "objective": "Tax 38.5°C",
-            "assessment": "Síndrome gripal (J11.1)",
-            "plan": "Dipirona 500mg 6/6h",
-        })
+        soap_response = json.dumps(
+            {
+                "subjective": "Febre há 2 dias",
+                "objective": "Tax 38.5°C",
+                "assessment": "Síndrome gripal (J11.1)",
+                "plan": "Dipirona 500mg 6/6h",
+            }
+        )
         MockGateway.return_value.complete.return_value = (soap_response, 100, 200)
 
         session = self._make_session()
         from apps.ai.tasks import generate_soap_task
+
         generate_soap_task(session_id=str(session.id))
 
         session.refresh_from_db()
@@ -134,11 +146,13 @@ class TestGenerateSoapTask(TenantTestCase):
         # generate_soap is fail-open: empty strings trigger FAILED status
         MockGateway.return_value.complete.return_value = (
             json.dumps({"subjective": "", "objective": "", "assessment": "", "plan": ""}),
-            50, 20,
+            50,
+            20,
         )
 
         session = self._make_session()
         from apps.ai.tasks import generate_soap_task
+
         generate_soap_task(session_id=str(session.id))
 
         session.refresh_from_db()
@@ -146,20 +160,24 @@ class TestGenerateSoapTask(TenantTestCase):
         self.assertIn("empty SOAP", session.error_message)
 
     def test_task_noop_on_missing_session(self):
-        from apps.ai.tasks import generate_soap_task
         import uuid
+
+        from apps.ai.tasks import generate_soap_task
+
         # Should not raise — just logs an error
         generate_soap_task(session_id=str(uuid.uuid4()))
 
 
 # ─── View tests ───────────────────────────────────────────────────────────────
 
-class TestScribeViews(TenantTestCase):
 
+class TestScribeViews(TenantTestCase):
     def setUp(self):
         import datetime
+
         from django.contrib.auth import get_user_model
-        from apps.emr.models import Patient, Professional, Encounter
+
+        from apps.emr.models import Encounter, Patient, Professional
 
         User = get_user_model()
         self.user = User.objects.create_user(
@@ -209,7 +227,9 @@ class TestScribeViews(TenantTestCase):
     @patch("apps.ai.tasks.generate_soap_task.delay")
     def test_start_creates_session_and_returns_202(self, mock_delay, _mock_dpa):
         url = f"/api/v1/encounters/{self.encounter.id}/scribe/start/"
-        res = self.client.post(url, {"transcription": "Paciente relata dor abdominal"}, format="json")
+        res = self.client.post(
+            url, {"transcription": "Paciente relata dor abdominal"}, format="json"
+        )
         self.assertEqual(res.status_code, 202)
         self.assertIn("session_id", res.json())
         self.assertEqual(res.json()["status"], "processing")
@@ -239,7 +259,7 @@ class TestScribeViews(TenantTestCase):
         from apps.ai.models import AIScribeSession
 
         soap = {"subjective": "s", "objective": "o", "assessment": "a", "plan": "p"}
-        session = AIScribeSession.objects.create(
+        AIScribeSession.objects.create(
             encounter=self.encounter,
             raw_transcription="test",
             status="completed",
@@ -280,11 +300,12 @@ class TestScribeViews(TenantTestCase):
 
 # ─── S-071: Encryption and purge tests ───────────────────────────────────────
 
-class TestScribeEncryption(TenantTestCase):
 
+class TestScribeEncryption(TenantTestCase):
     def setUp(self):
         from django.contrib.auth import get_user_model
-        from apps.emr.models import Patient, Professional, Encounter
+
+        from apps.emr.models import Encounter, Patient, Professional
 
         User = get_user_model()
         self.user = User.objects.create_user(
@@ -311,6 +332,7 @@ class TestScribeEncryption(TenantTestCase):
 
     def test_raw_transcription_stored_encrypted(self):
         from django.db import connection
+
         from apps.ai.models import AIScribeSession
 
         plaintext = "Paciente relata dor de cabeça intensa."
@@ -343,6 +365,7 @@ class TestScribeEncryption(TenantTestCase):
         import importlib
 
         from django.db import connection
+
         from apps.ai.models import AIScribeSession
 
         migration_module = importlib.import_module(
@@ -371,10 +394,10 @@ class TestScribeEncryption(TenantTestCase):
 
 
 class TestPurgeOldScribeSessions(TenantTestCase):
-
     def setUp(self):
         from django.contrib.auth import get_user_model
-        from apps.emr.models import Patient, Professional, Encounter
+
+        from apps.emr.models import Encounter, Patient, Professional
 
         User = get_user_model()
         self.user = User.objects.create_user(
@@ -401,6 +424,7 @@ class TestPurgeOldScribeSessions(TenantTestCase):
 
     def _make_session(self, status, created_at, transcription="test"):
         from apps.ai.models import AIScribeSession
+
         session = AIScribeSession.objects.create(
             encounter=self.encounter,
             raw_transcription=transcription,
@@ -421,6 +445,7 @@ class TestPurgeOldScribeSessions(TenantTestCase):
         self.assertGreaterEqual(result["deleted"], 2)
 
         from apps.ai.models import AIScribeSession
+
         self.assertFalse(AIScribeSession.objects.filter(pk=old_processing.pk).exists())
         self.assertFalse(AIScribeSession.objects.filter(pk=old_failed.pk).exists())
 
@@ -434,6 +459,7 @@ class TestPurgeOldScribeSessions(TenantTestCase):
         purge_old_scribe_sessions()
 
         from apps.ai.models import AIScribeSession
+
         self.assertTrue(AIScribeSession.objects.filter(pk=completed.pk).exists())
 
     @override_settings(SCRIBE_SESSION_RETENTION_DAYS=90)
@@ -446,10 +472,12 @@ class TestPurgeOldScribeSessions(TenantTestCase):
         purge_old_scribe_sessions()
 
         from apps.ai.models import AIScribeSession
+
         self.assertTrue(AIScribeSession.objects.filter(pk=recent.pk).exists())
 
     def test_purge_iterates_all_tenant_schemas(self):
-        from unittest.mock import MagicMock, call, patch
+        from unittest.mock import patch
+
         from apps.ai.tasks import purge_old_scribe_sessions
 
         mock_tenant = MagicMock()
@@ -464,8 +492,10 @@ class TestPurgeOldScribeSessions(TenantTestCase):
 
         # Patch at the source module — task does a local import, so we patch
         # the original location which the local import resolves to.
-        with patch("django_tenants.utils.get_tenant_model", return_value=mock_tenant_model), \
-             patch("django_tenants.utils.tenant_context", return_value=mock_ctx) as mock_tc:
+        with (
+            patch("django_tenants.utils.get_tenant_model", return_value=mock_tenant_model),
+            patch("django_tenants.utils.tenant_context", return_value=mock_ctx) as mock_tc,
+        ):
             purge_old_scribe_sessions()
 
         mock_tc.assert_called_once_with(mock_tenant)

@@ -14,7 +14,6 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("emr", "0007_appointment_satisfaction_rating"),
     ]

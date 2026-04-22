@@ -2,9 +2,9 @@
 Custom JWT Authentication for Vitali.
 Validates tenant membership and user.is_active.
 """
-from rest_framework_simplejwt.authentication import JWTAuthentication
-from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+
 from rest_framework.exceptions import AuthenticationFailed
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
 
 class TenantJWTAuthentication(JWTAuthentication):
@@ -19,8 +19,6 @@ class TenantJWTAuthentication(JWTAuthentication):
         user = super().get_user(validated_token)
 
         if not user.is_active:
-            raise AuthenticationFailed(
-                {"code": "USER_INACTIVE", "message": "Conta desativada."}
-            )
+            raise AuthenticationFailed({"code": "USER_INACTIVE", "message": "Conta desativada."})
 
         return user

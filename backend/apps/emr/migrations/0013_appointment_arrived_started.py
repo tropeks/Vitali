@@ -4,20 +4,19 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('emr', '0012_waitlistentry'),
+        ("emr", "0012_waitlistentry"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='appointment',
-            name='arrived_at',
+            model_name="appointment",
+            name="arrived_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='appointment',
-            name='started_at',
+            model_name="appointment",
+            name="started_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
     ]

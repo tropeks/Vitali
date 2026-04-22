@@ -9,22 +9,18 @@ Tests:
   - MFA required middleware (claim check)
   - Rate limiting on verify endpoint
 """
+
 import json
 import time
-import unittest
-from unittest.mock import MagicMock, patch
 
-from django.test import RequestFactory, TestCase, override_settings
 from django.contrib.auth import get_user_model
+from django.test import RequestFactory
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from apps.test_utils import TenantTestCase
 from apps.core.mfa import (
     activate_device,
     check_backup_code,
-    generate_backup_codes,
-    generate_qr_image_base64,
     generate_qr_uri,
     generate_totp_secret,
     get_or_create_device,
@@ -32,12 +28,12 @@ from apps.core.mfa import (
     is_mfa_verified,
     verify_totp_code,
 )
+from apps.test_utils import TenantTestCase
 
 User = get_user_model()
 
 
 class TestMFASetup(TenantTestCase):
-
     def setUp(self):
         self.user = User.objects.create_user(
             email="mfa_test@clinic.test",
@@ -45,7 +41,7 @@ class TestMFASetup(TenantTestCase):
             full_name="MFA Test",
         )
         self.client = APIClient()
-        self.client.defaults['SERVER_NAME'] = self.__class__.domain.domain
+        self.client.defaults["SERVER_NAME"] = self.__class__.domain.domain
         refresh = RefreshToken.for_user(self.user)
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {str(refresh.access_token)}")
 
@@ -116,6 +112,7 @@ class TestMFASetup(TenantTestCase):
 
         # Decode access token and check claim
         from rest_framework_simplejwt.tokens import AccessToken
+
         token = AccessToken(data["access"])
         self.assertTrue(token.get("mfa_verified", False))
 
@@ -124,6 +121,7 @@ class TestMFASetup(TenantTestCase):
         device = get_or_create_device(self.user)
         secret = device.encrypted_secret
         import pyotp
+
         totp = pyotp.TOTP(secret)
         success, backup_codes = activate_device(device, totp.now())
         self.assertTrue(success)
@@ -159,13 +157,12 @@ class TestMFASetup(TenantTestCase):
         The 4th attempt should return 429.
         """
         from django.core.cache import cache
+
         cache.clear()
 
         # Make 3 failed attempts
-        for i in range(3):
-            response = self.client.post(
-                "/api/v1/auth/mfa/verify/", {"code": "000000"}
-            )
+        for _i in range(3):
+            response = self.client.post("/api/v1/auth/mfa/verify/", {"code": "000000"})
             # Each should be 400 (invalid code) not 429
             self.assertIn(response.status_code, [400, 429])
 
@@ -178,6 +175,7 @@ class TestMFASetup(TenantTestCase):
         """hash_backup_code is SHA-256 and check_backup_code verifies it."""
         device = get_or_create_device(self.user)
         import pyotp
+
         totp = pyotp.TOTP(device.encrypted_secret)
         success, backup_codes = activate_device(device, totp.now())
         self.assertTrue(success)

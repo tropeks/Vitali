@@ -3,6 +3,7 @@ Platform admin views — Plans, Subscriptions, module activation, pilot health.
 All endpoints gated with IsPlatformAdmin (requires is_superuser).
 These models live in the public schema — no schema switching needed.
 """
+
 import logging
 import time
 
@@ -15,7 +16,11 @@ from rest_framework.views import APIView
 from .constants import ALLOWED_MODULE_KEYS
 from .models import FeatureFlag, Plan, Subscription, Tenant
 from .permissions import IsPlatformAdmin
-from .serializers_platform import PlanSerializer, SubscriptionSerializer, TenantSubscriptionSerializer
+from .serializers_platform import (
+    PlanSerializer,
+    SubscriptionSerializer,
+    TenantSubscriptionSerializer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +41,10 @@ def _get_subscription(pk, lock=False):
 
 # ─── Plans ────────────────────────────────────────────────────────────────────
 
+
 class PlanListCreateView(generics.ListCreateAPIView):
     """GET/POST /api/v1/platform/plans/"""
+
     serializer_class = PlanSerializer
     permission_classes = _PLATFORM_PERMS
     queryset = Plan.objects.prefetch_related("modules").order_by("name")
@@ -45,6 +52,7 @@ class PlanListCreateView(generics.ListCreateAPIView):
 
 class PlanDetailView(generics.RetrieveUpdateAPIView):
     """GET/PATCH /api/v1/platform/plans/{id}/"""
+
     serializer_class = PlanSerializer
     permission_classes = _PLATFORM_PERMS
     queryset = Plan.objects.prefetch_related("modules")
@@ -53,8 +61,10 @@ class PlanDetailView(generics.RetrieveUpdateAPIView):
 
 # ─── Subscriptions ────────────────────────────────────────────────────────────
 
+
 class SubscriptionListCreateView(generics.ListCreateAPIView):
     """GET/POST /api/v1/platform/subscriptions/"""
+
     serializer_class = SubscriptionSerializer
     permission_classes = _PLATFORM_PERMS
     queryset = Subscription.objects.select_related("tenant", "plan").order_by("-created_at")
@@ -62,6 +72,7 @@ class SubscriptionListCreateView(generics.ListCreateAPIView):
 
 class SubscriptionDetailView(generics.RetrieveUpdateAPIView):
     """GET/PATCH /api/v1/platform/subscriptions/{id}/"""
+
     serializer_class = SubscriptionSerializer
     permission_classes = _PLATFORM_PERMS
     queryset = Subscription.objects.select_related("tenant", "plan")
@@ -103,6 +114,7 @@ class ActivateModuleView(APIView):
     Creates/enables a FeatureFlag for the subscription's tenant.
     FeatureFlag is in SHARED_APPS (public schema) — no schema switching needed.
     """
+
     permission_classes = _PLATFORM_PERMS
 
     @transaction.atomic
@@ -113,10 +125,14 @@ class ActivateModuleView(APIView):
 
         module_key = request.data.get("module_key", "").strip()
         if not module_key:
-            return Response({"detail": "module_key is required."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": "module_key is required."}, status=status.HTTP_400_BAD_REQUEST
+            )
         if module_key not in ALLOWED_MODULE_KEYS:
             return Response(
-                {"detail": f"Unknown module key '{module_key}'. Allowed: {', '.join(sorted(ALLOWED_MODULE_KEYS))}."},
+                {
+                    "detail": f"Unknown module key '{module_key}'. Allowed: {', '.join(sorted(ALLOWED_MODULE_KEYS))}."
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -128,7 +144,10 @@ class ActivateModuleView(APIView):
         action = "created" if created else "enabled"
         logger.info(
             "Platform admin %s %s module '%s' for tenant '%s'",
-            request.user.email, action, module_key, subscription.tenant.schema_name,
+            request.user.email,
+            action,
+            module_key,
+            subscription.tenant.schema_name,
         )
 
         # Keep Subscription.active_modules in sync (lock held — no concurrent write loss)
@@ -145,6 +164,7 @@ class DeactivateModuleView(APIView):
     Body: {"module_key": "billing"}
     Disables a FeatureFlag for the subscription's tenant.
     """
+
     permission_classes = _PLATFORM_PERMS
 
     @transaction.atomic
@@ -155,10 +175,14 @@ class DeactivateModuleView(APIView):
 
         module_key = request.data.get("module_key", "").strip()
         if not module_key:
-            return Response({"detail": "module_key is required."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": "module_key is required."}, status=status.HTTP_400_BAD_REQUEST
+            )
         if module_key not in ALLOWED_MODULE_KEYS:
             return Response(
-                {"detail": f"Unknown module key '{module_key}'. Allowed: {', '.join(sorted(ALLOWED_MODULE_KEYS))}."},
+                {
+                    "detail": f"Unknown module key '{module_key}'. Allowed: {', '.join(sorted(ALLOWED_MODULE_KEYS))}."
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -169,18 +193,23 @@ class DeactivateModuleView(APIView):
         )
         logger.info(
             "Platform admin %s deactivated module '%s' for tenant '%s'",
-            request.user.email, module_key, subscription.tenant.schema_name,
+            request.user.email,
+            module_key,
+            subscription.tenant.schema_name,
         )
 
         # Keep Subscription.active_modules in sync (lock held — no concurrent write loss)
         if module_key in subscription.active_modules:
-            subscription.active_modules = [m for m in subscription.active_modules if m != module_key]
+            subscription.active_modules = [
+                m for m in subscription.active_modules if m != module_key
+            ]
             subscription.save(update_fields=["active_modules"])
 
         return Response({"module_key": module_key, "is_enabled": False})
 
 
 # ─── Pilot Health Dashboard (S-061) ──────────────────────────────────────────
+
 
 class PilotHealthView(APIView):
     """
@@ -192,11 +221,11 @@ class PilotHealthView(APIView):
 
     Latency: O(tenants) DB queries. Acceptable for < 10 pilot tenants.
     """
+
     permission_classes = _PLATFORM_PERMS
 
     def get(self, request):
         from django.utils import timezone
-        from django_tenants.utils import schema_context
 
         tenants = list(Tenant.objects.exclude(schema_name="public"))
 
@@ -207,11 +236,13 @@ class PilotHealthView(APIView):
 
         system = self._system_health()
 
-        return Response({
-            "generated_at": timezone.now().isoformat(),
-            "tenants": tenant_stats,
-            "system": system,
-        })
+        return Response(
+            {
+                "generated_at": timezone.now().isoformat(),
+                "tenants": tenant_stats,
+                "system": system,
+            }
+        )
 
     def _tenant_kpis(self, tenant) -> dict:
         """Per-tenant behavioral KPIs queried inside schema_context."""
@@ -226,13 +257,15 @@ class PilotHealthView(APIView):
         kpis = {
             "schema": tenant.schema_name,
             "name": tenant.name,
-            "created_at": tenant.created_at.isoformat() if hasattr(tenant, "created_at") and tenant.created_at else None,
+            "created_at": tenant.created_at.isoformat()
+            if hasattr(tenant, "created_at") and tenant.created_at
+            else None,
         }
 
         try:
             with schema_context(tenant.schema_name):
-                from apps.emr.models import Appointment, Patient
                 from apps.billing.models import PIXCharge
+                from apps.emr.models import Appointment, Patient
 
                 # Appointments today
                 kpis["appointments_today"] = Appointment.objects.filter(
@@ -297,6 +330,7 @@ class PilotHealthView(APIView):
         # Cache ping
         try:
             from django.core.cache import cache
+
             cache.set("_pilot_health_ping", "1", timeout=5)
             health["cache_ok"] = cache.get("_pilot_health_ping") == "1"
         except Exception:
@@ -310,12 +344,14 @@ class PilotHealthView(APIView):
 
 # ─── Tenant-facing subscription status (S-041) ────────────────────────────────
 
+
 class TenantSubscriptionView(APIView):
     """
     GET /api/v1/core/subscription/
     Returns the current tenant's subscription details including pricing.
     Restricted to staff/admin users — pricing data is business-sensitive.
     """
+
     permission_classes = [IsAuthenticated, IsAdminUser]
 
     def get(self, request):
@@ -325,9 +361,7 @@ class TenantSubscriptionView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         try:
-            subscription = Subscription.objects.select_related("plan").get(
-                tenant=request.tenant
-            )
+            subscription = Subscription.objects.select_related("plan").get(tenant=request.tenant)
         except Subscription.DoesNotExist:
             return Response(
                 {"detail": "Nenhuma assinatura ativa. Entre em contato com o suporte."},

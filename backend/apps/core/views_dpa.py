@@ -4,15 +4,15 @@ S-070: DPA Signing UI endpoints.
 GET  /api/v1/settings/dpa/  — return current DPA status for tenant
 POST /api/v1/settings/dpa/sign/ — admin-only, sign the DPA
 """
+
 import logging
 from datetime import date
 
+from django.conf import settings
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-
-from django.conf import settings
 
 from .models import AIDPAStatus, AuditLog
 
@@ -37,7 +37,9 @@ def _dpa_response(dpa_status) -> dict:
     return {
         "is_signed": dpa_status.is_signed,
         "signed_at": dpa_status.dpa_signed_date.isoformat() if dpa_status.dpa_signed_date else None,
-        "signed_by_name": dpa_status.signed_by_user.full_name if dpa_status.signed_by_user else None,
+        "signed_by_name": dpa_status.signed_by_user.full_name
+        if dpa_status.signed_by_user
+        else None,
         "ai_scribe_enabled": getattr(settings, "FEATURE_AI_SCRIBE", False),
     }
 
@@ -59,7 +61,12 @@ class DPASignView(APIView):
     def post(self, request):
         if not (request.user.role and request.user.role.name == "admin"):
             return Response(
-                {"error": {"code": "FORBIDDEN", "message": "Apenas administradores podem assinar o DPA."}},
+                {
+                    "error": {
+                        "code": "FORBIDDEN",
+                        "message": "Apenas administradores podem assinar o DPA.",
+                    }
+                },
                 status=status.HTTP_403_FORBIDDEN,
             )
 

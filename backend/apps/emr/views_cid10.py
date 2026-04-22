@@ -8,6 +8,7 @@ Endpoints:
   POST /emr/encounters/{id}/cid10-accept/
        Records acceptance of a suggestion and optionally updates Encounter.
 """
+
 import logging
 
 from django.db import connection
@@ -128,6 +129,7 @@ class CID10AcceptView(APIView):
         # Validate code exists in CID10Code table (anti-hallucination)
         try:
             from apps.core.models import CID10Code
+
             if not CID10Code.objects.using("public").filter(code=code, active=True).exists():
                 return Response(
                     {"error": f"Código CID-10 inválido ou inativo: {code}"},
@@ -138,9 +140,7 @@ class CID10AcceptView(APIView):
             # Fail-open: allow acceptance even if validation fails
 
         try:
-            suggestion = AICIDSuggestion.objects.get(
-                id=suggestion_id, encounter=encounter
-            )
+            suggestion = AICIDSuggestion.objects.get(id=suggestion_id, encounter=encounter)
         except AICIDSuggestion.DoesNotExist:
             return Response(
                 {"error": "Sugestão não encontrada nesta consulta."},

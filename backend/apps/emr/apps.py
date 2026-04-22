@@ -5,6 +5,7 @@ Signal wiring is done in ready() to ensure models are fully loaded
 before signal receivers are registered. Importing signals at module
 level (outside ready()) can cause AppRegistryNotReady errors.
 """
+
 from django.apps import AppConfig
 
 

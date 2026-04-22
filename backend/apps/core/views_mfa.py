@@ -10,6 +10,7 @@ Endpoints:
 JWT with mfa_verified claim:
   Uses simplejwt RefreshToken and injects a custom 'mfa_verified' claim.
 """
+
 import logging
 import uuid
 
@@ -144,6 +145,7 @@ class MFALoginView(APIView):
     def post(self, request):
         # Reject if mfa_verified is already True (prevent double-submit)
         from .mfa import is_mfa_verified
+
         if is_mfa_verified(request):
             return Response(
                 {"error": "MFA já verificado nesta sessão."},

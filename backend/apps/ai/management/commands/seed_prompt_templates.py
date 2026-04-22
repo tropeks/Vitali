@@ -6,6 +6,7 @@ without overwriting the existing one (allowing rollback by deactivating the new 
 Usage:
     python manage.py seed_prompt_templates
 """
+
 from django.core.management.base import BaseCommand
 
 from apps.ai.models import AIPromptTemplate

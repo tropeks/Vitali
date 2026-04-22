@@ -7,21 +7,20 @@ Critical tests from the Sprint 14 test plan:
 3. PIXChargeView is idempotent (returns existing pending charge)
 4. expire_pix_charges task transitions status correctly
 """
-import hmac
-import uuid
+
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 from django.test import override_settings
 from django.utils import timezone
-from apps.test_utils import TenantTestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
 from apps.billing.models import PIXCharge
 from apps.billing.services.tasks import expire_pix_charges
-from apps.core.models import FeatureFlag, Role, User
+from apps.core.models import User
 from apps.emr.models import Appointment, Patient, Professional
+from apps.test_utils import TenantTestCase
 
 
 def _future(minutes=30):
@@ -79,10 +78,14 @@ class PIXChargeViewTest(TenantTestCase):
             "expires_at": _future(30),
         }
 
-        r = self.client.post("/api/v1/billing/pix/charges/", {
-            "appointment_id": str(self.appointment.id),
-            "amount": "150.00",
-        }, format="json")
+        r = self.client.post(
+            "/api/v1/billing/pix/charges/",
+            {
+                "appointment_id": str(self.appointment.id),
+                "amount": "150.00",
+            },
+            format="json",
+        )
 
         self.assertEqual(r.status_code, status.HTTP_201_CREATED)
         self.assertEqual(r.data["status"], "pending")
@@ -102,10 +105,14 @@ class PIXChargeViewTest(TenantTestCase):
             expires_at=_future(30),
         )
 
-        r = self.client.post("/api/v1/billing/pix/charges/", {
-            "appointment_id": str(self.appointment.id),
-            "amount": "150.00",
-        }, format="json")
+        r = self.client.post(
+            "/api/v1/billing/pix/charges/",
+            {
+                "appointment_id": str(self.appointment.id),
+                "amount": "150.00",
+            },
+            format="json",
+        )
 
         self.assertEqual(r.status_code, status.HTTP_200_OK)
         self.assertEqual(r.data["id"], str(existing.id))
@@ -155,6 +162,7 @@ class AsaasWebhookTest(TenantTestCase):
 
         # Create AsaasChargeMap entry in public schema
         from apps.core.models import AsaasChargeMap
+
         AsaasChargeMap.objects.get_or_create(
             asaas_charge_id="pay_webhook_001",
             defaults={"tenant_schema": self.tenant.schema_name},
@@ -222,8 +230,10 @@ class AsaasWebhookTest(TenantTestCase):
         """Token comparison must use hmac.compare_digest (no timing oracle)."""
         # This test verifies the code path exists by importing and checking
         # it is not a naive == comparison.
-        from apps.billing.views import AsaasWebhookView
         import inspect
+
+        from apps.billing.views import AsaasWebhookView
+
         source = inspect.getsource(AsaasWebhookView)
         self.assertIn("compare_digest", source)
         self.assertNotIn("token == ", source)

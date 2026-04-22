@@ -14,6 +14,7 @@ WhatsApp message format (SIM/NÃO response):
 Race condition protection: select_for_update() inside atomic transaction.
 Idempotency: check status == 'notified' inside locked block before expiring.
 """
+
 import logging
 from datetime import timedelta
 
@@ -79,8 +80,9 @@ def notify_next_waitlist_entry(professional_id: str, cancelled_slot: dict):
 
     Ordered by priority ASC, created_at ASC.
     """
+    from datetime import datetime
+
     from apps.emr.models import WaitlistEntry
-    from datetime import datetime, date, time
 
     try:
         slot_start_str = cancelled_slot.get("start", "")
@@ -106,9 +108,7 @@ def notify_next_waitlist_entry(professional_id: str, cancelled_slot: dict):
 
     # Filter by time range if available (None = any time)
     if slot_time:
-        qs = qs.filter(
-            models_time_filter_Q(slot_time)
-        )
+        qs = qs.filter(models_time_filter_Q(slot_time))
 
     entry = qs.first()
 
@@ -123,17 +123,18 @@ def notify_next_waitlist_entry(professional_id: str, cancelled_slot: dict):
     # Lock and update the entry
     try:
         with transaction.atomic():
-            entry = (
-                WaitlistEntry.objects.select_for_update()
-                .get(id=entry.id, status="waiting")
-            )
+            entry = WaitlistEntry.objects.select_for_update().get(id=entry.id, status="waiting")
             entry.status = "notified"
             entry.notified_at = timezone.now()
             entry.expires_at = timezone.now() + timedelta(minutes=WAITLIST_TIMEOUT_MINUTES)
             entry.offered_slot = cancelled_slot
             entry.save(
                 update_fields=[
-                    "status", "notified_at", "expires_at", "offered_slot", "expiry_task_id"
+                    "status",
+                    "notified_at",
+                    "expires_at",
+                    "offered_slot",
+                    "expiry_task_id",
                 ]
             )
     except WaitlistEntry.DoesNotExist:
@@ -159,9 +160,7 @@ def notify_next_waitlist_entry(professional_id: str, cancelled_slot: dict):
                 cancelled_slot,
             )
         except Exception:
-            logger.warning(
-                "Failed to send WhatsApp to patient %s", entry.patient_id, exc_info=True
-            )
+            logger.warning("Failed to send WhatsApp to patient %s", entry.patient_id, exc_info=True)
             # Non-fatal: entry is already notified; patient may respond via other channel
     else:
         logger.warning("No phone number for patient %s (entry %s)", entry.patient_id, entry.id)
@@ -184,9 +183,10 @@ def models_time_filter_Q(slot_time):
     Allows entries with NULL time fields (any time).
     """
     from django.db.models import Q
+
     return Q(preferred_time_start__isnull=True) | (
-        Q(preferred_time_start__lte=slot_time) &
-        (Q(preferred_time_end__isnull=True) | Q(preferred_time_end__gte=slot_time))
+        Q(preferred_time_start__lte=slot_time)
+        & (Q(preferred_time_end__isnull=True) | Q(preferred_time_end__gte=slot_time))
     )
 
 
@@ -240,10 +240,14 @@ def expire_waitlist_notifications():
     from apps.emr.models import WaitlistEntry
 
     now = timezone.now()
-    expired_entries = WaitlistEntry.objects.filter(
-        status="notified",
-        expires_at__lt=now,
-    ).select_related("professional").order_by("expires_at")
+    expired_entries = (
+        WaitlistEntry.objects.filter(
+            status="notified",
+            expires_at__lt=now,
+        )
+        .select_related("professional")
+        .order_by("expires_at")
+    )
 
     count = 0
     for entry in expired_entries:

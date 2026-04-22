@@ -2,6 +2,7 @@
 Core utility functions — shared across middleware, permissions, and views.
 Canonical home for tenant_has_feature to avoid circular imports.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -10,7 +11,7 @@ if TYPE_CHECKING:
     from apps.core.models import Tenant
 
 
-def tenant_has_feature(tenant: "Tenant", module_key: str) -> bool:
+def tenant_has_feature(tenant: Tenant, module_key: str) -> bool:
     """
     Check if a tenant has a specific feature/module enabled.
 

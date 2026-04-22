@@ -6,29 +6,33 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('core', '0007_alter_asaaschargemap_tenant_schema'),
+        ("core", "0007_alter_asaaschargemap_tenant_schema"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='CID10Code',
+            name="CID10Code",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('code', models.CharField(db_index=True, max_length=10, unique=True)),
-                ('description', models.CharField(max_length=500)),
-                ('active', models.BooleanField(db_index=True, default=True)),
-                ('search_vector', SearchVectorField(null=True)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                ("code", models.CharField(db_index=True, max_length=10, unique=True)),
+                ("description", models.CharField(max_length=500)),
+                ("active", models.BooleanField(db_index=True, default=True)),
+                ("search_vector", SearchVectorField(null=True)),
             ],
             options={
-                'verbose_name': 'CID-10',
-                'verbose_name_plural': 'CID-10 Codes',
-                'app_label': 'core',
+                "verbose_name": "CID-10",
+                "verbose_name_plural": "CID-10 Codes",
+                "app_label": "core",
             },
         ),
         migrations.AddIndex(
-            model_name='cid10code',
-            index=GinIndex(fields=['search_vector'], name='core_cid10c_search__idx'),
+            model_name="cid10code",
+            index=GinIndex(fields=["search_vector"], name="core_cid10c_search__idx"),
         ),
     ]

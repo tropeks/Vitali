@@ -1,8 +1,10 @@
 """
 RBAC Permission classes for Vitali.
 """
-from apps.core.utils import tenant_has_feature
+
 from rest_framework.permissions import BasePermission
+
+from apps.core.utils import tenant_has_feature
 
 
 class IsPlatformAdmin(BasePermission):
@@ -17,11 +19,7 @@ class IsPlatformAdmin(BasePermission):
     """
 
     def has_permission(self, request, view):
-        return (
-            request.user
-            and request.user.is_authenticated
-            and request.user.is_superuser
-        )
+        return request.user and request.user.is_authenticated and request.user.is_superuser
 
 
 class ModuleRequiredPermission(BasePermission):
@@ -91,6 +89,7 @@ class HasPermission(BasePermission):
 
 # ─── Convenience factory ──────────────────────────────────────────────────────
 
+
 def require_permission(perm: str):
     """
     Returns a HasPermission instance ready for permission_classes.
@@ -103,44 +102,70 @@ def require_permission(perm: str):
 
 DEFAULT_ROLES = {
     "admin": [
-        "emr.read", "emr.write", "emr.sign", "emr.delete",
-        "patients.read", "patients.write", "patients.delete",
-        "billing.read", "billing.write", "billing.full",
-        "schedule.read", "schedule.write",
-        "pharmacy.read", "pharmacy.dispense", "pharmacy.full",
-        "pharmacy.catalog_manage", "pharmacy.stock_manage", "pharmacy.dispense_controlled",
-        "users.read", "users.write",
-        "roles.read", "roles.write",
+        "emr.read",
+        "emr.write",
+        "emr.sign",
+        "emr.delete",
+        "patients.read",
+        "patients.write",
+        "patients.delete",
+        "billing.read",
+        "billing.write",
+        "billing.full",
+        "schedule.read",
+        "schedule.write",
+        "pharmacy.read",
+        "pharmacy.dispense",
+        "pharmacy.full",
+        "pharmacy.catalog_manage",
+        "pharmacy.stock_manage",
+        "pharmacy.dispense_controlled",
+        "users.read",
+        "users.write",
+        "roles.read",
+        "roles.write",
         "reports.read",
         "ai.use",
     ],
     "medico": [
-        "emr.read", "emr.write", "emr.sign",
-        "patients.read", "patients.write",
+        "emr.read",
+        "emr.write",
+        "emr.sign",
+        "patients.read",
+        "patients.write",
         "billing.read",
-        "schedule.read", "schedule.write",
+        "schedule.read",
+        "schedule.write",
         "pharmacy.read",
         "ai.use",
     ],
     "enfermeiro": [
-        "emr.read", "emr.partial_write",
+        "emr.read",
+        "emr.partial_write",
         "patients.read",
         "schedule.read",
         "pharmacy.dispense",
     ],
     "recepcionista": [
         "patients.limited_read",
-        "schedule.read", "schedule.write",
+        "schedule.read",
+        "schedule.write",
         "billing.read",
     ],
     "farmaceutico": [
         "emr.read",
-        "pharmacy.read", "pharmacy.dispense", "pharmacy.full",
-        "pharmacy.catalog_manage", "pharmacy.stock_manage", "pharmacy.dispense_controlled",
+        "pharmacy.read",
+        "pharmacy.dispense",
+        "pharmacy.full",
+        "pharmacy.catalog_manage",
+        "pharmacy.stock_manage",
+        "pharmacy.dispense_controlled",
         "patients.limited_read",
     ],
     "faturista": [
-        "billing.read", "billing.write", "billing.full",
+        "billing.read",
+        "billing.write",
+        "billing.full",
         "patients.limited_read",
         "emr.read",
         "ai.use",

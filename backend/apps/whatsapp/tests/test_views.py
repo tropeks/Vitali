@@ -1,12 +1,13 @@
 """
 Tests for WhatsApp views — tenant routing, contacts, message logs.
 """
+
 from unittest.mock import MagicMock, patch
 
-from apps.test_utils import TenantTestCase
 from rest_framework.test import APIClient
 
 from apps.core.models import FeatureFlag, Role, User
+from apps.test_utils import TenantTestCase
 from apps.whatsapp.models import MessageLog, WhatsAppContact
 
 
@@ -41,13 +42,20 @@ class WebhookTenantRoutingTests(TenantTestCase):
         mock_fsm.return_value.process.return_value = []
         mock_gw.return_value = MagicMock()
         import json
-        body = json.dumps({
-            "event": "messages.upsert",
-            "data": {"messages": [{
-                "key": {"fromMe": False, "remoteJid": "5511900000301@s.whatsapp.net"},
-                "message": {"conversation": "oi"},
-            }]}
-        }).encode()
+
+        body = json.dumps(
+            {
+                "event": "messages.upsert",
+                "data": {
+                    "messages": [
+                        {
+                            "key": {"fromMe": False, "remoteJid": "5511900000301@s.whatsapp.net"},
+                            "message": {"conversation": "oi"},
+                        }
+                    ]
+                },
+            }
+        ).encode()
         resp = self.client.post(
             "/api/v1/whatsapp/webhook/",
             data=body,
@@ -58,7 +66,6 @@ class WebhookTenantRoutingTests(TenantTestCase):
 
 
 class MessageLogViewSetTests(TenantTestCase):
-
     def setUp(self):
         FeatureFlag.objects.get_or_create(
             tenant=self.__class__.tenant,
@@ -86,7 +93,9 @@ class MessageLogViewSetTests(TenantTestCase):
     def test_filter_by_phone(self):
         contact = WhatsAppContact.objects.create(phone="5511900000303")
         contact.do_opt_in()
-        MessageLog.objects.create(contact=contact, direction="outbound", content_preview="Test", message_type="text")
+        MessageLog.objects.create(
+            contact=contact, direction="outbound", content_preview="Test", message_type="text"
+        )
         resp = self.client.get("/api/v1/whatsapp/message-logs/?phone=5511900000303")
         self.assertEqual(resp.status_code, 200)
         for item in resp.data["results"]:
@@ -99,7 +108,6 @@ class MessageLogViewSetTests(TenantTestCase):
 
 
 class WhatsAppContactViewSetTests(TenantTestCase):
-
     def setUp(self):
         FeatureFlag.objects.get_or_create(
             tenant=self.__class__.tenant,

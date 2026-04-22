@@ -9,16 +9,15 @@ Covers:
 
 Run: python manage.py test apps.core.tests.test_middleware_hardening
 """
+
 from __future__ import annotations
 
 import logging
-import threading
 import uuid
-
-from django.test import TestCase, RequestFactory, override_settings
-from apps.test_utils import TenantTestCase
-from rest_framework.test import APIClient, APIRequestFactory
 from unittest.mock import MagicMock, patch
+
+from django.test import RequestFactory, TestCase, override_settings
+from rest_framework.test import APIRequestFactory
 
 from apps.core.middleware import (
     RequestIdMiddleware,
@@ -27,10 +26,10 @@ from apps.core.middleware import (
 )
 from apps.core.throttles import TenantUserRateThrottle
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # RequestIdMiddleware
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class RequestIdMiddlewareTests(TestCase):
     def setUp(self):
@@ -76,6 +75,7 @@ class RequestIdMiddlewareTests(TestCase):
 
     def test_thread_local_cleared_even_on_exception(self):
         """Thread-local must be cleaned up even when the view raises."""
+
         def boom(request):
             raise ValueError("view exploded")
 
@@ -89,6 +89,7 @@ class RequestIdMiddlewareTests(TestCase):
 # ─────────────────────────────────────────────────────────────────────────────
 # TenantRequestLogFilter
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TenantRequestLogFilterTests(TestCase):
     def _make_record(self):
@@ -153,6 +154,7 @@ class TenantRequestLogFilterTests(TestCase):
 # TenantUserRateThrottle
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @override_settings(
     CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
     REST_FRAMEWORK={
@@ -186,6 +188,7 @@ class TenantUserRateThrottleTests(TestCase):
 
     def test_cache_key_differs_across_tenants_for_same_user_id(self):
         """Same user_id in two different tenants must produce different keys."""
+
         def make_key(schema):
             mock_tenant = MagicMock()
             mock_tenant.schema_name = schema
@@ -223,6 +226,7 @@ class TenantUserRateThrottleTests(TestCase):
 # Production settings assertions
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @override_settings(
     DATABASES={
         "default": {
@@ -237,14 +241,17 @@ class TenantUserRateThrottleTests(TestCase):
 class ProductionSettingsTests(TestCase):
     def test_conn_max_age_is_set(self):
         from django.conf import settings
+
         self.assertEqual(settings.DATABASES["default"]["CONN_MAX_AGE"], 60)
 
     def test_conn_health_checks_is_true(self):
         from django.conf import settings
+
         self.assertTrue(settings.DATABASES["default"]["CONN_HEALTH_CHECKS"])
 
     def test_session_engine_is_cache(self):
         from django.conf import settings
+
         self.assertEqual(
             settings.SESSION_ENGINE,
             "django.contrib.sessions.backends.cache",
@@ -256,5 +263,6 @@ class ProductionSettingsTests(TestCase):
         silently breaking all CSRF protection.
         """
         from django.conf import settings
+
         self.assertIsInstance(settings.CSRF_TRUSTED_ORIGINS, list)
         self.assertTrue(len(settings.CSRF_TRUSTED_ORIGINS) > 0)

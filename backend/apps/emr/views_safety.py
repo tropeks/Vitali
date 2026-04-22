@@ -13,6 +13,7 @@ Endpoints:
 
 Design: polling only, no WebSocket (DX-01 decision).
 """
+
 import logging
 
 from django.core.cache import cache
@@ -106,9 +107,8 @@ class PrescriptionItemSafetyCheckView(APIView):
 
         # Use on_commit to fire after this request's transaction
         from apps.emr.tasks import check_prescription_safety
-        transaction.on_commit(
-            lambda: check_prescription_safety.delay(str(item_id))
-        )
+
+        transaction.on_commit(lambda: check_prescription_safety.delay(str(item_id)))
 
         return Response(
             {"message": "Verificação de segurança re-agendada.", "status": "pending"},
@@ -143,9 +143,7 @@ class AcknowledgeSafetyAlertView(APIView):
         if alert.severity == "contraindication":
             if len(reason) < 10:
                 return Response(
-                    {
-                        "error": "Para contraindicações, o motivo deve ter pelo menos 10 caracteres."
-                    },
+                    {"error": "Para contraindicações, o motivo deve ter pelo menos 10 caracteres."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 

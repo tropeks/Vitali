@@ -11,6 +11,7 @@ Note: DatabaseScheduler ignores CELERY_BEAT_SCHEDULE settings dict if the
 PeriodicTask DB record doesn't exist. This migration creates those records
 reliably on every deploy (migrate is idempotent).
 """
+
 from django.db import migrations
 
 
@@ -18,7 +19,7 @@ def register_periodic_tasks(apps, schema_editor):
     # Use the historical model from django_celery_beat via apps registry.
     # django_celery_beat must be in INSTALLED_APPS before this migration runs.
     try:
-        IntervalSchedule = apps.get_model("django_celery_beat", "IntervalSchedule")
+        apps.get_model("django_celery_beat", "IntervalSchedule")
         CrontabSchedule = apps.get_model("django_celery_beat", "CrontabSchedule")
         PeriodicTask = apps.get_model("django_celery_beat", "PeriodicTask")
     except LookupError:
@@ -75,7 +76,6 @@ def unregister_periodic_tasks(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("ai", "0003_sprint9_glosaprediction"),
         ("django_celery_beat", "0018_improve_crontab_helptext"),

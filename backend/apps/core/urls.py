@@ -1,11 +1,12 @@
 """Core URLs — tenant schema routes."""
+
 from django.urls import path
 
 from . import views
-from .views_platform import TenantSubscriptionView
+from .views_dpa import DPASignView, DPAStatusView
+from .views_mfa import MFADisableView, MFALoginView, MFASetupView, MFAVerifyView
 from .views_onboarding import OnboardingView
-from .views_mfa import MFASetupView, MFAVerifyView, MFALoginView, MFADisableView
-from .views_dpa import DPAStatusView, DPASignView
+from .views_platform import TenantSubscriptionView
 
 app_name = "core"
 

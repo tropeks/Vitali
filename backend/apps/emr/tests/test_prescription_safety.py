@@ -8,13 +8,12 @@ Tests:
   - Safe prescription creates no alert
   - Acknowledge alert requires reason for contraindication
 """
+
 import json
-import uuid
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import TestCase, TransactionTestCase, override_settings
 
 from apps.test_utils import TenantTestCase
 
@@ -22,12 +21,14 @@ User = get_user_model()
 
 
 class TestPrescriptionSafety(TenantTestCase):
-
     def setUp(self):
         import datetime
+
         from apps.emr.models import (
-            Patient, Professional, Encounter, Prescription,
-            PrescriptionItem, Allergy,
+            Encounter,
+            Patient,
+            Prescription,
+            Professional,
         )
         from apps.pharmacy.models import Drug
 
@@ -62,6 +63,7 @@ class TestPrescriptionSafety(TenantTestCase):
             council_state="SP",
         )
         from django.utils import timezone
+
         self.encounter = Encounter.objects.create(
             patient=self.patient,
             professional=self.professional,
@@ -76,12 +78,14 @@ class TestPrescriptionSafety(TenantTestCase):
 
     def _make_client(self, user):
         from rest_framework.test import APIClient
+
         client = APIClient()
-        client.defaults['SERVER_NAME'] = self.__class__.domain.domain
+        client.defaults["SERVER_NAME"] = self.__class__.domain.domain
         return client
 
     def _create_item(self, drug=None):
         from apps.emr.models import PrescriptionItem
+
         return PrescriptionItem(
             prescription=self.prescription,
             drug=drug or self.drug,
@@ -113,18 +117,22 @@ class TestPrescriptionSafety(TenantTestCase):
 
     def test_cache_prevents_duplicate_llm_calls(self):
         """Second check() call with same inputs should not call LLM."""
-        from apps.emr.services.prescription_safety import PrescriptionSafetyChecker, SafetyResult
+        from apps.emr.services.prescription_safety import PrescriptionSafetyChecker
 
         item = self._create_item()
         item.save()
 
         mock_llm_response = json.dumps({"alerts": []})
 
-        with patch("apps.emr.services.prescription_safety.get_tenant_ai_config") as mock_cfg, \
-             patch("apps.emr.services.prescription_safety._check_dpa_signed", return_value=True), \
-             patch("apps.emr.services.prescription_safety.is_rate_limited", return_value=False), \
-             patch("apps.emr.services.prescription_safety.is_open", return_value=False), \
-             patch("apps.ai.gateway.ClaudeGateway.complete", return_value=(mock_llm_response, 100, 50)):
+        with (
+            patch("apps.emr.services.prescription_safety.get_tenant_ai_config") as mock_cfg,
+            patch("apps.emr.services.prescription_safety._check_dpa_signed", return_value=True),
+            patch("apps.emr.services.prescription_safety.is_rate_limited", return_value=False),
+            patch("apps.emr.services.prescription_safety.is_open", return_value=False),
+            patch(
+                "apps.ai.gateway.ClaudeGateway.complete", return_value=(mock_llm_response, 100, 50)
+            ),
+        ):
             mock_cfg.return_value = MagicMock(
                 ai_prescription_safety=True,
                 rate_limit_per_hour=500,
@@ -144,7 +152,7 @@ class TestPrescriptionSafety(TenantTestCase):
         If patient has active allergy to penicillin, and we prescribe amoxicilina,
         the LLM should be called and allergy alert should be returned.
         """
-        from apps.emr.models import Allergy, PrescriptionItem
+        from apps.emr.models import Allergy
         from apps.emr.services.prescription_safety import PrescriptionSafetyChecker
 
         Allergy.objects.create(
@@ -157,20 +165,26 @@ class TestPrescriptionSafety(TenantTestCase):
         item = self._create_item()
         item.save()
 
-        mock_response = json.dumps({
-            "alerts": [{
-                "type": "allergy",
-                "severity": "contraindication",
-                "message": "Amoxicilina é uma penicilina — contraindicado para alergia a Penicilina.",
-                "recommendation": "Considerar macrolídeo como alternativa.",
-            }]
-        })
+        mock_response = json.dumps(
+            {
+                "alerts": [
+                    {
+                        "type": "allergy",
+                        "severity": "contraindication",
+                        "message": "Amoxicilina é uma penicilina — contraindicado para alergia a Penicilina.",
+                        "recommendation": "Considerar macrolídeo como alternativa.",
+                    }
+                ]
+            }
+        )
 
-        with patch("apps.emr.services.prescription_safety.get_tenant_ai_config") as mock_cfg, \
-             patch("apps.emr.services.prescription_safety._check_dpa_signed", return_value=True), \
-             patch("apps.emr.services.prescription_safety.is_rate_limited", return_value=False), \
-             patch("apps.emr.services.prescription_safety.is_open", return_value=False), \
-             patch("apps.ai.gateway.ClaudeGateway.complete", return_value=(mock_response, 200, 80)):
+        with (
+            patch("apps.emr.services.prescription_safety.get_tenant_ai_config") as mock_cfg,
+            patch("apps.emr.services.prescription_safety._check_dpa_signed", return_value=True),
+            patch("apps.emr.services.prescription_safety.is_rate_limited", return_value=False),
+            patch("apps.emr.services.prescription_safety.is_open", return_value=False),
+            patch("apps.ai.gateway.ClaudeGateway.complete", return_value=(mock_response, 200, 80)),
+        ):
             mock_cfg.return_value = MagicMock(
                 ai_prescription_safety=True,
                 rate_limit_per_hour=500,
@@ -194,11 +208,13 @@ class TestPrescriptionSafety(TenantTestCase):
 
         mock_response = json.dumps({"alerts": []})
 
-        with patch("apps.emr.services.prescription_safety.get_tenant_ai_config") as mock_cfg, \
-             patch("apps.emr.services.prescription_safety._check_dpa_signed", return_value=True), \
-             patch("apps.emr.services.prescription_safety.is_rate_limited", return_value=False), \
-             patch("apps.emr.services.prescription_safety.is_open", return_value=False), \
-             patch("apps.ai.gateway.ClaudeGateway.complete", return_value=(mock_response, 100, 30)):
+        with (
+            patch("apps.emr.services.prescription_safety.get_tenant_ai_config") as mock_cfg,
+            patch("apps.emr.services.prescription_safety._check_dpa_signed", return_value=True),
+            patch("apps.emr.services.prescription_safety.is_rate_limited", return_value=False),
+            patch("apps.emr.services.prescription_safety.is_open", return_value=False),
+            patch("apps.ai.gateway.ClaudeGateway.complete", return_value=(mock_response, 100, 30)),
+        ):
             mock_cfg.return_value = MagicMock(
                 ai_prescription_safety=True,
                 rate_limit_per_hour=500,
@@ -214,8 +230,9 @@ class TestPrescriptionSafety(TenantTestCase):
 
     def test_acknowledge_alert_requires_reason_for_contraindication(self):
         """AcknowledgeSafetyAlertView requires reason >= 10 chars for contraindications."""
-        from apps.emr.models import AISafetyAlert, PrescriptionItem
         from rest_framework_simplejwt.tokens import RefreshToken
+
+        from apps.emr.models import AISafetyAlert, PrescriptionItem
 
         client = self._make_client(self.user)
         refresh = RefreshToken.for_user(self.user)
@@ -242,9 +259,7 @@ class TestPrescriptionSafety(TenantTestCase):
         self.assertEqual(response.status_code, 400)
 
         # Valid reason → 200
-        response = client.post(
-            url, {"reason": "Paciente informou tolerância prévia documentada"}
-        )
+        response = client.post(url, {"reason": "Paciente informou tolerância prévia documentada"})
         self.assertEqual(response.status_code, 200)
 
         alert.refresh_from_db()

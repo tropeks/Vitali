@@ -11,11 +11,11 @@ which correctly treats NULL as equal, preventing duplicate lots.
 
 Requires Django 5.0+ and PostgreSQL 15+. Vitali runs Django 5.2 + PostgreSQL 16.
 """
+
 from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("pharmacy", "0004_supplier_purchaseorder_stockitem_unique"),
     ]

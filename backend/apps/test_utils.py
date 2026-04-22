@@ -16,7 +16,7 @@ MFATestMixin (DX-05): provides create_totp_device(user) helper so S-062 tests
 don't repeat TOTP device setup boilerplate.
 """
 
-from django.test import override_settings, modify_settings
+from django.test import modify_settings, override_settings
 from django_tenants.test.cases import FastTenantTestCase
 from django_tenants.utils import get_tenant_domain_model
 
@@ -38,10 +38,12 @@ class MFATestMixin:
         Returns (device, backup_codes) where backup_codes is the plain-text list
         returned on first activation (single-use codes).
         """
-        from apps.core.mfa import generate_totp_secret, generate_backup_codes, hash_backup_code
-        from apps.core.models import TOTPDevice
         import json
+
         from django.utils import timezone
+
+        from apps.core.mfa import generate_backup_codes, generate_totp_secret, hash_backup_code
+        from apps.core.models import TOTPDevice
 
         secret = generate_totp_secret()
         plain_codes = generate_backup_codes()
@@ -108,10 +110,10 @@ class TenantTestCase(FastTenantTestCase):
 
     @classmethod
     def tearDownClass(cls):
-        if hasattr(cls, '_cls_modified_context'):
+        if hasattr(cls, "_cls_modified_context"):
             cls._cls_modified_context.disable()
             del cls._cls_modified_context
-        if hasattr(cls, '_cls_overridden_context'):
+        if hasattr(cls, "_cls_overridden_context"):
             cls._cls_overridden_context.disable()
             del cls._cls_overridden_context
         super().tearDownClass()  # FastTenantTestCase.tearDownClass

@@ -8,23 +8,24 @@ Tests:
   - Hallucinated code is filtered out
   - Feature flag OFF returns empty suggestions
 """
+
 import json
 from unittest.mock import MagicMock, patch
 
 from django.core.cache import cache
-from django.test import TestCase
 
 from apps.test_utils import TenantTestCase
 
 
 class TestCID10Suggester(TenantTestCase):
-
     def setUp(self):
         import datetime
-        from apps.core.models import CID10Code
-        from apps.emr.models import Patient, Professional, Encounter
+
         from django.contrib.auth import get_user_model
         from django.utils import timezone
+
+        from apps.core.models import CID10Code
+        from apps.emr.models import Encounter, Patient, Professional
 
         User = get_user_model()
 
@@ -67,7 +68,9 @@ class TestCID10Suggester(TenantTestCase):
         from apps.core.models import CID10Code
 
         # Query from public schema — should find our test codes
-        codes = CID10Code.objects.using("default").filter(active=True).values_list("code", flat=True)
+        codes = (
+            CID10Code.objects.using("default").filter(active=True).values_list("code", flat=True)
+        )
         self.assertIn("J18.9", codes)
         self.assertIn("J06.9", codes)
 
@@ -86,19 +89,22 @@ class TestCID10Suggester(TenantTestCase):
 
     def test_accept_updates_encounter_cid10_field(self):
         """CID10AcceptView updates AICIDSuggestion.accepted_code."""
-        from apps.emr.models import AICIDSuggestion
         from rest_framework.test import APIClient
         from rest_framework_simplejwt.tokens import RefreshToken
 
+        from apps.emr.models import AICIDSuggestion
+
         client = APIClient()
-        client.defaults['SERVER_NAME'] = self.__class__.domain.domain
+        client.defaults["SERVER_NAME"] = self.__class__.domain.domain
         refresh = RefreshToken.for_user(self.user)
         client.credentials(HTTP_AUTHORIZATION=f"Bearer {str(refresh.access_token)}")
 
         suggestion = AICIDSuggestion.objects.create(
             encounter=self.encounter,
             query_text="pneumonia bacteriana",
-            suggestions=[{"code": "J18.9", "description": "Pneumonia não especificada", "confidence": 90}],
+            suggestions=[
+                {"code": "J18.9", "description": "Pneumonia não especificada", "confidence": 90}
+            ],
         )
 
         response = client.post(
@@ -142,15 +148,17 @@ class TestCID10Suggester(TenantTestCase):
         """Second call with same text/schema returns cached=True."""
         from apps.ai.services_cid10 import CID10Suggester
 
-        mock_response = json.dumps([
-            {"code": "J18.9", "description": "Pneumonia não especificada", "confidence": 88}
-        ])
+        mock_response = json.dumps(
+            [{"code": "J18.9", "description": "Pneumonia não especificada", "confidence": 88}]
+        )
 
-        with patch("apps.ai.services_cid10.get_tenant_ai_config") as mock_cfg, \
-             patch("apps.ai.services_cid10.is_rate_limited", return_value=False), \
-             patch("apps.ai.services_cid10.is_open", return_value=False), \
-             patch("apps.ai.services_cid10._retrieve_candidates") as mock_cands, \
-             patch("apps.ai.gateway.ClaudeGateway.complete", return_value=(mock_response, 100, 50)):
+        with (
+            patch("apps.ai.services_cid10.get_tenant_ai_config") as mock_cfg,
+            patch("apps.ai.services_cid10.is_rate_limited", return_value=False),
+            patch("apps.ai.services_cid10.is_open", return_value=False),
+            patch("apps.ai.services_cid10._retrieve_candidates") as mock_cands,
+            patch("apps.ai.gateway.ClaudeGateway.complete", return_value=(mock_response, 100, 50)),
+        ):
             mock_cfg.return_value = MagicMock(
                 ai_cid10_suggest=True,
                 rate_limit_per_hour=500,
@@ -174,7 +182,7 @@ class TestCID10Suggester(TenantTestCase):
         from rest_framework_simplejwt.tokens import RefreshToken
 
         client = APIClient()
-        client.defaults['SERVER_NAME'] = self.__class__.domain.domain
+        client.defaults["SERVER_NAME"] = self.__class__.domain.domain
         refresh = RefreshToken.for_user(self.user)
         client.credentials(HTTP_AUTHORIZATION=f"Bearer {str(refresh.access_token)}")
 

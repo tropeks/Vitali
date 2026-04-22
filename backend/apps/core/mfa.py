@@ -5,6 +5,7 @@ Uses pyotp for TOTP generation/verification (NOT django-otp).
 TOTPDevice lives in the public schema alongside User.
 Backup codes are SHA-256 hashed before storage (LGPD).
 """
+
 import base64
 import hashlib
 import io
@@ -12,7 +13,6 @@ import json
 import logging
 import secrets
 from datetime import datetime
-from typing import Optional
 
 import pyotp
 import qrcode
@@ -27,6 +27,7 @@ MFA_GRACE_PERIOD_SECONDS = getattr(settings, "MFA_GRACE_PERIOD_SECONDS", 3600)
 
 
 # ─── Secret Generation ────────────────────────────────────────────────────────
+
 
 def generate_totp_secret() -> str:
     """Generate a new cryptographically secure base32 TOTP secret."""
@@ -54,6 +55,7 @@ def generate_qr_image_base64(uri: str) -> str:
 
 # ─── TOTP Verification ────────────────────────────────────────────────────────
 
+
 def verify_totp_code(secret: str, code: str, valid_window: int = TOTP_VALID_WINDOW) -> bool:
     """
     Verify a 6-digit TOTP code against the given secret.
@@ -69,6 +71,7 @@ def verify_totp_code(secret: str, code: str, valid_window: int = TOTP_VALID_WIND
 
 
 # ─── Backup Codes ─────────────────────────────────────────────────────────────
+
 
 def generate_backup_codes(count: int = BACKUP_CODE_COUNT) -> list:
     """
@@ -112,6 +115,7 @@ def check_backup_code(device, plain_code: str) -> bool:
 
 
 # ─── Device Lifecycle ─────────────────────────────────────────────────────────
+
 
 def get_or_create_device(user):
     """
@@ -157,6 +161,7 @@ def activate_device(device, totp_code: str) -> tuple:
 
 # ─── JWT MFA State ────────────────────────────────────────────────────────────
 
+
 def is_mfa_verified(request) -> bool:
     """
     Check whether the current request's JWT contains the mfa_verified=True claim.
@@ -164,6 +169,7 @@ def is_mfa_verified(request) -> bool:
     """
     try:
         from rest_framework_simplejwt.authentication import JWTAuthentication
+
         jwt_auth = JWTAuthentication()
         validated = jwt_auth.get_validated_token(
             jwt_auth.get_raw_token(jwt_auth.get_header(request))
@@ -173,7 +179,7 @@ def is_mfa_verified(request) -> bool:
         return False
 
 
-def get_mfa_grace_expiry(user) -> Optional[datetime]:
+def get_mfa_grace_expiry(user) -> datetime | None:
     """
     Returns the MFA grace period expiry datetime for the user, or None.
     Grace period: MFA_GRACE_PERIOD_SECONDS after the device was confirmed.

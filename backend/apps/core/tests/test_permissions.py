@@ -2,13 +2,12 @@
 S-039: ModuleRequiredPermission + IsPlatformAdmin tests.
 Run: python manage.py test apps.core.tests.test_permissions
 """
-from apps.test_utils import TenantTestCase
+
 from rest_framework.test import APIClient, APIRequestFactory
-from rest_framework.views import APIView
-from rest_framework.response import Response
 
 from apps.core.models import FeatureFlag, Role, User
 from apps.core.permissions import IsPlatformAdmin, ModuleRequiredPermission
+from apps.test_utils import TenantTestCase
 
 
 class ModulePermissionTestCase(TenantTestCase):
@@ -32,9 +31,7 @@ class ModulePermissionTestCase(TenantTestCase):
     def test_module_off_returns_403(self):
         """When billing flag is off, billing endpoints return 403."""
         # Ensure no billing flag
-        FeatureFlag.objects.filter(
-            tenant=self.__class__.tenant, module_key="billing"
-        ).delete()
+        FeatureFlag.objects.filter(tenant=self.__class__.tenant, module_key="billing").delete()
 
         response = self.client.get("/api/v1/billing/guides/")
         self.assertEqual(response.status_code, 403)
@@ -57,9 +54,7 @@ class ModulePermissionTestCase(TenantTestCase):
             full_name="Platform Admin",
         )
         self.client.force_authenticate(user=super_user)
-        FeatureFlag.objects.filter(
-            tenant=self.__class__.tenant, module_key="billing"
-        ).delete()
+        FeatureFlag.objects.filter(tenant=self.__class__.tenant, module_key="billing").delete()
         response = self.client.get("/api/v1/billing/guides/")
         # Should NOT be 403 even with flag off
         self.assertNotEqual(response.status_code, 403)
@@ -69,9 +64,7 @@ class ModulePermissionTestCase(TenantTestCase):
         perm = ModuleRequiredPermission("billing")
 
         # With flag off
-        FeatureFlag.objects.filter(
-            tenant=self.__class__.tenant, module_key="billing"
-        ).delete()
+        FeatureFlag.objects.filter(tenant=self.__class__.tenant, module_key="billing").delete()
         factory = APIRequestFactory()
         request = factory.get("/")
         request.user = self.user
@@ -121,6 +114,7 @@ class IsPlatformAdminTestCase(TenantTestCase):
 
     def test_anonymous_rejected(self):
         from django.contrib.auth.models import AnonymousUser
+
         perm = IsPlatformAdmin()
         request = self.factory.get("/")
         request.user = AnonymousUser()
@@ -143,9 +137,7 @@ class ModuleGatePharmacyTestCase(TenantTestCase):
         self.client.force_authenticate(user=self.user)
 
     def test_pharmacy_flag_off_returns_403(self):
-        FeatureFlag.objects.filter(
-            tenant=self.__class__.tenant, module_key="pharmacy"
-        ).delete()
+        FeatureFlag.objects.filter(tenant=self.__class__.tenant, module_key="pharmacy").delete()
         response = self.client.get("/api/v1/pharmacy/drugs/")
         self.assertEqual(response.status_code, 403)
 

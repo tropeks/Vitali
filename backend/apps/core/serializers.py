@@ -1,17 +1,16 @@
 """
 Core serializers for Vitali.
 """
+
 import re
 
-from django.contrib.auth.password_validation import validate_password
-from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from .models import FeatureFlag, Role, Tenant, User
 
-
 # ─── Role & User ──────────────────────────────────────────────────────────────
+
 
 class RoleSerializer(serializers.ModelSerializer):
     class Meta:
@@ -29,8 +28,14 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = (
-            "id", "email", "full_name", "role", "role_id",
-            "is_active", "last_login", "created_at",
+            "id",
+            "email",
+            "full_name",
+            "role",
+            "role_id",
+            "is_active",
+            "last_login",
+            "created_at",
         )
         read_only_fields = ("id", "last_login", "created_at")
 
@@ -55,6 +60,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
 
 class UserDTOSerializer(serializers.ModelSerializer):
     """Lightweight user representation returned in JWT responses."""
+
     role_name = serializers.CharField(source="role.name", read_only=True, default=None)
     active_modules = serializers.SerializerMethodField()
 
@@ -67,14 +73,15 @@ class UserDTOSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if request and hasattr(request, "tenant"):
             return list(
-                FeatureFlag.objects.filter(
-                    tenant=request.tenant, is_enabled=True
-                ).values_list("module_key", flat=True)
+                FeatureFlag.objects.filter(tenant=request.tenant, is_enabled=True).values_list(
+                    "module_key", flat=True
+                )
             )
         return []
 
 
 # ─── JWT ──────────────────────────────────────────────────────────────────────
+
 
 class HealthOSTokenObtainPairSerializer(TokenObtainPairSerializer):
     """Custom JWT payload with user info (legacy — used by the token endpoint)."""
@@ -90,6 +97,7 @@ class HealthOSTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 # ─── DPA (S-070) ─────────────────────────────────────────────────────────────
 
+
 class DPAStatusSerializer(serializers.Serializer):
     is_signed = serializers.BooleanField()
     signed_at = serializers.DateField(allow_null=True)
@@ -99,12 +107,19 @@ class DPAStatusSerializer(serializers.Serializer):
 
 # ─── Tenant ───────────────────────────────────────────────────────────────────
 
+
 class TenantSerializer(serializers.ModelSerializer):
     class Meta:
         model = Tenant
         fields = (
-            "id", "name", "slug", "schema_name", "cnpj",
-            "status", "trial_ends_at", "created_at",
+            "id",
+            "name",
+            "slug",
+            "schema_name",
+            "cnpj",
+            "status",
+            "trial_ends_at",
+            "created_at",
         )
         read_only_fields = ("id", "schema_name", "created_at")
 
@@ -153,16 +168,16 @@ class TenantRegistrationSerializer(serializers.Serializer):
 
 def _cnpj_valid(digits: str) -> bool:
     """Validate CNPJ check digits."""
+
     def _calc(digits, weights):
-        total = sum(int(d) * w for d, w in zip(digits, weights))
+        total = sum(int(d) * w for d, w in zip(digits, weights, strict=False))
         remainder = total % 11
         return 0 if remainder < 2 else 11 - remainder
 
     weights1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
     weights2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
-    return (
-        _calc(digits[:12], weights1) == int(digits[12])
-        and _calc(digits[:13], weights2) == int(digits[13])
+    return _calc(digits[:12], weights1) == int(digits[12]) and _calc(digits[:13], weights2) == int(
+        digits[13]
     )
 
 
@@ -182,6 +197,7 @@ def _validate_strong_password(value: str):
 
 # ─── Auth ─────────────────────────────────────────────────────────────────────
 
+
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
@@ -197,6 +213,7 @@ class ChangePasswordSerializer(serializers.Serializer):
 
 
 # ─── Feature flags ────────────────────────────────────────────────────────────
+
 
 class FeatureFlagSerializer(serializers.ModelSerializer):
     class Meta:

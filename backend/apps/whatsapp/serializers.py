@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from .models import WhatsAppContact, MessageLog, ScheduledReminder
+
+from .models import MessageLog, ScheduledReminder, WhatsAppContact
 
 
 class WhatsAppContactSerializer(serializers.ModelSerializer):
@@ -7,20 +8,37 @@ class WhatsAppContactSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = WhatsAppContact
-        fields = ["id", "phone", "patient", "patient_name", "opt_in", "opt_in_at", "opt_out_at", "created_at"]
+        fields = [
+            "id",
+            "phone",
+            "patient",
+            "patient_name",
+            "opt_in",
+            "opt_in_at",
+            "opt_out_at",
+            "created_at",
+        ]
         read_only_fields = ["opt_in", "opt_in_at", "opt_out_at", "created_at"]
 
 
 class MessageLogSerializer(serializers.ModelSerializer):
     contact_phone = serializers.CharField(source="contact.phone", read_only=True)
-    patient_name = serializers.CharField(source="contact.patient.full_name", read_only=True, default=None)
+    patient_name = serializers.CharField(
+        source="contact.patient.full_name", read_only=True, default=None
+    )
 
     class Meta:
         model = MessageLog
         fields = [
-            "id", "contact", "contact_phone", "patient_name",
-            "direction", "content_preview", "message_type",
-            "appointment", "created_at",
+            "id",
+            "contact",
+            "contact_phone",
+            "patient_name",
+            "direction",
+            "content_preview",
+            "message_type",
+            "appointment",
+            "created_at",
         ]
         read_only_fields = fields
 

@@ -1,8 +1,10 @@
 """
 Vitali — Development Settings
 """
-from .base import *  # noqa: F401, F403
+
 import environ
+
+from .base import *  # noqa: F401, F403
 
 env = environ.Env()
 

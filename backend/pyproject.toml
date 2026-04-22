@@ -19,6 +19,7 @@ ignore = [
     "B008",   # do not perform function calls in default arguments
     "F405",   # star imports in settings files
     "F403",   # star imports
+    "DJ012",  # method ordering — stylistic, existing convention across models
 ]
 
 [tool.ruff.lint.per-file-ignores]

@@ -7,9 +7,9 @@ Key design decisions:
 - Digital hash: sha256 of id + all item data + signed_at (anti-tampering).
 - Controlled substances → different template with ANVISA blue border.
 """
+
 import hashlib
 import logging
-from io import BytesIO
 
 from django.conf import settings
 from django.core.cache import cache
@@ -64,8 +64,10 @@ def _get_clinic_info(prescription) -> dict:
     }
     try:
         from django_tenants.utils import get_current_schema_name
+
         schema_name = get_current_schema_name()
         from apps.core.models import Tenant
+
         tenant = Tenant.objects.get(schema_name=schema_name)
         info["name"] = tenant.name or "Clínica"
         # Optional extra fields from tenant if they exist
@@ -93,9 +95,7 @@ class PrescriptionPDFGenerator:
         """
         # 1. Sign gate
         if not prescription.is_signed:
-            raise ValueError(
-                "Receita não assinada. Assine a receita antes de gerar o PDF."
-            )
+            raise ValueError("Receita não assinada. Assine a receita antes de gerar o PDF.")
 
         # 2. Cache key — signed_at.timestamp() changes if re-signed
         signed_ts = prescription.signed_at.timestamp()
@@ -108,9 +108,7 @@ class PrescriptionPDFGenerator:
             return cached
 
         # 4. Load items
-        items = list(
-            prescription.items.select_related("drug").all()
-        )
+        items = list(prescription.items.select_related("drug").all())
 
         # 5. Compute digital hash
         digital_hash = _compute_digital_hash(prescription, items)
@@ -122,6 +120,7 @@ class PrescriptionPDFGenerator:
         # 7. Build context
         clinic_info = _get_clinic_info(prescription)
         from datetime import timedelta
+
         validity_date = prescription.signed_at + timedelta(days=30)
 
         context = {
@@ -144,9 +143,12 @@ class PrescriptionPDFGenerator:
         # 9. WeasyPrint → PDF bytes
         try:
             from weasyprint import HTML
+
             pdf_bytes = HTML(string=html_content).write_pdf()
         except Exception as exc:
-            logger.error("WeasyPrint failed for prescription %s: %s", prescription.id, exc, exc_info=True)
+            logger.error(
+                "WeasyPrint failed for prescription %s: %s", prescription.id, exc, exc_info=True
+            )
             raise
 
         # 10. Cache PDF bytes

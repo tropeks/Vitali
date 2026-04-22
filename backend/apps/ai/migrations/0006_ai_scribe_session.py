@@ -1,6 +1,7 @@
 """
 S-069: AIScribeSession — AI Clinical Scribe
 """
+
 import uuid
 
 import django.db.models.deletion
@@ -8,7 +9,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("ai", "0005_rename_ai_glosa_tuss_insurer_idx_ai_glosapre_tuss_co_a35a65_idx_and_more"),
         ("emr", "0012_waitlistentry"),

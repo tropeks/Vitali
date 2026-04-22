@@ -9,6 +9,7 @@ Key design decisions:
 - Fail-open: any LLM or parse error returns a degraded result (empty fields).
 - AIDPAStatus must be signed before calling (enforced by the view, not here).
 """
+
 import json
 import logging
 import re

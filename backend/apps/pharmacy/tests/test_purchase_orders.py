@@ -2,14 +2,22 @@
 S-042: Purchase Orders tests.
 Run: python manage.py test apps.pharmacy.tests.test_purchase_orders
 """
+
 import datetime
 from decimal import Decimal
 
-from apps.test_utils import TenantTestCase
 from rest_framework.test import APIClient
 
 from apps.core.models import FeatureFlag, Role, User
-from apps.pharmacy.models import Drug, PurchaseOrder, PurchaseOrderItem, StockItem, StockMovement, Supplier
+from apps.pharmacy.models import (
+    Drug,
+    PurchaseOrder,
+    PurchaseOrderItem,
+    StockItem,
+    StockMovement,
+    Supplier,
+)
+from apps.test_utils import TenantTestCase
 
 
 def _enable_pharmacy(tenant):
@@ -19,7 +27,6 @@ def _enable_pharmacy(tenant):
 
 
 class PurchaseOrderTestCase(TenantTestCase):
-
     def setUp(self):
         self.client = APIClient()
         self.client.defaults["SERVER_NAME"] = self.__class__.domain.domain
@@ -58,25 +65,31 @@ class PurchaseOrderTestCase(TenantTestCase):
 
     def test_po_item_xor_validation_both_drug_and_material(self):
         """Serializer must raise 400 when both drug and material are set on a PO item."""
-        from apps.pharmacy.serializers import PurchaseOrderItemSerializer
         from apps.pharmacy.models import Material
+        from apps.pharmacy.serializers import PurchaseOrderItemSerializer
+
         material = Material.objects.create(name="Gaze", is_active=True)
-        serializer = PurchaseOrderItemSerializer(data={
-            "drug": str(self.drug.id),
-            "material": str(material.id),
-            "quantity_ordered": "10.000",
-            "unit_price": "5.00",
-        })
+        serializer = PurchaseOrderItemSerializer(
+            data={
+                "drug": str(self.drug.id),
+                "material": str(material.id),
+                "quantity_ordered": "10.000",
+                "unit_price": "5.00",
+            }
+        )
         self.assertFalse(serializer.is_valid())
         self.assertIn("non_field_errors", serializer.errors)
 
     def test_po_item_xor_validation_neither(self):
         """Serializer must raise 400 when neither drug nor material is set."""
         from apps.pharmacy.serializers import PurchaseOrderItemSerializer
-        serializer = PurchaseOrderItemSerializer(data={
-            "quantity_ordered": "10.000",
-            "unit_price": "5.00",
-        })
+
+        serializer = PurchaseOrderItemSerializer(
+            data={
+                "quantity_ordered": "10.000",
+                "unit_price": "5.00",
+            }
+        )
         self.assertFalse(serializer.is_valid())
 
     def test_receive_full_creates_stock_movement(self):
@@ -97,7 +110,9 @@ class PurchaseOrderTestCase(TenantTestCase):
                         "item_id": str(item.id),
                         "quantity_received": "100.000",
                         "lot_number": "LOT-001",
-                        "expiry_date": str(datetime.date.today().replace(year=datetime.date.today().year + 1)),
+                        "expiry_date": str(
+                            datetime.date.today().replace(year=datetime.date.today().year + 1)
+                        ),
                     }
                 ]
             },
@@ -111,9 +126,7 @@ class PurchaseOrderTestCase(TenantTestCase):
 
         # StockMovement created
         self.assertTrue(
-            StockMovement.objects.filter(
-                movement_type="purchase_order_receiving"
-            ).exists()
+            StockMovement.objects.filter(movement_type="purchase_order_receiving").exists()
         )
 
         # StockItem quantity updated
@@ -138,7 +151,9 @@ class PurchaseOrderTestCase(TenantTestCase):
                         "item_id": str(item.id),
                         "quantity_received": "50.000",
                         "lot_number": "LOT-002",
-                        "expiry_date": str(datetime.date.today().replace(year=datetime.date.today().year + 1)),
+                        "expiry_date": str(
+                            datetime.date.today().replace(year=datetime.date.today().year + 1)
+                        ),
                     }
                 ]
             },
@@ -150,16 +165,20 @@ class PurchaseOrderTestCase(TenantTestCase):
 
     def test_stockitem_unique_constraint_prevents_duplicate_lots(self):
         """UniqueConstraint(nulls_distinct=False) prevents duplicate (drug, lot_number, expiry_date)."""
+        from django.db import IntegrityError
+
         expiry = datetime.date.today().replace(year=datetime.date.today().year + 1)
         StockItem.objects.create(drug=self.drug, lot_number="LOT-X", expiry_date=expiry)
-        with self.assertRaises(Exception):
+        with self.assertRaises(IntegrityError):
             StockItem.objects.create(drug=self.drug, lot_number="LOT-X", expiry_date=expiry)
 
     def test_stockitem_unique_constraint_null_expiry_prevents_duplicates(self):
         """Regression: UniqueConstraint(nulls_distinct=False) must prevent duplicate lots when expiry_date=None.
         PostgreSQL's legacy UNIQUE allows duplicate NULL-containing rows; nulls_distinct=False fixes this."""
+        from django.db import IntegrityError
+
         StockItem.objects.create(drug=self.drug, lot_number="LOT-NULL", expiry_date=None)
-        with self.assertRaises(Exception):
+        with self.assertRaises(IntegrityError):
             StockItem.objects.create(drug=self.drug, lot_number="LOT-NULL", expiry_date=None)
 
     def test_cancelled_po_cannot_be_received(self):
@@ -179,8 +198,6 @@ class PurchaseOrderTestCase(TenantTestCase):
 
     def test_pharmacy_module_off_blocks_po_endpoints(self):
         """When pharmacy module flag is off, PO endpoints return 403."""
-        FeatureFlag.objects.filter(
-            tenant=self.__class__.tenant, module_key="pharmacy"
-        ).delete()
+        FeatureFlag.objects.filter(tenant=self.__class__.tenant, module_key="pharmacy").delete()
         resp = self.client.get("/api/v1/pharmacy/purchase-orders/")
         self.assertEqual(resp.status_code, 403)

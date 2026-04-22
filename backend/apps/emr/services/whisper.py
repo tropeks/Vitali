@@ -1,6 +1,7 @@
 """
 S-073: Whisper API gateway for server-side audio transcription.
 """
+
 import io
 
 from django.conf import settings

@@ -6,6 +6,7 @@ Endpoint: GET /emr/prescriptions/{id}/pdf/
 Sign gate: returns 403 if prescription is not signed.
 Returns PDF bytes with Content-Disposition: attachment.
 """
+
 import logging
 
 from django.http import HttpResponse
@@ -35,16 +36,18 @@ class PrescriptionPDFView(APIView):
                 "encounter__professional__user",
             ).get(id=prescription_id)
         except Prescription.DoesNotExist:
-            from rest_framework.response import Response
             from rest_framework import status
+            from rest_framework.response import Response
+
             return Response(
                 {"error": "Receita não encontrada."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
         if not prescription.is_signed:
-            from rest_framework.response import Response
             from rest_framework import status
+            from rest_framework.response import Response
+
             return Response(
                 {"error": "Assine a receita antes de imprimir"},
                 status=status.HTTP_403_FORBIDDEN,
@@ -55,8 +58,9 @@ class PrescriptionPDFView(APIView):
             pdf_bytes = generator.generate(prescription)
         except ValueError as exc:
             # Sign gate re-raised as ValueError
-            from rest_framework.response import Response
             from rest_framework import status
+            from rest_framework.response import Response
+
             return Response(
                 {"error": str(exc)},
                 status=status.HTTP_403_FORBIDDEN,
@@ -68,8 +72,9 @@ class PrescriptionPDFView(APIView):
                 exc,
                 exc_info=True,
             )
-            from rest_framework.response import Response
             from rest_framework import status
+            from rest_framework.response import Response
+
             return Response(
                 {"error": "Falha ao gerar PDF. Tente novamente."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,

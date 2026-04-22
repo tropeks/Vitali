@@ -5,6 +5,7 @@ Rate: 3 attempts per 5 minutes (300 seconds) per user.
 This prevents brute-force attacks against TOTP codes.
 Fail-closed: if the throttle check errors, the request is blocked.
 """
+
 from rest_framework.throttling import UserRateThrottle
 
 

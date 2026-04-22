@@ -4,25 +4,24 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('emr', '0008_performance_indexes'),
+        ("emr", "0008_performance_indexes"),
     ]
 
     operations = [
         migrations.RenameIndex(
-            model_name='prescription',
-            new_name='emr_prescri_patient_d5a4e9_idx',
-            old_name='emr_prescription_patient_status',
+            model_name="prescription",
+            new_name="emr_prescri_patient_d5a4e9_idx",
+            old_name="emr_prescription_patient_status",
         ),
         migrations.RenameIndex(
-            model_name='prescription',
-            new_name='emr_prescri_encount_cdd649_idx',
-            old_name='emr_prescription_encounter_status',
+            model_name="prescription",
+            new_name="emr_prescri_encount_cdd649_idx",
+            old_name="emr_prescription_encounter_status",
         ),
         migrations.AlterField(
-            model_name='appointment',
-            name='satisfaction_rating',
+            model_name="appointment",
+            name="satisfaction_rating",
             field=models.IntegerField(blank=True, null=True),
         ),
     ]

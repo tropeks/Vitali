@@ -12,7 +12,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     replaces = [
         ("billing", "0001_initial"),
         ("billing", "0002_tissbatch_retorno_xml_file"),
@@ -29,9 +28,17 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="InsuranceProvider",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
                 ("name", models.CharField(max_length=200, verbose_name="Nome")),
-                ("ans_code", models.CharField(max_length=20, unique=True, verbose_name="Código ANS")),
+                (
+                    "ans_code",
+                    models.CharField(max_length=20, unique=True, verbose_name="Código ANS"),
+                ),
                 ("cnpj", models.CharField(blank=True, max_length=18, verbose_name="CNPJ")),
                 ("is_active", models.BooleanField(default=True, verbose_name="Ativo")),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
@@ -45,13 +52,25 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="PriceTable",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
                 ("name", models.CharField(max_length=100, verbose_name="Nome")),
                 ("valid_from", models.DateField(verbose_name="Válida a partir de")),
                 ("valid_until", models.DateField(blank=True, null=True, verbose_name="Válida até")),
                 ("is_active", models.BooleanField(default=True, verbose_name="Ativa")),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
-                ("provider", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="price_tables", to="billing.insuranceprovider")),
+                (
+                    "provider",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="price_tables",
+                        to="billing.insuranceprovider",
+                    ),
+                ),
             ],
             options={
                 "verbose_name": "Tabela de Preços",
@@ -63,22 +82,110 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="TISSGuide",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
-                ("guide_number", models.CharField(blank=True, max_length=20, unique=True, verbose_name="Número da guia")),
-                ("guide_type", models.CharField(choices=[("sadt", "SP/SADT"), ("consulta", "Consulta")], max_length=20, verbose_name="Tipo")),
-                ("status", models.CharField(choices=[("draft", "Rascunho"), ("pending", "Pendente envio"), ("submitted", "Enviado"), ("paid", "Pago"), ("denied", "Glosado"), ("appeal", "Em recurso")], db_index=True, default="draft", max_length=20, verbose_name="Status")),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                (
+                    "guide_number",
+                    models.CharField(
+                        blank=True, max_length=20, unique=True, verbose_name="Número da guia"
+                    ),
+                ),
+                (
+                    "guide_type",
+                    models.CharField(
+                        choices=[("sadt", "SP/SADT"), ("consulta", "Consulta")],
+                        max_length=20,
+                        verbose_name="Tipo",
+                    ),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("draft", "Rascunho"),
+                            ("pending", "Pendente envio"),
+                            ("submitted", "Enviado"),
+                            ("paid", "Pago"),
+                            ("denied", "Glosado"),
+                            ("appeal", "Em recurso"),
+                        ],
+                        db_index=True,
+                        default="draft",
+                        max_length=20,
+                        verbose_name="Status",
+                    ),
+                ),
                 ("xml_content", models.TextField(blank=True, verbose_name="XML da guia")),
-                ("total_value", models.DecimalField(decimal_places=2, default=0, max_digits=12, verbose_name="Valor total (R$)")),
-                ("insured_card_number", models.CharField(max_length=20, verbose_name="Número da carteirinha")),
-                ("authorization_number", models.CharField(blank=True, max_length=20, verbose_name="Senha de autorização")),
-                ("competency", models.CharField(help_text="Ex: 2026-03", max_length=7, verbose_name="Competência (AAAA-MM)")),
-                ("cid10_codes", models.JSONField(default=list, help_text='Lista de {"code": "X00"} do SOAPNote', verbose_name="Códigos CID-10")),
+                (
+                    "total_value",
+                    models.DecimalField(
+                        decimal_places=2, default=0, max_digits=12, verbose_name="Valor total (R$)"
+                    ),
+                ),
+                (
+                    "insured_card_number",
+                    models.CharField(max_length=20, verbose_name="Número da carteirinha"),
+                ),
+                (
+                    "authorization_number",
+                    models.CharField(
+                        blank=True, max_length=20, verbose_name="Senha de autorização"
+                    ),
+                ),
+                (
+                    "competency",
+                    models.CharField(
+                        help_text="Ex: 2026-03", max_length=7, verbose_name="Competência (AAAA-MM)"
+                    ),
+                ),
+                (
+                    "cid10_codes",
+                    models.JSONField(
+                        default=list,
+                        help_text='Lista de {"code": "X00"} do SOAPNote',
+                        verbose_name="Códigos CID-10",
+                    ),
+                ),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
-                ("encounter", models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name="tiss_guides", to="emr.encounter")),
-                ("patient", models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name="tiss_guides", to="emr.patient")),
-                ("price_table", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="guides", to="billing.pricetable")),
-                ("provider", models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name="guides", to="billing.insuranceprovider")),
+                (
+                    "encounter",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="tiss_guides",
+                        to="emr.encounter",
+                    ),
+                ),
+                (
+                    "patient",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="tiss_guides",
+                        to="emr.patient",
+                    ),
+                ),
+                (
+                    "price_table",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="guides",
+                        to="billing.pricetable",
+                    ),
+                ),
+                (
+                    "provider",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="guides",
+                        to="billing.insuranceprovider",
+                    ),
+                ),
             ],
             options={
                 "verbose_name": "Guia TISS",
@@ -89,16 +196,68 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="TISSBatch",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
-                ("batch_number", models.CharField(blank=True, max_length=20, unique=True, verbose_name="Número do lote")),
-                ("status", models.CharField(choices=[("open", "Aberto"), ("closed", "Fechado"), ("submitted", "Enviado"), ("processed", "Processado")], db_index=True, default="open", max_length=20, verbose_name="Status")),
-                ("xml_file", models.CharField(blank=True, max_length=500, verbose_name="Arquivo XML (path)")),
-                ("retorno_xml_file", models.CharField(blank=True, help_text="Path to the raw retorno XML from the insurer — stored for audit trail.", max_length=500, verbose_name="Retorno XML (path)")),
-                ("total_value", models.DecimalField(decimal_places=2, default=0, max_digits=14, verbose_name="Valor total (R$)")),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                (
+                    "batch_number",
+                    models.CharField(
+                        blank=True, max_length=20, unique=True, verbose_name="Número do lote"
+                    ),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("open", "Aberto"),
+                            ("closed", "Fechado"),
+                            ("submitted", "Enviado"),
+                            ("processed", "Processado"),
+                        ],
+                        db_index=True,
+                        default="open",
+                        max_length=20,
+                        verbose_name="Status",
+                    ),
+                ),
+                (
+                    "xml_file",
+                    models.CharField(blank=True, max_length=500, verbose_name="Arquivo XML (path)"),
+                ),
+                (
+                    "retorno_xml_file",
+                    models.CharField(
+                        blank=True,
+                        help_text="Path to the raw retorno XML from the insurer — stored for audit trail.",
+                        max_length=500,
+                        verbose_name="Retorno XML (path)",
+                    ),
+                ),
+                (
+                    "total_value",
+                    models.DecimalField(
+                        decimal_places=2, default=0, max_digits=14, verbose_name="Valor total (R$)"
+                    ),
+                ),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("closed_at", models.DateTimeField(blank=True, null=True)),
-                ("provider", models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name="batches", to="billing.insuranceprovider")),
-                ("guides", models.ManyToManyField(blank=True, related_name="batches", to="billing.tissguide")),
+                (
+                    "provider",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="batches",
+                        to="billing.insuranceprovider",
+                    ),
+                ),
+                (
+                    "guides",
+                    models.ManyToManyField(
+                        blank=True, related_name="batches", to="billing.tissguide"
+                    ),
+                ),
             ],
             options={
                 "verbose_name": "Lote TISS",
@@ -109,13 +268,47 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="TISSGuideItem",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
                 ("description", models.CharField(max_length=300, verbose_name="Descrição")),
-                ("quantity", models.DecimalField(decimal_places=2, default=1, max_digits=8, verbose_name="Quantidade")),
-                ("unit_value", models.DecimalField(decimal_places=2, max_digits=10, verbose_name="Valor unitário (R$)")),
-                ("total_value", models.DecimalField(decimal_places=2, max_digits=12, verbose_name="Valor total (R$)")),
-                ("guide", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="items", to="billing.tissguide")),
-                ("tuss_code", models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name="guide_items", to="core.tusscode")),
+                (
+                    "quantity",
+                    models.DecimalField(
+                        decimal_places=2, default=1, max_digits=8, verbose_name="Quantidade"
+                    ),
+                ),
+                (
+                    "unit_value",
+                    models.DecimalField(
+                        decimal_places=2, max_digits=10, verbose_name="Valor unitário (R$)"
+                    ),
+                ),
+                (
+                    "total_value",
+                    models.DecimalField(
+                        decimal_places=2, max_digits=12, verbose_name="Valor total (R$)"
+                    ),
+                ),
+                (
+                    "guide",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="items",
+                        to="billing.tissguide",
+                    ),
+                ),
+                (
+                    "tuss_code",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="guide_items",
+                        to="core.tusscode",
+                    ),
+                ),
             ],
             options={
                 "verbose_name": "Item de Guia",
@@ -125,16 +318,73 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="Glosa",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
-                ("reason_code", models.CharField(choices=[("00", "Não informado"), ("01", "Procedimento não coberto"), ("02", "Incompatibilidade de sexo"), ("03", "Incompatibilidade de idade"), ("04", "Prazo de carência"), ("05", "Inconsistência nos dados do beneficiário"), ("99", "Outro")], max_length=5, verbose_name="Código de motivo")),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                (
+                    "reason_code",
+                    models.CharField(
+                        choices=[
+                            ("00", "Não informado"),
+                            ("01", "Procedimento não coberto"),
+                            ("02", "Incompatibilidade de sexo"),
+                            ("03", "Incompatibilidade de idade"),
+                            ("04", "Prazo de carência"),
+                            ("05", "Inconsistência nos dados do beneficiário"),
+                            ("99", "Outro"),
+                        ],
+                        max_length=5,
+                        verbose_name="Código de motivo",
+                    ),
+                ),
                 ("reason_description", models.TextField(verbose_name="Descrição do motivo")),
-                ("value_denied", models.DecimalField(decimal_places=2, max_digits=12, verbose_name="Valor glosado (R$)")),
-                ("appeal_status", models.CharField(choices=[("none", "Sem recurso"), ("filed", "Recurso enviado"), ("accepted", "Recurso aceito"), ("rejected", "Recurso rejeitado")], default="none", max_length=20, verbose_name="Status do recurso")),
+                (
+                    "value_denied",
+                    models.DecimalField(
+                        decimal_places=2, max_digits=12, verbose_name="Valor glosado (R$)"
+                    ),
+                ),
+                (
+                    "appeal_status",
+                    models.CharField(
+                        choices=[
+                            ("none", "Sem recurso"),
+                            ("filed", "Recurso enviado"),
+                            ("accepted", "Recurso aceito"),
+                            ("rejected", "Recurso rejeitado"),
+                        ],
+                        default="none",
+                        max_length=20,
+                        verbose_name="Status do recurso",
+                    ),
+                ),
                 ("appeal_text", models.TextField(blank=True, verbose_name="Texto do recurso")),
-                ("appeal_filed_at", models.DateTimeField(blank=True, null=True, verbose_name="Recurso enviado em")),
+                (
+                    "appeal_filed_at",
+                    models.DateTimeField(blank=True, null=True, verbose_name="Recurso enviado em"),
+                ),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
-                ("guide", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="glosas", to="billing.tissguide")),
-                ("guide_item", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="glosas", to="billing.tissguideitem")),
+                (
+                    "guide",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="glosas",
+                        to="billing.tissguide",
+                    ),
+                ),
+                (
+                    "guide_item",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="glosas",
+                        to="billing.tissguideitem",
+                    ),
+                ),
             ],
             options={
                 "verbose_name": "Glosa",
@@ -145,10 +395,37 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="PriceTableItem",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
-                ("negotiated_value", models.DecimalField(decimal_places=2, max_digits=10, validators=[django.core.validators.MinValueValidator(0)], verbose_name="Valor negociado (R$)")),
-                ("table", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="items", to="billing.pricetable")),
-                ("tuss_code", models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name="price_table_items", to="core.tusscode")),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                (
+                    "negotiated_value",
+                    models.DecimalField(
+                        decimal_places=2,
+                        max_digits=10,
+                        validators=[django.core.validators.MinValueValidator(0)],
+                        verbose_name="Valor negociado (R$)",
+                    ),
+                ),
+                (
+                    "table",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="items",
+                        to="billing.pricetable",
+                    ),
+                ),
+                (
+                    "tuss_code",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="price_table_items",
+                        to="core.tusscode",
+                    ),
+                ),
             ],
             options={
                 "verbose_name": "Item de Tabela",
@@ -158,14 +435,20 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name="tissguide",
-            index=models.Index(fields=["status", "created_at"], name="billing_tis_status_cdef3d_idx"),
+            index=models.Index(
+                fields=["status", "created_at"], name="billing_tis_status_cdef3d_idx"
+            ),
         ),
         migrations.AddIndex(
             model_name="tissguide",
-            index=models.Index(fields=["provider", "competency"], name="billing_tis_provide_56522a_idx"),
+            index=models.Index(
+                fields=["provider", "competency"], name="billing_tis_provide_56522a_idx"
+            ),
         ),
         migrations.AddIndex(
             model_name="tissguide",
-            index=models.Index(fields=["patient", "created_at"], name="billing_tis_patient_02c5bb_idx"),
+            index=models.Index(
+                fields=["patient", "created_at"], name="billing_tis_patient_02c5bb_idx"
+            ),
         ),
     ]

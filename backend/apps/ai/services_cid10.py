@@ -11,15 +11,15 @@ Key design decisions:
 - Fail-open: any error → CID10SuggesterResponse(suggestions=[], degraded=True).
 - Feature flag ai_cid10_suggest (defaults False).
 """
+
 import hashlib
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import List
 
-from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
+from django.contrib.postgres.search import SearchQuery, SearchRank
 from django.core.cache import cache
-from django.db import connection, connections
+from django.db import connections
 
 from apps.ai.circuit_breaker import is_open, record_failure, record_success
 from apps.ai.gateway import ClaudeGateway, LLMGatewayError
@@ -46,7 +46,7 @@ class CID10Suggestion:
 
 @dataclass
 class CID10SuggesterResponse:
-    suggestions: List[CID10Suggestion] = field(default_factory=list)
+    suggestions: list[CID10Suggestion] = field(default_factory=list)
     degraded: bool = False
     cached: bool = False
 
@@ -89,6 +89,7 @@ def _retrieve_candidates(text: str) -> list:
     if len(candidates) < 3:
         try:
             from django.contrib.postgres.search import TrigramSimilarity
+
             qs_trigram = (
                 CID10Code.objects.using(_CID10_DB_ALIAS)
                 .filter(active=True)
@@ -196,9 +197,7 @@ class CID10Suggester:
         if cached_data is not None:
             try:
                 suggestions = [CID10Suggestion(**s) for s in cached_data]
-                return CID10SuggesterResponse(
-                    suggestions=suggestions, degraded=False, cached=True
-                )
+                return CID10SuggesterResponse(suggestions=suggestions, degraded=False, cached=True)
             except Exception:
                 pass  # stale cache — fall through
 
@@ -216,9 +215,7 @@ class CID10Suggester:
         # 6. Stage 2: LLM re-ranking
         try:
             gateway = ClaudeGateway()
-            candidates_text = "\n".join(
-                f"{c['code']}: {c['description']}" for c in candidates
-            )
+            candidates_text = "\n".join(f"{c['code']}: {c['description']}" for c in candidates)
             system_prompt = (
                 "Você é um especialista em codificação diagnóstica CID-10 para o Brasil. "
                 "Dado um texto de diagnóstico em português, selecione os códigos CID-10 "
@@ -271,6 +268,4 @@ class CID10Suggester:
         except Exception:
             pass  # cache failure is non-fatal
 
-        return CID10SuggesterResponse(
-            suggestions=validated, degraded=False, cached=False
-        )
+        return CID10SuggesterResponse(suggestions=validated, degraded=False, cached=False)

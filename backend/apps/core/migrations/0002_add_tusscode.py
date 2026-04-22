@@ -6,28 +6,36 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('core', '0001_initial'),
+        ("core", "0001_initial"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='TUSSCode',
+            name="TUSSCode",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('code', models.CharField(db_index=True, max_length=20, unique=True)),
-                ('description', models.TextField()),
-                ('group', models.CharField(max_length=100)),
-                ('subgroup', models.CharField(blank=True, max_length=100)),
-                ('version', models.CharField(max_length=20)),
-                ('active', models.BooleanField(db_index=True, default=True)),
-                ('search_vector', django.contrib.postgres.search.SearchVectorField(null=True)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                ("code", models.CharField(db_index=True, max_length=20, unique=True)),
+                ("description", models.TextField()),
+                ("group", models.CharField(max_length=100)),
+                ("subgroup", models.CharField(blank=True, max_length=100)),
+                ("version", models.CharField(max_length=20)),
+                ("active", models.BooleanField(db_index=True, default=True)),
+                ("search_vector", django.contrib.postgres.search.SearchVectorField(null=True)),
             ],
             options={
-                'verbose_name': 'Código TUSS',
-                'verbose_name_plural': 'Códigos TUSS',
-                'indexes': [django.contrib.postgres.indexes.GinIndex(fields=['search_vector'], name='core_tussco_search__263867_gin')],
+                "verbose_name": "Código TUSS",
+                "verbose_name_plural": "Códigos TUSS",
+                "indexes": [
+                    django.contrib.postgres.indexes.GinIndex(
+                        fields=["search_vector"], name="core_tussco_search__263867_gin"
+                    )
+                ],
             },
         ),
     ]

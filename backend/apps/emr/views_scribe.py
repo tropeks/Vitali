@@ -5,14 +5,15 @@ POST /encounters/{id}/scribe/start/      — create AIScribeSession and dispatch
 GET  /encounters/{id}/scribe/status/     — return latest session status for encounter
 POST /encounters/{id}/scribe/transcribe/ — S-073: server-side Whisper audio transcription fallback
 """
+
 import logging
 
 from django.conf import settings
+from rest_framework import status
 from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework import status
 
 from .models import Encounter
 from .services.whisper import WhisperError, WhisperGateway
@@ -26,6 +27,7 @@ def _check_dpa_signed(schema_name: str) -> bool:
     """Reuse the DPA check pattern from prescription_safety."""
     try:
         from apps.core.models import AIDPAStatus, Tenant
+
         tenant = Tenant.objects.get(schema_name=schema_name)
         try:
             dpa = tenant.ai_dpa_status
@@ -56,7 +58,9 @@ class ScribeStartView(APIView):
         schema_name = request.tenant.schema_name
         if not _check_dpa_signed(schema_name):
             return Response(
-                {"detail": "DPA não assinado. O uso de IA requer assinatura do DPA de dados de saúde."},
+                {
+                    "detail": "DPA não assinado. O uso de IA requer assinatura do DPA de dados de saúde."
+                },
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -75,7 +79,9 @@ class ScribeStartView(APIView):
         try:
             encounter = Encounter.objects.get(pk=encounter_id)
         except Encounter.DoesNotExist:
-            return Response({"detail": "Consulta não encontrada."}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"detail": "Consulta não encontrada."}, status=status.HTTP_404_NOT_FOUND
+            )
 
         if encounter.status != "open":
             return Response(
@@ -111,7 +117,9 @@ class ScribeStatusView(APIView):
         try:
             Encounter.objects.get(pk=encounter_id)
         except Encounter.DoesNotExist:
-            return Response({"detail": "Consulta não encontrada."}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"detail": "Consulta não encontrada."}, status=status.HTTP_404_NOT_FOUND
+            )
 
         from apps.ai.models import AIScribeSession
 
@@ -160,7 +168,9 @@ class ScribeTranscribeView(APIView):
         schema_name = request.tenant.schema_name
         if not _check_dpa_signed(schema_name):
             return Response(
-                {"detail": "DPA não assinado. O uso de IA requer assinatura do DPA de dados de saúde."},
+                {
+                    "detail": "DPA não assinado. O uso de IA requer assinatura do DPA de dados de saúde."
+                },
                 status=status.HTTP_403_FORBIDDEN,
             )
 

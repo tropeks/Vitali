@@ -5,40 +5,58 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('billing', '0002_pixcharge'),
-        ('emr', '0009_rename_emr_prescription_patient_status_emr_prescri_patient_d5a4e9_idx_and_more'),
+        ("billing", "0002_pixcharge"),
+        (
+            "emr",
+            "0009_rename_emr_prescription_patient_status_emr_prescri_patient_d5a4e9_idx_and_more",
+        ),
     ]
 
     operations = [
         migrations.RenameIndex(
-            model_name='pixcharge',
-            new_name='billing_pix_status_0cbf64_idx',
-            old_name='billing_pix_status_expires_idx',
+            model_name="pixcharge",
+            new_name="billing_pix_status_0cbf64_idx",
+            old_name="billing_pix_status_expires_idx",
         ),
         migrations.AddField(
-            model_name='pixcharge',
-            name='updated_at',
+            model_name="pixcharge",
+            name="updated_at",
             field=models.DateTimeField(auto_now=True),
         ),
         migrations.AlterField(
-            model_name='pixcharge',
-            name='appointment',
-            field=models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='pix_charge', to='emr.appointment'),
+            model_name="pixcharge",
+            name="appointment",
+            field=models.OneToOneField(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="pix_charge",
+                to="emr.appointment",
+            ),
         ),
         migrations.AlterField(
-            model_name='pixcharge',
-            name='pix_copy_paste',
-            field=models.TextField(blank=True, verbose_name='Código PIX copia e cola'),
+            model_name="pixcharge",
+            name="pix_copy_paste",
+            field=models.TextField(blank=True, verbose_name="Código PIX copia e cola"),
         ),
         migrations.AlterField(
-            model_name='pixcharge',
-            name='status',
-            field=models.CharField(choices=[('pending', 'Aguardando pagamento'), ('paid', 'Pago'), ('expired', 'Expirado'), ('cancelled', 'Cancelado'), ('refunded', 'Estornado')], db_index=True, default='pending', max_length=20, verbose_name='Status'),
+            model_name="pixcharge",
+            name="status",
+            field=models.CharField(
+                choices=[
+                    ("pending", "Aguardando pagamento"),
+                    ("paid", "Pago"),
+                    ("expired", "Expirado"),
+                    ("cancelled", "Cancelado"),
+                    ("refunded", "Estornado"),
+                ],
+                db_index=True,
+                default="pending",
+                max_length=20,
+                verbose_name="Status",
+            ),
         ),
         migrations.AddIndex(
-            model_name='pixcharge',
-            index=models.Index(fields=['asaas_charge_id'], name='billing_pix_asaas_c_032b73_idx'),
+            model_name="pixcharge",
+            index=models.Index(fields=["asaas_charge_id"], name="billing_pix_asaas_c_032b73_idx"),
         ),
     ]

@@ -4,6 +4,7 @@ HealthOS Core Middleware
 Feature flag utilities, tenant-aware helpers, thread-local current user,
 request ID injection, and tenant-scoped JSON log filter.
 """
+
 from __future__ import annotations
 
 import logging
@@ -38,6 +39,7 @@ def get_current_user():
 
 
 # ─── Middleware classes ───────────────────────────────────────────────────────
+
 
 class CurrentUserMiddleware:
     """
@@ -75,8 +77,8 @@ class DemoModeMiddleware:
     """
 
     WHITELIST = (
-        "/api/v1/auth/",                    # JWT login/refresh/logout — must work in demo
-        "/api/v1/platform/plans/",          # Platform admin can adjust plans during demo
+        "/api/v1/auth/",  # JWT login/refresh/logout — must work in demo
+        "/api/v1/platform/plans/",  # Platform admin can adjust plans during demo
         "/api/v1/platform/subscriptions/",  # Platform admin can adjust subscriptions during demo
     )
 
@@ -85,7 +87,10 @@ class DemoModeMiddleware:
 
     def __call__(self, request):
         if getattr(settings, "DEMO_MODE", False) and request.method in (
-            "POST", "PATCH", "PUT", "DELETE"
+            "POST",
+            "PATCH",
+            "PUT",
+            "DELETE",
         ):
             if not any(request.path.startswith(prefix) for prefix in self.WHITELIST):
                 logger.warning(
@@ -95,7 +100,9 @@ class DemoModeMiddleware:
                     getattr(request.user, "id", "anon") if hasattr(request, "user") else "anon",
                 )
                 return JsonResponse(
-                    {"detail": "[DEMO] This is a demo environment — write operations are disabled."},
+                    {
+                        "detail": "[DEMO] This is a demo environment — write operations are disabled."
+                    },
                     status=403,
                 )
         return self.get_response(request)
@@ -157,6 +164,7 @@ class FeatureFlagMiddleware:
     def __call__(self, request):
         if hasattr(request, "tenant"):
             from apps.core.utils import tenant_has_feature
+
             request.has_feature = lambda key: tenant_has_feature(request.tenant, key)
         response = self.get_response(request)
         return response
@@ -202,6 +210,7 @@ class MFARequiredMiddleware:
                     mfa_verified = bool(token_payload.get("mfa_verified"))
                 if not mfa_verified:
                     from apps.core.models import TOTPDevice
+
                     try:
                         device = TOTPDevice.objects.get(user=user, is_active=True)
                         _ = device  # MFA device exists — enforce the check
@@ -212,5 +221,3 @@ class MFARequiredMiddleware:
                     except TOTPDevice.DoesNotExist:
                         pass  # No device yet — don't block (grace period)
         return self.get_response(request)
-
-

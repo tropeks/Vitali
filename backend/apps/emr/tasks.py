@@ -6,6 +6,7 @@ The signal uses transaction.on_commit() so the task fires only after the DB
 transaction commits — prevents race conditions where the task reads data
 before the write is visible.
 """
+
 import logging
 
 from celery import shared_task
@@ -107,4 +108,4 @@ def check_prescription_safety(self, item_id: str):
             {"status": "error", "alerts": [], "degraded": True},
             SAFETY_STATUS_CACHE_TTL,
         )
-        raise self.retry(exc=exc)
+        raise self.retry(exc=exc) from exc

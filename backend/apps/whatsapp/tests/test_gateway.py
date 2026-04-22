@@ -1,18 +1,18 @@
 """
 Tests for WhatsAppGateway, EvolutionAPIGateway, and webhook signature validation.
 """
+
 import hashlib
 import hmac
 import json
 from unittest.mock import MagicMock, patch
 
 from django.test import TestCase, override_settings
-from apps.test_utils import TenantTestCase
 from rest_framework.test import APIClient
 
+from apps.test_utils import TenantTestCase
 from apps.whatsapp.gateway import (
     EvolutionAPIGateway,
-    EvolutionAPIError,
     OptOutError,
     verify_webhook_signature,
 )
@@ -21,15 +21,19 @@ WEBHOOK_URL = "/api/v1/whatsapp/webhook/"
 
 
 def _make_webhook_body(phone="5511999999999", text="oi"):
-    return json.dumps({
-        "event": "messages.upsert",
-        "data": {
-            "messages": [{
-                "key": {"fromMe": False, "remoteJid": f"{phone}@s.whatsapp.net"},
-                "message": {"conversation": text},
-            }]
+    return json.dumps(
+        {
+            "event": "messages.upsert",
+            "data": {
+                "messages": [
+                    {
+                        "key": {"fromMe": False, "remoteJid": f"{phone}@s.whatsapp.net"},
+                        "message": {"conversation": text},
+                    }
+                ]
+            },
         }
-    }).encode()
+    ).encode()
 
 
 def _sign(body: bytes, secret: str = "test-secret") -> str:
@@ -38,7 +42,6 @@ def _sign(body: bytes, secret: str = "test-secret") -> str:
 
 
 class WebhookSignatureTests(TenantTestCase):
-
     def setUp(self):
         self.client = APIClient()
         self.client.defaults["SERVER_NAME"] = self.__class__.domain.domain
@@ -51,7 +54,9 @@ class WebhookSignatureTests(TenantTestCase):
         mock_gw.return_value = MagicMock()
         body = _make_webhook_body()
         resp = self.client.post(
-            WEBHOOK_URL, data=body, content_type="application/json",
+            WEBHOOK_URL,
+            data=body,
+            content_type="application/json",
             HTTP_X_HUB_SIGNATURE_256=_sign(body),
         )
         self.assertEqual(resp.status_code, 200)
@@ -60,7 +65,9 @@ class WebhookSignatureTests(TenantTestCase):
     def test_invalid_hmac_still_returns_200_but_drops(self):
         body = _make_webhook_body()
         resp = self.client.post(
-            WEBHOOK_URL, data=body, content_type="application/json",
+            WEBHOOK_URL,
+            data=body,
+            content_type="application/json",
             HTTP_X_HUB_SIGNATURE_256="sha256=bad_signature",
         )
         self.assertEqual(resp.status_code, 200)
@@ -87,14 +94,15 @@ class WebhookSignatureTests(TenantTestCase):
     def test_dispatch_exception_still_returns_200(self, mock_dispatch):
         body = _make_webhook_body()
         resp = self.client.post(
-            WEBHOOK_URL, data=body, content_type="application/json",
+            WEBHOOK_URL,
+            data=body,
+            content_type="application/json",
             HTTP_X_HUB_SIGNATURE_256=_sign(body),
         )
         self.assertEqual(resp.status_code, 200)
 
 
 class EvolutionAPIGatewayTests(TestCase):
-
     @override_settings(
         WHATSAPP_EVOLUTION_URL="http://evo:8080",
         WHATSAPP_EVOLUTION_API_KEY="testkey",
@@ -131,6 +139,7 @@ class EvolutionAPIGatewayTests(TestCase):
     @patch("apps.whatsapp.gateway.requests.post")
     def test_timeout_10s_enforced(self, mock_post):
         import requests
+
         mock_post.side_effect = requests.Timeout()
         gw = EvolutionAPIGateway()
         # Should not raise — gateway swallows network errors
@@ -147,7 +156,6 @@ class EvolutionAPIGatewayTests(TestCase):
 
 
 class SignatureVerificationUnitTests(TestCase):
-
     @override_settings(WHATSAPP_WEBHOOK_SECRET="mysecret")
     def test_valid_signature_returns_true(self):
         body = b'{"test": 1}'

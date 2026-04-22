@@ -1,6 +1,7 @@
 """
 AI app views — S-030, S-031, S-034
 """
+
 import logging
 from datetime import date
 
@@ -14,18 +15,15 @@ from rest_framework.views import APIView
 
 from apps.core.permissions import HasPermission, ModuleRequiredPermission
 
-_AI_TUSS_MODULE = ModuleRequiredPermission("ai_tuss")
-
 from . import services
 from .models import AIUsageLog, TUSSAISuggestion
 from .serializers import (
-    AIUsageLogSerializer,
     GlosaPredictRequestSerializer,
-    GlosaPredictResponseSerializer,
     TUSSSuggestFeedbackSerializer,
     TUSSSuggestRequestSerializer,
-    TUSSSuggestResponseSerializer,
 )
+
+_AI_TUSS_MODULE = ModuleRequiredPermission("ai_tuss")
 
 logger = logging.getLogger(__name__)
 
@@ -36,40 +34,46 @@ class TUSSSuggestView(APIView):
     Returns up to 3 TUSS code suggestions for a procedure description.
     Requires FEATURE_AI_TUSS=True (global) and ai_tuss_enabled (per-tenant) and ai.use permission.
     """
+
     def get_permissions(self):
-        return [IsAuthenticated(), _AI_TUSS_MODULE, HasPermission('ai.use')]
+        return [IsAuthenticated(), _AI_TUSS_MODULE, HasPermission("ai.use")]
 
     def post(self, request):
-        if not getattr(settings, 'FEATURE_AI_TUSS', False):
-            return Response({"detail": "AI TUSS coding feature is not enabled."}, status=status.HTTP_200_OK)
+        if not getattr(settings, "FEATURE_AI_TUSS", False):
+            return Response(
+                {"detail": "AI TUSS coding feature is not enabled."}, status=status.HTTP_200_OK
+            )
 
         tenant_schema = request.tenant.schema_name
         config = services.get_tenant_ai_config(tenant_schema)
         if not config.ai_tuss_enabled:
-            return Response({"detail": "AI TUSS coding is not enabled for this clinic."}, status=status.HTTP_200_OK)
+            return Response(
+                {"detail": "AI TUSS coding is not enabled for this clinic."},
+                status=status.HTTP_200_OK,
+            )
 
         serializer = TUSSSuggestRequestSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        description = serializer.validated_data['description']
-        guide_type = serializer.validated_data.get('guide_type', '')
+        description = serializer.validated_data["description"]
+        guide_type = serializer.validated_data.get("guide_type", "")
 
         result = services.suggest(description, guide_type, tenant_schema)
 
         response_data = {
-            'suggestions': [
+            "suggestions": [
                 {
-                    'tuss_code': s.tuss_code,
-                    'description': s.description,
-                    'rank': s.rank,
-                    'tuss_code_id': s.tuss_code_id,
-                    'suggestion_id': s.suggestion_id,
+                    "tuss_code": s.tuss_code,
+                    "description": s.description,
+                    "rank": s.rank,
+                    "tuss_code_id": s.tuss_code_id,
+                    "suggestion_id": s.suggestion_id,
                 }
                 for s in result.suggestions
             ],
-            'degraded': result.degraded,
-            'cached': result.cached,
+            "degraded": result.degraded,
+            "cached": result.cached,
         }
         return Response(response_data)
 
@@ -80,19 +84,22 @@ class TUSSSuggestFeedbackView(APIView):
     Records whether the faturista accepted or rejected a suggestion.
     Ownership check: suggestion must belong to this tenant (Decision 19).
     """
+
     def get_permissions(self):
-        return [IsAuthenticated(), _AI_TUSS_MODULE, HasPermission('ai.use')]
+        return [IsAuthenticated(), _AI_TUSS_MODULE, HasPermission("ai.use")]
 
     def post(self, request):
-        if not getattr(settings, 'FEATURE_AI_TUSS', False):
-            return Response({"detail": "AI TUSS coding feature is not enabled."}, status=status.HTTP_200_OK)
+        if not getattr(settings, "FEATURE_AI_TUSS", False):
+            return Response(
+                {"detail": "AI TUSS coding feature is not enabled."}, status=status.HTTP_200_OK
+            )
 
         serializer = TUSSSuggestFeedbackSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        suggestion_id = serializer.validated_data['suggestion_id']
-        accepted = serializer.validated_data['accepted']
+        suggestion_id = serializer.validated_data["suggestion_id"]
+        accepted = serializer.validated_data["accepted"]
 
         # Cross-tenant ownership guard: only suggestions created in this tenant schema.
         # TUSSAISuggestion lives in the tenant schema, so tenant isolation is automatic —
@@ -104,7 +111,7 @@ class TUSSSuggestFeedbackView(APIView):
 
         suggestion.accepted = accepted
         suggestion.feedback_at = timezone.now()
-        suggestion.save(update_fields=['accepted', 'feedback_at'])
+        suggestion.save(update_fields=["accepted", "feedback_at"])
 
         return Response({"status": "ok"})
 
@@ -114,26 +121,29 @@ class AIUsageView(APIView):
     GET /api/v1/ai/usage/
     Monthly usage summary. Admin only.
     """
+
     def get_permissions(self):
-        return [IsAuthenticated(), HasPermission('users.read')]
+        return [IsAuthenticated(), HasPermission("users.read")]
 
     def get(self, request):
         # Default to current month
         try:
-            year = int(request.query_params.get('year', date.today().year))
-            month = int(request.query_params.get('month', date.today().month))
+            year = int(request.query_params.get("year", date.today().year))
+            month = int(request.query_params.get("month", date.today().month))
         except (ValueError, TypeError):
-            return Response({"detail": "year and month must be integers."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": "year and month must be integers."}, status=status.HTTP_400_BAD_REQUEST
+            )
 
         logs = AIUsageLog.objects.filter(
             created_at__year=year,
             created_at__month=month,
         )
         totals = logs.aggregate(
-            total_calls=Count('id'),
-            total_tokens_in=Sum('tokens_in'),
-            total_tokens_out=Sum('tokens_out'),
-            total_latency_ms=Sum('latency_ms'),
+            total_calls=Count("id"),
+            total_tokens_in=Sum("tokens_in"),
+            total_tokens_out=Sum("tokens_out"),
+            total_latency_ms=Sum("latency_ms"),
         )
 
         # Acceptance rate
@@ -144,17 +154,21 @@ class AIUsageView(APIView):
         total_suggestions = suggestions.count()
         accepted_suggestions = suggestions.filter(accepted=True).count()
 
-        return Response({
-            'year': year,
-            'month': month,
-            'llm_calls': totals['total_calls'] or 0,
-            'tokens_in': totals['total_tokens_in'] or 0,
-            'tokens_out': totals['total_tokens_out'] or 0,
-            'total_latency_ms': totals['total_latency_ms'] or 0,
-            'suggestions_shown': total_suggestions,
-            'suggestions_accepted': accepted_suggestions,
-            'acceptance_rate': round(accepted_suggestions / total_suggestions, 3) if total_suggestions else None,
-        })
+        return Response(
+            {
+                "year": year,
+                "month": month,
+                "llm_calls": totals["total_calls"] or 0,
+                "tokens_in": totals["total_tokens_in"] or 0,
+                "tokens_out": totals["total_tokens_out"] or 0,
+                "total_latency_ms": totals["total_latency_ms"] or 0,
+                "suggestions_shown": total_suggestions,
+                "suggestions_accepted": accepted_suggestions,
+                "acceptance_rate": round(accepted_suggestions / total_suggestions, 3)
+                if total_suggestions
+                else None,
+            }
+        )
 
 
 class GlosaPredictView(APIView):
@@ -164,14 +178,21 @@ class GlosaPredictView(APIView):
     Requires FEATURE_AI_GLOSA=True (global) and ai_glosa_prediction_enabled (per-tenant).
     Fail-open: always returns a response, degraded=True when AI unavailable.
     """
+
     def get_permissions(self):
-        return [IsAuthenticated(), _AI_TUSS_MODULE, HasPermission('ai.use')]
+        return [IsAuthenticated(), _AI_TUSS_MODULE, HasPermission("ai.use")]
 
     def post(self, request):
-        if not getattr(settings, 'FEATURE_AI_GLOSA', True):
+        if not getattr(settings, "FEATURE_AI_GLOSA", True):
             return Response(
-                {"prediction_id": None, "risk_level": "low", "risk_reason": "",
-                 "risk_code": "", "degraded": True, "cached": False},
+                {
+                    "prediction_id": None,
+                    "risk_level": "low",
+                    "risk_reason": "",
+                    "risk_code": "",
+                    "degraded": True,
+                    "cached": False,
+                },
                 status=status.HTTP_200_OK,
             )
 
@@ -179,8 +200,14 @@ class GlosaPredictView(APIView):
         config = services.get_tenant_ai_config(tenant_schema)
         if not config.ai_glosa_prediction_enabled:
             return Response(
-                {"prediction_id": None, "risk_level": "low", "risk_reason": "",
-                 "risk_code": "", "degraded": True, "cached": False},
+                {
+                    "prediction_id": None,
+                    "risk_level": "low",
+                    "risk_reason": "",
+                    "risk_code": "",
+                    "degraded": True,
+                    "cached": False,
+                },
                 status=status.HTTP_200_OK,
             )
 
@@ -190,20 +217,20 @@ class GlosaPredictView(APIView):
 
         data = serializer.validated_data
         result = services.predict_glosa(
-            tuss_code=data['tuss_code'],
-            insurer_ans_code=data['insurer_ans_code'],
-            insurer_name=data.get('insurer_name', ''),
-            cid10_codes=data.get('cid10_codes', []),
-            guide_type=data['guide_type'],
+            tuss_code=data["tuss_code"],
+            insurer_ans_code=data["insurer_ans_code"],
+            insurer_name=data.get("insurer_name", ""),
+            cid10_codes=data.get("cid10_codes", []),
+            guide_type=data["guide_type"],
             schema_name=tenant_schema,
         )
 
         response_data = {
-            'prediction_id': getattr(result, 'prediction_id', None),
-            'risk_level': result.risk_level,
-            'risk_reason': result.risk_reason,
-            'risk_code': result.risk_code,
-            'degraded': result.degraded,
-            'cached': result.cached,
+            "prediction_id": getattr(result, "prediction_id", None),
+            "risk_level": result.risk_level,
+            "risk_reason": result.risk_reason,
+            "risk_code": result.risk_code,
+            "degraded": result.degraded,
+            "cached": result.cached,
         }
         return Response(response_data)

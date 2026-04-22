@@ -10,16 +10,16 @@ Covers:
   - Double-sign is idempotent (does not overwrite date, no second AuditLog)
   - GET /settings/dpa/ returns signed status with date and name after signing
 """
+
 import datetime
 
 from rest_framework.test import APIClient
 
-from apps.test_utils import TenantTestCase
 from apps.core.models import AIDPAStatus, AuditLog, Role, User
+from apps.test_utils import TenantTestCase
 
 
 class DPAStatusViewTest(TenantTestCase):
-
     def setUp(self):
         self.client = APIClient()
         self.client.defaults["SERVER_NAME"] = self.__class__.domain.domain

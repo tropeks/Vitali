@@ -1,14 +1,11 @@
 """
 Tests for TUSSSyncLog model and TUSSSyncStatusView (S-032).
 """
-import uuid
-from unittest.mock import patch
 
-from django.test import override_settings, TestCase
-from django.utils import timezone
+from django.test import TestCase
 from rest_framework.test import APIClient
 
-from apps.core.models import Domain, Role, TUSSSyncLog, User
+from apps.core.models import Role, TUSSSyncLog, User
 
 SYNC_STATUS_URL = "/api/v1/ai/tuss-sync-status/"
 
@@ -45,7 +42,7 @@ class TUSSSyncLogModelTest(TestCase):
         self.assertEqual(log.error_message, "Connection refused")
 
     def test_ordering_newest_first(self):
-        for i in range(3):
+        for _i in range(3):
             TUSSSyncLog.objects.create(status=TUSSSyncLog.Status.SUCCESS)
         logs = list(TUSSSyncLog.objects.all())
         # Default ordering is -ran_at; IDs increase so first should be newest
@@ -56,7 +53,6 @@ class TUSSSyncStatusViewTest(TestCase):
     """GET /api/v1/ai/tuss-sync-status/ — requires users.read."""
 
     def setUp(self):
-        from django_tenants.utils import get_public_schema_name
         # This view lives in apps.core and is served from the public schema
         self.client = APIClient()
         self.user = _make_admin()

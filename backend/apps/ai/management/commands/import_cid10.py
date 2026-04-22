@@ -16,6 +16,7 @@ active=False (deactivated).
 After import, updates the PostgreSQL full-text search vector on all
 imported rows so the CID10Suggester works immediately.
 """
+
 import csv
 import logging
 import time

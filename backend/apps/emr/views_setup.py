@@ -9,6 +9,7 @@ POST /api/v1/emr/setup/professional/rerun/
   Re-runs setup for an existing tenant admin who misconfigured their clinic.
   Requires is_staff=True.
 """
+
 from django.db import transaction
 from rest_framework import permissions, serializers, status
 from rest_framework.response import Response
@@ -18,17 +19,17 @@ from .models import Professional, ScheduleConfig
 
 
 class ProfessionalSetupSerializer(serializers.Serializer):
-    council_type = serializers.ChoiceField(choices=['CRM', 'COREN', 'CRF', 'CRO', 'CREFITO', 'CRP'])
+    council_type = serializers.ChoiceField(choices=["CRM", "COREN", "CRF", "CRO", "CREFITO", "CRP"])
     council_number = serializers.CharField(max_length=20)
     council_state = serializers.CharField(max_length=2, min_length=2)
-    specialty = serializers.CharField(max_length=100, required=False, allow_blank=True, default='')
+    specialty = serializers.CharField(max_length=100, required=False, allow_blank=True, default="")
     # Schedule config
     working_days = serializers.ListField(
         child=serializers.IntegerField(min_value=0, max_value=6),
         default=[1, 2, 3, 4, 5],  # Mon-Fri
     )
-    work_start = serializers.TimeField(default='08:00')
-    work_end = serializers.TimeField(default='18:00')
+    work_start = serializers.TimeField(default="08:00")
+    work_end = serializers.TimeField(default="18:00")
     lunch_start = serializers.TimeField(required=False, allow_null=True, default=None)
     lunch_end = serializers.TimeField(required=False, allow_null=True, default=None)
     slot_duration_minutes = serializers.IntegerField(min_value=10, max_value=120, default=30)
@@ -40,6 +41,7 @@ class WizardProfessionalSetupView(APIView):
     Creates Professional + ScheduleConfig for the authenticated admin user.
     Idempotent: if Professional already exists for this user, updates it.
     """
+
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
@@ -110,6 +112,7 @@ class WizardStatusView(APIView):
     Returns whether the wizard has been completed for this tenant.
     Used by the frontend to decide whether to redirect to /setup or /dashboard.
     """
+
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):

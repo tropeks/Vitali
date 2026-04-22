@@ -17,7 +17,6 @@ from django.db import models, transaction
 from django.db.models import Sum
 from django.utils import timezone
 
-
 # ─── Choices ─────────────────────────────────────────────────────────────────
 
 GUIDE_STATUS = [
@@ -55,6 +54,7 @@ APPEAL_STATUS = [
 
 
 # ─── Price / Provider ─────────────────────────────────────────────────────────
+
 
 class InsuranceProvider(models.Model):
     """Operadora de saúde (convênio). Per-tenant."""
@@ -105,9 +105,7 @@ class PriceTable(models.Model):
             # open-ended table overlaps everything after its start
             if other_end is None or other_end >= self.valid_from:
                 if self_end is None or self_end >= other.valid_from:
-                    raise ValidationError(
-                        f"Tabela de preços sobrepõe período com '{other.name}'"
-                    )
+                    raise ValidationError(f"Tabela de preços sobrepõe período com '{other.name}'")
 
     def save(self, *args, **kwargs):
         # Guarantee clean() runs on every save path (ORM, fixtures, tests).
@@ -123,9 +121,7 @@ class PriceTable(models.Model):
 class PriceTableItem(models.Model):
     """Preço negociado por código TUSS em uma tabela. Per-tenant."""
 
-    table = models.ForeignKey(
-        PriceTable, on_delete=models.CASCADE, related_name="items"
-    )
+    table = models.ForeignKey(PriceTable, on_delete=models.CASCADE, related_name="items")
     # FK to public-schema TUSSCode — app-layer PROTECT only (cross-schema limit)
     tuss_code = models.ForeignKey(
         "core.TUSSCode", on_delete=models.PROTECT, related_name="price_table_items"
@@ -148,6 +144,7 @@ class PriceTableItem(models.Model):
 
 # ─── TISS Guides ─────────────────────────────────────────────────────────────
 
+
 class TISSGuide(models.Model):
     """
     Guia TISS — SP/SADT ou Consulta. Per-tenant.
@@ -167,15 +164,10 @@ class TISSGuide(models.Model):
     encounter = models.ForeignKey(
         "emr.Encounter", on_delete=models.PROTECT, related_name="tiss_guides"
     )
-    patient = models.ForeignKey(
-        "emr.Patient", on_delete=models.PROTECT, related_name="tiss_guides"
-    )
-    provider = models.ForeignKey(
-        InsuranceProvider, on_delete=models.PROTECT, related_name="guides"
-    )
+    patient = models.ForeignKey("emr.Patient", on_delete=models.PROTECT, related_name="tiss_guides")
+    provider = models.ForeignKey(InsuranceProvider, on_delete=models.PROTECT, related_name="guides")
     price_table = models.ForeignKey(
-        PriceTable, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name="guides"
+        PriceTable, on_delete=models.SET_NULL, null=True, blank=True, related_name="guides"
     )
     status = models.CharField(
         "Status", max_length=20, choices=GUIDE_STATUS, default="draft", db_index=True
@@ -187,13 +179,9 @@ class TISSGuide(models.Model):
     # TISS mandatory fields
     insured_card_number = models.CharField("Número da carteirinha", max_length=20)
     authorization_number = models.CharField("Senha de autorização", max_length=20, blank=True)
-    competency = models.CharField(
-        "Competência (AAAA-MM)", max_length=7,
-        help_text="Ex: 2026-03"
-    )
+    competency = models.CharField("Competência (AAAA-MM)", max_length=7, help_text="Ex: 2026-03")
     cid10_codes = models.JSONField(
-        "Códigos CID-10", default=list,
-        help_text='Lista de {"code": "X00"} do SOAPNote'
+        "Códigos CID-10", default=list, help_text='Lista de {"code": "X00"} do SOAPNote'
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -226,6 +214,7 @@ class TISSGuide(models.Model):
     def save(self, *args, **kwargs):
         if not self.guide_number:
             from django.db import IntegrityError
+
             for _attempt in range(3):
                 with transaction.atomic():
                     self.guide_number = self.generate_guide_number()
@@ -235,9 +224,7 @@ class TISSGuide(models.Model):
                     except IntegrityError:
                         self.guide_number = ""
                         continue
-            raise IntegrityError(
-                "Failed to generate a unique guide number after 3 attempts."
-            )
+            raise IntegrityError("Failed to generate a unique guide number after 3 attempts.")
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -252,9 +239,7 @@ class TISSGuideItem(models.Model):
         "core.TUSSCode", on_delete=models.PROTECT, related_name="guide_items"
     )
     description = models.CharField("Descrição", max_length=300)
-    quantity = models.DecimalField(
-        "Quantidade", max_digits=8, decimal_places=2, default=1
-    )
+    quantity = models.DecimalField("Quantidade", max_digits=8, decimal_places=2, default=1)
     unit_value = models.DecimalField("Valor unitário (R$)", max_digits=10, decimal_places=2)
     total_value = models.DecimalField("Valor total (R$)", max_digits=12, decimal_places=2)
 
@@ -282,6 +267,7 @@ class TISSGuideItem(models.Model):
 
 # ─── TISS Batches ─────────────────────────────────────────────────────────────
 
+
 class TISSBatch(models.Model):
     """
     Lote TISS — agrupa guias para envio a uma operadora. Per-tenant.
@@ -300,8 +286,10 @@ class TISSBatch(models.Model):
     )
     xml_file = models.CharField("Arquivo XML (path)", max_length=500, blank=True)
     retorno_xml_file = models.CharField(
-        "Retorno XML (path)", max_length=500, blank=True,
-        help_text="Path to the raw retorno XML from the insurer — stored for audit trail."
+        "Retorno XML (path)",
+        max_length=500,
+        blank=True,
+        help_text="Path to the raw retorno XML from the insurer — stored for audit trail.",
     )
     total_value = models.DecimalField(
         "Valor total (R$)", max_digits=14, decimal_places=2, default=0
@@ -328,6 +316,7 @@ class TISSBatch(models.Model):
     def save(self, *args, **kwargs):
         if not self.batch_number:
             from django.db import IntegrityError
+
             for _attempt in range(3):
                 with transaction.atomic():
                     self.batch_number = self.generate_batch_number()
@@ -337,9 +326,7 @@ class TISSBatch(models.Model):
                     except IntegrityError:
                         self.batch_number = ""
                         continue
-            raise IntegrityError(
-                "Failed to generate a unique batch number after 3 attempts."
-            )
+            raise IntegrityError("Failed to generate a unique batch number after 3 attempts.")
         else:
             super().save(*args, **kwargs)
 
@@ -380,6 +367,7 @@ def _tissbatch_m2m_changed(sender, instance, action, pk_set, **kwargs):
 
 
 from django.db.models.signals import m2m_changed  # noqa: E402
+
 m2m_changed.connect(_tissbatch_m2m_changed, sender=TISSBatch.guides.through)
 
 
@@ -439,25 +427,19 @@ class PIXCharge(models.Model):
         return f"PIX {self.asaas_charge_id} — R${self.amount} ({self.get_status_display()})"
 
 
-
-
 # ─── Glosas ───────────────────────────────────────────────────────────────────
+
 
 class Glosa(models.Model):
     """Registro de glosa (negativa/ajuste) de uma guia pela operadora. Per-tenant."""
 
     guide = models.ForeignKey(TISSGuide, on_delete=models.CASCADE, related_name="glosas")
     guide_item = models.ForeignKey(
-        TISSGuideItem, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name="glosas"
+        TISSGuideItem, on_delete=models.SET_NULL, null=True, blank=True, related_name="glosas"
     )
-    reason_code = models.CharField(
-        "Código de motivo", max_length=5, choices=GLOSA_REASON_CODES
-    )
+    reason_code = models.CharField("Código de motivo", max_length=5, choices=GLOSA_REASON_CODES)
     reason_description = models.TextField("Descrição do motivo")
-    value_denied = models.DecimalField(
-        "Valor glosado (R$)", max_digits=12, decimal_places=2
-    )
+    value_denied = models.DecimalField("Valor glosado (R$)", max_digits=12, decimal_places=2)
     appeal_status = models.CharField(
         "Status do recurso", max_length=20, choices=APPEAL_STATUS, default="none"
     )

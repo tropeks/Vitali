@@ -2,11 +2,13 @@
 S-040: Platform Admin Subscription API tests.
 Run: python manage.py test apps.core.tests.test_platform_api
 """
+
 import datetime
-from apps.test_utils import TenantTestCase
+
 from rest_framework.test import APIClient
 
 from apps.core.models import FeatureFlag, Plan, PlanModule, Role, Subscription, Tenant, User
+from apps.test_utils import TenantTestCase
 
 
 class PlatformAPITestCase(TenantTestCase):
@@ -37,12 +39,8 @@ class PlatformAPITestCase(TenantTestCase):
             base_price=500.00,
             is_active=True,
         )
-        PlanModule.objects.create(
-            plan=self.plan, module_key="emr", price=0, is_included=True
-        )
-        PlanModule.objects.create(
-            plan=self.plan, module_key="billing", price=100, is_included=True
-        )
+        PlanModule.objects.create(plan=self.plan, module_key="emr", price=0, is_included=True)
+        PlanModule.objects.create(plan=self.plan, module_key="billing", price=100, is_included=True)
 
     def test_staff_cannot_access_platform_endpoints(self):
         """is_staff alone must not grant access to platform admin endpoints."""
@@ -73,7 +71,7 @@ class PlatformAPITestCase(TenantTestCase):
         # Clean slate
         FeatureFlag.objects.filter(tenant=tenant).delete()
 
-        sub = Subscription.objects.create(
+        Subscription.objects.create(
             tenant=tenant,
             plan=self.plan,
             active_modules=["emr", "billing"],
@@ -88,7 +86,9 @@ class PlatformAPITestCase(TenantTestCase):
             FeatureFlag.objects.filter(tenant=tenant, module_key="emr", is_enabled=True).exists()
         )
         self.assertTrue(
-            FeatureFlag.objects.filter(tenant=tenant, module_key="billing", is_enabled=True).exists()
+            FeatureFlag.objects.filter(
+                tenant=tenant, module_key="billing", is_enabled=True
+            ).exists()
         )
 
     def test_activate_module(self):
@@ -130,7 +130,8 @@ class PlatformAPITestCase(TenantTestCase):
             current_period_end=datetime.date.today().replace(year=datetime.date.today().year + 1),
         )
         FeatureFlag.objects.update_or_create(
-            tenant=tenant, module_key="billing",
+            tenant=tenant,
+            module_key="billing",
             defaults={"is_enabled": True},
         )
 
@@ -158,7 +159,5 @@ class PlatformAPITestCase(TenantTestCase):
         create_tenant_defaults_on_new_tenant(sender=Tenant, instance=tenant, created=True)
 
         self.assertTrue(
-            FeatureFlag.objects.filter(
-                tenant=tenant, module_key="emr", is_enabled=True
-            ).exists()
+            FeatureFlag.objects.filter(tenant=tenant, module_key="emr", is_enabled=True).exists()
         )

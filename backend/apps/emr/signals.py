@@ -15,6 +15,7 @@ Prescription safety signal:
     DoesNotExist error on the first attempt and wasting retry budget.
     on_commit() guarantees the task fires only after the write is durable.
 """
+
 import logging
 
 from django.db import transaction
@@ -42,9 +43,7 @@ def trigger_safety_check(sender, instance, created, **kwargs):
     # transaction.on_commit() defers .delay() until after the outer
     # transaction commits. Safe to call even outside a transaction block —
     # Django treats the operation as already committed in that case.
-    transaction.on_commit(
-        lambda: check_prescription_safety.delay(str(instance.id))
-    )
+    transaction.on_commit(lambda: check_prescription_safety.delay(str(instance.id)))
 
     logger.debug(
         "Scheduled safety check for PrescriptionItem %s (on_commit)",

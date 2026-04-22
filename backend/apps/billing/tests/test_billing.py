@@ -3,27 +3,35 @@ Billing tests — TISS guide and batch lifecycle.
 
 Run: python manage.py test apps.billing.tests.test_billing
 """
+
 import datetime
 
 from django.core.cache import cache
 from django.utils import timezone
-from apps.test_utils import TenantTestCase
 from rest_framework.test import APIClient
 
 from apps.billing.models import Glosa, InsuranceProvider, TISSBatch, TISSGuide
 from apps.billing.services.retorno_parser import parse_retorno
 from apps.core.models import FeatureFlag, Role, User
 from apps.emr.models import Encounter, Patient, Professional
+from apps.test_utils import TenantTestCase
 
 TISS_NS = "http://www.ans.gov.br/padroes/tiss/schemas"
 
-def _make_retorno_xml(batch_number: str, guide_number: str, situacao: str = "1", glosas: str = "") -> bytes:
+
+def _make_retorno_xml(
+    batch_number: str, guide_number: str, situacao: str = "1", glosas: str = ""
+) -> bytes:
     """Build a minimal valid TISS retorno XML for testing."""
-    glosas_block = f"""
+    glosas_block = (
+        f"""
         <ans:glosas>
           {glosas}
         </ans:glosas>
-    """ if glosas else ""
+    """
+        if glosas
+        else ""
+    )
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <ans:mensagemTISS xmlns:ans="{TISS_NS}">
   <ans:operadoraParaPrestador>
@@ -50,7 +58,7 @@ class BillingTestCase(TenantTestCase):
         self.client.defaults["SERVER_NAME"] = self.__class__.domain.domain
 
         FeatureFlag.objects.update_or_create(
-            tenant=self.__class__.tenant, module_key='billing', defaults={'is_enabled': True}
+            tenant=self.__class__.tenant, module_key="billing", defaults={"is_enabled": True}
         )
 
         # Roles
@@ -372,8 +380,7 @@ class RetornoParserTestCase(TenantTestCase):
           <ans:valorGlosa>150.00</ans:valorGlosa>
         </ans:glosa>"""
         xml = _make_retorno_xml(
-            self.batch.batch_number, self.guide.guide_number,
-            situacao="1", glosas=glosas_xml
+            self.batch.batch_number, self.guide.guide_number, situacao="1", glosas=glosas_xml
         )
         result = parse_retorno(xml)
         self.assertEqual(result["glosas_created"], 1)
@@ -411,7 +418,7 @@ class GlosaAppealTestCase(TenantTestCase):
         self.client.defaults["SERVER_NAME"] = self.__class__.domain.domain
 
         FeatureFlag.objects.update_or_create(
-            tenant=self.__class__.tenant, module_key='billing', defaults={'is_enabled': True}
+            tenant=self.__class__.tenant, module_key="billing", defaults={"is_enabled": True}
         )
 
         faturista_role = Role.objects.create(
@@ -510,7 +517,7 @@ class InsuranceProviderTestCase(TenantTestCase):
         self.client.defaults["SERVER_NAME"] = self.__class__.domain.domain
 
         FeatureFlag.objects.update_or_create(
-            tenant=self.__class__.tenant, module_key='billing', defaults={'is_enabled': True}
+            tenant=self.__class__.tenant, module_key="billing", defaults={"is_enabled": True}
         )
 
         faturista_role = Role.objects.create(

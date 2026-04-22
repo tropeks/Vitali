@@ -10,6 +10,7 @@ Creates four PeriodicTask entries:
 Follows the same pattern as apps/ai/migrations/0004_schedule_celery_beat_tasks.py.
 Uses get_or_create for idempotency (safe to run on a DB that already has rows).
 """
+
 from django.db import migrations
 
 
@@ -75,16 +76,17 @@ def unregister_periodic_tasks(apps, schema_editor):
         PeriodicTask = apps.get_model("django_celery_beat", "PeriodicTask")
     except LookupError:
         return
-    PeriodicTask.objects.filter(name__in=[
-        "send_appointment_reminders",
-        "mark_no_shows",
-        "send_satisfaction_surveys",
-        "cleanup_expired_whatsapp_sessions",
-    ]).delete()
+    PeriodicTask.objects.filter(
+        name__in=[
+            "send_appointment_reminders",
+            "mark_no_shows",
+            "send_satisfaction_surveys",
+            "cleanup_expired_whatsapp_sessions",
+        ]
+    ).delete()
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("whatsapp", "0001_initial"),
         ("django_celery_beat", "0018_improve_crontab_helptext"),

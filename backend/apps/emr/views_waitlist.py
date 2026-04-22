@@ -6,6 +6,7 @@ WaitlistViewSet:
   POST   /emr/waitlist/       — create new entry
   DELETE /emr/waitlist/{id}/  — cancel entry (owner or staff only)
 """
+
 import logging
 
 from rest_framework import serializers, status
@@ -27,6 +28,7 @@ STATUS_BADGE_LABELS = {
 
 
 # ─── Serializer ───────────────────────────────────────────────────────────────
+
 
 class WaitlistEntrySerializer(serializers.ModelSerializer):
     status_display = serializers.SerializerMethodField()
@@ -93,9 +95,7 @@ class WaitlistCreateSerializer(serializers.Serializer):
 
     def validate(self, data):
         if data["preferred_date_from"] > data["preferred_date_to"]:
-            raise serializers.ValidationError(
-                "preferred_date_from must be <= preferred_date_to"
-            )
+            raise serializers.ValidationError("preferred_date_from must be <= preferred_date_to")
         time_start = data.get("preferred_time_start")
         time_end = data.get("preferred_time_end")
         if time_start and time_end and time_start >= time_end:
@@ -106,6 +106,7 @@ class WaitlistCreateSerializer(serializers.Serializer):
 
 
 # ─── Views ────────────────────────────────────────────────────────────────────
+
 
 class WaitlistViewSet(APIView):
     """
@@ -122,16 +123,14 @@ class WaitlistViewSet(APIView):
         Patient users see only their own entries.
         """
         if request.user.is_staff:
-            qs = WaitlistEntry.objects.select_related(
-                "patient", "professional__user"
-            ).all()
+            qs = WaitlistEntry.objects.select_related("patient", "professional__user").all()
         else:
             # Try to find the Patient linked to this user
             try:
                 patient = Patient.objects.get(user=request.user)
-                qs = WaitlistEntry.objects.select_related(
-                    "patient", "professional__user"
-                ).filter(patient=patient)
+                qs = WaitlistEntry.objects.select_related("patient", "professional__user").filter(
+                    patient=patient
+                )
             except Patient.DoesNotExist:
                 # Non-patient staff user — show nothing
                 qs = WaitlistEntry.objects.none()
@@ -249,7 +248,9 @@ class WaitlistDetailView(APIView):
 
         if entry.status in ("booked", "cancelled"):
             return Response(
-                {"error": f"Não é possível cancelar entrada com status '{entry.get_status_display()}'."},
+                {
+                    "error": f"Não é possível cancelar entrada com status '{entry.get_status_display()}'."
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

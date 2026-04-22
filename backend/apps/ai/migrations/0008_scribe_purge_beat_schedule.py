@@ -4,6 +4,7 @@ S-071: Register purge_old_scribe_sessions Celery Beat PeriodicTask.
 Runs daily at 03:00 UTC. Deletes non-completed AIScribeSession rows older
 than SCRIBE_SESSION_RETENTION_DAYS days across all tenant schemas.
 """
+
 from django.db import migrations
 
 
@@ -42,7 +43,6 @@ def unregister_periodic_task(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("ai", "0007_encrypt_scribe_raw_transcription"),
         ("django_celery_beat", "0018_improve_crontab_helptext"),

@@ -51,7 +51,7 @@ export function ScribeButton({ encounterId, soapNoteId, onApplied }: ScribeButto
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    setHasSpeechApi(!!(window.SpeechRecognition || (window as any).webkitSpeechRecognition));
+    setHasSpeechApi(!!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition));
   }, []);
 
   const stopPolling = () => {

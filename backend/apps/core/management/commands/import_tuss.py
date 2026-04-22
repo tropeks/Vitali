@@ -28,7 +28,7 @@ from django.contrib.postgres.search import SearchVector
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from apps.core.models import TUSSSyncLog, TUSSCode
+from apps.core.models import TUSSCode, TUSSSyncLog
 
 logger = logging.getLogger(__name__)
 
@@ -124,9 +124,7 @@ class Command(BaseCommand):
                     updated += 1
 
             if deactivate_old:
-                deactivated = TUSSCode.objects.exclude(code__in=codes_in_file).update(
-                    active=False
-                )
+                deactivated = TUSSCode.objects.exclude(code__in=codes_in_file).update(active=False)
                 self.stdout.write(f"  Deactivated {deactivated} codes not in file.")
 
         # Update full-text search vectors for all imported codes
@@ -152,7 +150,5 @@ class Command(BaseCommand):
             logger.warning("Could not write TUSSSyncLog: %s", exc)
 
         self.stdout.write(
-            self.style.SUCCESS(
-                f"Done. Created: {created}  Updated: {updated}  Skipped: {skipped}"
-            )
+            self.style.SUCCESS(f"Done. Created: {created}  Updated: {updated}  Skipped: {skipped}")
         )

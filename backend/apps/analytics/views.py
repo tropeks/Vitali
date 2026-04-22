@@ -2,6 +2,7 @@
 Vitali — Analytics API Views
 Read-only aggregate endpoints for the KPI dashboard and billing intelligence.
 """
+
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -97,15 +98,19 @@ class OverviewView(APIView):
 
         # Wait time: average minutes between arrived_at and started_at for the period
         wait_expr = ExpressionWrapper(
-            F('started_at') - F('arrived_at'),
+            F("started_at") - F("arrived_at"),
             output_field=DurationField(),
         )
-        wait_qs = appts.filter(
-            arrived_at__isnull=False,
-            started_at__isnull=False,
-            started_at__gte=F('arrived_at'),
-        ).annotate(wait=wait_expr).aggregate(avg=Avg('wait'))
-        wait_avg = wait_qs['avg']
+        wait_qs = (
+            appts.filter(
+                arrived_at__isnull=False,
+                started_at__isnull=False,
+                started_at__gte=F("arrived_at"),
+            )
+            .annotate(wait=wait_expr)
+            .aggregate(avg=Avg("wait"))
+        )
+        wait_avg = wait_qs["avg"]
         wait_time_avg_min = round(wait_avg.total_seconds() / 60, 1) if wait_avg else None
 
         return Response(
@@ -364,13 +369,11 @@ class BillingOverviewView(APIView):
             non_draft_count=Count("id", filter=Q(status__in=_NON_DRAFT_STATUSES)),
         )
 
-        non_draft = totals["non_draft_count"] or 0
+        totals["non_draft_count"] or 0
         total_denied_val = totals["total_denied"] or Decimal("0.00")
         total_billed_val = totals["total_billed"] or Decimal("0.00")
         denial_rate = (
-            round(float(total_denied_val / total_billed_val), 3)
-            if total_billed_val
-            else 0.0
+            round(float(total_denied_val / total_billed_val), 3) if total_billed_val else 0.0
         )
 
         guides_total = totals["guides_total"] or 0
@@ -457,15 +460,9 @@ class DenialByInsurerView(APIView):
             TISSGuide.objects.filter(created_at__date__gte=since)
             .values("provider_id", "provider__name", "provider__ans_code")
             .annotate(
-                total_guides=Count(
-                    "id", filter=Q(status__in=_NON_DRAFT_STATUSES)
-                ),
-                denied_guides=Count(
-                    "id", filter=Q(status__in=["denied", "appeal"])
-                ),
-                denied_value=Sum(
-                    "total_value", filter=Q(status__in=["denied", "appeal"])
-                ),
+                total_guides=Count("id", filter=Q(status__in=_NON_DRAFT_STATUSES)),
+                denied_guides=Count("id", filter=Q(status__in=["denied", "appeal"])),
+                denied_value=Sum("total_value", filter=Q(status__in=["denied", "appeal"])),
             )
             .filter(total_guides__gte=self._VOLUME_FLOOR)
             .order_by("-denied_value")
@@ -535,9 +532,7 @@ class BatchThroughputView(APIView):
             .values("month")
             .annotate(closed_count=Count("id"))
         )
-        closed_by_month = {
-            r["month"].date().replace(day=1): r["closed_count"] for r in closed_qs
-        }
+        closed_by_month = {r["month"].date().replace(day=1): r["closed_count"] for r in closed_qs}
 
         result = []
         for d in month_dates:
@@ -566,26 +561,20 @@ class GlosaAccuracyView(APIView):
                 total=Count("id", filter=Q(was_denied__isnull=False)),
                 predicted_high=Count("id", filter=Q(risk_level="high")),
                 denied_count=Count("id", filter=Q(was_denied=True)),
-                true_positives=Count(
-                    "id", filter=Q(risk_level="high", was_denied=True)
-                ),
+                true_positives=Count("id", filter=Q(risk_level="high", was_denied=True)),
             )
             .order_by("-denied_count")
         )
 
         # Resolve insurer names in a single extra query.
-        insurer_names = dict(
-            InsuranceProvider.objects.values_list("ans_code", "name")
-        )
+        insurer_names = dict(InsuranceProvider.objects.values_list("ans_code", "name"))
 
         result = []
         for r in rows:
             predicted_high = r["predicted_high"] or 0
             was_denied = r["denied_count"] or 0
             true_pos = r["true_positives"] or 0
-            precision = (
-                round(true_pos / predicted_high, 3) if predicted_high else None
-            )
+            precision = round(true_pos / predicted_high, 3) if predicted_high else None
             recall = round(true_pos / was_denied, 3) if was_denied else None
             ans_code = r["insurer_ans_code"]
             result.append(

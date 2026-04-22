@@ -7,9 +7,9 @@ Tests:
   - PDF bytes start with %PDF-
   - Digital hash in footer matches computed hash
 """
+
 import datetime
 import hashlib
-from unittest.mock import MagicMock, patch
 
 from django.utils import timezone
 
@@ -17,11 +17,11 @@ from apps.test_utils import TenantTestCase
 
 
 class TestPrescriptionPDF(TenantTestCase):
-
     def setUp(self):
-        from apps.emr.models import Patient, Professional, Encounter, Prescription, PrescriptionItem
-        from apps.pharmacy.models import Drug
         from django.contrib.auth import get_user_model
+
+        from apps.emr.models import Encounter, Patient, Prescription, Professional
+        from apps.pharmacy.models import Drug
 
         User = get_user_model()
 
@@ -104,9 +104,10 @@ class TestPrescriptionPDF(TenantTestCase):
 
     def test_pdf_bytes_valid(self):
         """Generated PDF bytes must start with %PDF- magic bytes."""
+        from django.core.cache import cache
+
         from apps.emr.models import PrescriptionItem
         from apps.emr.services.prescription_pdf import PrescriptionPDFGenerator
-        from django.core.cache import cache
 
         cache.clear()
 
@@ -167,7 +168,7 @@ class TestPrescriptionPDF(TenantTestCase):
         from rest_framework_simplejwt.tokens import RefreshToken
 
         client = APIClient()
-        client.defaults['SERVER_NAME'] = self.__class__.domain.domain
+        client.defaults["SERVER_NAME"] = self.__class__.domain.domain
         refresh = RefreshToken.for_user(self.user)
         client.credentials(HTTP_AUTHORIZATION=f"Bearer {str(refresh.access_token)}")
 

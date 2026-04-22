@@ -4,19 +4,18 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('ai', '0001_initial'),
+        ("ai", "0001_initial"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='aiprompttemplate',
-            name='name',
+            model_name="aiprompttemplate",
+            name="name",
             field=models.CharField(max_length=100),
         ),
         migrations.AlterUniqueTogether(
-            name='aiprompttemplate',
-            unique_together={('name', 'version')},
+            name="aiprompttemplate",
+            unique_together={("name", "version")},
         ),
     ]

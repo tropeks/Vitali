@@ -4,27 +4,27 @@ ConversationContext — TypedDict accessor for ConversationSession.context JSONF
 Using a TypedDict prevents silent typo bugs (e.g. 'speciality_id' vs 'specialty_id')
 that would only surface at booking-time when the slot lookup returns nothing.
 """
-from typing import Optional
+
 from typing_extensions import TypedDict
 
 
 class ConversationContext(TypedDict, total=False):
     # Scheduling flow
-    specialty_id: Optional[int]
-    professional_id: Optional[int]
-    date: Optional[str]          # ISO date string "YYYY-MM-DD"
-    slot_start: Optional[str]    # ISO datetime string
-    slot_end: Optional[str]      # ISO datetime string
+    specialty_id: int | None
+    professional_id: int | None
+    date: str | None  # ISO date string "YYYY-MM-DD"
+    slot_start: str | None  # ISO datetime string
+    slot_end: str | None  # ISO datetime string
 
     # Self vs other booking
-    booking_for_self: Optional[bool]
-    other_name: Optional[str]    # Cleared after patient matched/created
-    other_cpf: Optional[str]     # Cleared immediately after patient matched/created
-    other_patient_id: Optional[str]  # UUID str — replaces other_cpf after match
+    booking_for_self: bool | None
+    other_name: str | None  # Cleared after patient matched/created
+    other_cpf: str | None  # Cleared immediately after patient matched/created
+    other_patient_id: str | None  # UUID str — replaces other_cpf after match
 
     # FSM housekeeping
-    mismatches: Optional[int]    # Unrecognized input counter (FALLBACK_HUMAN at 3)
-    last_message_id: Optional[str]
+    mismatches: int | None  # Unrecognized input counter (FALLBACK_HUMAN at 3)
+    last_message_id: str | None
 
 
 _DEFAULTS: ConversationContext = {

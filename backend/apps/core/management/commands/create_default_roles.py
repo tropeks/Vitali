@@ -5,7 +5,8 @@ Usage: python manage.py create_default_roles [--schema <schema_name>]
 Creates the six default system roles in the current (or specified) tenant schema.
 Safe to run multiple times — uses get_or_create.
 """
-from django.core.management.base import BaseCommand, CommandError
+
+from django.core.management.base import BaseCommand
 from django_tenants.utils import schema_context
 
 
@@ -50,9 +51,7 @@ class Command(BaseCommand):
                     created_count += 1
 
             self.stdout.write(
-                self.style.SUCCESS(
-                    f"Roles: {created_count} criadas, {updated_count} atualizadas."
-                )
+                self.style.SUCCESS(f"Roles: {created_count} criadas, {updated_count} atualizadas.")
             )
 
         if schema:

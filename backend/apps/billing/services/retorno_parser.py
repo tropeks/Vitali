@@ -52,7 +52,7 @@ NS = {"ans": TISS_NS}
 SITUACAO_TO_STATUS = {
     "1": "paid",
     "2": "denied",
-    "3": "paid",   # partially paid — treated as paid, glosas will record the deductions
+    "3": "paid",  # partially paid — treated as paid, glosas will record the deductions
     "4": "denied",
     "5": "denied",  # devolvida (guide returned/voided by insurer) — not paid
 }
@@ -153,7 +153,9 @@ def parse_retorno(xml_bytes: bytes) -> dict:
                     raw_code = (codigo_el.text or "").strip() if codigo_el is not None else ""
                     # Validate reason code against known TISS codes; default to "99" (Outro)
                     reason_code = raw_code[:5] if raw_code[:5] in _VALID_REASON_CODES else "99"
-                    reason_desc = (descricao_el.text or "").strip() if descricao_el is not None else ""
+                    reason_desc = (
+                        (descricao_el.text or "").strip() if descricao_el is not None else ""
+                    )
                     try:
                         value_denied = Decimal((valor_el.text or "0").strip())
                     except InvalidOperation:
@@ -177,6 +179,7 @@ def parse_retorno(xml_bytes: bytes) -> dict:
             if guide.status == "denied":
                 try:
                     from apps.ai.models import GlosaPrediction
+
                     GlosaPrediction.objects.filter(guide=guide).update(was_denied=True)
                 except Exception:
                     pass

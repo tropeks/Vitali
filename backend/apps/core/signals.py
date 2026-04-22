@@ -1,10 +1,11 @@
 """
 Core signals — auto-create FeatureFlags, audit logging for model changes.
 """
+
 import logging
 
 from django.db.models.deletion import ProtectedError
-from django.db.models.signals import post_save, post_delete, pre_delete
+from django.db.models.signals import post_delete, post_save, pre_delete
 from django.dispatch import receiver
 
 logger = logging.getLogger(__name__)
@@ -24,11 +25,16 @@ AUDITED_MODELS = {
 def _serialize_instance(instance):
     """Convert a model instance to a plain dict for audit storage."""
     from django.forms.models import model_to_dict
+
     try:
         data = model_to_dict(instance)
         # Convert non-serializable types to strings
-        return {k: str(v) if not isinstance(v, (str, int, float, bool, type(None), list, dict)) else v
-                for k, v in data.items()}
+        return {
+            k: str(v)
+            if not isinstance(v, str | int | float | bool | type(None) | list | dict)
+            else v
+            for k, v in data.items()
+        }
     except Exception:
         return {"id": str(getattr(instance, "pk", None))}
 
@@ -75,6 +81,7 @@ def _get_client_ip(request) -> str | None:
 
 # ─── Generic audit signal handlers ───────────────────────────────────────────
 
+
 def handle_post_save(sender, instance, created, **kwargs):
     label = f"{sender._meta.app_label}.{sender.__name__}"
     resource_type = AUDITED_MODELS.get(label, label.lower().replace(".", "_"))
@@ -96,6 +103,7 @@ def register_audit_signals():
     Usage: register_audit_signals() in emr/apps.py ready()
     """
     from django.apps import apps as django_apps
+
     for model_label in AUDITED_MODELS:
         try:
             model = django_apps.get_model(model_label)
@@ -109,6 +117,7 @@ def register_audit_signals():
 # PostgreSQL does not enforce FK integrity across schemas (public → tenant).
 # This signal provides the application-layer PROTECT equivalent.
 
+
 @receiver(pre_delete, sender="core.TUSSCode")
 def protect_tuss_code_deletion(sender, instance, **kwargs):
     """Block deletion of a TUSSCode that is referenced by billing data in any tenant."""
@@ -117,7 +126,7 @@ def protect_tuss_code_deletion(sender, instance, **kwargs):
     TenantModel = get_tenant_model()
     for tenant in TenantModel.objects.exclude(schema_name="public"):
         with schema_context(tenant.schema_name):
-            from apps.billing.models import TISSGuideItem, PriceTableItem
+            from apps.billing.models import PriceTableItem, TISSGuideItem
 
             if TISSGuideItem.objects.filter(tuss_code=instance).exists():
                 raise ProtectedError(
@@ -135,6 +144,7 @@ def protect_tuss_code_deletion(sender, instance, **kwargs):
 
 # ─── Tenant → TenantAIConfig + emr FeatureFlag ───────────────────────────────
 
+
 @receiver(post_save, sender="core.Tenant")
 def create_tenant_defaults_on_new_tenant(sender, instance, created, **kwargs):
     """
@@ -146,7 +156,8 @@ def create_tenant_defaults_on_new_tenant(sender, instance, created, **kwargs):
     """
     if not created:
         return
-    from apps.core.models import TenantAIConfig, FeatureFlag
+    from apps.core.models import FeatureFlag, TenantAIConfig
+
     TenantAIConfig.objects.get_or_create(tenant=instance)
     FeatureFlag.objects.get_or_create(
         tenant=instance,
@@ -156,6 +167,7 @@ def create_tenant_defaults_on_new_tenant(sender, instance, created, **kwargs):
 
 
 # ─── Subscription → FeatureFlags ─────────────────────────────────────────────
+
 
 @receiver(post_save, sender="core.Subscription")
 def create_feature_flags_on_subscription(sender, instance, created, **kwargs):

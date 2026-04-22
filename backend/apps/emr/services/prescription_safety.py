@@ -10,11 +10,11 @@ Key design decisions:
 - Fail-open: any LLM error → SafetyResult(is_safe=True, degraded=True).
 - AIDPAStatus must be signed before LLM is called.
 """
+
 import hashlib
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import List
 
 from django.core.cache import cache
 from django.db import connection
@@ -34,8 +34,8 @@ VALID_SEVERITIES = {"caution", "contraindication"}
 
 @dataclass
 class SafetyAlert:
-    alert_type: str   # 'drug_interaction', 'allergy', 'dose', 'contraindication'
-    severity: str     # 'caution', 'contraindication'
+    alert_type: str  # 'drug_interaction', 'allergy', 'dose', 'contraindication'
+    severity: str  # 'caution', 'contraindication'
     message: str
     recommendation: str = ""
 
@@ -43,22 +43,26 @@ class SafetyAlert:
 @dataclass
 class SafetyResult:
     is_safe: bool
-    alerts: List[SafetyAlert] = field(default_factory=list)
+    alerts: list[SafetyAlert] = field(default_factory=list)
     cached: bool = False
     degraded: bool = False
 
 
-def _build_cache_key(schema_name: str, drug_name: str, other_drugs: list, allergy_names: list) -> str:
+def _build_cache_key(
+    schema_name: str, drug_name: str, other_drugs: list, allergy_names: list
+) -> str:
     """
     Build a tenant-scoped cache key for safety check results.
     Includes schema_name to prevent cross-tenant cache leakage (LGPD).
     """
-    raw = "|".join([
-        drug_name.lower().strip(),
-        ",".join(sorted(d.lower().strip() for d in other_drugs)),
-        ",".join(sorted(a.lower().strip() for a in allergy_names)),
-        schema_name,
-    ])
+    raw = "|".join(
+        [
+            drug_name.lower().strip(),
+            ",".join(sorted(d.lower().strip() for d in other_drugs)),
+            ",".join(sorted(a.lower().strip() for a in allergy_names)),
+            schema_name,
+        ]
+    )
     digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
     return f"ai:safety:{schema_name}:{digest}"
 
@@ -70,6 +74,7 @@ def _check_dpa_signed(schema_name: str) -> bool:
     """
     try:
         from apps.core.models import AIDPAStatus, Tenant
+
         tenant = Tenant.objects.get(schema_name=schema_name)
         try:
             dpa = tenant.ai_dpa_status
@@ -179,10 +184,10 @@ class PrescriptionSafetyChecker:
                 "Analise possíveis interações medicamentosas, alergias cruzadas, "
                 "problemas de dose ou contraindicações. "
                 "Responda APENAS com um JSON válido no formato: "
-                '{\"alerts\": [{\"type\": \"drug_interaction|allergy|dose|contraindication\", '
-                '\"severity\": \"caution|contraindication\", '
-                '\"message\": \"...\", \"recommendation\": \"...\"}]}. '
-                "Se não houver alertas, retorne {\"alerts\": []}. "
+                '{"alerts": [{"type": "drug_interaction|allergy|dose|contraindication", '
+                '"severity": "caution|contraindication", '
+                '"message": "...", "recommendation": "..."}]}. '
+                'Se não houver alertas, retorne {"alerts": []}. '
                 "Não inclua nenhum outro texto."
             )
 

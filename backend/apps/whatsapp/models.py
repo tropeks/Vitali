@@ -7,17 +7,19 @@ Four models:
   MessageLog       — PERMANENT, PII-redacted audit trail for receptionist history view.
   ScheduledReminder — Tracks sent/pending reminder state per appointment per type.
 """
-import uuid
+
 from django.db import models
 from django.utils import timezone
 
 
 class WhatsAppContact(models.Model):
     """One row per unique phone number in this tenant's schema."""
+
     phone = models.CharField(max_length=20, unique=True, db_index=True)
     patient = models.ForeignKey(
         "emr.Patient",
-        null=True, blank=True,
+        null=True,
+        blank=True,
         on_delete=models.SET_NULL,
         related_name="whatsapp_contacts",
     )
@@ -55,6 +57,7 @@ class ConversationSession(models.Model):
     Use get_context() / set_context() from context.py to access the context
     JSONField — direct dict access risks key typos.
     """
+
     FSM_STATES = [
         ("IDLE", "Idle"),
         ("PENDING_OPTIN", "Pending opt-in"),
@@ -93,6 +96,7 @@ class ConversationSession(models.Model):
 
     def refresh_expiry(self):
         from datetime import timedelta
+
         self.expires_at = timezone.now() + timedelta(minutes=30)
 
     def is_expired(self) -> bool:
@@ -102,6 +106,7 @@ class ConversationSession(models.Model):
     def get_or_create_for_contact(cls, contact):
         """Get existing session or create a fresh IDLE one."""
         from datetime import timedelta
+
         session, created = cls.objects.get_or_create(
             contact=contact,
             defaults={
@@ -119,6 +124,7 @@ class MessageLog(models.Model):
     Created for every inbound and outbound message (except pre-optin messages).
     CPF in content_preview is masked before saving.
     """
+
     DIRECTION_CHOICES = [("inbound", "Inbound"), ("outbound", "Outbound")]
     TYPE_CHOICES = [
         ("text", "Text"),
@@ -137,7 +143,8 @@ class MessageLog(models.Model):
     message_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default="text")
     appointment = models.ForeignKey(
         "emr.Appointment",
-        null=True, blank=True,
+        null=True,
+        blank=True,
         on_delete=models.SET_NULL,
         related_name="message_logs",
     )
@@ -161,6 +168,7 @@ class ScheduledReminder(models.Model):
     Celery tasks use select_for_update(skip_locked=True) to prevent
     concurrent worker double-send.
     """
+
     TYPE_CHOICES = [
         ("24h", "24h reminder"),
         ("2h", "2h reminder"),
@@ -180,7 +188,9 @@ class ScheduledReminder(models.Model):
         related_name="scheduled_reminders",
     )
     reminder_type = models.CharField(max_length=20, choices=TYPE_CHOICES)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending", db_index=True)
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default="pending", db_index=True
+    )
     sent_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

@@ -10,6 +10,7 @@ Tests:
   - Invalid content type (not audio/*) → 400
   - WhisperGateway raises WhisperError → 503
 """
+
 import io
 from unittest.mock import MagicMock, patch
 
@@ -26,12 +27,13 @@ def _make_audio_file(size_bytes: int = 1024, content_type: str = "audio/webm") -
 
 
 class TestScribeTranscribeView(TenantTestCase):
-
     def setUp(self):
         import datetime
+
         from django.contrib.auth import get_user_model
         from django.utils import timezone
-        from apps.emr.models import Patient, Professional, Encounter
+
+        from apps.emr.models import Encounter, Patient, Professional
 
         User = get_user_model()
         self.user = User.objects.create_user(
@@ -58,7 +60,7 @@ class TestScribeTranscribeView(TenantTestCase):
         )
 
         self.client = APIClient()
-        self.client.defaults['SERVER_NAME'] = self.__class__.domain.domain
+        self.client.defaults["SERVER_NAME"] = self.__class__.domain.domain
         refresh = RefreshToken.for_user(self.user)
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {str(refresh.access_token)}")
 
@@ -111,6 +113,7 @@ class TestScribeTranscribeView(TenantTestCase):
         large_audio.size = 25 * 1024 * 1024 + 1
 
         from django.core.files.uploadedfile import InMemoryUploadedFile
+
         uploaded = InMemoryUploadedFile(
             file=large_audio,
             field_name="audio",
@@ -128,6 +131,7 @@ class TestScribeTranscribeView(TenantTestCase):
     def test_invalid_content_type_returns_400(self, _mock_dpa):
         """Non-audio content type → 400."""
         from django.core.files.uploadedfile import InMemoryUploadedFile
+
         fake_pdf = InMemoryUploadedFile(
             file=io.BytesIO(b"%PDF fake"),
             field_name="audio",
@@ -151,6 +155,7 @@ class TestScribeTranscribeView(TenantTestCase):
         MockWhisperGateway.return_value = mock_gw_instance
 
         from django.core.files.uploadedfile import InMemoryUploadedFile
+
         audio_bytes = b"fake_audio_data"
         uploaded = InMemoryUploadedFile(
             file=io.BytesIO(audio_bytes),
@@ -186,6 +191,7 @@ class TestScribeTranscribeView(TenantTestCase):
         MockWhisperGateway.return_value = mock_gw_instance
 
         from django.core.files.uploadedfile import InMemoryUploadedFile
+
         uploaded = InMemoryUploadedFile(
             file=io.BytesIO(b"audio"),
             field_name="audio",

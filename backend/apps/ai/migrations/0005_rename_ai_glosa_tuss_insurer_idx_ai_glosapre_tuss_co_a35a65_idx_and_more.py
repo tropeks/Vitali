@@ -4,25 +4,24 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('ai', '0004_schedule_celery_beat_tasks'),
+        ("ai", "0004_schedule_celery_beat_tasks"),
     ]
 
     operations = [
         migrations.RenameIndex(
-            model_name='glosaprediction',
-            new_name='ai_glosapre_tuss_co_a35a65_idx',
-            old_name='ai_glosa_tuss_insurer_idx',
+            model_name="glosaprediction",
+            new_name="ai_glosapre_tuss_co_a35a65_idx",
+            old_name="ai_glosa_tuss_insurer_idx",
         ),
         migrations.RenameIndex(
-            model_name='glosaprediction',
-            new_name='ai_glosapre_guide_i_70f018_idx',
-            old_name='ai_glosa_guide_denied_idx',
+            model_name="glosaprediction",
+            new_name="ai_glosapre_guide_i_70f018_idx",
+            old_name="ai_glosa_guide_denied_idx",
         ),
         migrations.RenameIndex(
-            model_name='glosaprediction',
-            new_name='ai_glosapre_created_65ee96_idx',
-            old_name='ai_glosa_created_at_idx',
+            model_name="glosaprediction",
+            new_name="ai_glosapre_created_65ee96_idx",
+            old_name="ai_glosa_created_at_idx",
         ),
     ]

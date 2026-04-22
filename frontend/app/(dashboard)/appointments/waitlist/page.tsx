@@ -166,7 +166,7 @@ export default function WaitlistPage() {
           <ClockIcon className="mx-auto text-slate-300" size={40} />
           <p className="text-slate-500 text-sm font-medium">Nenhum paciente na lista de espera.</p>
           <p className="text-xs text-slate-400">
-            Quando um horário não estiver disponível, o botão "Entrar na fila de espera" aparecerá no agendamento.
+            Quando um horário não estiver disponível, o botão &quot;Entrar na fila de espera&quot; aparecerá no agendamento.
           </p>
         </div>
       ) : (

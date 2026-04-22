@@ -8,6 +8,7 @@ Per-tenant: User, Role, AuditLog
 Multi-tenancy via django-tenants (schema-per-tenant — ADR-004).
 LGPD: CPF armazenado criptografado via django-encrypted-model-fields.
 """
+
 import uuid
 
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
@@ -15,11 +16,10 @@ from django.contrib.postgres.indexes import GinIndex
 from django.contrib.postgres.search import SearchVectorField
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
-from django_tenants.models import TenantMixin, DomainMixin
+from django_tenants.models import DomainMixin, TenantMixin
 from encrypted_model_fields.fields import EncryptedCharField
 
 from .managers import UserManager
-
 
 # ─── Public Schema Models ─────────────────────────────────────────────────────
 
@@ -41,9 +41,7 @@ class Tenant(TenantMixin, models.Model):
     slug = models.SlugField("Slug", max_length=100, unique=True)
     # schema_name is required by TenantMixin — set equal to slug on save
     cnpj = models.CharField("CNPJ", max_length=18, unique=True, blank=True, null=True)
-    status = models.CharField(
-        "Status", max_length=20, choices=Status.choices, default=Status.TRIAL
-    )
+    status = models.CharField("Status", max_length=20, choices=Status.choices, default=Status.TRIAL)
     trial_ends_at = models.DateTimeField("Fim do trial", null=True, blank=True)
     created_at = models.DateTimeField("Criado em", auto_now_add=True)
     updated_at = models.DateTimeField("Atualizado em", auto_now=True)
@@ -123,9 +121,7 @@ class Subscription(models.Model):
         CANCELLED = "cancelled", "Cancelado"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    tenant = models.OneToOneField(
-        Tenant, on_delete=models.CASCADE, related_name="subscription"
-    )
+    tenant = models.OneToOneField(Tenant, on_delete=models.CASCADE, related_name="subscription")
     plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name="subscriptions")
     active_modules = models.JSONField(
         "Módulos ativos",
@@ -152,9 +148,7 @@ class FeatureFlag(models.Model):
     """Per-tenant module/feature toggle. Foundation of the modular billing system."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    tenant = models.ForeignKey(
-        Tenant, on_delete=models.CASCADE, related_name="feature_flags"
-    )
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="feature_flags")
     module_key = models.CharField(
         "Módulo/Feature",
         max_length=50,
@@ -184,11 +178,11 @@ class TUSSCode(models.Model):
 
     code = models.CharField(max_length=20, unique=True, db_index=True)
     description = models.TextField()
-    group = models.CharField(max_length=100)        # procedimento, material, diária, taxa…
+    group = models.CharField(max_length=100)  # procedimento, material, diária, taxa…
     subgroup = models.CharField(max_length=100, blank=True)
-    version = models.CharField(max_length=20)       # e.g. "2024-01"
+    version = models.CharField(max_length=20)  # e.g. "2024-01"
     active = models.BooleanField(default=True, db_index=True)
-    search_vector = SearchVectorField(null=True)    # pg_trgm + tsvector for fuzzy search
+    search_vector = SearchVectorField(null=True)  # pg_trgm + tsvector for fuzzy search
 
     class Meta:
         app_label = "core"
@@ -340,9 +334,7 @@ class AIDPAStatus(models.Model):
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    tenant = models.OneToOneField(
-        Tenant, on_delete=models.CASCADE, related_name="ai_dpa_status"
-    )
+    tenant = models.OneToOneField(Tenant, on_delete=models.CASCADE, related_name="ai_dpa_status")
     dpa_signed_date = models.DateField(null=True, blank=True)
     dpa_file_url = models.URLField(blank=True)
     signed_by_user = models.ForeignKey(
@@ -382,9 +374,7 @@ class TOTPDevice(models.Model):
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.OneToOneField(
-        "core.User", on_delete=models.CASCADE, related_name="totp_device"
-    )
+    user = models.OneToOneField("core.User", on_delete=models.CASCADE, related_name="totp_device")
     # Encrypted TOTP base32 secret (LGPD)
     encrypted_secret = EncryptedCharField(max_length=200)
     # Encrypted JSON list of hashed single-use backup codes
@@ -563,8 +553,10 @@ class AsaasChargeMap(models.Model):
         "Asaas Charge ID", max_length=100, unique=True, db_index=True
     )
     tenant_schema = models.CharField(
-        "Tenant Schema", max_length=100, db_index=True,
-        help_text="schema_name of the tenant that owns this charge"
+        "Tenant Schema",
+        max_length=100,
+        db_index=True,
+        help_text="schema_name of the tenant that owns this charge",
     )
     created_at = models.DateTimeField(auto_now_add=True)
 

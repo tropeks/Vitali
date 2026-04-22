@@ -7,9 +7,10 @@ Tests:
   - expire_waitlist_notifications is idempotent
   - WaitlistEntry is scoped to the correct professional
 """
+
 import datetime
-from datetime import date, time, timedelta
-from unittest.mock import MagicMock, patch, call
+from datetime import date, timedelta
+from unittest.mock import MagicMock, patch
 
 from django.utils import timezone
 
@@ -17,10 +18,10 @@ from apps.test_utils import TenantTestCase
 
 
 class TestWaitlist(TenantTestCase):
-
     def setUp(self):
-        from apps.emr.models import Patient, Professional, WaitlistEntry
         from django.contrib.auth import get_user_model
+
+        from apps.emr.models import Patient, Professional, WaitlistEntry
 
         User = get_user_model()
 
@@ -87,15 +88,16 @@ class TestWaitlist(TenantTestCase):
         and sends WhatsApp notification, setting status to 'notified'.
         """
         from apps.emr.tasks_waitlist import notify_next_waitlist_entry
-        from apps.emr.models import WaitlistEntry
 
         slot = {
             "start": (timezone.now() + timedelta(days=1)).isoformat(),
             "end": (timezone.now() + timedelta(days=1, hours=1)).isoformat(),
         }
 
-        with patch("apps.emr.tasks_waitlist.get_gateway") as mock_gw, \
-             patch("apps.emr.tasks_waitlist.expire_single_waitlist_entry.apply_async"):
+        with (
+            patch("apps.emr.tasks_waitlist.get_gateway") as mock_gw,
+            patch("apps.emr.tasks_waitlist.expire_single_waitlist_entry.apply_async"),
+        ):
             mock_gateway = MagicMock()
             mock_gw.return_value = mock_gateway
 
@@ -136,8 +138,7 @@ class TestWaitlist(TenantTestCase):
         self.assertIn("14:00", message)
         # Should mention part of the doctor name
         self.assertTrue(
-            "One" in message or "Doc" in message,
-            f"Expected doctor name in message: {message}"
+            "One" in message or "Doc" in message, f"Expected doctor name in message: {message}"
         )
 
     def test_waitlist_expire_task_is_idempotent(self):
@@ -146,7 +147,6 @@ class TestWaitlist(TenantTestCase):
         If entry is already 'expired', it should not process it again.
         """
         from apps.emr.tasks_waitlist import expire_waitlist_notifications
-        from apps.emr.models import WaitlistEntry
 
         # Set entry1 to 'notified' with expired expires_at
         self.entry1.status = "notified"
@@ -179,8 +179,10 @@ class TestWaitlist(TenantTestCase):
             "end": (timezone.now() + timedelta(days=1, hours=1)).isoformat(),
         }
 
-        with patch("apps.emr.tasks_waitlist.get_gateway") as mock_gw, \
-             patch("apps.emr.tasks_waitlist.expire_single_waitlist_entry.apply_async"):
+        with (
+            patch("apps.emr.tasks_waitlist.get_gateway") as mock_gw,
+            patch("apps.emr.tasks_waitlist.expire_single_waitlist_entry.apply_async"),
+        ):
             mock_gw.return_value = MagicMock()
             # Notify for professional2 — has no waiting entries
             notify_next_waitlist_entry(str(self.professional2.id), slot)
@@ -195,10 +197,11 @@ class TestWaitlist(TenantTestCase):
         """POST /emr/waitlist/ creates a WaitlistEntry (staff user, explicit patient_id)."""
         from rest_framework.test import APIClient
         from rest_framework_simplejwt.tokens import RefreshToken
+
         from apps.emr.models import WaitlistEntry
 
         client = APIClient()
-        client.defaults['SERVER_NAME'] = self.__class__.domain.domain
+        client.defaults["SERVER_NAME"] = self.__class__.domain.domain
         # user1 is is_staff=True
         refresh = RefreshToken.for_user(self.user1)
         client.credentials(HTTP_AUTHORIZATION=f"Bearer {str(refresh.access_token)}")
@@ -226,7 +229,7 @@ class TestWaitlist(TenantTestCase):
         from rest_framework_simplejwt.tokens import RefreshToken
 
         client = APIClient()
-        client.defaults['SERVER_NAME'] = self.__class__.domain.domain
+        client.defaults["SERVER_NAME"] = self.__class__.domain.domain
         # user1 is is_staff=True
         refresh = RefreshToken.for_user(self.user1)
         client.credentials(HTTP_AUTHORIZATION=f"Bearer {str(refresh.access_token)}")
