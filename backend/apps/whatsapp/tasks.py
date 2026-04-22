@@ -9,6 +9,7 @@ WhatsApp Celery tasks — S-034
 All tasks: select_for_update(skip_locked=True) on ScheduledReminder to prevent
 concurrent workers from double-sending.
 """
+
 import logging
 from datetime import timedelta
 
@@ -16,7 +17,7 @@ from celery import shared_task
 from django.db import transaction
 from django.utils import timezone
 
-from .gateway import get_gateway, OptOutError
+from .gateway import OptOutError, get_gateway
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +31,7 @@ def send_appointment_reminders(self):
     Runs every 15 min (registered in migration 0002).
     select_for_update(skip_locked=True) prevents double-send on concurrent workers.
     """
-    from apps.emr.models import Appointment
-    from .models import ScheduledReminder, WhatsAppContact
+    from .models import ScheduledReminder
 
     now = timezone.now()
     window_24h_start = now + timedelta(hours=23, minutes=45)
@@ -47,8 +47,7 @@ def send_appointment_reminders(self):
     # Fetch and lock pending reminders inside a transaction (select_for_update requires it)
     with transaction.atomic():
         reminders_24h = list(
-            ScheduledReminder.objects
-            .filter(
+            ScheduledReminder.objects.filter(
                 status="pending",
                 reminder_type="24h",
                 appointment__start_time__gte=window_24h_start,
@@ -62,8 +61,7 @@ def send_appointment_reminders(self):
         )
 
         reminders_2h = list(
-            ScheduledReminder.objects
-            .filter(
+            ScheduledReminder.objects.filter(
                 status="pending",
                 reminder_type="2h",
                 appointment__start_time__gte=window_2h_start,
@@ -83,6 +81,7 @@ def send_appointment_reminders(self):
 def _ensure_reminders_exist(now):
     """Create ScheduledReminder rows for appointments in the next 25 hours that don't have them yet."""
     from apps.emr.models import Appointment
+
     from .models import ScheduledReminder, WhatsAppContact
 
     upcoming = Appointment.objects.filter(
@@ -94,7 +93,7 @@ def _ensure_reminders_exist(now):
     for appt in upcoming:
         # Check if patient has opted-in WhatsApp contact
         try:
-            contact = WhatsAppContact.objects.get(
+            WhatsAppContact.objects.get(
                 patient=appt.patient,
                 opt_in=True,
             )
@@ -121,7 +120,11 @@ def _send_reminder(gateway, reminder):
         return
 
     label = "24 horas" if reminder.reminder_type == "24h" else "2 horas"
-    pro_name = appt.professional.user.full_name if hasattr(appt.professional, "user") else str(appt.professional)
+    pro_name = (
+        appt.professional.user.full_name
+        if hasattr(appt.professional, "user")
+        else str(appt.professional)
+    )
     text = (
         f"🔔 Lembrete de consulta!\n\n"
         f"Sua consulta com {pro_name} é em {label}.\n"
@@ -178,6 +181,7 @@ def send_satisfaction_surveys(self):
     Runs every hour.
     """
     from apps.emr.models import Appointment
+
     from .models import ScheduledReminder, WhatsAppContact
 
     gateway = get_gateway()
@@ -215,7 +219,11 @@ def send_satisfaction_surveys(self):
                 locked.save(update_fields=["status"])
                 continue
 
-            pro_name = appt.professional.user.full_name if hasattr(appt.professional, "user") else str(appt.professional)
+            pro_name = (
+                appt.professional.user.full_name
+                if hasattr(appt.professional, "user")
+                else str(appt.professional)
+            )
             text = (
                 f"Olá! 😊 Como foi sua consulta com {pro_name}?\n\n"
                 f"1️⃣ 😊 Muito bom\n"
@@ -240,6 +248,7 @@ def send_satisfaction_surveys(self):
 def cleanup_expired_sessions():
     """Delete ConversationSession rows past their expires_at. Runs every 15 min."""
     from .models import ConversationSession
+
     count, _ = ConversationSession.objects.filter(expires_at__lt=timezone.now()).delete()
     if count:
         logger.info("Cleaned up %d expired WhatsApp conversation sessions", count)

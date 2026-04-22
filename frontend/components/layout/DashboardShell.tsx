@@ -68,6 +68,7 @@ const NAV_ITEMS: NavItem[] = [
     children: [
       { label: "Assinatura", href: "/configuracoes/assinatura" },
       { label: "WhatsApp", href: "/configuracoes/whatsapp" },
+      { label: "Inteligência Artificial", href: "/configuracoes/ai" },
     ],
   },
 ];

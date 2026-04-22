@@ -1,16 +1,16 @@
 """
 Tests for GlosaPredictView (POST /api/v1/ai/glosa-predict/).
 """
+
 from unittest.mock import MagicMock, patch
 
 from django.core.cache import cache
 from django.test import override_settings
-from django_tenants.test.cases import TenantTestCase
 from rest_framework.test import APIClient
 
-from apps.ai.models import AIPromptTemplate
 from apps.ai.services import PredictionResult
 from apps.core.models import FeatureFlag, Role, User
+from apps.test_utils import TenantTestCase
 
 GLOSA_URL = "/api/v1/ai/glosa-predict/"
 
@@ -26,7 +26,9 @@ VALID_PAYLOAD = {
 def _make_user(role_name="faturista"):
     role, _ = Role.objects.get_or_create(
         name=role_name,
-        defaults={"permissions": ["billing.read", "billing.write", "billing.full", "ai.use", "users.read"]},
+        defaults={
+            "permissions": ["billing.read", "billing.write", "billing.full", "ai.use", "users.read"]
+        },
     )
     return User.objects.create_user(email=f"glosa_{role_name}@test.com", password="pw", role=role)
 
@@ -42,6 +44,7 @@ def _make_glosa_config(enabled=True):
 
 def _ok_result(**kwargs):
     import uuid
+
     result = PredictionResult(
         risk_level="low",
         risk_reason="Sem glosa esperada.",
@@ -50,13 +53,13 @@ def _ok_result(**kwargs):
         cached=False,
     )
     result.prediction_id = uuid.uuid4()
-    defaults = dict(
-        risk_level="low",
-        risk_reason="Sem glosa esperada.",
-        risk_code="",
-        degraded=False,
-        cached=False,
-    )
+    defaults = {
+        "risk_level": "low",
+        "risk_reason": "Sem glosa esperada.",
+        "risk_code": "",
+        "degraded": False,
+        "cached": False,
+    }
     defaults.update(kwargs)
     for k, v in defaults.items():
         setattr(result, k, v)
@@ -64,7 +67,6 @@ def _ok_result(**kwargs):
 
 
 class GlosaPredictViewTest(TenantTestCase):
-
     def setUp(self):
         cache.clear()
         self._override = override_settings(
@@ -76,7 +78,7 @@ class GlosaPredictViewTest(TenantTestCase):
         self.client = APIClient()
         self.client.defaults["SERVER_NAME"] = self.__class__.domain.domain
         FeatureFlag.objects.update_or_create(
-            tenant=self.__class__.tenant, module_key='ai_tuss', defaults={'is_enabled': True}
+            tenant=self.__class__.tenant, module_key="ai_tuss", defaults={"is_enabled": True}
         )
         self.user = _make_user()
         self.client.force_authenticate(user=self.user)
@@ -88,7 +90,9 @@ class GlosaPredictViewTest(TenantTestCase):
     @patch("apps.ai.views.services.predict_glosa")
     def test_returns_200_with_prediction(self, mock_predict, mock_config):
         mock_config.return_value = _make_glosa_config(enabled=True)
-        mock_predict.return_value = _ok_result(risk_level="medium", risk_reason="Precisa de autorização.")
+        mock_predict.return_value = _ok_result(
+            risk_level="medium", risk_reason="Precisa de autorização."
+        )
 
         resp = self.client.post(GLOSA_URL, VALID_PAYLOAD, format="json")
 
@@ -143,8 +147,9 @@ class GlosaPredictViewTest(TenantTestCase):
     def test_degraded_result_still_200(self, mock_predict, mock_config):
         """predict_glosa fails open — degraded=True must still return 200, not 500."""
         mock_config.return_value = _make_glosa_config(enabled=True)
-        import uuid
-        result = PredictionResult(risk_level="low", risk_reason="", risk_code="", degraded=True, cached=False)
+        result = PredictionResult(
+            risk_level="low", risk_reason="", risk_code="", degraded=True, cached=False
+        )
         result.prediction_id = None
         mock_predict.return_value = result
 

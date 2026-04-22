@@ -1,4 +1,5 @@
 <!-- /autoplan restore point: /home/rcosta00/.gstack/projects/tropeks-Vitali/master-autoplan-restore-20260405-202027.md -->
+<!-- /autoplan run 2: 2026-04-06 — DX Review added (was SKIPPED in run 1). Premise gate: all 5 premises accepted. Restore: /home/rcosta00/.gstack/projects/tropeks-Vitali/master-autoplan-restore-20260406-065024.md -->
 # Sprint 15: Clinical AI Layer + MFA (v1.0.0)
 
 **Theme:** First Phase 2 sprint — AI as a clinical co-pilot + security baseline for live pilot clinics.
@@ -297,10 +298,10 @@ All 5 stories pass at demo:
 | CEO Review | `/plan-ceo-review` | Scope & strategy | 1 | COMPLETE | 2 critical, 3 high, 3 medium. 5 auto-decided. Premise gate passed. |
 | Design Review | `/plan-design-review` | UI/UX gaps | 1 | COMPLETE | 6 critical, 12 high, 16 medium, 11 low. Score: 4/10. |
 | Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | COMPLETE | 5 critical, 5 high, 7 medium, 4 low. Sprint health: 3.4/5. |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 1 | COMPLETE (Run 2) | 2 critical, 3 high, 3 medium. Score: 5.5/10 → 8/10 after fixes. |
 | Codex Review | `/codex review` | Independent 2nd opinion | 0 | UNAVAILABLE | OpenAI 401 — single-model findings only. |
-| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | SKIPPED | Not run in this pipeline. |
 
-**VERDICT:** APPROVED. 18 decisions logged (13 mechanical, 3 eng, 2 user). 5 must-fix items before implementation. Sprint health: 3.4/5 → 4.2/5 after must-fixes applied.
+**VERDICT:** APPROVED. 26 decisions logged (21 mechanical, 3 eng, 2 user). 13 must-fix items (5 eng + 8 DX) before implementation. Sprint health: 3.4/5 → 4.5/5 after all must-fixes applied.
 
 ---
 
@@ -1026,6 +1027,8 @@ HTTP POST /emr/prescriptions/{id}/items/
 
 **django-otp:** Do NOT add `django-otp` to TENANT_APPS. Build custom `TOTPDevice` model (~50 lines with pyotp). Eliminates migration sequencing risk entirely.
 
+**Run order (DX-07):** Apply with `python manage.py migrate_schemas` (django-tenants extension, NOT vanilla `migrate`). Order is enforced by Django's dependency graph, not file numbering — rows 1–3 (core, SHARED_APPS) run against the `public` schema first, then rows 4–5 (emr, TENANT_APPS) run against every tenant schema, then row 6 (ai, public schema, depends on celery_beat). For a fresh DB: `migrate_schemas --shared` first, then `migrate_schemas`. For a partial reset: `migrate_schemas --shared core` to apply only the shared core changes without touching tenants. Never run `manage.py migrate` directly — it will skip tenant schemas and leave them inconsistent.
+
 ---
 
 ## Dependency Risk Table
@@ -1162,5 +1165,275 @@ Replace with Basic Analytics (daily appts, weekly revenue, show rate):
 - [ ] E-05: WaitlistEntry.accept() double-booking guard with select_for_update()
 
 **Status: APPROVED — ready for implementation.**
+
+---
+
+# Phase 3.5: DX Review (Run 2 — 2026-04-06)
+
+**Mode:** DX TRIAGE (internal clinical API, focus on critical adoption blockers only)
+**Product type:** REST API (Django/DRF) — internal team consumers
+**Persona:** Backend developer on the Vitali team, Django/DRF-familiar, building S-062 through S-066
+
+---
+
+## Target Developer Persona
+
+```
+TARGET DEVELOPER PERSONA
+========================
+Who:       Django/Python backend dev, familiar with the Vitali codebase
+Context:   Implementing Sprint 15 stories following the existing patterns in apps/
+Tolerance: Should not need to spend more than 5 min on any setup/config question
+Expects:   pip install → migrate → test → done. Existing patterns (TUSSCoder,
+           billing_migrations) should be followed; deviations documented.
+```
+
+---
+
+## Competitive DX Benchmark
+
+Not applicable for internal API — DRF conventions are the baseline. Goal: new endpoints
+should be indistinguishable from existing Sprint 5-14 endpoints in structure, error format,
+and test patterns.
+
+---
+
+## DX Findings
+
+### CRITICAL (2 items — block implementation)
+
+**DX-01: No WebSocket infrastructure in requirements**
+
+The plan (S-063) specifies:
+> "WebSocket emit → 'safety_check_complete'"
+> "React: useWebSocket('prescription:{id}')"
+
+`requirements/base.txt` (confirmed) has no `channels`, `daphne`, `django-channels`, or
+any WebSocket package. ASGI is not configured. The project is WSGI-only.
+
+Two options exist in the plan:
+1. Full WebSocket push (requires `django-channels` + `daphne`, ASGI migration, Redis channel
+   layer — significant new infrastructure)
+2. Polling-only (plan also mentions: "Prescription builder polls
+   `GET .../safety-check/` for 10s" — this already works with WSGI/Celery/Redis)
+
+**Auto-decided:** TRIAGE — use polling only (Completeness: 7/10 but zero new infra risk).
+Remove WebSocket references from S-063. The polling approach (`GET .../safety-check/` with
+10s frontend retry) is simpler, the Celery task already writes `AISafetyAlert` to the DB,
+and a GET endpoint reads it. This is exactly how `TUSSCoder` exposes results.
+
+Add to must-fix checklist:
+- **DX-01:** Remove WebSocket references from S-063. Implement result polling via
+  `GET /api/v1/emr/prescriptions/{id}/items/{item_id}/safety-check/` returning
+  `{status: "pending"|"safe"|"warning"|"contraindication"|"error", alerts: [...]}`.
+
+**DX-02: No seed data for drug interactions/allergies**
+
+`apps/core/management/commands/seed_demo_data.py` creates drugs and prescriptions but
+creates **no `Allergy` records** (confirmed by grep). S-063 test `test_allergy_crosscheck_fires_for_patient_with_known_allergy` will always pass vacuously if no test patient has an allergy.
+
+The plan identifies this risk at Hour 12:
+> "Developer starts writing tests — realizes there's no test patient with known drug interactions in seed data."
+
+But the plan doesn't add a `seed_demo_data` update to scope.
+
+**Auto-decided:** IN SCOPE (blast radius: `seed_demo_data.py` is 1 file, P1 completeness).
+Add to must-fix checklist:
+- **DX-02:** Update `seed_demo_data.py` to create at least 1 patient with a known allergy
+  (e.g., `Penicilina`), 1 drug that is allergenic (set `Drug.allergen_flag=True` or use
+  drug name matching), and 1 existing prescription with a conflicting drug to trigger the
+  S-063 allergy cross-check in manual testing.
+
+---
+
+### HIGH (3 items)
+
+**DX-03: CID10Code DATASUS import — no data source, format, or command**
+
+The plan says "load DATASUS dataset" for S-064 but gives no:
+- URL for the CID-10 table (DATASUS TABNET: `cid10.dbf` or `CID-10-SUBCATEGORIAS.CSV`)
+- File format (`.DBF`, CSV, or JSON)
+- Import command name or location
+- Whether it handles upserts (re-running the import)
+
+A developer starting S-064 at Hour 24 will spend 1-2 hours finding the data source.
+
+**Auto-decided:** Add to plan. The pattern is `TUSSCode` (Sprint 8) — look at
+`apps/ai/management/commands/import_tuss.py` for the exact approach to reuse.
+Add to DX must-fix:
+- **DX-03:** Document CID10Code import command. Data source: DATASUS CID-10 subcategory
+  CSV (`CID10CM_tabela.csv` format, UTF-8 with BOM, columns: `SUBCAT,DESCRICAO`).
+  Command: `python manage.py import_cid10 --source /path/to/file.csv`.
+  Follows the same pattern as `import_tuss`. Add to S-064 backend scope.
+
+**DX-04: New env vars not in `.env.example`**
+
+The plan adds two env vars:
+```
+MFA_GRACE_PERIOD_DAYS=30
+PRESCRIPTION_PDF_CACHE_TTL=3600
+```
+
+If `.env.example` isn't updated, the next dev to clone the repo won't know these exist.
+Also: `ASAAS_WEBHOOK_TOKEN` was previously missing (fixed in this sprint cycle by a bug
+report); same pattern risk here.
+
+**Auto-decided:** IN SCOPE (1-line change per var, P1 completeness). Add to DX must-fix:
+- **DX-04:** Add both new env vars to `.env.example` with their default values and a
+  1-line comment explaining each.
+
+**DX-05: TOTP test helper pattern undocumented**
+
+Tests for S-062 (e.g., `test_verify_totp_drift_windows`) need to generate valid TOTP
+codes programmatically. The correct pattern with `pyotp`:
+
+```python
+import pyotp
+totp = pyotp.TOTP(device.encrypted_secret_decrypted)
+valid_code = totp.now()
+```
+
+No existing tests in the codebase use `pyotp` directly (confirmed — it's a new dep).
+Without a documented pattern, developers will write either wrong tests (hard-coded codes)
+or overly complex mocks.
+
+**Auto-decided:** Add a `apps/core/tests/test_helpers.py` fixture pattern section comment
+to the plan. DX must-fix:
+- **DX-05:** Add a `MFATestMixin` to `apps/test_utils.py` with a `create_totp_device(user)`
+  helper that creates a `TOTPDevice` and returns `(device, totp_instance)` for test use.
+  One-time definition, reused by all S-062 tests.
+
+---
+
+### MEDIUM (3 items)
+
+**DX-06: WeasyPrint Liberation Sans font not in Dockerfile**
+
+Design review found (D-41): PDF font should be Liberation Sans (Arial equivalent, freely
+licensed). The Dockerfile must install it: `fonts-liberation` package on Ubuntu.
+E-04 only mentions `libcairo2-dev libpango1.0-dev` but not the font package.
+Without it, WeasyPrint falls back to a system default that may not match the prescription
+PDF spec.
+
+Update E-04 to include: `RUN apt-get install -y ... fonts-liberation`
+
+**DX-07: Migration run order not in a runbook**
+
+6 migrations across `core` and `emr` apps, with the existing `billing_migrations`
+workaround. The plan lists them in order (0009 through 0011) but there's no documented
+`management command` or `Makefile` target to run them in the right sequence.
+
+With `django-tenants`, running `python manage.py migrate_schemas --shared` before
+`migrate_schemas --tenant` matters. Add a comment block to the migration plan section.
+
+**DX-08: No CI test for WeasyPrint in Docker**
+
+E-04 says "Add CI test: `docker run --rm backend python -c "import weasyprint; print('ok')"`"
+but the CI pipeline is not updated in the plan scope. Without a CI step, the Docker dep
+regression is discovered at deploy time, not at PR merge time.
+
+Auto-decided: Add to must-fix. The CI test (`docker run --rm` smoke check) takes 5 min
+to add to GitHub Actions and saves discovering WeasyPrint breakage at deploy.
+
+---
+
+## Developer Journey Trace
+
+```
+STAGE           | DEVELOPER DOES                     | FRICTION POINTS         | STATUS
+----------------|------------------------------------|-------------------------|--------
+1. Discover     | Reads plan, understands sprint scope| None                    | OK
+2. Install      | pip install pyotp qrcode weasyprint | WeasyPrint: Cairo/Pango | FIX: E-04 + DX-06 fonts
+3. Hello World  | python manage.py migrate (6x)       | Migration order unclear  | FIX: DX-07 runbook
+4. Real Usage   | Write tests for S-062/S-063          | No allergy seed data    | FIX: DX-02
+                | Write CID10 suggester               | No import command       | FIX: DX-03
+5. Debug        | Test TOTP flow                      | No TOTP test helper     | FIX: DX-05
+6. Upgrade      | N/A (new sprint)                    | —                       | OK
+```
+
+---
+
+## DX Score Summary
+
+| Dimension | Score | Gap |
+|-----------|-------|-----|
+| Getting Started | 5/10 | WeasyPrint OS deps + font (E-04 + DX-06) require Docker setup before hello world |
+| Install | 4/10 | New deps (pyotp, weasyprint, qrcode) not in a single pip target; DX-04 env vars missing |
+| Error messages | 7/10 | Existing DRF error format is clear; new endpoints should follow same pattern |
+| Testing ergonomics | 5/10 | No TOTP helpers, no allergy seed data, no `MFATestMixin` |
+| Docs | 4/10 | CID10 import command undocumented; WebSocket vs polling decision undocumented |
+| API consistency | 8/10 | New endpoints follow existing REST patterns; minor HTTP code gaps per Eng review |
+| **Overall** | **5.5/10** | Blockers are all fixable in < 30 min of CC+gstack effort |
+
+---
+
+## DX Must-Fix Checklist (Phase 3.5 — closed 2026-04-21)
+
+- [x] **DX-01:** Remove WebSocket from S-063. Use polling-only (`GET .../safety-check/`). _Verified: no `channels`/`websocket` imports in `apps/emr/views_safety.py`, `services/prescription_safety.py`, `signals.py`, or `tasks.py`._
+- [x] **DX-02:** Update `seed_demo_data.py` to create 1 patient with a known allergy + matching drug. _Implemented at `apps/core/management/commands/seed_demo_data.py:102` (Penicillin allergy seed)._
+- [x] **DX-03:** Add `import_cid10` management command to S-064 scope. Document data source (DATASUS CSV). _Implemented at `apps/ai/management/commands/import_cid10.py`._
+- [x] **DX-04:** Add `MFA_GRACE_PERIOD_DAYS` and `PRESCRIPTION_PDF_CACHE_TTL` to `.env.example`. _Added in chore commit_ a826f71.
+- [x] **DX-05:** Add `MFATestMixin` with `create_totp_device(user)` helper to `apps/test_utils.py`. _Implemented at `apps/test_utils.py:24` (`MFATestMixin`)._
+- [x] **DX-06:** Add `fonts-liberation` to E-04 Dockerfile install block. _Already in `backend/Dockerfile:21` (plus libcairo2-dev, libpango1.0-dev for WeasyPrint)._
+- [x] **DX-07:** Add migration run order comment to plan's migration table. _Added "Run order" paragraph after the migration table above (use `migrate_schemas`, not `migrate`)._
+- [x] **DX-08:** Add CI Docker smoke test for WeasyPrint to GitHub Actions config. _Added to `.github/workflows/ci.yml` `backend-test` job: apt install + `python -c "from weasyprint import HTML; HTML(string='<h1>CI OK</h1>').write_pdf(...)"` step before `pytest`._
+
+**Phase 3.5 complete.** 2 critical, 3 high, 3 medium DX findings. Sprint DX score: 5.5/10 → 8/10 after must-fixes. Passing to updated gate.
+
+**Closure update (2026-04-21):** All 8 DX must-fixes shipped. 6 of 8 were already in the Sprint 15 implementation commit (f135c28); DX-07 (doc) and DX-08 (CI smoke test) added in commit a826f71's successor. Sprint DX score: **8/10 actual.**
+
+---
+
+## Run 3 — Diff-Aware Review (2026-04-21)
+
+**Trigger:** User invoked `/autoplan` on a plan that already had two prior runs. Skipped re-running Phases 1–3.5; instead inspected current working-tree state and ran the test suite.
+
+### Working-tree audit
+
+- **466 uncommitted files** in tree at run start. Last `feat:` commit was Sprint 14 (`59d1813`); Sprint 15-17 work is all unstaged.
+- All Sprint 15 implementation files exist as untracked (`??`): `apps/core/mfa.py`, `apps/core/views_mfa.py`, `apps/emr/views_safety.py`, `apps/emr/views_cid10.py`, `apps/emr/views_pdf.py`, `apps/emr/views_waitlist.py`, plus migrations 0008/0009/0010 and tests.
+- **Scope creep into the working tree (not part of Sprint 15):**
+  - Sprint 16 — AI Scribe (`apps/emr/views_scribe.py`, `apps/ai/tests/test_scribe.py`).
+  - Sprint 17 — DPA signing UI (`apps/core/views_dpa.py`, `apps/core/tests/test_dpa.py`), raw-transcription encryption (`apps/ai/migrations/0007_*`), `arrived_at`/`started_at` on Appointment (`apps/emr/migrations/0013_*`, `apps/emr/views_checkin.py`, `apps/emr/tests/test_appointment_checkin.py`).
+  - Triage decision needed before commit boundary: split into Sprint 15 / 16 / 17 commits, or accept the bleed and document.
+
+### Environment fixes (durable, applied)
+
+| Fix | File | Why |
+|---|---|---|
+| Excluded `.venv` from Docker build context | `backend/.dockerignore` (new) | Windows symlink in `.venv/lib64` aborted `docker compose build` with "open .venv/lib64: cannot access". |
+| Container rebuilt to pick up Sprint 15 deps | `healthos-django-1` | Container had been `Up 2 days (unhealthy)` with `FailingStreak: 5639` because `pyotp`, `qrcode`, `weasyprint` were pinned in `requirements/base.txt` but never installed in the running image. |
+
+### Test-suite bug fixes (applied)
+
+| Bug | File:line | Fix | Tests unblocked |
+|---|---|---|---|
+| Migration import syntax error (collection blocker) | `apps/ai/tests/test_scribe.py:345` | Switched to `importlib.import_module(...)` — Python module names can't start with a digit. | Entire suite (collection failed → 0 tests ran). |
+| `User.get_full_name()` doesn't exist | `apps/core/views_dpa.py:40` | `.get_full_name()` → `.full_name`. Custom `User(AbstractBaseUser, PermissionsMixin)` exposes `full_name` field, never overrode the (Django default `AbstractUser`-only) method. | 4 DPA failures → 0. |
+| Same bug in test | `apps/core/tests/test_dpa.py:77,124` | Same fix, both occurrences. | (above). |
+| Naive datetime warning on `Encounter.encounter_date` | `apps/analytics/views.py:77,79` | `encounter_date__gte=since` → `encounter_date__date__gte=since` (matches Appointment pattern on line 59). `since` is a `date`; ORM was coercing to naive datetime under `USE_TZ=True`. | 3 wait-time analytics tests: warning gone, still passing. |
+
+### Test-suite state
+
+- **Before fixes:** collection failure (1 syntax error), then 4 fails / 403 pass.
+- **After fixes:** **412/412 passing in 3:16.** All Sprint 15 + Sprint 16 + Sprint 17 (in-tree) tests green.
+
+### Pre-existing tech debt surfaced (not fixed — flagged for triage)
+
+- `apps/pharmacy/models.py:135,142,347,351` and `pharmacy/migrations/0001,0003`: deprecated `CheckConstraint.check` (`condition` is the new spelling, removed in Django 6.0). Multi-warning, no failure.
+- `apps/billing/services/retorno_parser.py:86`: `root.find(...) or root.find(...)` triggers `FutureWarning` — XML element truth-testing will always return True in future lxml. Latent bug: the `or` fallback is currently unreachable because the first `find` always returns a (possibly empty) element.
+- 0 of the 8 DX must-fix items from Phase 3.5 have been resolved (DX-01..DX-08). DX-06 (fonts-liberation in Dockerfile) is the only one already in tree (Dockerfile line 21).
+
+### Environment lessons (worth keeping)
+
+- `backend/Dockerfile` installs `requirements/production.txt` only — no pytest. Test runs require `pip install -r requirements/development.txt` inside the container, which is transient. Either accept the per-session install, or split into a dev-stage image.
+- 12+ scratch shell scripts in `backend/` (`run_tests.sh`, `reset_and_run.sh`, `fix_testdb.sh`, `check_run13.sh` …) accumulated from prior debug sessions. Candidates for cleanup or consolidation into a `Makefile` / `bun run` task.
+- The Apr 6 `/tmp/run13.txt` (472KB) inside the old container instance is gone after rebuild. If historical comparison matters, snapshot before the next rebuild.
+
+### Recommendation
+
+1. Triage the 466 uncommitted files into per-story commits so git history matches the sprint plan. Suggest one commit per Sprint (15/16/17), each tagged with the story IDs, before any further work.
+2. Address the 8 DX must-fixes from Phase 3.5 in a single pass — they're all small and the suite is currently green to verify against.
+3. The CheckConstraint and lxml warnings are real but pre-existing and should be a separate Sprint 18 cleanup pass, not bundled with Sprint 15 close.
 
 

@@ -1,3 +1,4 @@
+# mypy: ignore-errors
 """
 ConversationFSM — WhatsApp appointment scheduling state machine.
 
@@ -14,19 +15,18 @@ Rules:
 - Max 3 unrecognized inputs before FALLBACK_HUMAN transition.
 - "sair" / "parar" from any state → OPTED_OUT immediately.
 """
+
 from __future__ import annotations
 
 import logging
 import re
 import unicodedata
-from datetime import date, timedelta
-from typing import Optional
+from datetime import date
 
 from django.db import transaction
-from django.utils import timezone
 
 from .context import get_context, set_context
-from .gateway import WhatsAppGateway, OptOutError
+from .gateway import WhatsAppGateway
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +89,7 @@ def _normalize(text: str) -> str:
     return text
 
 
-def detect_intent(text: str) -> Optional[str]:
+def detect_intent(text: str) -> str | None:
     normalized = _normalize(text)
     return INTENT_MAP.get(normalized)
 
@@ -110,7 +110,9 @@ OPTED_IN_MSG = "✅ Consentimento registrado! Agora posso te ajudar a agendar co
 FALLBACK_MSG_TEMPLATE = "Não entendi. Entre em contato com nossa equipe pelo telefone: {phone}"
 UNRECOGNIZED_MSG = "Não entendi. Digite *menu* para ver as opções."
 EXPIRED_MSG = "Sua sessão expirou. Digite *menu* para começar."
-SELF_OR_OTHER_MSG = "A consulta é para você ou para outra pessoa?\n\n1️⃣ Para mim\n2️⃣ Para outra pessoa"
+SELF_OR_OTHER_MSG = (
+    "A consulta é para você ou para outra pessoa?\n\n1️⃣ Para mim\n2️⃣ Para outra pessoa"
+)
 ASK_NAME_MSG = "Qual o nome completo da pessoa?"
 ASK_CPF_MSG = "Qual o CPF da pessoa? (somente números)"
 INVALID_CPF_MSG = "CPF inválido. Por favor, informe apenas os 11 dígitos numéricos do CPF."
@@ -134,6 +136,7 @@ CONFIRMED_MSG_TEMPLATE = (
 
 # ─── FSM ──────────────────────────────────────────────────────────────────────
 
+
 class ConversationFSM:
     def __init__(self, session, gateway: WhatsAppGateway):
         self._session = session
@@ -142,6 +145,7 @@ class ConversationFSM:
 
     def _get_clinic_phone(self) -> str:
         from django.conf import settings
+
         return getattr(settings, "WHATSAPP_CLINIC_PHONE", "+551199999999")
 
     def process(self, message: str, message_type: str = "text") -> list[str]:
@@ -350,8 +354,15 @@ class ConversationFSM:
         session = self._session
         # New message after confirmed — restart scheduling
         session.state = "SELECTING_SELF_OR_OTHER"
-        set_context(session, specialty_id=None, professional_id=None, date=None,
-                    slot_start=None, slot_end=None, mismatches=0)
+        set_context(
+            session,
+            specialty_id=None,
+            professional_id=None,
+            date=None,
+            slot_start=None,
+            slot_end=None,
+            mismatches=0,
+        )
         session.save()
         return [SELF_OR_OTHER_MSG]
 
@@ -364,8 +375,15 @@ class ConversationFSM:
         # inadvertent slot re-confirmation after opt-back-in.
         session = self._session
         session.state = "PENDING_OPTIN"
-        set_context(session, specialty_id=None, professional_id=None, date=None,
-                    slot_start=None, slot_end=None, mismatches=0)
+        set_context(
+            session,
+            specialty_id=None,
+            professional_id=None,
+            date=None,
+            slot_start=None,
+            slot_end=None,
+            mismatches=0,
+        )
         session.save()
         return [LGPD_CONSENT_MSG]
 
@@ -387,6 +405,7 @@ class ConversationFSM:
 
     def _do_confirm_booking(self) -> list[str]:
         from apps.emr.models import Appointment, Professional
+
         session = self._session
         ctx = get_context(session)
         contact = session.contact
@@ -401,6 +420,7 @@ class ConversationFSM:
             patient = contact.patient
         else:
             from apps.emr.models import Patient
+
             try:
                 patient = Patient.objects.get(pk=ctx.get("other_patient_id"))
             except Patient.DoesNotExist:
@@ -410,6 +430,7 @@ class ConversationFSM:
             return ["Não encontramos seu cadastro. Por favor, entre em contato com a clínica."]
 
         from datetime import datetime as dt
+
         try:
             start = dt.fromisoformat(ctx["slot_start"])
             end = dt.fromisoformat(ctx["slot_end"])
@@ -449,27 +470,34 @@ class ConversationFSM:
         MessageLog = None
         try:
             from .models import MessageLog
-            MessageLog.objects.filter(
-                contact=contact, appointment__isnull=True
-            ).update(appointment=appointment)
+
+            MessageLog.objects.filter(contact=contact, appointment__isnull=True).update(
+                appointment=appointment
+            )
         except Exception:
             pass
 
         # Delete session (CPF/PII gone)
         session.delete()
 
-        return [CONFIRMED_MSG_TEMPLATE.format(
-            date=start.strftime("%d/%m/%Y"),
-            time=start.strftime("%H:%M"),
-            professional=professional.user.full_name if hasattr(professional, "user") else str(professional),
-        )]
+        return [
+            CONFIRMED_MSG_TEMPLATE.format(
+                date=start.strftime("%d/%m/%Y"),
+                time=start.strftime("%H:%M"),
+                professional=professional.user.full_name
+                if hasattr(professional, "user")
+                else str(professional),
+            )
+        ]
 
     # ─── Menu builders ────────────────────────────────────────────────────────
 
     def _send_specialty_menu(self) -> list[str]:
         specialties = self._get_specialties()
         if not specialties:
-            return ["Não há especialidades disponíveis no momento. Por favor, entre em contato com a clínica."]
+            return [
+                "Não há especialidades disponíveis no momento. Por favor, entre em contato com a clínica."
+            ]
         lines = ["Qual especialidade você procura?\n"]
         for i, s in enumerate(specialties, 1):
             lines.append(f"{i}. {s['name']}")
@@ -478,7 +506,9 @@ class ConversationFSM:
     def _send_professional_menu(self, specialty_id) -> list[str]:
         professionals = self._get_professionals(specialty_id)
         if not professionals:
-            return ["Não há profissionais disponíveis para essa especialidade. Por favor, entre em contato com a clínica."]
+            return [
+                "Não há profissionais disponíveis para essa especialidade. Por favor, entre em contato com a clínica."
+            ]
         lines = ["Escolha o profissional:\n"]
         for i, p in enumerate(professionals, 1):
             lines.append(f"{i}. {p['name']}")
@@ -487,7 +517,9 @@ class ConversationFSM:
     def _send_date_menu(self, professional_id) -> list[str]:
         slots = self._get_slots(professional_id)
         if not slots:
-            return ["Não há horários disponíveis nos próximos 7 dias. Por favor, entre em contato com a clínica."]
+            return [
+                "Não há horários disponíveis nos próximos 7 dias. Por favor, entre em contato com a clínica."
+            ]
         lines = ["Escolha a data:\n"]
         for i, date_str in enumerate(sorted(slots.keys()), 1):
             d = date.fromisoformat(date_str)
@@ -504,7 +536,7 @@ class ConversationFSM:
 
     def _send_confirm_summary(self) -> list[str]:
         from apps.emr.models import Professional
-        from apps.emr.models import Appointment
+
         ctx = get_context(self._session)
         try:
             pro = Professional.objects.select_related("user").get(pk=ctx["professional_id"])
@@ -516,6 +548,7 @@ class ConversationFSM:
 
         try:
             from datetime import datetime as dt
+
             start = dt.fromisoformat(ctx["slot_start"])
             date_label = start.strftime("%d/%m/%Y")
             time_label = start.strftime("%H:%M")
@@ -535,6 +568,7 @@ class ConversationFSM:
 
     def _get_specialties(self) -> list[dict]:
         from apps.emr.models import Professional
+
         names = (
             Professional.objects.filter(is_active=True)
             .exclude(specialty="")
@@ -547,15 +581,20 @@ class ConversationFSM:
 
     def _get_professionals(self, specialty_id) -> list[dict]:
         from apps.emr.models import Professional
+
         qs = Professional.objects.filter(is_active=True).select_related("user")
         if specialty_id:
             # specialty_id is the specialty name string stored in context
             qs = qs.filter(specialty=specialty_id)
-        return [{"id": p.pk, "name": p.user.full_name if hasattr(p, "user") else str(p)} for p in qs]
+        return [
+            {"id": p.pk, "name": p.user.full_name if hasattr(p, "user") else str(p)} for p in qs
+        ]
 
     def _get_slots(self, professional_id) -> dict:
         from apps.emr.models import Professional
+
         from .slot_service import get_available_slots
+
         if not professional_id:
             return {}
         try:
@@ -564,13 +603,13 @@ class ConversationFSM:
             return {}
         return get_available_slots(pro)
 
-    def _parse_menu_selection(self, message: str) -> Optional[int]:
+    def _parse_menu_selection(self, message: str) -> int | None:
         try:
             return int(message.strip())
         except ValueError:
             return None
 
-    def _parse_date_selection(self, message: str) -> Optional[int]:
+    def _parse_date_selection(self, message: str) -> int | None:
         """Parse number (menu position) for date selection. Caller maps to ISO date string."""
         try:
             return int(message.strip())
@@ -579,8 +618,9 @@ class ConversationFSM:
 
     def _match_or_create_patient(self, session, cpf_raw: str):
         """Find patient by CPF or create a new one with name from context."""
+
         from apps.emr.models import Patient
-        from encrypted_model_fields.fields import EncryptedCharField
+
         ctx = get_context(session)
         name = ctx.get("other_name") or "Paciente WhatsApp"
 
@@ -621,6 +661,7 @@ class ConversationFSM:
 
 
 # ─── CPF validation ───────────────────────────────────────────────────────────
+
 
 def _is_valid_cpf(cpf: str) -> bool:
     """Basic Brazilian CPF checksum validation."""

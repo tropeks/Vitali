@@ -7,14 +7,13 @@ Tests:
 3. GET /emr/setup/status/ returns correct wizard_complete flag
 4. Validation rejects invalid council_type
 """
-from django.utils import timezone
-from django_tenants.test.cases import TenantTestCase
+
 from rest_framework import status
 from rest_framework.test import APIClient
 
 from apps.core.models import User
 from apps.emr.models import Professional
-
+from apps.test_utils import TenantTestCase
 
 VALID_PAYLOAD = {
     "council_type": "CRM",
@@ -40,7 +39,6 @@ class WizardSetupTest(TenantTestCase):
         self.user = User.objects.create_user(
             email="admin@wizard.test",
             password="pass1234",
-            schema_name=self.tenant.schema_name,
             is_staff=True,
         )
         self.client.force_authenticate(self.user)

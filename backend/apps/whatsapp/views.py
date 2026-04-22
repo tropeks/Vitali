@@ -12,14 +12,13 @@ HealthView:       GET /api/v1/whatsapp/health/
 WhatsAppContactViewSet: /api/v1/whatsapp/contacts/
 MessageLogViewSet:      /api/v1/whatsapp/message-logs/
 """
+
 import json
 import logging
 
 from django.core.cache import cache
 from django.db import transaction
-from django.utils import timezone
 from rest_framework import filters, status, viewsets
-from rest_framework.decorators import api_view, permission_classes
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -35,8 +34,8 @@ from .serializers import MessageLogSerializer, WhatsAppContactSerializer
 logger = logging.getLogger(__name__)
 
 _WHATSAPP_MODULE = ModuleRequiredPermission("whatsapp")
-_RATE_LIMIT_WINDOW = 60   # seconds
-_RATE_LIMIT_MAX = 20      # messages per window per contact
+_RATE_LIMIT_WINDOW = 60  # seconds
+_RATE_LIMIT_MAX = 20  # messages per window per contact
 
 
 def _check_rate_limit(phone: str) -> bool:
@@ -54,9 +53,86 @@ def _check_rate_limit(phone: str) -> bool:
     return count <= _RATE_LIMIT_MAX
 
 
-def _log_message(contact, direction: str, content: str, message_type: str = "text", appointment=None):
+def _handle_waitlist_reply(phone: str, text: str) -> bool:
+    """
+    S-066: Intercept SIM/NÃO replies from patients with a pending waitlist notification.
+
+    Returns True if the message was consumed by the waitlist handler (caller should
+    not route to ConversationFSM). Returns False if the message is unrelated to a
+    waitlist notification.
+
+    SIM → book the offered slot, set entry.status = 'booked'
+    NÃO → remove from waitlist (status = 'cancelled'), cascade to next entry
+    """
+    normalized = text.strip().upper()
+    if normalized not in ("SIM", "NÃO", "NAO", "N"):
+        return False
+
+    try:
+        from apps.emr.models import Patient, WaitlistEntry
+        from apps.emr.tasks_waitlist import notify_next_waitlist_entry
+
+        # Find the patient by phone number
+        patient = Patient.objects.filter(phone=phone).first()
+        if not patient:
+            return False
+
+        # Find their notified entry (there should be at most one at a time)
+        with transaction.atomic():
+            entry = (
+                WaitlistEntry.objects.select_for_update()
+                .filter(patient=patient, status="notified")
+                .first()
+            )
+            if not entry:
+                return False
+
+            gateway = get_gateway()
+
+            if normalized == "SIM":
+                # Book the offered slot
+                entry.status = "booked"
+                entry.save(update_fields=["status"])
+                try:
+                    gateway.send_text(
+                        phone,
+                        "Ótimo! Sua consulta foi confirmada. Em breve você receberá a confirmação.",
+                    )
+                except Exception as exc:
+                    logger.error("Failed to send waitlist confirmation to %s: %s", phone, exc)
+                logger.info("WaitlistEntry %s booked by patient (SIM reply)", entry.id)
+            else:
+                # NÃO / NAO / N — cancel entry and cascade
+                professional_id = str(entry.professional_id)
+                offered_slot = entry.offered_slot or {}
+                entry.status = "cancelled"
+                entry.save(update_fields=["status"])
+                try:
+                    gateway.send_text(
+                        phone,
+                        "Tudo bem! Você foi removido(a) da fila de espera.",
+                    )
+                except Exception as exc:
+                    logger.error("Failed to send waitlist opt-out to %s: %s", phone, exc)
+                logger.info("WaitlistEntry %s cancelled by patient (NÃO reply)", entry.id)
+                # Cascade to next entry outside the transaction
+                transaction.on_commit(
+                    lambda: notify_next_waitlist_entry.delay(professional_id, offered_slot)
+                )
+
+        return True
+
+    except Exception as exc:
+        logger.error("_handle_waitlist_reply error for %s: %s", phone, exc)
+        return False
+
+
+def _log_message(
+    contact, direction: str, content: str, message_type: str = "text", appointment=None
+):
     """Create a MessageLog entry with CPF masked."""
     import re
+
     preview = content[:200]
     # Mask CPF pattern NNN.NNN.NNN-NN or 11 digits — fully masked, no digit leaked
     preview = re.sub(r"\d{3}\.?\d{3}\.?\d{3}-?\d{2}", "***.***.***-**", preview)
@@ -80,6 +156,7 @@ class WebhookView(APIView):
     Security: HMAC-SHA256 signature validation.
     Always returns HTTP 200 — Evolution API retries on any non-2xx.
     """
+
     permission_classes = [AllowAny]
     authentication_classes = []
 
@@ -127,7 +204,11 @@ class WebhookView(APIView):
                 text = msg["message"]["buttonsResponseMessage"].get("selectedButtonId", "")
                 message_type = "button_reply"
             elif "listResponseMessage" in msg.get("message", {}):
-                text = msg["message"]["listResponseMessage"].get("singleSelectReply", {}).get("selectedRowId", "")
+                text = (
+                    msg["message"]["listResponseMessage"]
+                    .get("singleSelectReply", {})
+                    .get("selectedRowId", "")
+                )
                 message_type = "list_reply"
 
             if not text:
@@ -136,7 +217,11 @@ class WebhookView(APIView):
             self._process_message(phone, text, message_type)
 
     def _process_message(self, phone: str, text: str, message_type: str):
-        from datetime import timedelta
+        # S-066: Check for pending waitlist notification before routing to scheduling FSM.
+        # SIM/NÃO responses must be disambiguated: if the patient has a 'notified'
+        # WaitlistEntry, route to waitlist handler first.
+        if _handle_waitlist_reply(phone, text):
+            return
 
         with transaction.atomic():
             contact, _ = WhatsAppContact.objects.get_or_create(phone=phone)
@@ -165,6 +250,7 @@ class WebhookView(APIView):
 
 class HealthView(APIView):
     """GET /api/v1/whatsapp/health/ — returns Evolution API connection state."""
+
     permission_classes = [IsAuthenticated, _WHATSAPP_MODULE]
 
     def get(self, request):
@@ -184,6 +270,7 @@ class SetupWebhookView(APIView):
     Called by the frontend QR page after QR scan — registers the tenant-specific
     webhook URL with Evolution API programmatically.
     """
+
     permission_classes = [IsAuthenticated, _WHATSAPP_MODULE]
 
     def post(self, request):

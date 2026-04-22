@@ -3,17 +3,18 @@ Billing Analytics API tests — S-035.
 
 Run: python manage.py test apps.analytics.tests.test_billing_analytics
 """
+
 import datetime
 from decimal import Decimal
 
 from django.core.cache import cache as django_cache
 from django.utils import timezone
-from django_tenants.test.cases import TenantTestCase
 from rest_framework.test import APIClient
 
 from apps.billing.models import InsuranceProvider, TISSBatch, TISSGuide
 from apps.core.models import FeatureFlag, Role, User
 from apps.emr.models import Encounter, Patient, Professional
+from apps.test_utils import TenantTestCase
 
 
 def _make_guide(
@@ -50,7 +51,7 @@ class BillingAnalyticsBaseCase(TenantTestCase):
         self.client.defaults["SERVER_NAME"] = self.__class__.domain.domain
 
         FeatureFlag.objects.update_or_create(
-            tenant=self.__class__.tenant, module_key='billing', defaults={'is_enabled': True}
+            tenant=self.__class__.tenant, module_key="billing", defaults={"is_enabled": True}
         )
 
         role = Role.objects.create(
@@ -93,15 +94,13 @@ class BillingAnalyticsBaseCase(TenantTestCase):
         self.client.force_authenticate(user=self.user)
 
     def _guide(self, **kwargs):
-        return _make_guide(
-            self.provider, self.patient, self.encounter, **kwargs
-        )
+        return _make_guide(self.provider, self.patient, self.encounter, **kwargs)
 
 
 # ─── BillingOverviewView ──────────────────────────────────────────────────────
 
-class BillingOverviewTests(BillingAnalyticsBaseCase):
 
+class BillingOverviewTests(BillingAnalyticsBaseCase):
     def test_happy_path(self):
         today_comp = timezone.localdate().strftime("%Y-%m")
         self._guide(status="paid", total_value="2000.00", competency=today_comp)
@@ -169,8 +168,8 @@ class BillingOverviewTests(BillingAnalyticsBaseCase):
 
 # ─── MonthlyRevenueView ───────────────────────────────────────────────────────
 
-class MonthlyRevenueTests(BillingAnalyticsBaseCase):
 
+class MonthlyRevenueTests(BillingAnalyticsBaseCase):
     def test_happy_path(self):
         today_comp = timezone.localdate().strftime("%Y-%m")
         self._guide(status="paid", total_value="1000.00", competency=today_comp)
@@ -225,13 +224,16 @@ class MonthlyRevenueTests(BillingAnalyticsBaseCase):
 
 # ─── DenialByInsurerView ──────────────────────────────────────────────────────
 
-class DenialByInsurerTests(BillingAnalyticsBaseCase):
 
+class DenialByInsurerTests(BillingAnalyticsBaseCase):
     def _add_guides(self, provider, count, status, value="100.00"):
         for _ in range(count):
             _make_guide(
-                provider, self.patient, self.encounter,
-                status=status, total_value=value,
+                provider,
+                self.patient,
+                self.encounter,
+                status=status,
+                total_value=value,
             )
 
     def test_happy_path(self):
@@ -277,19 +279,19 @@ class DenialByInsurerTests(BillingAnalyticsBaseCase):
 
     def test_sorted_by_denied_value_desc(self):
         """Insurer with higher denied_value appears first."""
-        provider2 = InsuranceProvider.objects.create(
-            name="Amil Test", ans_code="222000"
-        )
+        provider2 = InsuranceProvider.objects.create(name="Amil Test", ans_code="222000")
         # provider: 10 guides (5 denied × R$100 = R$500)
         self._add_guides(self.provider, 5, "paid", value="100.00")
         self._add_guides(self.provider, 5, "denied", value="100.00")
         # provider2: 10 guides (8 denied × R$200 = R$1600)
         for _ in range(2):
-            _make_guide(provider2, self.patient, self.encounter,
-                        status="paid", total_value="200.00")
+            _make_guide(
+                provider2, self.patient, self.encounter, status="paid", total_value="200.00"
+            )
         for _ in range(8):
-            _make_guide(provider2, self.patient, self.encounter,
-                        status="denied", total_value="200.00")
+            _make_guide(
+                provider2, self.patient, self.encounter, status="denied", total_value="200.00"
+            )
 
         resp = self.client.get("/api/v1/analytics/billing/denial-by-insurer/?months=6")
         data = resp.json()
@@ -299,8 +301,8 @@ class DenialByInsurerTests(BillingAnalyticsBaseCase):
 
 # ─── BatchThroughputView ──────────────────────────────────────────────────────
 
-class BatchThroughputTests(BillingAnalyticsBaseCase):
 
+class BatchThroughputTests(BillingAnalyticsBaseCase):
     def test_happy_path(self):
         resp = self.client.get("/api/v1/analytics/billing/batch-throughput/?months=3")
         self.assertEqual(resp.status_code, 200)
@@ -325,8 +327,8 @@ class BatchThroughputTests(BillingAnalyticsBaseCase):
 
     def test_batch_throughput_cross_month_merge_correctness(self):
         """Batch created in Jan and closed in Mar appears in Jan created AND Mar closed."""
-        jan = datetime.date(2026, 1, 15)
-        mar = datetime.date(2026, 3, 10)
+        datetime.date(2026, 1, 15)
+        datetime.date(2026, 3, 10)
         batch = TISSBatch.objects.create(
             provider=self.provider,
             batch_number="202601-001",
@@ -350,10 +352,11 @@ class BatchThroughputTests(BillingAnalyticsBaseCase):
 
 # ─── GlosaAccuracyView ────────────────────────────────────────────────────────
 
-class GlosaAccuracyTests(BillingAnalyticsBaseCase):
 
+class GlosaAccuracyTests(BillingAnalyticsBaseCase):
     def _make_prediction(self, ans_code, risk_level, was_denied):
         from apps.ai.models import GlosaPrediction
+
         guide = self._guide(status="paid")
         return GlosaPrediction.objects.create(
             guide=guide,
@@ -397,16 +400,25 @@ class GlosaAccuracyTests(BillingAnalyticsBaseCase):
     def test_glosa_accuracy_excludes_unresolved_from_denominator(self):
         """was_denied=None predictions must NOT count toward total_predictions."""
         from apps.ai.models import GlosaPrediction
+
         guide = self._guide(status="paid")
         # Resolved prediction
         GlosaPrediction.objects.create(
-            guide=guide, insurer_ans_code="111000", guide_type="sp_sadt",
-            tuss_code="10101012", risk_level="high", was_denied=True,
+            guide=guide,
+            insurer_ans_code="111000",
+            guide_type="sp_sadt",
+            tuss_code="10101012",
+            risk_level="high",
+            was_denied=True,
         )
         # Unresolved prediction (was_denied=None)
         GlosaPrediction.objects.create(
-            guide=guide, insurer_ans_code="111000", guide_type="sp_sadt",
-            tuss_code="10101013", risk_level="low", was_denied=None,
+            guide=guide,
+            insurer_ans_code="111000",
+            guide_type="sp_sadt",
+            tuss_code="10101013",
+            risk_level="low",
+            was_denied=None,
         )
         resp = self.client.get("/api/v1/analytics/billing/glosa-accuracy/")
         data = resp.json()

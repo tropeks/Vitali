@@ -14,6 +14,4 @@ class IsFaturistaOrAdmin(BasePermission):
             return False
         if user.is_superuser:
             return True
-        return user.has_role_permission("billing.read") or user.has_role_permission(
-            "billing.write"
-        )
+        return user.has_role_permission("billing.read") or user.has_role_permission("billing.write")

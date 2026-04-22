@@ -4,15 +4,19 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('billing', '0001_initial'),
+        ("billing", "0001_initial"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='tissbatch',
-            name='retorno_xml_file',
-            field=models.CharField(blank=True, help_text='Path to the raw retorno XML from the insurer — stored for audit trail.', max_length=500, verbose_name='Retorno XML (path)'),
+            model_name="tissbatch",
+            name="retorno_xml_file",
+            field=models.CharField(
+                blank=True,
+                help_text="Path to the raw retorno XML from the insurer — stored for audit trail.",
+                max_length=500,
+                verbose_name="Retorno XML (path)",
+            ),
         ),
     ]

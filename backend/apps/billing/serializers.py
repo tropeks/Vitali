@@ -2,7 +2,6 @@
 Billing Serializers — TISS/TUSS
 """
 
-from django.contrib.postgres.search import SearchQuery, SearchRank
 from rest_framework import serializers
 
 from apps.core.models import TUSSCode
@@ -17,8 +16,8 @@ from .models import (
     TISSGuideItem,
 )
 
-
 # ─── TUSS ─────────────────────────────────────────────────────────────────────
+
 
 class TUSSCodeSerializer(serializers.ModelSerializer):
     class Meta:
@@ -28,6 +27,7 @@ class TUSSCodeSerializer(serializers.ModelSerializer):
 
 
 # ─── Providers / Price Tables ─────────────────────────────────────────────────
+
 
 class InsuranceProviderSerializer(serializers.ModelSerializer):
     class Meta:
@@ -55,8 +55,15 @@ class PriceTableSerializer(serializers.ModelSerializer):
     class Meta:
         model = PriceTable
         fields = [
-            "id", "provider", "provider_name", "name",
-            "valid_from", "valid_until", "is_active", "items", "created_at",
+            "id",
+            "provider",
+            "provider_name",
+            "name",
+            "valid_from",
+            "valid_until",
+            "is_active",
+            "items",
+            "created_at",
         ]
         read_only_fields = ["id", "created_at"]
 
@@ -71,19 +78,30 @@ class PriceTableSerializer(serializers.ModelSerializer):
 
 class PriceTableListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for list view — no nested items."""
+
     provider_name = serializers.CharField(source="provider.name", read_only=True)
-    item_count = serializers.IntegerField(read_only=True)  # populated by annotate(item_count=Count("items"))
+    item_count = serializers.IntegerField(
+        read_only=True
+    )  # populated by annotate(item_count=Count("items"))
 
     class Meta:
         model = PriceTable
         fields = [
-            "id", "provider", "provider_name", "name",
-            "valid_from", "valid_until", "is_active", "item_count", "created_at",
+            "id",
+            "provider",
+            "provider_name",
+            "name",
+            "valid_from",
+            "valid_until",
+            "is_active",
+            "item_count",
+            "created_at",
         ]
         read_only_fields = fields
 
 
 # ─── Guides ───────────────────────────────────────────────────────────────────
+
 
 class TISSGuideItemSerializer(serializers.ModelSerializer):
     tuss_code_display = serializers.SerializerMethodField()
@@ -91,8 +109,13 @@ class TISSGuideItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = TISSGuideItem
         fields = [
-            "id", "tuss_code", "tuss_code_display", "description",
-            "quantity", "unit_value", "total_value",
+            "id",
+            "tuss_code",
+            "tuss_code_display",
+            "description",
+            "quantity",
+            "unit_value",
+            "total_value",
         ]
         read_only_fields = ["id", "total_value"]
 
@@ -118,25 +141,43 @@ class TISSGuideSerializer(serializers.ModelSerializer):
     class Meta:
         model = TISSGuide
         fields = [
-            "id", "guide_number", "guide_type", "guide_type_display",
-            "encounter", "patient", "patient_name",
-            "provider", "provider_name", "price_table",
-            "status", "status_display",
-            "insured_card_number", "authorization_number",
-            "competency", "cid10_codes",
-            "total_value", "xml_content",
+            "id",
+            "guide_number",
+            "guide_type",
+            "guide_type_display",
+            "encounter",
+            "patient",
+            "patient_name",
+            "provider",
+            "provider_name",
+            "price_table",
+            "status",
+            "status_display",
+            "insured_card_number",
+            "authorization_number",
+            "competency",
+            "cid10_codes",
+            "total_value",
+            "xml_content",
             "items",
             "glosa_prediction_ids",
-            "created_at", "updated_at",
+            "created_at",
+            "updated_at",
         ]
         read_only_fields = [
-            "id", "guide_number", "status", "xml_content", "total_value",
-            "created_at", "updated_at",
+            "id",
+            "guide_number",
+            "status",
+            "xml_content",
+            "total_value",
+            "created_at",
+            "updated_at",
         ]
 
 
 class TISSGuideListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for list view."""
+
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     guide_type_display = serializers.CharField(source="get_guide_type_display", read_only=True)
     patient_name = serializers.CharField(source="patient.full_name", read_only=True)
@@ -145,37 +186,64 @@ class TISSGuideListSerializer(serializers.ModelSerializer):
     class Meta:
         model = TISSGuide
         fields = [
-            "id", "guide_number", "guide_type", "guide_type_display",
-            "patient", "patient_name", "provider", "provider_name",
-            "competency", "total_value", "status", "status_display",
-            "created_at", "updated_at",
+            "id",
+            "guide_number",
+            "guide_type",
+            "guide_type_display",
+            "patient",
+            "patient_name",
+            "provider",
+            "provider_name",
+            "competency",
+            "total_value",
+            "status",
+            "status_display",
+            "created_at",
+            "updated_at",
         ]
         read_only_fields = fields
 
 
 # ─── Batches ──────────────────────────────────────────────────────────────────
 
+
 class TISSBatchSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     provider_name = serializers.CharField(source="provider.name", read_only=True)
     guide_count = serializers.SerializerMethodField()
     guide_ids = serializers.PrimaryKeyRelatedField(
-        source="guides", many=True, queryset=TISSGuide.objects.all(), write_only=True,
+        source="guides",
+        many=True,
+        queryset=TISSGuide.objects.all(),
+        write_only=True,
         required=False,
     )
 
     class Meta:
         model = TISSBatch
         fields = [
-            "id", "batch_number", "provider", "provider_name",
-            "status", "status_display",
-            "guides", "guide_ids", "guide_count",
-            "total_value", "xml_file",
-            "created_at", "closed_at",
+            "id",
+            "batch_number",
+            "provider",
+            "provider_name",
+            "status",
+            "status_display",
+            "guides",
+            "guide_ids",
+            "guide_count",
+            "total_value",
+            "xml_file",
+            "created_at",
+            "closed_at",
         ]
         read_only_fields = [
-            "id", "batch_number", "status", "total_value", "xml_file",
-            "created_at", "closed_at",
+            "id",
+            "batch_number",
+            "status",
+            "total_value",
+            "xml_file",
+            "created_at",
+            "closed_at",
         ]
 
     def get_guide_count(self, obj):
@@ -183,7 +251,8 @@ class TISSBatchSerializer(serializers.ModelSerializer):
 
     def validate_guide_ids(self, guides):
         provider_id = (
-            self.instance.provider_id if self.instance
+            self.instance.provider_id
+            if self.instance
             else (self.initial_data.get("provider") or None)
         )
         for guide in guides:
@@ -203,6 +272,7 @@ class TISSBatchSerializer(serializers.ModelSerializer):
 
 # ─── Glosas ───────────────────────────────────────────────────────────────────
 
+
 class GlosaSerializer(serializers.ModelSerializer):
     reason_display = serializers.CharField(source="get_reason_code_display", read_only=True)
     appeal_status_display = serializers.CharField(
@@ -213,11 +283,18 @@ class GlosaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Glosa
         fields = [
-            "id", "guide", "guide_number", "guide_item",
-            "reason_code", "reason_display",
-            "reason_description", "value_denied",
-            "appeal_status", "appeal_status_display",
-            "appeal_text", "appeal_filed_at",
+            "id",
+            "guide",
+            "guide_number",
+            "guide_item",
+            "reason_code",
+            "reason_display",
+            "reason_description",
+            "value_denied",
+            "appeal_status",
+            "appeal_status_display",
+            "appeal_text",
+            "appeal_filed_at",
             "created_at",
         ]
         read_only_fields = ["id", "created_at", "appeal_filed_at"]

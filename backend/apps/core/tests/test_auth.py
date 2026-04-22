@@ -3,14 +3,15 @@ Sprint 1 — Auth tests.
 
 Run: python manage.py test apps.core.tests.test_auth
 """
+
 from unittest.mock import patch
 
 from django.core.cache import cache
 from django.test import TestCase, override_settings
-from django_tenants.test.cases import TenantTestCase
 from rest_framework.test import APIClient
 
 from apps.core.models import AuditLog, Role, User
+from apps.test_utils import TenantTestCase
 
 
 @override_settings(
@@ -62,9 +63,7 @@ class AuthTestCase(TenantTestCase):
             {"email": "test@vitali.com", "password": "Str0ng!Pass#2024"},
             format="json",
         )
-        self.assertTrue(
-            AuditLog.objects.filter(action="login_success").exists()
-        )
+        self.assertTrue(AuditLog.objects.filter(action="login_success").exists())
 
     def test_login_wrong_password(self):
         resp = self.client.post(
@@ -81,9 +80,7 @@ class AuthTestCase(TenantTestCase):
             {"email": "test@vitali.com", "password": "wrongpassword"},
             format="json",
         )
-        self.assertTrue(
-            AuditLog.objects.filter(action="login_failed").exists()
-        )
+        self.assertTrue(AuditLog.objects.filter(action="login_failed").exists())
 
     def test_login_nonexistent_user(self):
         resp = self.client.post(
@@ -106,7 +103,8 @@ class AuthTestCase(TenantTestCase):
 
     # ── Account Lockout ───────────────────────────────────────────────────────
 
-    def test_login_account_lockout_after_5_failures(self):
+    @patch("apps.core.views.LoginRateThrottle.allow_request", return_value=True)
+    def test_login_account_lockout_after_5_failures(self, _mock_throttle):
         for _ in range(5):
             self.client.post(
                 self.login_url,
@@ -310,6 +308,7 @@ class TenantRegistrationTestCase(TestCase):
 
     def test_tenant_registration_duplicate_slug(self):
         from apps.core.models import Tenant
+
         Tenant.objects.create(name="Existing", slug="existing-clinic")
         resp = self.client.post(
             self.url,

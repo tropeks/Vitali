@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { getAccessToken } from "@/lib/auth";
 import OnboardingWidget from "@/components/OnboardingWidget";
+import WaitTimeCard from "@/components/dashboard/WaitTimeCard";
 import {
   LineChart,
   Line,
@@ -21,22 +22,21 @@ import {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+type Period = "today" | "week" | "month";
+
 interface Overview {
-  today: {
-    appointments_total: number;
-    appointments_completed: number;
-    appointments_waiting: number;
-    appointments_cancelled: number;
-    new_patients: number;
-    encounters_open: number;
-    encounters_signed: number;
-  };
-  month: {
-    appointments_total: number;
-    new_patients: number;
-    encounters_signed: number;
-    cancellation_rate: number;
-  };
+  period: Period;
+  since: string;
+  appointments_total: number;
+  appointments_completed: number;
+  appointments_waiting: number;
+  appointments_cancelled: number;
+  cancellation_rate: number;
+  new_patients: number;
+  encounters_open: number;
+  encounters_signed: number;
+  revenue: string | number;
+  wait_time_avg_min: number | null;
 }
 
 interface DayRow {
@@ -67,19 +67,23 @@ interface Professional {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-// Analytics requests go through the Next.js catch-all proxy (/api/[...path]/route.ts)
-// to avoid CORS and preserve tenant routing via X-Forwarded-Host.
 const ANALYTICS_BASE = "/api/v1/analytics";
 
 const PIE_COLORS = [
-  "#3b82f6", // blue-500
-  "#22c55e", // green-500
-  "#facc15", // yellow-400
-  "#f87171", // red-400
-  "#a78bfa", // violet-400
-  "#fb923c", // orange-400
-  "#94a3b8", // slate-400
+  "#3b82f6",
+  "#22c55e",
+  "#facc15",
+  "#f87171",
+  "#a78bfa",
+  "#fb923c",
+  "#94a3b8",
 ];
+
+const PERIOD_LABELS: Record<Period, string> = {
+  today: "Hoje",
+  week: "Semana",
+  month: "Mês",
+};
 
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 
@@ -95,10 +99,10 @@ function KPICard({
   color: string;
 }) {
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-      <p className="text-sm text-gray-500">{label}</p>
+    <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+      <p className="text-sm text-slate-500">{label}</p>
       <p className={`text-3xl font-bold mt-1 ${color}`}>{value}</p>
-      {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
+      {sub && <p className="text-xs text-slate-400 mt-1">{sub}</p>}
     </div>
   );
 }
@@ -107,13 +111,13 @@ function KPICard({
 
 function Skeleton({ className }: { className?: string }) {
   return (
-    <div className={`animate-pulse bg-gray-200 rounded ${className ?? ""}`} />
+    <div className={`animate-pulse bg-slate-200 rounded ${className ?? ""}`} />
   );
 }
 
 function KPISkeleton() {
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm space-y-3">
+    <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-3">
       <Skeleton className="h-4 w-32" />
       <Skeleton className="h-9 w-20" />
       <Skeleton className="h-3 w-40" />
@@ -124,7 +128,7 @@ function KPISkeleton() {
 function ChartSkeleton({ height = 240 }: { height?: number }) {
   return (
     <div
-      className="animate-pulse bg-gray-200 rounded-xl"
+      className="animate-pulse bg-slate-200 rounded-xl"
       style={{ height }}
     />
   );
@@ -133,69 +137,77 @@ function ChartSkeleton({ height = 240 }: { height?: number }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
+  const [period, setPeriod] = useState<Period>("month");
   const [overview, setOverview] = useState<Overview | null>(null);
   const [byDay, setByDay] = useState<DayRow[]>([]);
   const [byStatus, setByStatus] = useState<StatusRow[]>([]);
   const [byMonth, setByMonth] = useState<MonthRow[]>([]);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [overviewLoading, setOverviewLoading] = useState(true);
+  const [chartsLoading, setChartsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchAll = async () => {
+  const fetchOverview = useCallback(async (p: Period) => {
     const token = getAccessToken();
-    if (!token) {
-      setError("Sessão expirada. Faça login novamente.");
-      setLoading(false);
-      return;
-    }
-
-    const headers = { Authorization: `Bearer ${token}` };
-
+    if (!token) { setError("Sessão expirada. Faça login novamente."); setOverviewLoading(false); return; }
+    setOverviewLoading(true);
     try {
-      const [ovRes, dayRes, statusRes, monthRes, proRes] = await Promise.all([
-        fetch(`${ANALYTICS_BASE}/overview/`, { headers }),
+      const res = await fetch(`${ANALYTICS_BASE}/overview/?period=${p}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.status === 403) { setOverviewLoading(false); return; }
+      if (!res.ok) throw new Error("Falha ao carregar visão geral");
+      setOverview(await res.json());
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro desconhecido");
+    } finally {
+      setOverviewLoading(false);
+    }
+  }, []);
+
+  const fetchCharts = useCallback(async () => {
+    const token = getAccessToken();
+    if (!token) return;
+    const headers = { Authorization: `Bearer ${token}` };
+    try {
+      const [dayRes, statusRes, monthRes, proRes] = await Promise.all([
         fetch(`${ANALYTICS_BASE}/appointments-by-day/?days=30`, { headers }),
         fetch(`${ANALYTICS_BASE}/appointments-by-status/`, { headers }),
         fetch(`${ANALYTICS_BASE}/patients-by-month/?months=6`, { headers }),
         fetch(`${ANALYTICS_BASE}/top-professionals/?limit=5`, { headers }),
       ]);
-
-      if (ovRes.status === 403) {
-        // Analytics module not active for this tenant — show empty dashboard
-        setError(null);
-        setLoading(false);
-        return;
-      }
-      if (!ovRes.ok) throw new Error("Falha ao carregar dados");
-
-      const [ovData, dayData, statusData, monthData, proData] =
-        await Promise.all([
-          ovRes.json(),
-          dayRes.json(),
-          statusRes.json(),
-          monthRes.json(),
-          proRes.json(),
-        ]);
-
-      setOverview(ovData);
+      const [dayData, statusData, monthData, proData] = await Promise.all([
+        dayRes.ok ? dayRes.json() : [],
+        statusRes.ok ? statusRes.json() : [],
+        monthRes.ok ? monthRes.json() : [],
+        proRes.ok ? proRes.json() : [],
+      ]);
       setByDay(dayData);
       setByStatus(statusData);
       setByMonth(monthData);
       setProfessionals(proData);
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Erro desconhecido");
+    } catch {
+      // fail-open: charts show empty state
     } finally {
-      setLoading(false);
+      setChartsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchAll();
-    const interval = setInterval(fetchAll, 60_000);
+    fetchCharts();
+    const interval = setInterval(fetchCharts, 60_000);
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchCharts]);
+
+  useEffect(() => {
+    fetchOverview(period);
+  }, [period, fetchOverview]);
+
+  const fmtRevenue = (val: string | number | undefined) => {
+    const n = parseFloat(String(val ?? 0));
+    return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+  };
 
   const dateLabel = new Date().toLocaleDateString("pt-BR", {
     weekday: "long",
@@ -204,7 +216,7 @@ export default function DashboardPage() {
     year: "numeric",
   });
 
-  if (!loading && error) {
+  if (!overviewLoading && !chartsLoading && error) {
     return (
       <div className="space-y-6">
         <OnboardingWidget />
@@ -221,69 +233,80 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* ── Onboarding widget (hidden when all steps done) ── */}
       <OnboardingWidget />
 
       {/* ── Header ── */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-        <p className="text-slate-500 text-sm mt-1">
-          Visão geral do dia — {dateLabel}
-        </p>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
+          <p className="text-slate-500 text-sm mt-1">{dateLabel}</p>
+        </div>
+
+        {/* Period toggle */}
+        <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
+          {(["today", "week", "month"] as Period[]).map((p) => (
+            <button
+              key={p}
+              onClick={() => setPeriod(p)}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                period === p
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              {PERIOD_LABELS[p]}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ── KPI Cards ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        {loading ? (
-          Array.from({ length: 4 }).map((_, i) => <KPISkeleton key={i} />)
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
+        {overviewLoading ? (
+          Array.from({ length: 5 }).map((_, i) => <KPISkeleton key={i} />)
         ) : (
           <>
             <KPICard
-              label="Consultas Hoje"
-              value={overview?.today.appointments_total ?? 0}
-              sub={`${overview?.today.appointments_completed ?? 0} concluídas · ${overview?.today.appointments_waiting ?? 0} aguardando`}
-              color="text-blue-500"
+              label={`Consultas — ${PERIOD_LABELS[period]}`}
+              value={overview?.appointments_total ?? 0}
+              sub={`${overview?.appointments_completed ?? 0} concluídas · ${overview?.appointments_waiting ?? 0} aguardando`}
+              color="text-blue-600"
             />
             <KPICard
-              label="Pacientes Aguardando"
-              value={overview?.today.appointments_waiting ?? 0}
-              sub={`${overview?.today.appointments_cancelled ?? 0} cancelamentos hoje`}
-              color="text-yellow-500"
+              label="Novos Pacientes"
+              value={overview?.new_patients ?? 0}
+              sub={`${overview?.cancellation_rate ?? 0}% taxa de cancelamento`}
+              color="text-green-600"
             />
             <KPICard
-              label="Novas Consultas Mês"
-              value={overview?.month.appointments_total ?? 0}
-              sub={`${overview?.month.new_patients ?? 0} novos pacientes`}
-              color="text-green-500"
+              label="Consultas Assinadas"
+              value={overview?.encounters_signed ?? 0}
+              sub={`${overview?.encounters_open ?? 0} em aberto`}
+              color="text-slate-700"
             />
             <KPICard
-              label="Taxa de Cancelamento"
-              value={`${overview?.month.cancellation_rate ?? 0}%`}
-              sub="No mês atual"
-              color="text-red-500"
+              label="Receita (guias pagas)"
+              value={fmtRevenue(overview?.revenue)}
+              sub={`Período: ${PERIOD_LABELS[period].toLowerCase()}`}
+              color="text-emerald-600"
             />
+            <WaitTimeCard waitTimeAvgMin={overview?.wait_time_avg_min} loading={overviewLoading} />
           </>
         )}
       </div>
 
       {/* ── Charts Row 1: Line + Donut ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Line chart — Consultas por Dia */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
           <h2 className="font-semibold text-slate-900 mb-4">
             Consultas por Dia{" "}
-            <span className="text-xs text-slate-400 font-normal">
-              (últimos 30 dias)
-            </span>
+            <span className="text-xs text-slate-400 font-normal">(últimos 30 dias)</span>
           </h2>
-          {loading ? (
+          {chartsLoading ? (
             <ChartSkeleton height={240} />
           ) : (
             <ResponsiveContainer width="100%" height={240}>
-              <LineChart
-                data={byDay}
-                margin={{ top: 4, right: 16, left: 0, bottom: 0 }}
-              >
+              <LineChart data={byDay} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                 <XAxis
                   dataKey="date"
@@ -294,10 +317,7 @@ export default function DashboardPage() {
                   }}
                   interval={4}
                 />
-                <YAxis
-                  tick={{ fontSize: 11, fill: "#94a3b8" }}
-                  allowDecimals={false}
-                />
+                <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} allowDecimals={false} />
                 <Tooltip
                   labelFormatter={(v: string) =>
                     new Date(v + "T00:00:00").toLocaleDateString("pt-BR")
@@ -306,48 +326,23 @@ export default function DashboardPage() {
                 <Legend
                   wrapperStyle={{ fontSize: 12 }}
                   formatter={(value: string) =>
-                    value === "total"
-                      ? "Total"
-                      : value === "completed"
-                      ? "Concluídas"
-                      : "Canceladas"
+                    value === "total" ? "Total" : value === "completed" ? "Concluídas" : "Canceladas"
                   }
                 />
-                <Line
-                  type="monotone"
-                  dataKey="total"
-                  stroke="#3b82f6"
-                  strokeWidth={2}
-                  dot={false}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="completed"
-                  stroke="#22c55e"
-                  strokeWidth={2}
-                  dot={false}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="cancelled"
-                  stroke="#f87171"
-                  strokeWidth={2}
-                  dot={false}
-                />
+                <Line type="monotone" dataKey="total" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="completed" stroke="#22c55e" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="cancelled" stroke="#f87171" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           )}
         </div>
 
-        {/* Donut chart — Status das Consultas */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
           <h2 className="font-semibold text-slate-900 mb-4">
             Status das Consultas{" "}
-            <span className="text-xs text-slate-400 font-normal">
-              (mês atual)
-            </span>
+            <span className="text-xs text-slate-400 font-normal">(mês atual)</span>
           </h2>
-          {loading ? (
+          {chartsLoading ? (
             <ChartSkeleton height={240} />
           ) : (
             <ResponsiveContainer width="100%" height={240}>
@@ -363,18 +358,11 @@ export default function DashboardPage() {
                   paddingAngle={2}
                 >
                   {byStatus.map((_, idx) => (
-                    <Cell
-                      key={idx}
-                      fill={PIE_COLORS[idx % PIE_COLORS.length]}
-                    />
+                    <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
                   ))}
                 </Pie>
                 <Tooltip formatter={(value: number) => [value, "Consultas"]} />
-                <Legend
-                  wrapperStyle={{ fontSize: 11 }}
-                  iconType="circle"
-                  iconSize={8}
-                />
+                <Legend wrapperStyle={{ fontSize: 11 }} iconType="circle" iconSize={8} />
               </PieChart>
             </ResponsiveContainer>
           )}
@@ -383,52 +371,32 @@ export default function DashboardPage() {
 
       {/* ── Charts Row 2: Bar + Table ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Bar chart — Novos Pacientes por Mês */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
           <h2 className="font-semibold text-slate-900 mb-4">
             Novos Pacientes por Mês{" "}
-            <span className="text-xs text-slate-400 font-normal">
-              (últimos 6 meses)
-            </span>
+            <span className="text-xs text-slate-400 font-normal">(últimos 6 meses)</span>
           </h2>
-          {loading ? (
+          {chartsLoading ? (
             <ChartSkeleton height={220} />
           ) : (
             <ResponsiveContainer width="100%" height={220}>
-              <BarChart
-                data={byMonth}
-                margin={{ top: 4, right: 16, left: 0, bottom: 0 }}
-              >
+              <BarChart data={byMonth} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis
-                  dataKey="label"
-                  tick={{ fontSize: 11, fill: "#94a3b8" }}
-                />
-                <YAxis
-                  tick={{ fontSize: 11, fill: "#94a3b8" }}
-                  allowDecimals={false}
-                />
+                <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#94a3b8" }} />
+                <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} allowDecimals={false} />
                 <Tooltip formatter={(value: number) => [value, "Pacientes"]} />
-                <Bar
-                  dataKey="count"
-                  name="Pacientes"
-                  fill="#3b82f6"
-                  radius={[4, 4, 0, 0]}
-                />
+                <Bar dataKey="count" name="Pacientes" fill="#3b82f6" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
         </div>
 
-        {/* Table — Top Profissionais */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
           <h2 className="font-semibold text-slate-900 mb-4">
             Top Profissionais{" "}
-            <span className="text-xs text-slate-400 font-normal">
-              (consultas concluídas este mês)
-            </span>
+            <span className="text-xs text-slate-400 font-normal">(consultas concluídas este mês)</span>
           </h2>
-          {loading ? (
+          {chartsLoading ? (
             <div className="space-y-3">
               {Array.from({ length: 5 }).map((_, i) => (
                 <Skeleton key={i} className="h-10 w-full" />
@@ -438,31 +406,28 @@ export default function DashboardPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-100">
-                    <th className="text-left py-2 pr-3 text-xs font-medium text-gray-500 uppercase tracking-wide">
+                  <tr className="border-b border-slate-100">
+                    <th className="text-left py-2 pr-3 text-xs font-medium text-slate-500 uppercase tracking-wide">
                       Profissional
                     </th>
-                    <th className="text-left py-2 pr-3 text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    <th className="text-left py-2 pr-3 text-xs font-medium text-slate-500 uppercase tracking-wide">
                       Especialidade
                     </th>
-                    <th className="text-right py-2 text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    <th className="text-right py-2 text-xs font-medium text-slate-500 uppercase tracking-wide">
                       Concluídas
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody className="divide-y divide-slate-50">
                   {professionals.length === 0 ? (
                     <tr>
-                      <td
-                        colSpan={3}
-                        className="py-6 text-center text-gray-400 text-sm"
-                      >
+                      <td colSpan={3} className="py-6 text-center text-slate-400 text-sm">
                         Nenhum dado disponível
                       </td>
                     </tr>
                   ) : (
                     professionals.map((p) => (
-                      <tr key={p.professional_id} className="hover:bg-gray-50">
+                      <tr key={p.professional_id} className="hover:bg-slate-50">
                         <td className="py-2.5 pr-3 font-medium text-slate-800 truncate max-w-[140px]">
                           {p.name}
                         </td>

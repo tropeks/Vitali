@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { getAccessToken } from '@/lib/auth';
+import { CID10Suggest } from '@/components/emr/CID10Suggest';
 
 interface SOAPNote {
   id: number;
@@ -17,6 +18,7 @@ interface SOAPNote {
 interface SOAPEditorProps {
   soapNote: SOAPNote | null;
   readOnly?: boolean;
+  encounterId?: string;
 }
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
@@ -38,13 +40,14 @@ const FIELDS = [
   { key: 'plan', label: 'P — Plano', placeholder: 'Conduta terapêutica, prescrição, exames solicitados, data de retorno...' },
 ] as const;
 
-export function SOAPEditor({ soapNote, readOnly = false }: SOAPEditorProps) {
+export function SOAPEditor({ soapNote, readOnly = false, encounterId }: SOAPEditorProps) {
   const [values, setValues] = useState({
     subjective: soapNote?.subjective ?? '',
     objective: soapNote?.objective ?? '',
     assessment: soapNote?.assessment ?? '',
     plan: soapNote?.plan ?? '',
   });
+  const [currentCid10, setCurrentCid10] = useState<string>(soapNote?.cid10_codes?.[0] ?? '');
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingRef = useRef<typeof values>(values);
@@ -89,16 +92,29 @@ export function SOAPEditor({ soapNote, readOnly = false }: SOAPEditorProps) {
       {FIELDS.map(({ key, label, placeholder }) => (
         <div key={key} className="space-y-1">
           <label className="block text-sm font-medium text-gray-700">{label}</label>
-          <textarea
-            value={values[key]}
-            onChange={e => handleChange(key, e.target.value)}
-            readOnly={readOnly}
-            placeholder={readOnly ? '' : placeholder}
-            rows={4}
-            className={`w-full border rounded-lg px-3 py-2 text-sm resize-y focus:ring-2 focus:ring-blue-500 outline-none transition-colors ${
-              readOnly ? 'bg-gray-50 text-gray-600 cursor-default' : 'bg-white'
-            }`}
-          />
+          {key === 'assessment' && encounterId && !readOnly ? (
+            <CID10Suggest
+              encounterId={encounterId}
+              value={values[key]}
+              onChange={val => handleChange('assessment', val)}
+              placeholder={placeholder}
+              rows={4}
+              readOnly={readOnly}
+              currentCid10={currentCid10}
+              onCid10Change={setCurrentCid10}
+            />
+          ) : (
+            <textarea
+              value={values[key]}
+              onChange={e => handleChange(key, e.target.value)}
+              readOnly={readOnly}
+              placeholder={readOnly ? '' : placeholder}
+              rows={4}
+              className={`w-full border rounded-lg px-3 py-2 text-sm resize-y focus:ring-2 focus:ring-blue-500 outline-none transition-colors ${
+                readOnly ? 'bg-gray-50 text-gray-600 cursor-default' : 'bg-white border-slate-200'
+              }`}
+            />
+          )}
         </div>
       ))}
     </div>

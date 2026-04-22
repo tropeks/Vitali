@@ -1,9 +1,12 @@
 """Core URLs — tenant schema routes."""
+
 from django.urls import path
 
 from . import views
-from .views_platform import TenantSubscriptionView
+from .views_dpa import DPASignView, DPAStatusView
+from .views_mfa import MFADisableView, MFALoginView, MFASetupView, MFAVerifyView
 from .views_onboarding import OnboardingView
+from .views_platform import TenantSubscriptionView
 
 app_name = "core"
 
@@ -13,6 +16,11 @@ urlpatterns = [
     path("auth/logout", views.LogoutView.as_view(), name="logout"),
     path("auth/refresh", views.TokenRefreshView.as_view(), name="token-refresh"),
     path("auth/password", views.ChangePasswordView.as_view(), name="change-password"),
+    # MFA (S-062)
+    path("auth/mfa/setup/", MFASetupView.as_view(), name="mfa-setup"),
+    path("auth/mfa/verify/", MFAVerifyView.as_view(), name="mfa-verify"),
+    path("auth/mfa/login/", MFALoginView.as_view(), name="mfa-login"),
+    path("auth/mfa/disable/", MFADisableView.as_view(), name="mfa-disable"),
     # Current user
     path("me", views.MeView.as_view(), name="me"),
     # Users
@@ -28,4 +36,7 @@ urlpatterns = [
     path("onboarding/", OnboardingView.as_view(), name="onboarding"),
     # AI: TUSS sync status (admin-only)
     path("ai/tuss-sync-status/", views.TUSSSyncStatusView.as_view(), name="tuss-sync-status"),
+    # DPA (S-070)
+    path("settings/dpa/", DPAStatusView.as_view(), name="dpa-status"),
+    path("settings/dpa/sign/", DPASignView.as_view(), name="dpa-sign"),
 ]

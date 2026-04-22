@@ -1,8 +1,10 @@
 """
 Vitali — Production Settings
 """
-from .base import *  # noqa: F401, F403
+
 import environ
+
+from .base import *  # noqa: F401, F403
 
 env = environ.Env()
 
@@ -24,8 +26,9 @@ CSRF_COOKIE_SECURE = True
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
 
 # Upload size limits (protect against large payload DoS)
-DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024   # 10 MB
-FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024   # 10 MB
+# S-073: raised to 25 MB to accommodate Whisper audio uploads
+DATA_UPLOAD_MAX_MEMORY_SIZE = 26_214_400  # 25 MB for Whisper audio upload
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10 MB
 
 # ─── Database — connection pooling ───────────────────────────────────────────
 # CONN_MAX_AGE=60: Django reuses PG connections for up to 60s per thread,
@@ -111,8 +114,8 @@ LOGGING = {
 SENTRY_DSN = env("SENTRY_DSN", default="")
 if SENTRY_DSN:
     import sentry_sdk
-    from sentry_sdk.integrations.django import DjangoIntegration
     from sentry_sdk.integrations.celery import CeleryIntegration
+    from sentry_sdk.integrations.django import DjangoIntegration
 
     def _sentry_before_send(event, hint):
         """
@@ -123,6 +126,7 @@ if SENTRY_DSN:
         """
         try:
             from django.db import connection
+
             tenant = getattr(connection, "tenant", None)
             if tenant:
                 event.setdefault("tags", {})["tenant"] = tenant.schema_name

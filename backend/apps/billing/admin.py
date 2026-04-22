@@ -49,8 +49,14 @@ class TISSGuideItemInline(admin.TabularInline):
 @admin.register(TISSGuide)
 class TISSGuideAdmin(admin.ModelAdmin):
     list_display = [
-        "guide_number", "guide_type", "patient", "provider",
-        "competency", "total_value", "status", "created_at",
+        "guide_number",
+        "guide_type",
+        "patient",
+        "provider",
+        "competency",
+        "total_value",
+        "status",
+        "created_at",
     ]
     list_filter = ["status", "guide_type", "provider", "competency"]
     search_fields = ["guide_number", "patient__full_name", "insured_card_number"]
@@ -69,7 +75,12 @@ class GlosaInline(admin.TabularInline):
 @admin.register(TISSBatch)
 class TISSBatchAdmin(admin.ModelAdmin):
     list_display = [
-        "batch_number", "provider", "status", "total_value", "created_at", "closed_at",
+        "batch_number",
+        "provider",
+        "status",
+        "total_value",
+        "created_at",
+        "closed_at",
     ]
     list_filter = ["status", "provider"]
     search_fields = ["batch_number", "provider__name"]
@@ -81,8 +92,12 @@ class TISSBatchAdmin(admin.ModelAdmin):
 @admin.register(Glosa)
 class GlosaAdmin(admin.ModelAdmin):
     list_display = [
-        "guide", "reason_code", "get_reason_code_display", "value_denied",
-        "appeal_status", "created_at",
+        "guide",
+        "reason_code",
+        "get_reason_code_display",
+        "value_denied",
+        "appeal_status",
+        "created_at",
     ]
     list_filter = ["reason_code", "appeal_status"]
     search_fields = ["guide__guide_number", "reason_description"]

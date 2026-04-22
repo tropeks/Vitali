@@ -11,6 +11,7 @@ Key rules:
 - Never raise on Evolution API errors in the send path — log + swallow so webhook
   processing continues. Webhook must always return 200.
 """
+
 import hashlib
 import hmac
 import logging
@@ -57,7 +58,9 @@ class WhatsAppGateway(ABC):
 
 class EvolutionAPIGateway(WhatsAppGateway):
     def __init__(self):
-        self._base_url = getattr(settings, "WHATSAPP_EVOLUTION_URL", "http://evolution-api:8080").rstrip("/")
+        self._base_url = getattr(
+            settings, "WHATSAPP_EVOLUTION_URL", "http://evolution-api:8080"
+        ).rstrip("/")
         self._api_key = getattr(settings, "WHATSAPP_EVOLUTION_API_KEY", "")
         self._instance = getattr(settings, "WHATSAPP_INSTANCE_NAME", "vitali")
         self._headers = {
@@ -70,7 +73,9 @@ class EvolutionAPIGateway(WhatsAppGateway):
         logger.debug("Evolution API POST %s payload=%r", path, payload)
         try:
             resp = requests.post(url, json=payload, headers=self._headers, timeout=10)
-            logger.debug("Evolution API response status=%d body=%r", resp.status_code, resp.text[:200])
+            logger.debug(
+                "Evolution API response status=%d body=%r", resp.status_code, resp.text[:200]
+            )
             resp.raise_for_status()
             return resp.json()
         except requests.Timeout:
@@ -104,9 +109,18 @@ class EvolutionAPIGateway(WhatsAppGateway):
     def send_template(self, to: str, template_name: str, params: list[str]) -> None:
         self._post(
             f"/message/sendTemplate/{self._instance}",
-            {"number": to, "template": {"name": template_name, "components": [
-                {"type": "body", "parameters": [{"type": "text", "text": p} for p in params]}
-            ]}},
+            {
+                "number": to,
+                "template": {
+                    "name": template_name,
+                    "components": [
+                        {
+                            "type": "body",
+                            "parameters": [{"type": "text", "text": p} for p in params],
+                        }
+                    ],
+                },
+            },
         )
 
     def health_check(self) -> dict:
@@ -143,7 +157,7 @@ def verify_webhook_signature(payload_bytes: bytes, signature_header: str) -> boo
     if not signature_header or not signature_header.startswith("sha256="):
         return False
     expected = hmac.new(secret.encode(), payload_bytes, hashlib.sha256).hexdigest()
-    provided = signature_header[len("sha256="):]
+    provided = signature_header[len("sha256=") :]
     return hmac.compare_digest(expected, provided)
 
 

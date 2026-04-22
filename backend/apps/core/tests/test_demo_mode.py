@@ -2,15 +2,15 @@
 S-043: DemoModeMiddleware tests.
 Run: python manage.py test apps.core.tests.test_demo_mode
 """
+
 from django.conf import settings as django_settings
-from django_tenants.test.cases import TenantTestCase
 from rest_framework.test import APIClient
 
 from apps.core.models import Role, User
+from apps.test_utils import TenantTestCase
 
 
 class DemoModeMiddlewareTestCase(TenantTestCase):
-
     def setUp(self):
         # @override_settings doesn't reliably propagate into middleware with TenantTestCase.
         # Directly patch the settings attribute and restore it via addCleanup.
@@ -40,6 +40,7 @@ class DemoModeMiddlewareTestCase(TenantTestCase):
     def test_patch_blocked_in_demo_mode(self):
         """PATCH requests return 403 in demo mode."""
         import uuid
+
         response = self.client.patch(f"/api/v1/patients/{uuid.uuid4()}/", {}, format="json")
         self.assertEqual(response.status_code, 403)
 
@@ -64,7 +65,6 @@ class DemoModeMiddlewareTestCase(TenantTestCase):
 
 
 class DemoModeOffTestCase(TenantTestCase):
-
     def setUp(self):
         django_settings.DEMO_MODE = False
         self.addCleanup(setattr, django_settings, "DEMO_MODE", False)

@@ -1,56 +1,94 @@
 from decimal import Decimal
 
 from rest_framework import serializers
+
 from .models import (
-    Drug, Material, StockItem, StockMovement, Dispensation, DispensationLot,
-    Supplier, PurchaseOrder, PurchaseOrderItem,
+    Dispensation,
+    DispensationLot,
+    Drug,
+    Material,
+    PurchaseOrder,
+    PurchaseOrderItem,
+    StockItem,
+    StockMovement,
+    Supplier,
 )
 
 
 class DrugSerializer(serializers.ModelSerializer):
     controlled_class_display = serializers.CharField(
-        source='get_controlled_class_display', read_only=True
+        source="get_controlled_class_display", read_only=True
     )
     is_controlled = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Drug
         fields = [
-            'id', 'name', 'generic_name', 'anvisa_code', 'barcode',
-            'dosage_form', 'concentration', 'unit_of_measure',
-            'controlled_class', 'controlled_class_display', 'is_controlled',
-            'is_active', 'notes', 'created_at', 'updated_at',
+            "id",
+            "name",
+            "generic_name",
+            "anvisa_code",
+            "barcode",
+            "dosage_form",
+            "concentration",
+            "unit_of_measure",
+            "controlled_class",
+            "controlled_class_display",
+            "is_controlled",
+            "is_active",
+            "notes",
+            "created_at",
+            "updated_at",
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ["id", "created_at", "updated_at"]
 
 
 class MaterialSerializer(serializers.ModelSerializer):
     class Meta:
         model = Material
         fields = [
-            'id', 'name', 'category', 'barcode', 'unit_of_measure',
-            'is_active', 'notes', 'created_at', 'updated_at',
+            "id",
+            "name",
+            "category",
+            "barcode",
+            "unit_of_measure",
+            "is_active",
+            "notes",
+            "created_at",
+            "updated_at",
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ["id", "created_at", "updated_at"]
 
 
 class StockItemSerializer(serializers.ModelSerializer):
-    drug_name = serializers.CharField(source='drug.name', read_only=True)
-    material_name = serializers.CharField(source='material.name', read_only=True)
+    drug_name = serializers.CharField(source="drug.name", read_only=True)
+    material_name = serializers.CharField(source="material.name", read_only=True)
     is_expired = serializers.SerializerMethodField()
     is_low_stock = serializers.SerializerMethodField()
 
     class Meta:
         model = StockItem
         fields = [
-            'id', 'drug', 'drug_name', 'material', 'material_name',
-            'lot_number', 'expiry_date', 'quantity', 'min_stock',
-            'location', 'is_expired', 'is_low_stock', 'created_at', 'updated_at',
+            "id",
+            "drug",
+            "drug_name",
+            "material",
+            "material_name",
+            "lot_number",
+            "expiry_date",
+            "quantity",
+            "min_stock",
+            "location",
+            "is_expired",
+            "is_low_stock",
+            "created_at",
+            "updated_at",
         ]
-        read_only_fields = ['id', 'quantity', 'created_at', 'updated_at']
+        read_only_fields = ["id", "quantity", "created_at", "updated_at"]
 
     def get_is_expired(self, obj):
         from django.utils import timezone
+
         if obj.expiry_date:
             return obj.expiry_date < timezone.now().date()
         return False
@@ -61,18 +99,25 @@ class StockItemSerializer(serializers.ModelSerializer):
 
 class StockMovementSerializer(serializers.ModelSerializer):
     movement_type_display = serializers.CharField(
-        source='get_movement_type_display', read_only=True
+        source="get_movement_type_display", read_only=True
     )
     performed_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = StockMovement
         fields = [
-            'id', 'stock_item', 'movement_type', 'movement_type_display',
-            'quantity', 'reference', 'notes', 'performed_by', 'performed_by_name',
-            'created_at',
+            "id",
+            "stock_item",
+            "movement_type",
+            "movement_type_display",
+            "quantity",
+            "reference",
+            "notes",
+            "performed_by",
+            "performed_by_name",
+            "created_at",
         ]
-        read_only_fields = ['id', 'created_at']
+        read_only_fields = ["id", "created_at"]
 
     def get_performed_by_name(self, obj):
         if obj.performed_by:
@@ -80,23 +125,26 @@ class StockMovementSerializer(serializers.ModelSerializer):
         return None
 
     def validate(self, attrs):
-        movement_type = attrs.get('movement_type')
-        stock_item = attrs.get('stock_item')
+        movement_type = attrs.get("movement_type")
+        stock_item = attrs.get("stock_item")
         from django.utils import timezone
+
         # Dispense movements must only be created through DispenseView (FEFO + Rx gate)
-        if movement_type == 'dispense':
+        if movement_type == "dispense":
             raise serializers.ValidationError(
-                {'movement_type': 'Dispensações devem ser registradas via /pharmacy/dispense/.'}
+                {"movement_type": "Dispensações devem ser registradas via /pharmacy/dispense/."}
             )
-        if movement_type == 'purchase_order_receiving':
+        if movement_type == "purchase_order_receiving":
             raise serializers.ValidationError(
-                {'movement_type': 'Recebimentos de PO devem ser registrados via /pharmacy/purchase-orders/{id}/receive/.'}
+                {
+                    "movement_type": "Recebimentos de PO devem ser registrados via /pharmacy/purchase-orders/{id}/receive/."
+                }
             )
         # Validate expiry_date for entries
-        if movement_type == 'entry' and stock_item and stock_item.expiry_date:
+        if movement_type == "entry" and stock_item and stock_item.expiry_date:
             if stock_item.expiry_date < timezone.now().date():
                 raise serializers.ValidationError(
-                    {'expiry_date': 'Lote já vencido não pode ser adicionado ao estoque.'}
+                    {"expiry_date": "Lote já vencido não pode ser adicionado ao estoque."}
                 )
         return attrs
 
@@ -104,26 +152,32 @@ class StockMovementSerializer(serializers.ModelSerializer):
 class DispensationLotSerializer(serializers.ModelSerializer):
     class Meta:
         model = DispensationLot
-        fields = ['id', 'stock_item', 'quantity']
-        read_only_fields = ['id']
+        fields = ["id", "stock_item", "quantity"]
+        read_only_fields = ["id"]
 
 
 class DispensationSerializer(serializers.ModelSerializer):
     lots = DispensationLotSerializer(many=True, read_only=True)
-    total_quantity = serializers.DecimalField(
-        max_digits=12, decimal_places=3, read_only=True
-    )
+    total_quantity = serializers.DecimalField(max_digits=12, decimal_places=3, read_only=True)
     dispensed_by_name = serializers.SerializerMethodField()
     drug_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Dispensation
         fields = [
-            'id', 'prescription', 'prescription_item', 'patient',
-            'dispensed_by', 'dispensed_by_name', 'drug_name',
-            'notes', 'dispensed_at', 'lots', 'total_quantity',
+            "id",
+            "prescription",
+            "prescription_item",
+            "patient",
+            "dispensed_by",
+            "dispensed_by_name",
+            "drug_name",
+            "notes",
+            "dispensed_at",
+            "lots",
+            "total_quantity",
         ]
-        read_only_fields = ['id', 'dispensed_at', 'dispensed_by']
+        read_only_fields = ["id", "dispensed_at", "dispensed_by"]
 
     def get_dispensed_by_name(self, obj):
         return obj.dispensed_by.full_name or obj.dispensed_by.email
@@ -137,35 +191,51 @@ class DispensationSerializer(serializers.ModelSerializer):
 
 class DispenseRequestSerializer(serializers.Serializer):
     """Input for POST /pharmacy/dispense/ — the action serializer."""
+
     prescription_item_id = serializers.UUIDField()
-    quantity = serializers.DecimalField(max_digits=12, decimal_places=3, min_value=Decimal('0.001'))
-    notes = serializers.CharField(required=False, allow_blank=True, default='')
+    quantity = serializers.DecimalField(max_digits=12, decimal_places=3, min_value=Decimal("0.001"))
+    notes = serializers.CharField(required=False, allow_blank=True, default="")
 
 
 # ─── S-042: Purchase Orders ───────────────────────────────────────────────────
 
+
 class SupplierSerializer(serializers.ModelSerializer):
     class Meta:
         model = Supplier
-        fields = ('id', 'name', 'cnpj', 'contact_name', 'contact_email', 'contact_phone', 'is_active')
-        read_only_fields = ('id',)
+        fields = (
+            "id",
+            "name",
+            "cnpj",
+            "contact_name",
+            "contact_email",
+            "contact_phone",
+            "is_active",
+        )
+        read_only_fields = ("id",)
 
 
 class PurchaseOrderItemSerializer(serializers.ModelSerializer):
-    drug_name = serializers.CharField(source='drug.name', read_only=True, default=None)
-    material_name = serializers.CharField(source='material.name', read_only=True, default=None)
+    drug_name = serializers.CharField(source="drug.name", read_only=True, default=None)
+    material_name = serializers.CharField(source="material.name", read_only=True, default=None)
 
     class Meta:
         model = PurchaseOrderItem
         fields = (
-            'id', 'drug', 'drug_name', 'material', 'material_name',
-            'quantity_ordered', 'quantity_received', 'unit_price',
+            "id",
+            "drug",
+            "drug_name",
+            "material",
+            "material_name",
+            "quantity_ordered",
+            "quantity_received",
+            "unit_price",
         )
-        read_only_fields = ('id', 'quantity_received')
+        read_only_fields = ("id", "quantity_received")
 
     def validate(self, data):
-        drug = data.get('drug')
-        material = data.get('material')
+        drug = data.get("drug")
+        material = data.get("material")
         if drug and material:
             raise serializers.ValidationError(
                 "Um item de pedido de compra deve ter medicamento OU material, não ambos."
@@ -179,26 +249,34 @@ class PurchaseOrderItemSerializer(serializers.ModelSerializer):
 
 class PurchaseOrderSerializer(serializers.ModelSerializer):
     items = PurchaseOrderItemSerializer(many=True, required=False, default=[])
-    supplier_name = serializers.CharField(source='supplier.name', read_only=True)
+    supplier_name = serializers.CharField(source="supplier.name", read_only=True)
     item_count = serializers.SerializerMethodField()
 
     class Meta:
         model = PurchaseOrder
         fields = (
-            'id', 'supplier', 'supplier_name', 'status', 'expected_date',
-            'notes', 'created_by', 'created_at', 'updated_at',
-            'items', 'item_count',
+            "id",
+            "supplier",
+            "supplier_name",
+            "status",
+            "expected_date",
+            "notes",
+            "created_by",
+            "created_at",
+            "updated_at",
+            "items",
+            "item_count",
         )
-        read_only_fields = ('id', 'created_by', 'created_at', 'updated_at', 'item_count')
+        read_only_fields = ("id", "created_by", "created_at", "updated_at", "item_count")
 
     def get_item_count(self, obj):
         # Use pre-annotated count when available (avoids N+1 on list endpoint)
-        if hasattr(obj, 'item_count'):
+        if hasattr(obj, "item_count"):
             return obj.item_count
         return obj.items.count()
 
     def create(self, validated_data):
-        items_data = validated_data.pop('items', [])
+        items_data = validated_data.pop("items", [])
         po = PurchaseOrder.objects.create(**validated_data)
         for item_data in items_data:
             PurchaseOrderItem.objects.create(po=po, **item_data)
@@ -207,20 +285,22 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
 
 class POReceiveItemSerializer(serializers.Serializer):
     """Input for each item in the receive action."""
+
     item_id = serializers.UUIDField()
     quantity_received = serializers.DecimalField(
-        max_digits=12, decimal_places=3, min_value=Decimal('0.001')
+        max_digits=12, decimal_places=3, min_value=Decimal("0.001")
     )
-    lot_number = serializers.CharField(required=False, allow_blank=True, default='')
+    lot_number = serializers.CharField(required=False, allow_blank=True, default="")
     expiry_date = serializers.DateField(required=False, allow_null=True, default=None)
 
 
 class POReceiveSerializer(serializers.Serializer):
     """Input for POST /pharmacy/purchase-orders/{id}/receive/"""
+
     items = POReceiveItemSerializer(many=True, min_length=1)
 
     def validate_items(self, value):
-        ids = [str(item['item_id']) for item in value]
+        ids = [str(item["item_id"]) for item in value]
         if len(ids) != len(set(ids)):
             raise serializers.ValidationError(
                 "item_id duplicado: cada item só pode aparecer uma vez por recebimento."

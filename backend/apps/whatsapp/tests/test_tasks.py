@@ -1,18 +1,20 @@
 """
 Tests for Celery tasks — reminder sending, no-show marking, satisfaction surveys.
 """
+
 from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 from django.utils import timezone
-from django_tenants.test.cases import TenantTestCase
 
 from apps.core.models import Role, User
+from apps.test_utils import TenantTestCase
 from apps.whatsapp.models import ScheduledReminder, WhatsAppContact
 
 
 def _make_patient_with_contact(phone="5511900000200", opt_in=True):
     from apps.emr.models import Patient
+
     patient = Patient.objects.create(
         full_name="Teste Reminder",
         cpf="52998224725",
@@ -31,6 +33,7 @@ def _make_patient_with_contact(phone="5511900000200", opt_in=True):
 
 def _make_professional():
     from apps.emr.models import Professional, ScheduleConfig
+
     role, _ = Role.objects.get_or_create(name="medico", defaults={"permissions": []})
     user = User.objects.create_user(
         email=f"pro{timezone.now().timestamp()}@test.com",
@@ -56,8 +59,10 @@ def _make_professional():
 
 
 def _make_appointment(patient, professional, start_offset_hours=25, status="scheduled"):
-    from apps.emr.models import Appointment
     from datetime import timedelta
+
+    from apps.emr.models import Appointment
+
     start = timezone.now() + timedelta(hours=start_offset_hours)
     end = start + timedelta(minutes=30)
     return Appointment.objects.create(
@@ -71,7 +76,6 @@ def _make_appointment(patient, professional, start_offset_hours=25, status="sche
 
 
 class ReminderIdempotencyTests(TenantTestCase):
-
     def test_status_pending_to_sent_transition(self):
         patient, contact = _make_patient_with_contact()
         pro = _make_professional()
@@ -85,6 +89,7 @@ class ReminderIdempotencyTests(TenantTestCase):
         with patch("apps.whatsapp.tasks.get_gateway") as mock_gw:
             mock_gw.return_value.send_if_opted_in = MagicMock()
             from apps.whatsapp.tasks import _send_reminder
+
             _send_reminder(mock_gw.return_value, reminder)
 
         reminder.refresh_from_db()
@@ -115,24 +120,27 @@ class ReminderIdempotencyTests(TenantTestCase):
         gateway = MagicMock()
         gateway.send_if_opted_in.side_effect = RuntimeError("network error")
         from apps.whatsapp.tasks import _send_reminder
+
         _send_reminder(gateway, reminder)
         reminder.refresh_from_db()
         self.assertEqual(reminder.status, "failed")
 
 
 class NoShowTrackingTests(TenantTestCase):
-
     def test_appointment_past_without_confirmation_marked_no_show(self):
         from apps.emr.models import Appointment
         from apps.whatsapp.tasks import mark_no_shows
+
         patient, contact = _make_patient_with_contact(phone="5511900000203")
         pro = _make_professional()
 
         past_start = timezone.now() - timedelta(hours=2)
         past_end = past_start + timedelta(minutes=30)
         appt = Appointment.objects.create(
-            patient=patient, professional=pro,
-            start_time=past_start, end_time=past_end,
+            patient=patient,
+            professional=pro,
+            start_time=past_start,
+            end_time=past_end,
             status="scheduled",
             whatsapp_reminder_sent=True,
             whatsapp_confirmed=False,
@@ -144,14 +152,17 @@ class NoShowTrackingTests(TenantTestCase):
     def test_confirmed_appointment_not_marked_no_show(self):
         from apps.emr.models import Appointment
         from apps.whatsapp.tasks import mark_no_shows
+
         patient, contact = _make_patient_with_contact(phone="5511900000204")
         pro = _make_professional()
 
         past_start = timezone.now() - timedelta(hours=2)
         past_end = past_start + timedelta(minutes=30)
         appt = Appointment.objects.create(
-            patient=patient, professional=pro,
-            start_time=past_start, end_time=past_end,
+            patient=patient,
+            professional=pro,
+            start_time=past_start,
+            end_time=past_end,
             status="scheduled",
             whatsapp_reminder_sent=True,
             whatsapp_confirmed=True,
@@ -162,7 +173,6 @@ class NoShowTrackingTests(TenantTestCase):
 
 
 class SatisfactionSurveyTests(TenantTestCase):
-
     def test_survey_not_sent_twice(self):
         patient, contact = _make_patient_with_contact(phone="5511900000205")
         pro = _make_professional()
@@ -175,6 +185,7 @@ class SatisfactionSurveyTests(TenantTestCase):
 
         with patch("apps.whatsapp.tasks.get_gateway") as mock_gw:
             from apps.whatsapp.tasks import send_satisfaction_surveys
+
             send_satisfaction_surveys()
 
         mock_gw.return_value.send_if_opted_in.assert_not_called()
@@ -182,10 +193,11 @@ class SatisfactionSurveyTests(TenantTestCase):
     def test_survey_not_sent_without_optin(self):
         patient, contact = _make_patient_with_contact(phone="5511900000206", opt_in=False)
         pro = _make_professional()
-        appt = _make_appointment(patient, pro, start_offset_hours=-3, status="completed")
+        _make_appointment(patient, pro, start_offset_hours=-3, status="completed")
 
         with patch("apps.whatsapp.tasks.get_gateway") as mock_gw:
             from apps.whatsapp.tasks import send_satisfaction_surveys
+
             send_satisfaction_surveys()
 
         mock_gw.return_value.send_if_opted_in.assert_not_called()

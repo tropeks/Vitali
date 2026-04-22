@@ -5,21 +5,18 @@ Tests for LGPD compliance:
 - Per-contact rate limiting
 - Expired session cleanup task
 """
+
+import json
 from datetime import timedelta
-from unittest.mock import MagicMock, patch
 
 from django.core.cache import cache
 from django.test import override_settings
 from django.utils import timezone
-from django_tenants.test.cases import TenantTestCase
 from rest_framework.test import APIClient
 
+from apps.test_utils import TenantTestCase
 from apps.whatsapp.models import ConversationSession, WhatsAppContact
-from apps.whatsapp.views import _log_message, _check_rate_limit
-
-import json
-import hashlib
-import hmac
+from apps.whatsapp.views import _check_rate_limit, _log_message
 
 WEBHOOK_URL = "/api/v1/whatsapp/webhook/"
 
@@ -32,22 +29,23 @@ def _make_contact(phone="5511900000099", opt_in=True):
 
 
 class CPFRedactionAndSessionPurgeTests(TenantTestCase):
-
     def setUp(self):
         cache.clear()
 
     def test_messagelog_cpf_masked_in_content_preview(self):
         """CPF pattern in content must be masked before saving."""
         from apps.whatsapp.models import MessageLog
+
         contact = _make_contact()
         _log_message(contact, "inbound", "Meu CPF é 529.982.247-25 obrigado")
         log = MessageLog.objects.filter(contact=contact).first()
         self.assertIsNotNone(log)
         self.assertNotIn("529.982.247-25", log.content_preview)
-        self.assertIn("***-***-**", log.content_preview)
+        self.assertIn("***.***.***-**", log.content_preview)
 
     def test_messagelog_11digit_cpf_masked(self):
         from apps.whatsapp.models import MessageLog
+
         contact = _make_contact(phone="5511900000097")
         _log_message(contact, "inbound", "cpf 52998224725")
         log = MessageLog.objects.filter(contact=contact).first()
@@ -55,6 +53,7 @@ class CPFRedactionAndSessionPurgeTests(TenantTestCase):
 
     def test_cleanup_expired_sessions_task_deletes_old_sessions(self):
         from apps.whatsapp.tasks import cleanup_expired_sessions
+
         contact = _make_contact(phone="5511900000098")
         session, _ = ConversationSession.get_or_create_for_contact(contact)
         session.expires_at = timezone.now() - timedelta(minutes=31)
@@ -66,6 +65,7 @@ class CPFRedactionAndSessionPurgeTests(TenantTestCase):
 
     def test_fresh_session_not_deleted_by_cleanup(self):
         from apps.whatsapp.tasks import cleanup_expired_sessions
+
         contact = _make_contact(phone="5511900000096")
         session, _ = ConversationSession.get_or_create_for_contact(contact)
         # expires_at is 30min from now — should NOT be deleted
@@ -74,7 +74,6 @@ class CPFRedactionAndSessionPurgeTests(TenantTestCase):
 
 
 class PerContactRateLimitTests(TenantTestCase):
-
     def setUp(self):
         cache.clear()
         self.client = APIClient()
@@ -83,7 +82,7 @@ class PerContactRateLimitTests(TenantTestCase):
     def test_rate_limit_allows_first_20_messages(self):
         phone = "5511900000050"
         for i in range(20):
-            self.assertTrue(_check_rate_limit(phone), f"Message {i+1} should be allowed")
+            self.assertTrue(_check_rate_limit(phone), f"Message {i + 1} should be allowed")
 
     def test_21st_message_blocked(self):
         phone = "5511900000051"
@@ -100,13 +99,19 @@ class PerContactRateLimitTests(TenantTestCase):
             cache_key = f"wa_rate:{phone}"
             cache.set(cache_key, 25, timeout=60)
 
-        body = json.dumps({
-            "event": "messages.upsert",
-            "data": {"messages": [{
-                "key": {"fromMe": False, "remoteJid": f"{phone}@s.whatsapp.net"},
-                "message": {"conversation": "oi"},
-            }]}
-        }).encode()
+        body = json.dumps(
+            {
+                "event": "messages.upsert",
+                "data": {
+                    "messages": [
+                        {
+                            "key": {"fromMe": False, "remoteJid": f"{phone}@s.whatsapp.net"},
+                            "message": {"conversation": "oi"},
+                        }
+                    ]
+                },
+            }
+        ).encode()
 
         resp = self.client.post(WEBHOOK_URL, data=body, content_type="application/json")
         self.assertEqual(resp.status_code, 200)

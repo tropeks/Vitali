@@ -32,6 +32,7 @@ TISS_XSD_PATH = _BILLING_DIR / "schemas" / "tissV4_01_00.xsd"
 
 # ─── Jinja2 environment ───────────────────────────────────────────────────────
 
+
 def _make_jinja_env() -> Environment:
     env = Environment(
         loader=FileSystemLoader(str(TEMPLATES_DIR)),
@@ -59,6 +60,7 @@ def _env() -> Environment:
 
 # ─── Jinja2 filters ───────────────────────────────────────────────────────────
 
+
 def _format_date(value) -> str:
     """Convert date/datetime to TISS format YYYY-MM-DD."""
     if hasattr(value, "date"):
@@ -85,14 +87,13 @@ def _format_currency(value) -> str:
 
 # ─── Guide XML generation ─────────────────────────────────────────────────────
 
+
 def generate_guide_xml(guide) -> str:
     """
     Generate the XML fragment for a single TISSGuide.
     Returns the rendered XML string (no envelope, no XSD declaration).
     """
-    template_name = (
-        "sadt_guide.xml.j2" if guide.guide_type == "sadt" else "consulta_guide.xml.j2"
-    )
+    template_name = "sadt_guide.xml.j2" if guide.guide_type == "sadt" else "consulta_guide.xml.j2"
     template = _env().get_template(template_name)
 
     # Resolve professional from encounter
@@ -106,6 +107,7 @@ def generate_guide_xml(guide) -> str:
 
 
 # ─── Batch XML generation ─────────────────────────────────────────────────────
+
 
 def generate_batch_xml(batch) -> str:
     """
@@ -155,6 +157,7 @@ def generate_batch_xml(batch) -> str:
 
 
 # ─── XSD Validation ───────────────────────────────────────────────────────────
+
 
 def validate_xml(xml_string: str) -> list[str]:
     """

@@ -3,6 +3,7 @@ Tests for AI Celery tasks — S-038 check_tuss_staleness.
 
 Run: python manage.py test apps.ai.tests.test_tasks
 """
+
 import logging
 from datetime import timedelta
 from unittest.mock import patch
@@ -71,7 +72,7 @@ class CheckTUSSStatenessTests(TestCase):
         """Only status='success' syncs count; a failed sync should not prevent staleness log."""
         TUSSSyncLog.objects.all().delete()
         self._make_sync(days_ago=2, status="error")
-        with self.assertLogs("apps.ai.tasks", level="WARNING") as cm:
+        with self.assertLogs("apps.ai.tasks", level="WARNING"):
             result = check_tuss_staleness()
         # No successful sync → stale
         self.assertEqual(result["status"], "stale")

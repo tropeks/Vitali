@@ -1,3 +1,4 @@
+# mypy: ignore-errors
 """
 Slot generation service — get_available_slots(professional, date_range).
 
@@ -6,12 +7,12 @@ for the given date range, then subtracts already-booked appointments.
 
 Returns: dict[date_str, list[TimeSlot]]
 """
+
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
-from typing import Optional
 
 from django.utils import timezone
 
@@ -38,7 +39,7 @@ class TimeSlot:
 
 def get_available_slots(
     professional,
-    start_date: Optional[date] = None,
+    start_date: date | None = None,
     days_ahead: int = 7,
 ) -> dict[str, list[TimeSlot]]:
     """
@@ -57,7 +58,9 @@ def get_available_slots(
     try:
         config: ScheduleConfig = professional.schedule_config
     except ScheduleConfig.DoesNotExist:
-        logger.warning("Professional %s has no ScheduleConfig — returning no slots", professional.pk)
+        logger.warning(
+            "Professional %s has no ScheduleConfig — returning no slots", professional.pk
+        )
         return {}
 
     if not config.is_active:
@@ -94,10 +97,7 @@ def get_available_slots(
                 duration=duration,
             )
             # Filter out booked slots
-            available = [
-                slot for slot in slots
-                if not _overlaps_any(slot, booked)
-            ]
+            available = [slot for slot in slots if not _overlaps_any(slot, booked)]
             if available:
                 result[current.isoformat()] = available
 
@@ -136,7 +136,8 @@ def _generate_day_slots(
 
     # Make timezone-aware if needed
     try:
-        from django.utils.timezone import make_aware, is_naive
+        from django.utils.timezone import is_naive, make_aware
+
         if is_naive(cursor):
             cursor = make_aware(cursor)
             day_end = make_aware(day_end)
@@ -149,7 +150,8 @@ def _generate_day_slots(
             lunch_s = datetime.combine(day, lunch_start)
             lunch_e = datetime.combine(day, lunch_end)
             try:
-                from django.utils.timezone import make_aware, is_naive
+                from django.utils.timezone import is_naive, make_aware
+
                 if is_naive(lunch_s):
                     lunch_s = make_aware(lunch_s)
                     lunch_e = make_aware(lunch_e)

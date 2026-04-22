@@ -1,13 +1,11 @@
 """Tests for Redis circuit breaker."""
+
 from unittest.mock import patch
 
 from django.core.cache import cache
 from django.test import TestCase
 
 from apps.ai.circuit_breaker import (
-    COOLDOWN_S,
-    FAILURE_KEY_TEMPLATE,
-    OPEN_KEY_TEMPLATE,
     TRIP_THRESHOLD,
     is_open,
     record_failure,
@@ -16,7 +14,6 @@ from apps.ai.circuit_breaker import (
 
 
 class CircuitBreakerTest(TestCase):
-
     def setUp(self):
         cache.clear()
 

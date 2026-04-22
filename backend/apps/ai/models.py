@@ -1,10 +1,12 @@
 """
-AI app models — S-030 LLM Integration Layer, S-031 TUSS Auto-Coding, S-034 Glosa Prediction
+AI app models — S-030 LLM Integration Layer, S-031 TUSS Auto-Coding, S-034 Glosa Prediction,
+S-069 AI Clinical Scribe
 """
+
 import uuid
 
 from django.db import models
-from django.conf import settings
+from encrypted_model_fields.fields import EncryptedTextField
 
 
 class AIPromptTemplate(models.Model):
@@ -12,6 +14,7 @@ class AIPromptTemplate(models.Model):
     Versioned prompt templates stored in DB.
     Version is embedded in the Redis cache key — bumping version auto-invalidates cache.
     """
+
     name = models.CharField(max_length=100)
     version = models.PositiveIntegerField(default=1)
     system_prompt = models.TextField()
@@ -23,11 +26,11 @@ class AIPromptTemplate(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['name', '-version']
-        unique_together = [('name', 'version')]
+        ordering = ["name", "-version"]
+        unique_together = [("name", "version")]
 
     def __str__(self):
-        return f'{self.name} v{self.version}'
+        return f"{self.name} v{self.version}"
 
 
 class AIUsageLog(models.Model):
@@ -35,35 +38,36 @@ class AIUsageLog(models.Model):
     Append-only log of every Claude call. Used for cost tracking and analytics.
     Also logs zero-result events (model='', tokens=0) for prompt quality diagnosis.
     """
+
     EVENT_CHOICES = [
-        ('llm_call', 'LLM Call'),
-        ('zero_result', 'Zero Result (retrieval returned 0 candidates)'),
-        ('validation_dropout', 'Validation Dropout (all suggestions invalid)'),
-        ('degraded', 'Degraded (AI unavailable)'),
-        ('cache_hit', 'Cache Hit'),
+        ("llm_call", "LLM Call"),
+        ("zero_result", "Zero Result (retrieval returned 0 candidates)"),
+        ("validation_dropout", "Validation Dropout (all suggestions invalid)"),
+        ("degraded", "Degraded (AI unavailable)"),
+        ("cache_hit", "Cache Hit"),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     prompt_template = models.ForeignKey(
         AIPromptTemplate, null=True, blank=True, on_delete=models.SET_NULL
     )
-    event_type = models.CharField(max_length=30, choices=EVENT_CHOICES, default='llm_call')
+    event_type = models.CharField(max_length=30, choices=EVENT_CHOICES, default="llm_call")
     tokens_in = models.PositiveIntegerField(default=0)
     tokens_out = models.PositiveIntegerField(default=0)
     latency_ms = models.PositiveIntegerField(default=0)
-    model = models.CharField(max_length=100, default='claude-haiku-4-5-20251001')
+    model = models.CharField(max_length=100, default="claude-haiku-4-5-20251001")
     input_text = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['-created_at']
+        ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=['event_type', 'created_at']),
-            models.Index(fields=['created_at']),
+            models.Index(fields=["event_type", "created_at"]),
+            models.Index(fields=["created_at"]),
         ]
 
     def __str__(self):
-        return f'{self.event_type} @ {self.created_at:%Y-%m-%d %H:%M}'
+        return f"{self.event_type} @ {self.created_at:%Y-%m-%d %H:%M}"
 
 
 class TUSSAISuggestion(models.Model):
@@ -71,10 +75,10 @@ class TUSSAISuggestion(models.Model):
     Tracks every TUSS AI suggestion shown to a faturista.
     Accepted/rejected signal is the sprint's primary proprietary data output.
     """
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     usage_log = models.ForeignKey(
-        AIUsageLog, null=True, blank=True, on_delete=models.SET_NULL,
-        related_name='suggestions'
+        AIUsageLog, null=True, blank=True, on_delete=models.SET_NULL, related_name="suggestions"
     )
     tuss_code = models.CharField(max_length=20, db_index=True)
     description = models.CharField(max_length=500)
@@ -86,15 +90,17 @@ class TUSSAISuggestion(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['-created_at']
+        ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=['tuss_code', 'created_at']),
-            models.Index(fields=['accepted', 'created_at']),
+            models.Index(fields=["tuss_code", "created_at"]),
+            models.Index(fields=["accepted", "created_at"]),
         ]
 
     def __str__(self):
-        status = 'accepted' if self.accepted else ('rejected' if self.accepted is False else 'pending')
-        return f'TUSS {self.tuss_code} rank={self.rank} [{status}]'
+        status = (
+            "accepted" if self.accepted else ("rejected" if self.accepted is False else "pending")
+        )
+        return f"TUSS {self.tuss_code} rank={self.rank} [{status}]"
 
 
 class GlosaPrediction(models.Model):
@@ -153,3 +159,48 @@ class GlosaPrediction(models.Model):
 
     def __str__(self):
         return f"GlosaPrediction {self.risk_level} {self.tuss_code} @ {self.created_at:%Y-%m-%d}"
+
+
+class AIScribeSession(models.Model):
+    """
+    S-069: AI Clinical Scribe.
+    Records each transcription → SOAP generation request for an encounter.
+    A single encounter can have multiple sessions (e.g., retry after failure).
+    """
+
+    class Status(models.TextChoices):
+        PROCESSING = "processing", "Processing"
+        COMPLETED = "completed", "Completed"
+        FAILED = "failed", "Failed"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    encounter = models.ForeignKey(
+        "emr.Encounter",
+        on_delete=models.CASCADE,
+        related_name="scribe_sessions",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PROCESSING,
+        db_index=True,
+    )
+    raw_transcription = EncryptedTextField()
+    soap_json = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Generated SOAP fields: {subjective, objective, assessment, plan}",
+    )
+    error_message = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["encounter", "status"]),
+            models.Index(fields=["encounter", "-created_at"]),
+        ]
+
+    def __str__(self):
+        return f"AIScribeSession {self.status} for encounter {self.encounter_id} @ {self.created_at:%Y-%m-%d %H:%M}"

@@ -9,6 +9,7 @@ Usage:
     EmailService.send_appointment_confirmation(appointment)
     EmailService.send_appointment_reminder(appointment)
 """
+
 import logging
 
 from django.conf import settings
@@ -53,9 +54,7 @@ class EmailService:
         patient = appointment.patient
         recipient = getattr(patient, "email", None)
         if not recipient:
-            logger.warning(
-                "email.skipped appointment=%s reason=no_patient_email", appointment.id
-            )
+            logger.warning("email.skipped appointment=%s reason=no_patient_email", appointment.id)
             return False
 
         context = {
@@ -81,14 +80,18 @@ class EmailService:
 
             logger.info(
                 "email.sent template=%s appointment=%s to=%s",
-                template, appointment.id, recipient,
+                template,
+                appointment.id,
+                recipient,
             )
             return True
 
         except Exception as exc:
             logger.error(
                 "email.failed template=%s appointment=%s err=%s",
-                template, appointment.id, exc,
+                template,
+                appointment.id,
+                exc,
             )
             return False
 
@@ -96,5 +99,6 @@ class EmailService:
     def _strip_html(html: str) -> str:
         """Very basic HTML → plain text fallback."""
         import re
+
         text = re.sub(r"<[^>]+>", "", html)
         return re.sub(r"\n{3,}", "\n\n", text).strip()

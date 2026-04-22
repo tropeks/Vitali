@@ -3,10 +3,11 @@ Platform admin serializers — Plans, PlanModules, Subscriptions.
 These models live in the public schema (SHARED_APPS).
 Used only by /api/v1/platform/* endpoints (IsPlatformAdmin gate).
 """
+
 from rest_framework import serializers
 
 from .constants import ALLOWED_MODULE_KEYS
-from .models import FeatureFlag, Plan, PlanModule, Subscription, Tenant
+from .models import Plan, PlanModule, Subscription
 
 
 class PlanModuleSerializer(serializers.ModelSerializer):
@@ -58,6 +59,7 @@ class SubscriptionSerializer(serializers.ModelSerializer):
 
 class TenantSubscriptionSerializer(serializers.ModelSerializer):
     """Tenant-facing read-only subscription view (S-041)."""
+
     plan_name = serializers.CharField(source="plan.name", read_only=True)
     plan_base_price = serializers.DecimalField(
         source="plan.base_price", max_digits=10, decimal_places=2, read_only=True

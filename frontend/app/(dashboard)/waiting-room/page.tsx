@@ -14,6 +14,7 @@ interface Appointment {
   status: string
   status_display: string
   duration_minutes: number
+  arrived_at: string | null
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -58,6 +59,18 @@ export default function WaitingRoomPage() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
+      })
+      if (r.ok) await fetchWaiting()
+    } finally {
+      setUpdating(null)
+    }
+  }
+
+  const checkIn = async (appt: Appointment) => {
+    setUpdating(appt.id)
+    try {
+      const r = await fetch(`/api/v1/appointments/${appt.id}/check-in/`, {
+        method: 'POST',
       })
       if (r.ok) await fetchWaiting()
     } finally {
@@ -167,6 +180,15 @@ export default function WaitingRoomPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1.5">
+                      <button
+                        disabled={updating === appt.id || appt.arrived_at !== null}
+                        onClick={() => checkIn(appt)}
+                        className="flex items-center gap-1 px-2.5 py-1 bg-blue-100 text-blue-700 text-xs rounded-lg hover:bg-blue-200 disabled:opacity-50 font-medium"
+                        title={appt.arrived_at ? 'Paciente já registrou chegada' : 'Registrar chegada do paciente'}
+                      >
+                        <UserCheck size={12} />
+                        Chegou
+                      </button>
                       {appt.status !== 'in_progress' && (
                         <button
                           disabled={updating === appt.id}

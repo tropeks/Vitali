@@ -2,7 +2,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("emr", "0006_prescriptionitem_quantity_validator"),
     ]

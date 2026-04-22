@@ -1,15 +1,16 @@
 """
 Tests for predict_glosa() service function (S-034).
 """
+
 import json
 from unittest.mock import MagicMock, patch
 
 from django.core.cache import cache
 from django.test import override_settings
-from django_tenants.test.cases import TenantTestCase
 
 from apps.ai.models import AIPromptTemplate, GlosaPrediction
-from apps.ai.services import PredictionResult, predict_glosa
+from apps.ai.services import predict_glosa
+from apps.test_utils import TenantTestCase
 
 
 def _make_glosa_template():
@@ -36,16 +37,17 @@ def _make_config(schema_name, glosa_enabled=True):
 
 
 def _claude_glosa_response(risk_level="low", risk_reason="Sem glosa esperada.", risk_code=""):
-    payload = json.dumps({
-        "risk_level": risk_level,
-        "risk_reason": risk_reason,
-        "risk_code": risk_code,
-    })
+    payload = json.dumps(
+        {
+            "risk_level": risk_level,
+            "risk_reason": risk_reason,
+            "risk_code": risk_code,
+        }
+    )
     return payload, 50, 30
 
 
 class PredictGlosaTest(TenantTestCase):
-
     def setUp(self):
         cache.clear()
         self._override = override_settings(
@@ -61,14 +63,14 @@ class PredictGlosaTest(TenantTestCase):
         self._override.disable()
 
     def _call(self, **kwargs):
-        defaults = dict(
-            tuss_code="40302477",
-            insurer_ans_code="123456",
-            insurer_name="Unimed Nacional",
-            cid10_codes=["J18.9"],
-            guide_type="sadt",
-            schema_name=self.schema,
-        )
+        defaults = {
+            "tuss_code": "40302477",
+            "insurer_ans_code": "123456",
+            "insurer_name": "Unimed Nacional",
+            "cid10_codes": ["J18.9"],
+            "guide_type": "sadt",
+            "schema_name": self.schema,
+        }
         defaults.update(kwargs)
         return predict_glosa(**defaults)
 
@@ -77,7 +79,9 @@ class PredictGlosaTest(TenantTestCase):
     def test_happy_path_returns_prediction(self, MockGateway, mock_config):
         mock_config.return_value = _make_config(self.schema)
         gw = MockGateway.return_value
-        gw.complete.return_value = _claude_glosa_response("medium", "Autorização prévia necessária.", "02")
+        gw.complete.return_value = _claude_glosa_response(
+            "medium", "Autorização prévia necessária.", "02"
+        )
 
         result = self._call()
 
@@ -133,6 +137,7 @@ class PredictGlosaTest(TenantTestCase):
     def test_circuit_breaker_isolation_from_tuss(self, MockGateway, mock_config):
         """Glosa circuit should use feature='glosa', independent of 'tuss' circuit."""
         from apps.ai import circuit_breaker
+
         mock_config.return_value = _make_config(self.schema)
         gw = MockGateway.return_value
         gw.complete.return_value = _claude_glosa_response("low", "OK", "")
@@ -157,7 +162,9 @@ class PredictGlosaTest(TenantTestCase):
         self._call(insurer_name="Insurer\nMalicious{injection}")
         call_args = gw.complete.call_args
         user_prompt = call_args[1].get("user", call_args[0][1] if call_args[0] else "")
-        self.assertNotIn("\n", user_prompt.split("Insurer")[1][:30] if "Insurer" in user_prompt else "")
+        self.assertNotIn(
+            "\n", user_prompt.split("Insurer")[1][:30] if "Insurer" in user_prompt else ""
+        )
         self.assertNotIn("{", user_prompt)
 
     @patch("apps.ai.services.get_tenant_ai_config")

@@ -5,6 +5,7 @@ S-055/S-056: Celery tasks for PIX billing.
 - expire_pix_charges: periodic task to cancel expired pending charges
 - send_appointment_reminders: periodic task for 24h reminder emails
 """
+
 import logging
 
 from celery import shared_task
@@ -28,8 +29,8 @@ def on_appointment_paid(sender, appointment, **kwargs):
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def send_appointment_confirmation_email(self, appointment_id: str):
     """Send PIX confirmation email. Retried up to 3× on failure."""
-    from apps.emr.models import Appointment
     from apps.core.services.email import EmailService
+    from apps.emr.models import Appointment
 
     try:
         appointment = Appointment.objects.select_related("patient", "professional").get(
@@ -65,10 +66,12 @@ def send_appointment_reminders():
     Runs daily at 08:00 via Celery beat (set in vitali/celery.py).
     Only sends for confirmed appointments (status='confirmed').
     """
-    from apps.emr.models import Appointment
     from apps.core.services.email import EmailService
+    from apps.emr.models import Appointment
 
-    tomorrow_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0) + timezone.timedelta(days=1)
+    tomorrow_start = timezone.now().replace(
+        hour=0, minute=0, second=0, microsecond=0
+    ) + timezone.timedelta(days=1)
     tomorrow_end = tomorrow_start + timezone.timedelta(days=1)
 
     appointments = Appointment.objects.filter(

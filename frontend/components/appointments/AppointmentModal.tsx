@@ -71,6 +71,8 @@ export default function AppointmentModal({
   const [loading, setLoading] = useState(false)
   const [slotsLoading, setSlotsLoading] = useState(false)
   const [error, setError] = useState('')
+  const [waitlistLoading, setWaitlistLoading] = useState(false)
+  const [waitlistDone, setWaitlistDone] = useState(false)
 
   // Load professionals on mount
   useEffect(() => {
@@ -131,7 +133,8 @@ export default function AppointmentModal({
           data?.start_time?.[0] ??
           data?.error?.message ??
           'Horário indisponível. Escolha outro slot.'
-        setError(msg.includes('TIME_SLOT_UNAVAILABLE') ? 'Horário já ocupado. Escolha outro.' : msg)
+        const isConflict = res.status === 409 || msg.includes('TIME_SLOT_UNAVAILABLE')
+        setError(isConflict ? 'Horário já ocupado. Escolha outro ou entre na fila de espera.' : msg)
         return
       }
       if (!res.ok) {
@@ -141,6 +144,37 @@ export default function AppointmentModal({
       onCreated()
     } finally {
       setLoading(false)
+    }
+  }
+
+  const joinWaitlist = async () => {
+    if (!selectedPatient || !selectedProfId || !date) {
+      setError('Preencha paciente, profissional e data para entrar na fila.')
+      return
+    }
+    setWaitlistLoading(true)
+    setError('')
+    try {
+      const res = await fetch('/api/v1/waitlist/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patient: selectedPatient.id,
+          professional: selectedProfId || undefined,
+          preferred_date_from: date,
+          preferred_date_to: date,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setError(data.error?.message ?? data.detail ?? 'Erro ao entrar na lista de espera.')
+        return
+      }
+      setWaitlistDone(true)
+    } catch {
+      setError('Erro ao entrar na lista de espera.')
+    } finally {
+      setWaitlistLoading(false)
     }
   }
 
@@ -246,7 +280,23 @@ export default function AppointmentModal({
               {slotsLoading ? (
                 <div className="text-sm text-slate-400">Carregando horários...</div>
               ) : slots.length === 0 ? (
-                <div className="text-sm text-slate-400">Sem horários disponíveis para esta data.</div>
+                <div className="space-y-2">
+                  <div className="text-sm text-slate-400">Sem horários disponíveis para esta data.</div>
+                  {waitlistDone ? (
+                    <div className="px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700 font-medium">
+                      ✓ Adicionado à lista de espera.
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={joinWaitlist}
+                      disabled={waitlistLoading || !selectedPatient}
+                      className="text-sm text-blue-600 hover:text-blue-800 font-medium disabled:opacity-40 flex items-center gap-1"
+                    >
+                      {waitlistLoading ? 'Entrando na fila...' : '+ Entrar na fila de espera'}
+                    </button>
+                  )}
+                </div>
               ) : (
                 <div className="grid grid-cols-4 gap-1.5 max-h-36 overflow-y-auto pr-1">
                   {slots.map((slot) => {
@@ -302,8 +352,21 @@ export default function AppointmentModal({
           </div>
 
           {error && (
-            <div className="px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-              {error}
+            <div className="px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 space-y-1">
+              <p>{error}</p>
+              {error.includes('fila de espera') && !waitlistDone && (
+                <button
+                  type="button"
+                  onClick={joinWaitlist}
+                  disabled={waitlistLoading}
+                  className="text-blue-600 hover:text-blue-800 font-medium text-xs underline disabled:opacity-40"
+                >
+                  {waitlistLoading ? 'Entrando na fila...' : 'Entrar na fila de espera →'}
+                </button>
+              )}
+              {waitlistDone && (
+                <p className="text-green-700 font-medium">✓ Adicionado à lista de espera.</p>
+              )}
             </div>
           )}
 

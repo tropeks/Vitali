@@ -1,16 +1,15 @@
 """
 Tests for ConversationFSM — state transitions, intent detection, slot reservation.
 """
-import threading
+
 from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 from django.utils import timezone
-from django_tenants.test.cases import TenantTestCase
 
-from apps.core.models import Role, User
+from apps.test_utils import TenantTestCase
 from apps.whatsapp.context import get_context, set_context
-from apps.whatsapp.fsm import ConversationFSM, _is_valid_cpf, detect_intent, _normalize
+from apps.whatsapp.fsm import ConversationFSM, _is_valid_cpf, detect_intent
 from apps.whatsapp.models import ConversationSession, WhatsAppContact
 
 
@@ -34,7 +33,6 @@ def _make_fsm(session):
 
 
 class IntentDetectionTests(TenantTestCase):
-
     def test_exact_match(self):
         self.assertEqual(detect_intent("confirmar"), "confirmar")
 
@@ -55,7 +53,6 @@ class IntentDetectionTests(TenantTestCase):
 
 
 class CPFValidationTests(TenantTestCase):
-
     def test_valid_cpf(self):
         self.assertTrue(_is_valid_cpf("52998224725"))
 
@@ -70,7 +67,6 @@ class CPFValidationTests(TenantTestCase):
 
 
 class FSMStateTransitionTests(TenantTestCase):
-
     def test_idle_to_pending_optin_on_first_message(self):
         contact = _make_contact(opt_in=False)
         session = _make_session(contact, state="IDLE")
@@ -122,7 +118,9 @@ class FSMStateTransitionTests(TenantTestCase):
         set_context(session, booking_for_self=None)
         session.save()
         fsm, _ = _make_fsm(session)
-        with patch.object(fsm, "_get_specialties", return_value=[{"id": 1, "name": "Clínica Geral"}]):
+        with patch.object(
+            fsm, "_get_specialties", return_value=[{"id": 1, "name": "Clínica Geral"}]
+        ):
             fsm.process("para mim")
         session.refresh_from_db()
         self.assertEqual(session.state, "SELECTING_SPECIALTY")
@@ -226,7 +224,9 @@ class ConversationSessionLockingTests(TenantTestCase):
 
     def test_select_for_update_called_in_process_message(self):
         """WebhookView._process_message must lock the session row."""
-        from apps.whatsapp.views import WebhookView
         import inspect
+
+        from apps.whatsapp.views import WebhookView
+
         source = inspect.getsource(WebhookView._process_message)
         self.assertIn("select_for_update", source)

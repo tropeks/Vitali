@@ -12,8 +12,8 @@ from .models import (
     Subscription,
     Tenant,
     TenantAIConfig,
-    TUSSSyncLog,
     TUSSCode,
+    TUSSSyncLog,
     User,
 )
 
@@ -100,9 +100,7 @@ class AuditLogAdmin(admin.ModelAdmin):
     list_display = ("action", "resource_type", "resource_id", "user", "ip_address", "created_at")
     list_filter = ("action", "resource_type")
     search_fields = ("resource_id", "user__email")
-    readonly_fields = tuple(
-        f.name for f in AuditLog._meta.get_fields() if hasattr(f, "name")
-    )
+    readonly_fields = tuple(f.name for f in AuditLog._meta.get_fields() if hasattr(f, "name"))
 
     def has_add_permission(self, request):
         return False
@@ -116,7 +114,15 @@ class AuditLogAdmin(admin.ModelAdmin):
 
 @admin.register(TUSSSyncLog)
 class TUSSSyncLogAdmin(admin.ModelAdmin):
-    list_display = ["ran_at", "status", "source", "row_count_added", "row_count_updated", "row_count_total", "duration_ms"]
+    list_display = [
+        "ran_at",
+        "status",
+        "source",
+        "row_count_added",
+        "row_count_updated",
+        "row_count_total",
+        "duration_ms",
+    ]
     list_filter = ["status", "source"]
     readonly_fields = [f.name for f in TUSSSyncLog._meta.get_fields() if hasattr(f, "name")]
     ordering = ["-ran_at"]
@@ -133,7 +139,14 @@ class TUSSSyncLogAdmin(admin.ModelAdmin):
 
 @admin.register(TenantAIConfig)
 class TenantAIConfigAdmin(admin.ModelAdmin):
-    list_display = ["tenant", "ai_tuss_enabled", "ai_glosa_prediction_enabled", "rate_limit_per_hour", "monthly_token_ceiling", "updated_at"]
+    list_display = [
+        "tenant",
+        "ai_tuss_enabled",
+        "ai_glosa_prediction_enabled",
+        "rate_limit_per_hour",
+        "monthly_token_ceiling",
+        "updated_at",
+    ]
     list_filter = ["ai_tuss_enabled", "ai_glosa_prediction_enabled"]
     search_fields = ["tenant__name", "tenant__schema_name"]
     readonly_fields = ["id", "created_at", "updated_at"]
@@ -150,4 +163,5 @@ class TUSSCodeAdmin(admin.ModelAdmin):
 
     def description_short(self, obj):
         return obj.description[:80]
+
     description_short.short_description = "Descrição"

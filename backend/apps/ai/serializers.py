@@ -1,9 +1,10 @@
 """
 AI app serializers — S-030, S-031, S-034
 """
+
 from rest_framework import serializers
 
-from .models import AIUsageLog, GlosaPrediction, TUSSAISuggestion
+from .models import AIUsageLog, GlosaPrediction
 
 
 class TUSSSuggestionSerializer(serializers.Serializer):
@@ -12,12 +13,12 @@ class TUSSSuggestionSerializer(serializers.Serializer):
     rank = serializers.IntegerField()
 
 
-VALID_GUIDE_TYPES = {'sadt', 'sp_sadt', 'consulta', 'internacao', 'odonto', ''}
+VALID_GUIDE_TYPES = {"sadt", "sp_sadt", "consulta", "internacao", "odonto", ""}
 
 
 class TUSSSuggestRequestSerializer(serializers.Serializer):
     description = serializers.CharField(min_length=3, max_length=500)
-    guide_type = serializers.CharField(max_length=50, default='', allow_blank=True)
+    guide_type = serializers.CharField(max_length=50, default="", allow_blank=True)
 
     def validate_guide_type(self, value):
         if value not in VALID_GUIDE_TYPES:
@@ -41,23 +42,31 @@ class TUSSSuggestFeedbackSerializer(serializers.Serializer):
 class AIUsageLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = AIUsageLog
-        fields = ['id', 'event_type', 'tokens_in', 'tokens_out', 'latency_ms', 'model', 'created_at']
+        fields = [
+            "id",
+            "event_type",
+            "tokens_in",
+            "tokens_out",
+            "latency_ms",
+            "model",
+            "created_at",
+        ]
         read_only_fields = fields
 
 
 # ─── Glosa Prediction (S-034) ─────────────────────────────────────────────────
 
-VALID_GLOSA_GUIDE_TYPES = {'sadt', 'sp_sadt', 'consulta', 'internacao', 'odonto'}
+VALID_GLOSA_GUIDE_TYPES = {"sadt", "sp_sadt", "consulta", "internacao", "odonto"}
 
 
 class GlosaPredictRequestSerializer(serializers.Serializer):
     tuss_code = serializers.CharField(max_length=20)
     insurer_ans_code = serializers.RegexField(
-        regex=r'^[0-9]{1,20}$',
+        regex=r"^[0-9]{1,20}$",
         max_length=20,
         error_messages={"invalid": "insurer_ans_code must be 1-20 digits."},
     )
-    insurer_name = serializers.CharField(max_length=200, allow_blank=True, default='')
+    insurer_name = serializers.CharField(max_length=200, allow_blank=True, default="")
     cid10_codes = serializers.ListField(
         child=serializers.CharField(max_length=10),
         allow_empty=True,

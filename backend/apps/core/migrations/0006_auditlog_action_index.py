@@ -9,7 +9,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("core", "0005_asaas_charge_map"),
     ]
@@ -19,7 +18,7 @@ class Migration(migrations.Migration):
             model_name="auditlog",
             index=models.Index(
                 fields=["action", "created_at"],
-                name="core_auditlog_action_created_idx",
+                name="core_auditlog_act_created_idx",
             ),
         ),
     ]

@@ -2,10 +2,11 @@
 Vitali — Analytics API Views
 Read-only aggregate endpoints for the KPI dashboard and billing intelligence.
 """
+
 from datetime import date, timedelta
 from decimal import Decimal
 
-from django.db.models import Avg, Count, Q, Sum
+from django.db.models import Avg, Count, DurationField, ExpressionWrapper, F, Q, Sum
 from django.db.models.functions import TruncDate, TruncMonth
 from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
@@ -29,62 +30,103 @@ def _month_start():
 
 
 class OverviewView(APIView):
-    """GET /api/v1/analytics/overview/ — today's and month-to-date KPIs."""
+    """GET /api/v1/analytics/overview/?period=today|week|month
 
-    permission_classes = [IsAuthenticated, _BILLING_MODULE]
+    Returns clinic KPIs for the requested period.  Defaults to ``month``.
+    Revenue (sum of paid TISS guide values) is included when billing data exists.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    _VALID_PERIODS = {"today", "week", "month"}
+
+    def _period_start(self, period: str):
+        today = _today()
+        if period == "today":
+            return today
+        if period == "week":
+            # Monday of the current week
+            return today - timedelta(days=today.weekday())
+        return _month_start()
 
     def get(self, request):
-        today = _today()
-        month_start = _month_start()
+        period = request.query_params.get("period", "month")
+        if period not in self._VALID_PERIODS:
+            period = "month"
 
-        # ── Today ────────────────────────────────────────────────────────────
-        today_qs = Appointment.objects.filter(start_time__date=today)
-        today_data = today_qs.aggregate(
+        today = _today()
+        since = self._period_start(period)
+
+        appts = Appointment.objects.filter(start_time__date__gte=since)
+        if period == "today":
+            appts = Appointment.objects.filter(start_time__date=today)
+
+        appt_agg = appts.aggregate(
             appointments_total=Count("id"),
             appointments_completed=Count("id", filter=Q(status="completed")),
             appointments_waiting=Count("id", filter=Q(status="waiting")),
             appointments_cancelled=Count("id", filter=Q(status="cancelled")),
         )
-        new_patients_today = Patient.objects.filter(created_at__date=today).count()
-        encounters_today = Encounter.objects.filter(encounter_date=today)
-        encounters_open = encounters_today.filter(status="open").count()
-        encounters_signed = encounters_today.filter(status="signed").count()
+        total = appt_agg["appointments_total"] or 0
+        cancelled = appt_agg["appointments_cancelled"] or 0
+        cancellation_rate = round((cancelled / total) * 100, 1) if total else 0.0
 
-        # ── Month ─────────────────────────────────────────────────────────────
-        month_appts = Appointment.objects.filter(start_time__date__gte=month_start)
-        month_totals = month_appts.aggregate(
-            appointments_total=Count("id"),
-            appointments_cancelled=Count("id", filter=Q(status="cancelled")),
+        new_patients = Patient.objects.filter(created_at__date__gte=since).count()
+        if period == "today":
+            new_patients = Patient.objects.filter(created_at__date=today).count()
+
+        encounters_qs = Encounter.objects.filter(encounter_date__date__gte=since)
+        if period == "today":
+            encounters_qs = Encounter.objects.filter(encounter_date__date=today)
+        enc_agg = encounters_qs.aggregate(
+            open=Count("id", filter=Q(status="open")),
+            signed=Count("id", filter=Q(status="signed")),
         )
-        month_total = month_totals["appointments_total"] or 0
-        month_cancelled = month_totals["appointments_cancelled"] or 0
-        cancellation_rate = (
-            round((month_cancelled / month_total) * 100, 1) if month_total else 0.0
+        encounters_open = enc_agg["open"] or 0
+        encounters_signed = enc_agg["signed"] or 0
+
+        # Revenue: sum of paid TISS guide values for the period (billing optional).
+        revenue = Decimal("0.00")
+        try:
+            rev_agg = TISSGuide.objects.filter(
+                status="paid",
+                created_at__date__gte=since,
+            ).aggregate(total=Sum("total_value"))
+            revenue = rev_agg["total"] or Decimal("0.00")
+        except Exception:
+            pass
+
+        # Wait time: average minutes between arrived_at and started_at for the period
+        wait_expr = ExpressionWrapper(
+            F("started_at") - F("arrived_at"),
+            output_field=DurationField(),
         )
-        new_patients_month = Patient.objects.filter(
-            created_at__date__gte=month_start
-        ).count()
-        encounters_signed_month = Encounter.objects.filter(
-            encounter_date__gte=month_start, status="signed"
-        ).count()
+        wait_qs = (
+            appts.filter(
+                arrived_at__isnull=False,
+                started_at__isnull=False,
+                started_at__gte=F("arrived_at"),
+            )
+            .annotate(wait=wait_expr)
+            .aggregate(avg=Avg("wait"))
+        )
+        wait_avg = wait_qs["avg"]
+        wait_time_avg_min = round(wait_avg.total_seconds() / 60, 1) if wait_avg else None
 
         return Response(
             {
-                "today": {
-                    "appointments_total": today_data["appointments_total"] or 0,
-                    "appointments_completed": today_data["appointments_completed"] or 0,
-                    "appointments_waiting": today_data["appointments_waiting"] or 0,
-                    "appointments_cancelled": today_data["appointments_cancelled"] or 0,
-                    "new_patients": new_patients_today,
-                    "encounters_open": encounters_open,
-                    "encounters_signed": encounters_signed,
-                },
-                "month": {
-                    "appointments_total": month_total,
-                    "new_patients": new_patients_month,
-                    "encounters_signed": encounters_signed_month,
-                    "cancellation_rate": cancellation_rate,
-                },
+                "period": period,
+                "since": since.isoformat(),
+                "appointments_total": total,
+                "appointments_completed": appt_agg["appointments_completed"] or 0,
+                "appointments_waiting": appt_agg["appointments_waiting"] or 0,
+                "appointments_cancelled": cancelled,
+                "cancellation_rate": cancellation_rate,
+                "new_patients": new_patients,
+                "encounters_open": encounters_open,
+                "encounters_signed": encounters_signed,
+                "revenue": revenue,
+                "wait_time_avg_min": wait_time_avg_min,
             }
         )
 
@@ -92,7 +134,7 @@ class OverviewView(APIView):
 class AppointmentsByDayView(APIView):
     """GET /api/v1/analytics/appointments-by-day/?days=30"""
 
-    permission_classes = [IsAuthenticated, _BILLING_MODULE]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         days = min(int(request.query_params.get("days", 30)), 365)
@@ -211,7 +253,7 @@ class PatientsByMonthView(APIView):
 class TopProfessionalsView(APIView):
     """GET /api/v1/analytics/top-professionals/?limit=5"""
 
-    permission_classes = [IsAuthenticated, _BILLING_MODULE]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         limit = min(int(request.query_params.get("limit", 5)), 20)
@@ -327,13 +369,11 @@ class BillingOverviewView(APIView):
             non_draft_count=Count("id", filter=Q(status__in=_NON_DRAFT_STATUSES)),
         )
 
-        non_draft = totals["non_draft_count"] or 0
+        totals["non_draft_count"] or 0
         total_denied_val = totals["total_denied"] or Decimal("0.00")
         total_billed_val = totals["total_billed"] or Decimal("0.00")
         denial_rate = (
-            round(float(total_denied_val / total_billed_val), 3)
-            if total_billed_val
-            else 0.0
+            round(float(total_denied_val / total_billed_val), 3) if total_billed_val else 0.0
         )
 
         guides_total = totals["guides_total"] or 0
@@ -420,15 +460,9 @@ class DenialByInsurerView(APIView):
             TISSGuide.objects.filter(created_at__date__gte=since)
             .values("provider_id", "provider__name", "provider__ans_code")
             .annotate(
-                total_guides=Count(
-                    "id", filter=Q(status__in=_NON_DRAFT_STATUSES)
-                ),
-                denied_guides=Count(
-                    "id", filter=Q(status__in=["denied", "appeal"])
-                ),
-                denied_value=Sum(
-                    "total_value", filter=Q(status__in=["denied", "appeal"])
-                ),
+                total_guides=Count("id", filter=Q(status__in=_NON_DRAFT_STATUSES)),
+                denied_guides=Count("id", filter=Q(status__in=["denied", "appeal"])),
+                denied_value=Sum("total_value", filter=Q(status__in=["denied", "appeal"])),
             )
             .filter(total_guides__gte=self._VOLUME_FLOOR)
             .order_by("-denied_value")
@@ -498,9 +532,7 @@ class BatchThroughputView(APIView):
             .values("month")
             .annotate(closed_count=Count("id"))
         )
-        closed_by_month = {
-            r["month"].date().replace(day=1): r["closed_count"] for r in closed_qs
-        }
+        closed_by_month = {r["month"].date().replace(day=1): r["closed_count"] for r in closed_qs}
 
         result = []
         for d in month_dates:
@@ -529,26 +561,20 @@ class GlosaAccuracyView(APIView):
                 total=Count("id", filter=Q(was_denied__isnull=False)),
                 predicted_high=Count("id", filter=Q(risk_level="high")),
                 denied_count=Count("id", filter=Q(was_denied=True)),
-                true_positives=Count(
-                    "id", filter=Q(risk_level="high", was_denied=True)
-                ),
+                true_positives=Count("id", filter=Q(risk_level="high", was_denied=True)),
             )
             .order_by("-denied_count")
         )
 
         # Resolve insurer names in a single extra query.
-        insurer_names = dict(
-            InsuranceProvider.objects.values_list("ans_code", "name")
-        )
+        insurer_names = dict(InsuranceProvider.objects.values_list("ans_code", "name"))
 
         result = []
         for r in rows:
             predicted_high = r["predicted_high"] or 0
             was_denied = r["denied_count"] or 0
             true_pos = r["true_positives"] or 0
-            precision = (
-                round(true_pos / predicted_high, 3) if predicted_high else None
-            )
+            precision = round(true_pos / predicted_high, 3) if predicted_high else None
             recall = round(true_pos / was_denied, 3) if was_denied else None
             ans_code = r["insurer_ans_code"]
             result.append(

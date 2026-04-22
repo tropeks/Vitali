@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Receita Médica — {{ prescription.id }}</title>
+  <style>
+    /* ── Reset & Base ─────────────────────────────────── */
+    @page {
+      size: A4;
+      margin: 25mm;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: "Liberation Sans", Arial, sans-serif;
+      font-size: 10pt;
+      color: #1a1a1a;
+      background: #fff;
+      position: relative;
+    }
+
+    /* ── Watermark ────────────────────────────────────── */
+    body::before {
+      content: "DOCUMENTO GERADO PELO SISTEMA VITALI";
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) rotate(-35deg);
+      font-size: 28pt;
+      font-weight: bold;
+      color: rgba(0, 0, 0, 0.08);
+      white-space: nowrap;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    /* ── Layout ───────────────────────────────────────── */
+    .content {
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ── Header ───────────────────────────────────────── */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 2px solid #1a1a1a;
+      padding-bottom: 10pt;
+      margin-bottom: 14pt;
+    }
+
+    .clinic-info {
+      flex: 1;
+    }
+
+    .clinic-logo-placeholder {
+      width: 60pt;
+      height: 40pt;
+      background: #f0f0f0;
+      border: 1px solid #ccc;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 7pt;
+      color: #888;
+      text-align: center;
+      margin-right: 10pt;
+    }
+
+    .clinic-name {
+      font-size: 14pt;
+      font-weight: bold;
+      color: #1a1a1a;
+    }
+
+    .clinic-details {
+      font-size: 8pt;
+      color: #444;
+      margin-top: 3pt;
+      line-height: 1.4;
+    }
+
+    .document-title {
+      text-align: right;
+    }
+
+    .document-title h1 {
+      font-size: 16pt;
+      font-weight: bold;
+      color: #1a1a1a;
+      text-transform: uppercase;
+      letter-spacing: 1pt;
+    }
+
+    .document-title .subtitle {
+      font-size: 8pt;
+      color: #666;
+      margin-top: 3pt;
+    }
+
+    /* ── Doctor Info ──────────────────────────────────── */
+    .doctor-section {
+      background: #f8f8f8;
+      border: 1px solid #ddd;
+      border-radius: 3pt;
+      padding: 8pt 10pt;
+      margin-bottom: 12pt;
+    }
+
+    .doctor-section h2 {
+      font-size: 9pt;
+      text-transform: uppercase;
+      color: #555;
+      letter-spacing: 0.5pt;
+      margin-bottom: 4pt;
+    }
+
+    .doctor-name {
+      font-size: 12pt;
+      font-weight: bold;
+    }
+
+    .doctor-details {
+      font-size: 9pt;
+      color: #444;
+      margin-top: 2pt;
+    }
+
+    /* ── Patient Info ─────────────────────────────────── */
+    .patient-section {
+      margin-bottom: 14pt;
+      padding: 8pt 10pt;
+      border: 1px solid #ddd;
+      border-radius: 3pt;
+    }
+
+    .patient-section h2 {
+      font-size: 9pt;
+      text-transform: uppercase;
+      color: #555;
+      letter-spacing: 0.5pt;
+      margin-bottom: 4pt;
+    }
+
+    .patient-row {
+      display: flex;
+      gap: 20pt;
+    }
+
+    .patient-field {
+      flex: 1;
+    }
+
+    .field-label {
+      font-size: 7.5pt;
+      color: #888;
+      text-transform: uppercase;
+    }
+
+    .field-value {
+      font-size: 10pt;
+      font-weight: 600;
+    }
+
+    /* ── Prescription Date Row ────────────────────────── */
+    .meta-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 14pt;
+      font-size: 9pt;
+      color: #555;
+    }
+
+    /* ── Items Table ──────────────────────────────────── */
+    .section-title {
+      font-size: 10pt;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.5pt;
+      color: #1a1a1a;
+      border-bottom: 1px solid #ccc;
+      padding-bottom: 4pt;
+      margin-bottom: 8pt;
+    }
+
+    .items-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 14pt;
+    }
+
+    .items-table th {
+      background: #1a1a1a;
+      color: #fff;
+      font-size: 8pt;
+      text-align: left;
+      padding: 5pt 6pt;
+      font-weight: normal;
+      text-transform: uppercase;
+      letter-spacing: 0.3pt;
+    }
+
+    .items-table td {
+      font-size: 9pt;
+      padding: 6pt 6pt;
+      border-bottom: 1px solid #eee;
+      vertical-align: top;
+    }
+
+    .items-table tr:nth-child(even) td {
+      background: #fafafa;
+    }
+
+    .item-number {
+      font-weight: bold;
+      color: #1a1a1a;
+      white-space: nowrap;
+    }
+
+    .drug-name {
+      font-weight: bold;
+    }
+
+    .drug-generic {
+      font-size: 8pt;
+      color: #666;
+      display: block;
+      margin-top: 2pt;
+    }
+
+    .dosage-text {
+      font-size: 8.5pt;
+      color: #333;
+      line-height: 1.4;
+    }
+
+    /* ── Disclaimer ───────────────────────────────────── */
+    .disclaimer {
+      border: 1px solid #c00;
+      border-radius: 2pt;
+      padding: 6pt 8pt;
+      margin-top: 14pt;
+      margin-bottom: 14pt;
+      background: #fff8f8;
+      font-size: 8pt;
+      color: #c00;
+      text-align: center;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.5pt;
+    }
+
+    /* ── Signature Box ────────────────────────────────── */
+    .signature-box {
+      margin-top: 20pt;
+      border-top: 1px solid #1a1a1a;
+      padding-top: 6pt;
+      text-align: center;
+    }
+
+    .signature-box .sig-name {
+      font-size: 10pt;
+      font-weight: bold;
+    }
+
+    .signature-box .sig-details {
+      font-size: 8pt;
+      color: #555;
+      margin-top: 2pt;
+    }
+
+    /* ── Footer ───────────────────────────────────────── */
+    .footer {
+      position: fixed;
+      bottom: 15mm;
+      left: 25mm;
+      right: 25mm;
+      border-top: 1px solid #ccc;
+      padding-top: 5pt;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 7pt;
+      color: #888;
+    }
+
+    .footer .hash-info {
+      font-family: "Courier New", monospace;
+    }
+
+    .footer .verify-link {
+      color: #1565C0;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="content">
+
+    <!-- Header -->
+    <div class="header">
+      <div style="display: flex; align-items: center;">
+        <div class="clinic-logo-placeholder">LOGO</div>
+        <div class="clinic-info">
+          <div class="clinic-name">{{ clinic_info.name }}</div>
+          <div class="clinic-details">
+            {% if clinic_info.address %}{{ clinic_info.address }}<br>{% endif %}
+            {% if clinic_info.phone %}Tel: {{ clinic_info.phone }}{% endif %}
+            {% if clinic_info.cnpj %} &nbsp;|&nbsp; CNPJ: {{ clinic_info.cnpj }}{% endif %}
+          </div>
+        </div>
+      </div>
+      <div class="document-title">
+        <h1>Receita Médica</h1>
+        <div class="subtitle">Documento Eletrônico Autenticado</div>
+      </div>
+    </div>
+
+    <!-- Doctor Info -->
+    <div class="doctor-section">
+      <h2>Prescritor</h2>
+      {% with prof=prescription.encounter.professional %}
+      <div class="doctor-name">
+        Dr(a). {{ prof.user.get_full_name }}
+      </div>
+      <div class="doctor-details">
+        {{ prof.get_council_display }}: {{ prof.council_number }}
+        {% if prof.specialty %} &nbsp;|&nbsp; Especialidade: {{ prof.specialty }}{% endif %}
+      </div>
+      {% endwith %}
+    </div>
+
+    <!-- Patient Info -->
+    <div class="patient-section">
+      <h2>Paciente</h2>
+      <div class="patient-row">
+        <div class="patient-field">
+          <div class="field-label">Nome</div>
+          <div class="field-value">{{ prescription.patient.full_name }}</div>
+        </div>
+        <div class="patient-field">
+          <div class="field-label">Data de Nascimento</div>
+          <div class="field-value">{{ prescription.patient.date_of_birth|date:"d/m/Y" }}</div>
+        </div>
+        <div class="patient-field">
+          <div class="field-label">MRN</div>
+          <div class="field-value">{{ prescription.patient.mrn }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Metadata -->
+    <div class="meta-row">
+      <span>
+        <strong>Data da prescrição:</strong>
+        {{ prescription.signed_at|date:"d/m/Y" }}
+      </span>
+      <span>
+        <strong>Válida até:</strong>
+        {{ validity_date|date:"d/m/Y" }}
+      </span>
+      <span>
+        <strong>Nº receita:</strong>
+        {{ prescription.id|stringformat:"s"|slice:":8"|upper }}
+      </span>
+    </div>
+
+    <!-- Items -->
+    <div class="section-title">Medicamentos Prescritos</div>
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th style="width: 5%">#</th>
+          <th style="width: 30%">Medicamento</th>
+          <th style="width: 10%">Qtd.</th>
+          <th style="width: 10%">Unidade</th>
+          <th style="width: 45%">Posologia e Instruções</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td class="item-number">{{ forloop.counter }}</td>
+          <td>
+            <div class="drug-name">
+              {% if item.drug_id %}{{ item.drug.name }}{% else %}{{ item.generic_name }}{% endif %}
+            </div>
+            {% if item.generic_name and item.drug_id %}
+            <span class="drug-generic">({{ item.generic_name }})</span>
+            {% endif %}
+          </td>
+          <td>{{ item.quantity }}</td>
+          <td>{{ item.unit_of_measure }}</td>
+          <td class="dosage-text">
+            {{ item.dosage_instructions|default:"Conforme orientação médica." }}
+            {% if item.notes %}
+            <br><em>Obs: {{ item.notes }}</em>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="5" style="text-align: center; color: #888; padding: 12pt;">
+            Nenhum item prescrito.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- Disclaimer -->
+    <div class="disclaimer">
+      DOCUMENTO NÃO VÁLIDO SEM ASSINATURA DIGITAL
+    </div>
+
+    <!-- Signature Block -->
+    <div class="signature-box">
+      {% with prof=prescription.encounter.professional %}
+      <div class="sig-name">Dr(a). {{ prof.user.get_full_name }}</div>
+      <div class="sig-details">
+        {{ prof.get_council_display }} {{ prof.council_number }}
+        {% if prof.specialty %} — {{ prof.specialty }}{% endif %}
+      </div>
+      <div class="sig-details" style="margin-top: 4pt;">
+        Assinado digitalmente em {{ prescription.signed_at|date:"d/m/Y \à\s H:i" }}
+      </div>
+      {% endwith %}
+    </div>
+
+  </div><!-- /.content -->
+
+  <!-- Footer -->
+  <div class="footer">
+    <div class="hash-info">
+      Hash: {{ digital_hash_short }} &nbsp;|&nbsp;
+      <a class="verify-link" href="#">Verificar autenticidade</a>
+    </div>
+    <div>Gerado pelo sistema Vitali &nbsp;|&nbsp; {{ prescription.signed_at|date:"d/m/Y H:i" }}</div>
+  </div>
+
+</body>
+</html>

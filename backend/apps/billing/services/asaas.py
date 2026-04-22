@@ -20,6 +20,7 @@ Environment variables:
   ASAAS_ENVIRONMENT: optional — "sandbox" (default) or "production"
   PIX_CHARGE_EXPIRY_MINUTES: optional — charge TTL in minutes (default 30)
 """
+
 import logging
 from decimal import Decimal
 
@@ -69,22 +70,21 @@ class AsaasService:
         """Make an API request, raise AsaasAPIError on failure."""
         url = f"{self._base_url}/{path.lstrip('/')}"
         try:
-            resp = requests.request(
-                method, url, headers=self._headers, timeout=_TIMEOUT, **kwargs
-            )
-        except requests.Timeout:
+            resp = requests.request(method, url, headers=self._headers, timeout=_TIMEOUT, **kwargs)
+        except requests.Timeout as exc:
             logger.error("asaas.timeout method=%s path=%s", method, path)
-            raise AsaasAPIError(
-                f"Asaas não respondeu em {_TIMEOUT}s. Tente novamente."
-            )
+            raise AsaasAPIError(f"Asaas não respondeu em {_TIMEOUT}s. Tente novamente.") from exc
         except requests.RequestException as exc:
             logger.error("asaas.network_error method=%s path=%s err=%s", method, path, exc)
-            raise AsaasAPIError(f"Erro de rede ao conectar com Asaas: {exc}")
+            raise AsaasAPIError(f"Erro de rede ao conectar com Asaas: {exc}") from exc
 
         if not resp.ok:
             logger.error(
                 "asaas.api_error method=%s path=%s status=%s body=%s",
-                method, path, resp.status_code, resp.text[:200],
+                method,
+                path,
+                resp.status_code,
+                resp.text[:200],
             )
             raise AsaasAPIError(
                 f"Asaas retornou {resp.status_code}. Tente novamente.",
@@ -100,6 +100,7 @@ class AsaasService:
         """
         # Check if we already have a customer ID stored on a previous PIX charge
         from apps.billing.models import PIXCharge
+
         existing = (
             PIXCharge.objects.filter(
                 appointment__patient=patient,
@@ -126,8 +127,9 @@ class AsaasService:
         Create a PIX charge for an appointment.
         Returns dict with: asaas_charge_id, pix_copy_paste, pix_qr_code_base64, expires_at.
         """
-        from django.utils import timezone
         from datetime import timedelta
+
+        from django.utils import timezone
 
         expiry_minutes = getattr(settings, "PIX_CHARGE_EXPIRY_MINUTES", 30)
         expires_at = timezone.now() + timedelta(minutes=expiry_minutes)

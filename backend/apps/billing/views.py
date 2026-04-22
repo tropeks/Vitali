@@ -3,21 +3,21 @@ Billing Views — TISS/TUSS
 """
 
 import logging
+from decimal import Decimal
 from pathlib import Path
 
 from django.contrib.postgres.search import SearchQuery, SearchRank
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
+from django.db.models import Count, Sum
 from django.http import FileResponse, Http404
 from django.utils import timezone
-from decimal import Decimal
-
-from django.db.models import Count, Sum
-from rest_framework import filters, status, viewsets
+from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.core.models import TUSSCode
 from apps.core.permissions import ModuleRequiredPermission
@@ -43,6 +43,7 @@ _BILLING_MODULE = ModuleRequiredPermission("billing")
 
 class TUSSCodePagination(PageNumberPagination):
     """50 results per page for combobox use. Safety net against dumping 6-8k rows."""
+
     page_size = 50
     page_size_query_param = "page_size"
     max_page_size = 100
@@ -129,8 +130,8 @@ class PriceTableViewSet(viewsets.ModelViewSet):
         table = self.get_object()
         try:
             item = table.items.get(pk=item_pk)
-        except PriceTableItem.DoesNotExist:
-            raise Http404
+        except PriceTableItem.DoesNotExist as exc:
+            raise Http404 from exc
         if request.method == "DELETE":
             item.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
@@ -172,13 +173,14 @@ class TISSGuideViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         # Pop write-only field before save so it doesn't reach TISSGuide.objects.create()
-        glosa_prediction_ids = serializer.validated_data.pop('glosa_prediction_ids', [])
+        glosa_prediction_ids = serializer.validated_data.pop("glosa_prediction_ids", [])
         guide = serializer.save()
         # Link any GlosaPrediction rows that were shown before guide submission.
         # Only link rows that are still orphaned (guide__isnull=True) — prevents
         # a malicious or buggy client from hijacking predictions from another guide.
         if glosa_prediction_ids:
             from apps.ai.models import GlosaPrediction
+
             GlosaPrediction.objects.filter(
                 id__in=glosa_prediction_ids,
                 guide__isnull=True,
@@ -346,7 +348,9 @@ class TISSBatchViewSet(viewsets.ModelViewSet):
         # Idempotency guard — prevent double-processing the same batch
         if batch.retorno_xml_file and not request.query_params.get("force"):
             return Response(
-                {"detail": "Retorno já processado para este lote. Use ?force=true para reprocessar."},
+                {
+                    "detail": "Retorno já processado para este lote. Use ?force=true para reprocessar."
+                },
                 status=status.HTTP_409_CONFLICT,
             )
 
@@ -388,6 +392,7 @@ class GlosaViewSet(viewsets.ReadOnlyModelViewSet):
     Glosas are created only by the retorno parser (system), not by API clients.
     Use GET to list/retrieve and POST /appeal/ to file an appeal.
     """
+
     serializer_class = GlosaSerializer
     permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]
     filter_backends = [filters.OrderingFilter]
@@ -440,8 +445,11 @@ class GlosaViewSet(viewsets.ReadOnlyModelViewSet):
 
 # ─── S-055: PIX Payment Views ─────────────────────────────────────────────────
 
-import hashlib  # noqa: E402
 import hmac as _hmac  # noqa: E402
+from decimal import Decimal as _Decimal  # noqa: E402
+
+from django.conf import settings as _settings  # noqa: E402
+from django.db import transaction  # noqa: E402
 
 from .models import PIXCharge  # noqa: E402
 from .services.asaas import AsaasAPIError, AsaasService  # noqa: E402
@@ -449,7 +457,7 @@ from .services.asaas import AsaasAPIError, AsaasService  # noqa: E402
 
 class PIXChargeCreateSerializer(serializers.Serializer):
     appointment_id = serializers.UUIDField()
-    amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value="0.01")
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=_Decimal("0.01"))
 
 
 class PIXChargeView(APIView):
@@ -457,6 +465,7 @@ class PIXChargeView(APIView):
     POST /api/v1/billing/pix/charges/  — create PIX charge
     GET  /api/v1/billing/pix/charges/:id/ — get charge status
     """
+
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -467,6 +476,7 @@ class PIXChargeView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         from apps.emr.models import Appointment
+
         try:
             appointment = Appointment.objects.get(id=ser.validated_data["appointment_id"])
         except Appointment.DoesNotExist:
@@ -488,7 +498,9 @@ class PIXChargeView(APIView):
             return Response(exc.to_response_dict(), status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
         from django.db import connection
+
         from apps.core.models import AsaasChargeMap
+
         with transaction.atomic():
             charge = PIXCharge.objects.create(
                 appointment=appointment,
@@ -540,12 +552,13 @@ class AsaasWebhookView(APIView):
     - select_for_update + status check = idempotent on duplicate delivery.
     Always returns 200 to prevent Asaas retry storms.
     """
+
     permission_classes = [AllowAny]
     authentication_classes = []
 
     def post(self, request):
         token = request.headers.get("asaas-access-token", "")
-        expected = getattr(settings, "ASAAS_WEBHOOK_TOKEN", "")
+        expected = getattr(_settings, "ASAAS_WEBHOOK_TOKEN", "")
         if not expected or not _hmac.compare_digest(token.encode(), expected.encode()):
             logger.warning("asaas.webhook.invalid_token ip=%s", request.META.get("REMOTE_ADDR"))
             return Response({"status": "ok"}, status=status.HTTP_401_UNAUTHORIZED)
@@ -556,8 +569,10 @@ class AsaasWebhookView(APIView):
         if event_type != "PAYMENT_RECEIVED" or not charge_id:
             return Response({"status": "ok"})
 
-        from apps.core.models import AsaasChargeMap
         from django_tenants.utils import schema_context
+
+        from apps.core.models import AsaasChargeMap
+
         try:
             charge_map = AsaasChargeMap.objects.get(asaas_charge_id=charge_id)
         except AsaasChargeMap.DoesNotExist:
@@ -592,9 +607,11 @@ def _process_pix_payment_received(charge_id: str) -> None:
             appointment.save(update_fields=["status", "updated_at"])
 
         from .services.pix_signals import appointment_paid
+
         appointment_paid.send(sender=PIXCharge, appointment=appointment)
 
     logger.info(
         "asaas.webhook.processed charge_id=%s appointment_id=%s",
-        charge_id, str(charge.appointment_id),
+        charge_id,
+        str(charge.appointment_id),
     )

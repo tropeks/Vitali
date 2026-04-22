@@ -12,6 +12,7 @@ Strategy:
 
 All writes are public-schema (FeatureFlag is in SHARED_APPS — no schema switching needed).
 """
+
 from django.db import migrations
 
 
@@ -21,8 +22,7 @@ def backfill_feature_flags(apps, schema_editor):
     FeatureFlag = apps.get_model("core", "FeatureFlag")
 
     subscriptions_by_tenant = {
-        sub.tenant_id: sub
-        for sub in Subscription.objects.select_related("tenant").all()
+        sub.tenant_id: sub for sub in Subscription.objects.select_related("tenant").all()
     }
 
     for tenant in Tenant.objects.exclude(schema_name="public"):
@@ -49,7 +49,6 @@ def reverse_backfill(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("core", "0003_tussynclog_tenantaiconfig"),
     ]

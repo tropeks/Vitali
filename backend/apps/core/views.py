@@ -1,10 +1,10 @@
 """
 Core views — Auth, Tenant registration, User management.
 """
+
 import logging
 from datetime import timedelta
 
-from django.contrib.auth import update_session_auth_hash
 from django.core.cache import cache
 from django.utils import timezone
 from django_tenants.utils import schema_context
@@ -14,12 +14,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView as _BaseRefreshView
+from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.views import TokenRefreshView as _BaseRefreshView
 
 from .models import AuditLog, Domain, FeatureFlag, Role, Tenant, TUSSSyncLog, User
 from .serializers import (
     ChangePasswordSerializer,
-    FeatureFlagSerializer,
     HealthOSTokenObtainPairSerializer,
     LoginSerializer,
     RoleSerializer,
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 # ─── Lockout configuration ────────────────────────────────────────────────────
 # Thresholds: (attempt_count, lockout_seconds)
 LOCKOUT_THRESHOLDS = [
-    (5, 5 * 60),    # 5 failures → lock 5 min
+    (5, 5 * 60),  # 5 failures → lock 5 min
     (10, 30 * 60),  # 10 failures → lock 30 min
     (15, 60 * 60),  # 15 failures → lock 1 h
 ]
@@ -109,8 +109,10 @@ def _write_audit(request, user, action: str, resource_type: str = "auth", resour
 
 # ─── Auth Views ───────────────────────────────────────────────────────────────
 
+
 class LoginRateThrottle(rest_framework_throttling.AnonRateThrottle):
     """5 login attempts per minute per IP — tighter than the global 100/hour."""
+
     rate = "5/min"
     scope = "login"
 
@@ -121,6 +123,7 @@ class LoginView(APIView):
     Rate limit via Redis, account lockout, Argon2id password check.
     Returns { access, refresh, user: UserDTO }
     """
+
     permission_classes = [permissions.AllowAny]
     throttle_classes = [LoginRateThrottle]
 
@@ -128,7 +131,13 @@ class LoginView(APIView):
         serializer = LoginSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(
-                {"error": {"code": "VALIDATION_ERROR", "message": "Dados inválidos.", "details": serializer.errors}},
+                {
+                    "error": {
+                        "code": "VALIDATION_ERROR",
+                        "message": "Dados inválidos.",
+                        "details": serializer.errors,
+                    }
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -154,7 +163,7 @@ class LoginView(APIView):
         try:
             user = User.objects.get(email=email)
         except User.DoesNotExist:
-            attempts = _increment_attempts(ip, email)
+            _increment_attempts(ip, email)
             _write_audit(request, None, "login_failed", resource_id=email)
             return Response(
                 {"error": {"code": "INVALID_CREDENTIALS", "message": "Credenciais inválidas."}},
@@ -162,7 +171,7 @@ class LoginView(APIView):
             )
 
         if not user.check_password(password):
-            attempts = _increment_attempts(ip, email)
+            _increment_attempts(ip, email)
             _write_audit(request, user, "login_failed", resource_id=str(user.pk))
             locked, remaining = _is_locked_out(ip, email)
             resp = {"error": {"code": "INVALID_CREDENTIALS", "message": "Credenciais inválidas."}}
@@ -190,11 +199,13 @@ class LoginView(APIView):
         _write_audit(request, user, "login_success", resource_id=str(user.pk))
 
         user_dto = UserDTOSerializer(user, context={"request": request}).data
-        return Response({
-            "access": str(refresh.access_token),
-            "refresh": str(refresh),
-            "user": user_dto,
-        })
+        return Response(
+            {
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
+                "user": user_dto,
+            }
+        )
 
 
 class LogoutView(APIView):
@@ -202,6 +213,7 @@ class LogoutView(APIView):
     POST /api/v1/auth/logout
     Blacklists the refresh token.
     """
+
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
@@ -226,18 +238,26 @@ class LogoutView(APIView):
 
 class TokenRefreshView(_BaseRefreshView):
     """POST /api/v1/auth/refresh — wraps SimpleJWT with rotation."""
+
     pass
 
 
 class ChangePasswordView(APIView):
     """PUT /api/v1/auth/password"""
+
     permission_classes = [permissions.IsAuthenticated]
 
     def put(self, request):
         serializer = ChangePasswordSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(
-                {"error": {"code": "VALIDATION_ERROR", "message": "Dados inválidos.", "details": serializer.errors}},
+                {
+                    "error": {
+                        "code": "VALIDATION_ERROR",
+                        "message": "Dados inválidos.",
+                        "details": serializer.errors,
+                    }
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -257,6 +277,7 @@ class ChangePasswordView(APIView):
 
 class MeView(APIView):
     """GET /api/v1/me — return current user DTO."""
+
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -266,18 +287,26 @@ class MeView(APIView):
 
 # ─── Tenant Registration (public schema) ──────────────────────────────────────
 
+
 class TenantRegistrationView(APIView):
     """
     POST /api/v1/platform/tenants
     Creates a new tenant + schema + domain + admin role + admin user.
     """
+
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
         serializer = TenantRegistrationSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(
-                {"error": {"code": "VALIDATION_ERROR", "message": "Dados inválidos.", "details": serializer.errors}},
+                {
+                    "error": {
+                        "code": "VALIDATION_ERROR",
+                        "message": "Dados inválidos.",
+                        "details": serializer.errors,
+                    }
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -363,11 +392,13 @@ class TenantRegistrationView(APIView):
 
 # ─── Legacy JWT view ──────────────────────────────────────────────────────────
 
+
 class HealthOSTokenObtainPairView(TokenObtainPairView):
     serializer_class = HealthOSTokenObtainPairSerializer
 
 
 # ─── User & Role views ────────────────────────────────────────────────────────
+
 
 class UserListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -396,12 +427,14 @@ class RoleListCreateView(generics.ListCreateAPIView):
 
 # ─── Feature flags view ───────────────────────────────────────────────────────
 
+
 class TenantFeaturesView(APIView):
     """
     GET /api/v1/core/features/
     Returns the list of active modules for the current tenant.
     Used by the frontend useHasModule() hook to hide/show nav items.
     """
+
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -413,27 +446,39 @@ class TenantFeaturesView(APIView):
 
 # ─── AI: TUSS Sync Status ─────────────────────────────────────────────────────
 
+
 class TUSSSyncStatusView(APIView):
     """
     GET /api/v1/ai/tuss-sync-status/
     Admin-only. Returns the last 5 TUSS sync log entries and table row count.
     Used by billing overview to show the TUSS DB sync badge.
     """
+
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         # Admin-only: require is_staff or admin role
-        if not (request.user.is_staff or request.user.is_superuser or
-                request.user.has_role_permission("users.read")):
-            from rest_framework.response import Response as Resp
+        if not (
+            request.user.is_staff
+            or request.user.is_superuser
+            or request.user.has_role_permission("users.read")
+        ):
             from rest_framework import status as drf_status
+            from rest_framework.response import Response as Resp
+
             return Resp({"detail": "Forbidden."}, status=drf_status.HTTP_403_FORBIDDEN)
 
         last_syncs = list(
             TUSSSyncLog.objects.order_by("-ran_at")[:5].values(
-                "id", "ran_at", "status", "source",
-                "row_count_total", "row_count_added", "row_count_updated",
-                "duration_ms", "error_message",
+                "id",
+                "ran_at",
+                "status",
+                "source",
+                "row_count_total",
+                "row_count_added",
+                "row_count_updated",
+                "duration_ms",
+                "error_message",
             )
         )
 
@@ -441,16 +486,20 @@ class TUSSSyncStatusView(APIView):
         last_sync_age_days = None
         if last_syncs:
             from django.utils import timezone as tz
+
             age = tz.now() - last_syncs[0]["ran_at"]
             last_sync_age_days = age.days
 
         table_row_count = TUSSSyncLog.objects.using("default").values("id").count()
         # row count is from TUSSCode (the table being synced)
         from apps.core.models import TUSSCode as _TUSSCode
+
         table_row_count = _TUSSCode.objects.using("default").filter(active=True).count()
 
-        return Response({
-            "last_syncs": last_syncs,
-            "table_row_count": table_row_count,
-            "last_sync_age_days": last_sync_age_days,
-        })
+        return Response(
+            {
+                "last_syncs": last_syncs,
+                "table_row_count": table_row_count,
+                "last_sync_age_days": last_sync_age_days,
+            }
+        )

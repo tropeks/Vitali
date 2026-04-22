@@ -7,6 +7,7 @@ Fail-open pattern: if Redis is unavailable, circuit stays closed.
 
 feature_key isolates TUSS and Glosa circuits so failures in one don't trip the other.
 """
+
 import logging
 
 from django.core.cache import cache
@@ -16,9 +17,9 @@ logger = logging.getLogger(__name__)
 FAILURE_KEY_TEMPLATE = "ai:cb:failures:{tenant}:{feature}"
 OPEN_KEY_TEMPLATE = "ai:cb:open:{tenant}:{feature}"
 
-TRIP_THRESHOLD = 3       # failures before opening
-FAILURE_WINDOW_S = 60    # seconds to count failures
-COOLDOWN_S = 300         # seconds circuit stays open
+TRIP_THRESHOLD = 3  # failures before opening
+FAILURE_WINDOW_S = 60  # seconds to count failures
+COOLDOWN_S = 300  # seconds circuit stays open
 
 
 def is_open(tenant_schema: str, feature: str = "tuss") -> bool:
@@ -48,12 +49,16 @@ def record_failure(tenant_schema: str, feature: str = "tuss") -> None:
             logger.warning(
                 "AI circuit breaker OPEN for tenant=%s feature=%s after %d failures. "
                 "Will re-probe in %ds.",
-                tenant_schema, feature, count, COOLDOWN_S,
+                tenant_schema,
+                feature,
+                count,
+                COOLDOWN_S,
             )
     except Exception:
         logger.warning(
             "Redis unavailable — circuit breaker state not updated for %s/%s",
-            tenant_schema, feature,
+            tenant_schema,
+            feature,
         )
 
 

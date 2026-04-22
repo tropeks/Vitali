@@ -1,5 +1,6 @@
 from django.contrib import admin
-from .models import WhatsAppContact, ConversationSession, MessageLog, ScheduledReminder
+
+from .models import ConversationSession, MessageLog, ScheduledReminder, WhatsAppContact
 
 
 @admin.register(WhatsAppContact)
