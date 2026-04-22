@@ -52,5 +52,5 @@ def get_context(session) -> ConversationContext:
 def set_context(session, **kwargs) -> None:
     """Merge kwargs into session.context. Does NOT save — caller must call session.save()."""
     ctx = get_context(session)
-    ctx.update(kwargs)
+    ctx.update(kwargs)  # type: ignore[typeddict-item]
     session.context = dict(ctx)

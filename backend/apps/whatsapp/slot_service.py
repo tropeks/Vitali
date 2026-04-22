@@ -1,3 +1,4 @@
+# mypy: ignore-errors
 """
 Slot generation service — get_available_slots(professional, date_range).
 

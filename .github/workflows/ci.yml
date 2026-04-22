@@ -78,7 +78,7 @@ jobs:
       REDIS_URL: redis://localhost:6379/0
       DJANGO_SETTINGS_MODULE: vitali.settings.development
       SECRET_KEY: ci-test-secret-key-not-for-production
-      FIELD_ENCRYPTION_KEY: UXVhbHF1ZXIgY2hhdmUgcGFyYSBkZXNlbnZvbHZpbWVudG8=
+      FIELD_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
       CELERY_TASK_ALWAYS_EAGER: "True"
 
     steps:
