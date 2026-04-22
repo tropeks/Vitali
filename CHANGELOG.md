@@ -2,6 +2,28 @@
 
 All notable changes to Vitali Health are documented here.
 
+## [1.0.0] — 2026-04-22
+
+### Added
+- **Clinical AI Layer + MFA (Sprint 15, S-062–S-066):** First Phase 2 release. AI becomes a clinical co-pilot — prescription safety checks, CID-10 suggestions, SOAP transcription — and MFA protects staff accounts for the live pilot. Version bump to v1.0.0 marks the first production-grade release.
+  - **S-062 Multi-Factor Authentication (TOTP):** `django-otp`, `pyotp`, `qrcode[pil]` added. `TOTPDevice` migration (`core/0010_totpdevice.py`). `MFARequiredMiddleware` enforces `mfa_verified` JWT claim on staff/superuser requests. Endpoints: `POST /auth/mfa/setup/` (QR URI + base32), `POST /auth/mfa/verify/` (backup codes shown once), `POST /auth/mfa/login/` (second-step JWT), `POST /auth/mfa/disable/` (platform admin). `MFA_GRACE_PERIOD_DAYS` env var (default 30). Frontend: `/profile/security` (enrollment + QR + backup codes download), `/auth/mfa` (6-digit auto-submit), MFA status badge on settings.
+  - **S-063 AI Prescription Safety Net:** `PrescriptionSafetyChecker` service (Claude Haiku) — drug-drug interactions, dose validation, allergy cross-check, contraindications for encounter diagnoses. `AISafetyAlert` model + migration (`emr/0010_aisafetyalert.py`). Signal `post_save` on `PrescriptionItem` → `check_prescription_safety` Celery task. Redis cache 1h by `sha256(drug + other_drugs_sorted + allergies_sorted)`. Feature flag `ai_prescription_safety`. Endpoints: `POST /emr/prescriptions/{id}/items/{item_id}/safety-check/`, `POST .../acknowledge-alert/` (override logged to AuditLog). Frontend: `SafetyBadge`, `SafetyAlertModal`, `PrescriptionBuilder` polls for 10s with amber → green/yellow/red state.
+  - **S-064 AI CID-10 Suggester:** `CID10Suggester` service — top-3 ICD-10 suggestions with confidence, validated against local `CID10Code` table (rejects hallucinated codes). `AICIDSuggestion` model tracks accepted/rejected outcomes. `CID10Code` migration (`core/0008_cid10code.py`). Redis cache 24h by `sha256(normalized_text)`. Feature flag `ai_cid10_suggest`. Endpoints: `POST /emr/encounters/{id}/cid10-suggest/`, `POST .../cid10-accept/`. Frontend: `CID10Suggest` component with 1.5s debounce + 3 suggestion chips, wired into `SOAPEditor`.
+  - **S-065 Prescription PDF Export:** `weasyprint` added. `PrescriptionPDFGenerator` — Jinja2 HTML → PDF with clinic logo, doctor CRM, patient info, items, digital hash (sha256), watermark. Controlled substances render on separate page with blue border (Receituário Azul). Signature required before PDF generation. `GET /emr/prescriptions/{id}/pdf/` returns `application/pdf` with 1h Redis cache. `PRESCRIPTION_PDF_CACHE_TTL` env var. `backend/Dockerfile` + `docker-compose` add libcairo2, libpango, fonts-liberation for WeasyPrint OS deps. CI smoke test verifies WeasyPrint before pytest.
+  - **S-066 Appointment Cancellation Waitlist:** `WaitlistEntry` model + migration (`emr/0012_waitlistentry.py`) with status machine (`waiting/notified/booked/expired/cancelled`) and preferred date/time ranges. Signal `on_appointment_cancelled` → `notify_next_waitlist_entry` Celery task sends WhatsApp. `expire_waitlist_notification` task fires after 30min countdown via `apply_async`. WhatsApp response handler routes `SIM`/`NÃO` from notified entries → book-or-skip. REST: `GET/POST /emr/waitlist/`, `DELETE /emr/waitlist/{id}/`. Frontend: `/appointments/waitlist` management view, "Entrar na fila de espera" on unavailable slots, status-badge sidebar panel.
+  - **Sprint 15-17 catch-up (f135c28):** AI Scribe (Whisper service + `views_scribe.py` + `AudioRecorder` + `ScribeButton` + SOAP editor integration), DPA modal (`AIDPAStatus` migration `core/0009_aidpastatus.py` + `views_dpa.py` + `DPASignModal`), AI config page (`/configuracoes/ai`), patient check-in flow (`/waiting-room` + `WaitTimeCard`), WhatsApp appointment reminder uniqueness constraint (`whatsapp/0005_alter_appointmentreminder_unique...`).
+
+### Fixed
+- **DX-07:** `docs/PLAN_SPRINT15.md` migration table now documents django-tenants run order — use `migrate_schemas` (not `migrate`), shared-first then tenant-second.
+- **DX-08:** `.github/workflows/ci.yml` backend-test installs libcairo2/libpango/fonts + smoke-tests WeasyPrint before pytest, catching OS-dep regressions that would otherwise surface as cryptic Cairo errors in S-065 PDF tests.
+- `backend/conftest.py` (new): close stale DB connections at test-class boundaries to fix `TenantTestCase` teardown cascade.
+- `backend/.dockerignore` (new): exclude `.venv` so docker build context reads cleanly on Windows (`.venv/lib64` is a symlink Docker can't traverse).
+
+### Changed
+- `backend/requirements/base.txt`: + `pyotp`, `qrcode[pil]` (MFA), `weasyprint` (PDF).
+- `.env.example`: + `MFA_GRACE_PERIOD_DAYS`, `PRESCRIPTION_PDF_CACHE_TTL`.
+- `.gitignore`: + pytest scratch files (`check_run*`, `fix_testdb`, `drop_testdb.py`, `uv.lock`).
+
 ## [0.9.0] — 2026-04-05
 
 ### Added
