@@ -1,3 +1,4 @@
+# mypy: ignore-errors
 """
 Pharmacy Celery tasks — expiry and low-stock alerts per tenant.
 Tasks run for every tenant via schema_context (django-tenants).

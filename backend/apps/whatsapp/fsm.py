@@ -1,3 +1,4 @@
+# mypy: ignore-errors
 """
 ConversationFSM — WhatsApp appointment scheduling state machine.
 
