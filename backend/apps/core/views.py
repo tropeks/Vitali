@@ -198,12 +198,25 @@ class LoginView(APIView):
 
         _write_audit(request, user, "login_success", resource_id=str(user.pk))
 
+        # MFA gate: if the user has an active TOTPDevice, flag the response so the
+        # frontend can redirect to the /mfa challenge. The returned access/refresh
+        # tokens omit the mfa_verified claim, so any protected endpoint will 403
+        # until the user completes /auth/mfa/login/.
+        mfa_required = False
+        try:
+            from apps.core.models import TOTPDevice
+
+            mfa_required = TOTPDevice.objects.filter(user=user, is_active=True).exists()
+        except Exception as exc:
+            logger.warning("MFA check failed during login: %s", exc)
+
         user_dto = UserDTOSerializer(user, context={"request": request}).data
         return Response(
             {
                 "access": str(refresh.access_token),
                 "refresh": str(refresh),
                 "user": user_dto,
+                "mfa_required": mfa_required,
             }
         )
 

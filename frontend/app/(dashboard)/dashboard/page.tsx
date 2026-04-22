@@ -29,9 +29,12 @@ interface Overview {
   since: string;
   appointments_total: number;
   appointments_completed: number;
+  appointments_confirmed: number;
   appointments_waiting: number;
   appointments_cancelled: number;
+  appointments_no_show: number;
   cancellation_rate: number;
+  no_show_rate: number;
   new_patients: number;
   encounters_open: number;
   encounters_signed: number;
@@ -275,7 +278,7 @@ export default function DashboardPage() {
             <KPICard
               label="Novos Pacientes"
               value={overview?.new_patients ?? 0}
-              sub={`${overview?.cancellation_rate ?? 0}% taxa de cancelamento`}
+              sub={`${overview?.cancellation_rate ?? 0}% cancelamento · ${overview?.no_show_rate ?? 0}% faltas`}
               color="text-green-600"
             />
             <KPICard

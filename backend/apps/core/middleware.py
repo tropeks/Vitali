@@ -175,6 +175,7 @@ class FeatureFlagMiddleware:
 _MFA_EXEMPT_PATHS = {
     "/auth/login",
     "/auth/refresh",
+    "/auth/mfa/status/",
     "/auth/mfa/login/",
     "/auth/mfa/setup/",
     "/auth/mfa/verify/",

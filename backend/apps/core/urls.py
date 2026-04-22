@@ -4,7 +4,13 @@ from django.urls import path
 
 from . import views
 from .views_dpa import DPASignView, DPAStatusView
-from .views_mfa import MFADisableView, MFALoginView, MFASetupView, MFAVerifyView
+from .views_mfa import (
+    MFADisableView,
+    MFALoginView,
+    MFASetupView,
+    MFAStatusView,
+    MFAVerifyView,
+)
 from .views_onboarding import OnboardingView
 from .views_platform import TenantSubscriptionView
 
@@ -17,6 +23,7 @@ urlpatterns = [
     path("auth/refresh", views.TokenRefreshView.as_view(), name="token-refresh"),
     path("auth/password", views.ChangePasswordView.as_view(), name="change-password"),
     # MFA (S-062)
+    path("auth/mfa/status/", MFAStatusView.as_view(), name="mfa-status"),
     path("auth/mfa/setup/", MFASetupView.as_view(), name="mfa-setup"),
     path("auth/mfa/verify/", MFAVerifyView.as_view(), name="mfa-verify"),
     path("auth/mfa/login/", MFALoginView.as_view(), name="mfa-login"),

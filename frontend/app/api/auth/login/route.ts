@@ -57,17 +57,18 @@ export async function POST(req: NextRequest) {
 
   const data = await djangoResp.json();
 
-  const { access, refresh, user } = data as {
+  const { access, refresh, user, mfa_required } = data as {
     access: string;
     refresh: string;
     user: Record<string, unknown>;
+    mfa_required?: boolean;
   };
 
   // Access token expires in 15 min; refresh in 7 days
   const accessMaxAge = 15 * 60;
   const refreshMaxAge = 7 * 24 * 60 * 60;
 
-  const response = NextResponse.json({ user });
+  const response = NextResponse.json({ user, mfa_required: !!mfa_required });
 
   response.cookies.set("access_token", access, {
     httpOnly: true,

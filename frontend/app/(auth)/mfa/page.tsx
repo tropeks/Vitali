@@ -1,14 +1,13 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState, useRef, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, ShieldCheck, AlertCircle } from "lucide-react";
 
-const DJANGO_API =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
-export default function MFALoginPage() {
+function MFALoginContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const nextPath = searchParams.get("next") ?? "/dashboard";
   const [digits, setDigits] = useState<string[]>(Array(6).fill(""));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,7 +56,7 @@ export default function MFALoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ access: data.access, refresh: data.refresh }),
       });
-      router.push("/dashboard");
+      router.push(nextPath);
       router.refresh();
     } catch {
       setError("Erro ao verificar. Tente novamente.");
@@ -212,5 +211,13 @@ export default function MFALoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function MFALoginPage() {
+  return (
+    <Suspense>
+      <MFALoginContent />
+    </Suspense>
   );
 }
