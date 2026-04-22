@@ -277,7 +277,7 @@ class TopProfessionalsView(APIView):
             [
                 {
                     "professional_id": str(p.id),
-                    "name": p.user.get_full_name() or p.user.email,
+                    "name": p.user.full_name or p.user.email,
                     "specialty": p.specialty or "",
                     "completed": p.completed,
                 }
