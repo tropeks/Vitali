@@ -159,8 +159,8 @@ export default function AppointmentModal({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          patient: selectedPatient.id,
-          professional: selectedProfId || undefined,
+          patient_id: selectedPatient.id,
+          professional_id: selectedProfId,
           preferred_date_from: date,
           preferred_date_to: date,
         }),
