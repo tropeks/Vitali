@@ -73,6 +73,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-and-push
     environment: staging
+    # Skip SSH deploy until staging host is provisioned and STAGING_ENABLED repo var is set to "true".
+    # Build-and-push always runs so GHCR images stay fresh; flip the var to enable end-to-end deploys.
+    if: vars.STAGING_ENABLED == 'true'
 
     steps:
       - uses: actions/checkout@v4
