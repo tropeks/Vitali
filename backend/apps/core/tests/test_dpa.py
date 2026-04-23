@@ -25,7 +25,7 @@ class DPAStatusViewTest(TenantTestCase):
         self.client.defaults["SERVER_NAME"] = self.__class__.domain.domain
         self.admin_role = Role.objects.create(
             name="admin",
-            permissions=["emr.read"],
+            permissions=["emr.read", "ai.manage"],
             is_system=True,
         )
         self.admin = User.objects.create_user(
@@ -97,6 +97,54 @@ class DPAStatusViewTest(TenantTestCase):
         self._auth(self.nurse)
         resp = self.client.post("/api/v1/settings/dpa/sign/")
         self.assertEqual(resp.status_code, 403)
+
+    def test_role_name_drift_still_allows_sign_when_permission_present(self):
+        # Regression: prod tenant had Role(name="Administrador") not "admin".
+        # The gate must be permission-based, not role-name-based.
+        drifted_role = Role.objects.create(
+            name="Administrador",
+            permissions=["emr.read", "ai.manage"],
+            is_system=False,
+        )
+        drifted_admin = User.objects.create_user(
+            email="drift_admin@clinic.test",
+            full_name="Drift Admin",
+            password="TestPass123!",
+            role=drifted_role,
+        )
+        self._auth(drifted_admin)
+        resp = self.client.post("/api/v1/settings/dpa/sign/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["is_signed"])
+
+    def test_role_named_admin_without_permission_cannot_sign(self):
+        # Regression: a role literally named "admin" but missing ai.manage
+        # must not bypass the gate — only the permission matters.
+        fake_admin_role = Role.objects.create(
+            name="admin",
+            permissions=["emr.read"],  # no ai.manage
+            is_system=False,
+        )
+        fake_admin = User.objects.create_user(
+            email="fake_admin@clinic.test",
+            full_name="Fake Admin",
+            password="TestPass123!",
+            role=fake_admin_role,
+        )
+        self._auth(fake_admin)
+        resp = self.client.post("/api/v1/settings/dpa/sign/")
+        self.assertEqual(resp.status_code, 403)
+
+    def test_status_response_includes_current_user_can_sign(self):
+        self._auth(self.admin)
+        resp = self.client.get("/api/v1/settings/dpa/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["current_user_can_sign"])
+
+        self._auth(self.nurse)
+        resp = self.client.get("/api/v1/settings/dpa/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(resp.json()["current_user_can_sign"])
 
     def test_double_sign_is_idempotent(self):
         AIDPAStatus.objects.filter(tenant=self.__class__.tenant).delete()

@@ -126,6 +126,7 @@ DEFAULT_ROLES = {
         "roles.write",
         "reports.read",
         "ai.use",
+        "ai.manage",
     ],
     "medico": [
         "emr.read",
