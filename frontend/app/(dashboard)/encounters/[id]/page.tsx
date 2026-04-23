@@ -402,7 +402,7 @@ export default function EncounterDetailPage() {
   if (!encounter) return null;
 
   const patient = encounter.patient_detail;
-  const lifeThreateningAllergies = patient.allergies.filter(a => a.severity === 'life_threatening');
+  const lifeThreateningAllergies = (patient.allergies ?? []).filter(a => a.severity === 'life_threatening');
   const isReadOnly = encounter.status !== 'open';
 
   return (
