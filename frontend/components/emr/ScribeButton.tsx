@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Mic, MicOff, Loader2, CheckCircle2, AlertTriangle, X, Sparkles } from 'lucide-react';
 import { getAccessToken } from '@/lib/auth';
+import { useAIConfig } from '@/hooks/useAIConfig';
 import { AudioRecorder } from './AudioRecorder';
 
 interface SOAPFields {
@@ -41,6 +42,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export function ScribeButton({ encounterId, soapNoteId, onApplied }: ScribeButtonProps) {
+  const { scribeReady, loading: aiConfigLoading } = useAIConfig();
   const [state, setState] = useState<ScribeState>('idle');
   const [transcription, setTranscription] = useState('');
   const [soap, setSoap] = useState<SOAPFields | null>(null);
@@ -150,6 +152,16 @@ export function ScribeButton({ encounterId, soapNoteId, onApplied }: ScribeButto
     setError(null);
     pollCount.current = 0;
   };
+
+  // Gate the whole component: hide when the backend would refuse the request.
+  // - FEATURE_AI_SCRIBE off → backend returns 404, so render nothing.
+  // - DPA not signed → backend returns 403, so render nothing.
+  // Doctors don't need to see a button they can't use; admins sign the DPA
+  // from /configuracoes/ai. The guard runs AFTER all hooks so the hook
+  // order stays stable (rules-of-hooks).
+  if (aiConfigLoading || !scribeReady) {
+    return null;
+  }
 
   // ── Idle: just a button ──────────────────────────────────────────────────
   if (state === 'idle') {
