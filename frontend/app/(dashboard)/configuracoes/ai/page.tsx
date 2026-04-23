@@ -10,6 +10,7 @@ interface DPAStatus {
   signed_at: string | null;
   signed_by_name: string | null;
   ai_scribe_enabled: boolean;
+  current_user_can_sign: boolean;
 }
 
 function formatDate(dateStr: string | null): string {
@@ -24,24 +25,8 @@ export default function AISettingsPage() {
   const [signing, setSigning] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const raw = document.cookie
-        .split('; ')
-        .find((c) => c.startsWith('vitali_user='))
-        ?.split('=')[1];
-      if (raw) {
-        try {
-          const user = JSON.parse(decodeURIComponent(raw));
-          setIsAdmin(user?.role_name === 'admin');
-        } catch {
-          // ignore
-        }
-      }
-    }
-  }, []);
+  const canSign = status?.current_user_can_sign ?? false;
 
   async function fetchStatus() {
     const token = getAccessToken();
@@ -142,7 +127,7 @@ export default function AISettingsPage() {
               é necessário assinar o Acordo de Processamento de Dados em conformidade com a LGPD.
             </p>
             <div>
-              {isAdmin ? (
+              {canSign ? (
                 <button
                   onClick={() => setShowModal(true)}
                   className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
