@@ -161,7 +161,6 @@ class TUSSCodeAdmin(admin.ModelAdmin):
     readonly_fields = ["search_vector"]
     ordering = ["code"]
 
+    @admin.display(description="Descrição")
     def description_short(self, obj):
         return obj.description[:80]
-
-    description_short.short_description = "Descrição"

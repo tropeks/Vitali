@@ -58,7 +58,7 @@ def log_audit(request, action, resource_type, resource_id, old_data=None, new_da
 
 
 class PatientViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated, HasPermission("emr.read")]
+    permission_classes = [IsAuthenticated, HasPermission("emr.read")]  # type: ignore[list-item]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_class = PatientFilter
     search_fields = ["full_name", "social_name", "medical_record_number", "whatsapp"]
@@ -217,7 +217,7 @@ class PatientViewSet(viewsets.ModelViewSet):
 class ProfessionalViewSet(viewsets.ModelViewSet):
     queryset = Professional.objects.select_related("user").filter(is_active=True)
     serializer_class = ProfessionalSerializer
-    permission_classes = [IsAuthenticated, HasPermission("admin")]
+    permission_classes = [IsAuthenticated, HasPermission("admin")]  # type: ignore[list-item]
     filter_backends = [filters.SearchFilter]
     search_fields = ["user__full_name", "council_number", "specialty"]
 
@@ -225,11 +225,11 @@ class ProfessionalViewSet(viewsets.ModelViewSet):
 class ScheduleConfigViewSet(viewsets.ModelViewSet):
     queryset = ScheduleConfig.objects.select_related("professional__user").all()
     serializer_class = ScheduleConfigSerializer
-    permission_classes = [IsAuthenticated, HasPermission("admin")]
+    permission_classes = [IsAuthenticated, HasPermission("admin")]  # type: ignore[list-item]
 
 
 class AppointmentViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated, HasPermission("schedule.read")]
+    permission_classes = [IsAuthenticated, HasPermission("schedule.read")]  # type: ignore[list-item]
     serializer_class = AppointmentSerializer
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     ordering = ["start_time"]
@@ -440,7 +440,7 @@ class WaitingRoomView(APIView):
 class EncounterViewSet(viewsets.ModelViewSet):
     """Consultas clínicas — ponto central do EMR"""
 
-    permission_classes = [IsAuthenticated, HasPermission("emr.read")]
+    permission_classes = [IsAuthenticated, HasPermission("emr.read")]  # type: ignore[list-item]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     ordering = ["-encounter_date"]
 
@@ -537,7 +537,7 @@ class SOAPNoteViewSet(viewsets.ModelViewSet):
 
     queryset = SOAPNote.objects.select_related("encounter").all()
     serializer_class = SOAPNoteSerializer
-    permission_classes = [IsAuthenticated, HasPermission("emr.write")]
+    permission_classes = [IsAuthenticated, HasPermission("emr.write")]  # type: ignore[list-item]
     http_method_names = ["get", "patch", "head", "options"]
 
     def perform_update(self, serializer):
@@ -559,7 +559,7 @@ class VitalSignsViewSet(viewsets.ModelViewSet):
 
     queryset = VitalSigns.objects.select_related("encounter").all()
     serializer_class = VitalSignsSerializer
-    permission_classes = [IsAuthenticated, HasPermission("emr.write")]
+    permission_classes = [IsAuthenticated, HasPermission("emr.write")]  # type: ignore[list-item]
     http_method_names = ["get", "patch", "head", "options"]
 
     def perform_update(self, serializer):
@@ -578,7 +578,7 @@ class ClinicalDocumentViewSet(viewsets.ModelViewSet):
 
     queryset = ClinicalDocument.objects.select_related("encounter", "signed_by").all()
     serializer_class = ClinicalDocumentSerializer
-    permission_classes = [IsAuthenticated, HasPermission("emr.write")]
+    permission_classes = [IsAuthenticated, HasPermission("emr.write")]  # type: ignore[list-item]
     filter_backends = [DjangoFilterBackend]
 
     def get_queryset(self):

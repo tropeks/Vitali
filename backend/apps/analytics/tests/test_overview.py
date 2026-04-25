@@ -56,7 +56,10 @@ class OverviewBaseCase(TenantTestCase):
 
     def _make_appt(self, *, status: str):
         """Create an Appointment today in a unique time slot with the given status."""
-        base = timezone.now().replace(hour=8, minute=0, second=0, microsecond=0)
+        # Use localtime so 08:00 is anchored to TIME_ZONE; timezone.now() returns UTC,
+        # and after ~21:00 BRT its date is already "tomorrow" local, which mismatches
+        # OverviewView's start_time__date=today filter.
+        base = timezone.localtime().replace(hour=8, minute=0, second=0, microsecond=0)
         offset_minutes = Appointment.objects.count() * 45
         start = base + datetime.timedelta(minutes=offset_minutes)
         return Appointment.objects.create(

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { getAccessToken } from '@/lib/auth'
 
@@ -11,11 +11,6 @@ function extractError(err: any): string {
   if (Array.isArray(firstVal)) return String(firstVal[0])
   if (typeof firstVal === 'string') return firstVal
   return 'Erro ao salvar. Tente novamente.'
-}
-
-function debounce(fn: Function, ms: number) {
-  let timer: any
-  return (...args: any[]) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), ms) }
 }
 
 const CONTROLLED_BADGE: Record<string, string> = {
@@ -64,38 +59,48 @@ export default function CatalogPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  const fetchDrugs = useCallback(
-    debounce(async (q: string) => {
-      setLoading(true)
-      try {
-        const token = getAccessToken()
-        const res = await fetch(`/api/v1/pharmacy/drugs/?search=${encodeURIComponent(q)}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        const data = await res.json()
-        setDrugs(data.results ?? data ?? [])
-      } finally { setLoading(false) }
-    }, 300), []
-  )
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const fetchMaterials = useCallback(
-    debounce(async (q: string) => {
-      setLoading(true)
-      try {
-        const token = getAccessToken()
-        const res = await fetch(`/api/v1/pharmacy/materials/?search=${encodeURIComponent(q)}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        const data = await res.json()
-        setMaterials(data.results ?? data ?? [])
-      } finally { setLoading(false) }
-    }, 300), []
-  )
+  const fetchDrugsNow = useCallback(async (q: string) => {
+    setLoading(true)
+    try {
+      const token = getAccessToken()
+      const res = await fetch(`/api/v1/pharmacy/drugs/?search=${encodeURIComponent(q)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json()
+      setDrugs(data.results ?? data ?? [])
+    } finally { setLoading(false) }
+  }, [])
+
+  const fetchMaterialsNow = useCallback(async (q: string) => {
+    setLoading(true)
+    try {
+      const token = getAccessToken()
+      const res = await fetch(`/api/v1/pharmacy/materials/?search=${encodeURIComponent(q)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json()
+      setMaterials(data.results ?? data ?? [])
+    } finally { setLoading(false) }
+  }, [])
+
+  const fetchDrugs = useCallback((q: string) => {
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
+    debounceTimerRef.current = setTimeout(() => fetchDrugsNow(q), 300)
+  }, [fetchDrugsNow])
+
+  const fetchMaterials = useCallback((q: string) => {
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
+    debounceTimerRef.current = setTimeout(() => fetchMaterialsNow(q), 300)
+  }, [fetchMaterialsNow])
 
   useEffect(() => {
     if (tab === 'drugs') fetchDrugs(search)
     else fetchMaterials(search)
-  }, [tab])
+    // search intentionally excluded: tab-switch loads with current search; handleSearch handles keystroke-driven refetch
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, fetchDrugs, fetchMaterials])
 
   const handleSearch = (q: string) => {
     setSearch(q)

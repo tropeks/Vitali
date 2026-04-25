@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { getAccessToken } from '@/lib/auth'
 
@@ -60,7 +60,7 @@ export default function StockItemDetailPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     setLoading(true)
     try {
       const token = getAccessToken()
@@ -74,9 +74,9 @@ export default function StockItemDetailPage() {
       setItem(itemData)
       setMovements(mvData.results ?? mvData ?? [])
     } finally { setLoading(false) }
-  }
+  }, [id])
 
-  useEffect(() => { refresh() }, [id])
+  useEffect(() => { refresh() }, [refresh])
 
   const handleAdjust = async () => {
     setSaving(true)

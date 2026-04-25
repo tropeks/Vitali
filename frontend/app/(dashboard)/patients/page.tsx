@@ -1,12 +1,7 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-
-function debounce(fn: Function, ms: number) {
-  let timer: any
-  return (...args: any[]) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), ms) }
-}
 
 export default function PatientsPage() {
   const router = useRouter()
@@ -15,17 +10,22 @@ export default function PatientsPage() {
   const [loading, setLoading] = useState(false)
   const [count, setCount] = useState(0)
 
-  const fetchPatients = useCallback(
-    debounce(async (q: string) => {
-      setLoading(true)
-      try {
-        const res = await fetch(`/api/v1/patients?search=${q}&ordering=full_name`)
-        const data = await res.json()
-        setPatients(data.results ?? [])
-        setCount(data.count ?? 0)
-      } finally { setLoading(false) }
-    }, 300), []
-  )
+  const fetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const fetchPatientsNow = useCallback(async (q: string) => {
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/v1/patients?search=${q}&ordering=full_name`)
+      const data = await res.json()
+      setPatients(data.results ?? [])
+      setCount(data.count ?? 0)
+    } finally { setLoading(false) }
+  }, [])
+
+  const fetchPatients = useCallback((q: string) => {
+    if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current)
+    fetchTimerRef.current = setTimeout(() => fetchPatientsNow(q), 300)
+  }, [fetchPatientsNow])
 
   return (
     <div className="space-y-6">

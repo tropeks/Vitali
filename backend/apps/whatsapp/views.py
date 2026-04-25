@@ -251,7 +251,7 @@ class WebhookView(APIView):
 class HealthView(APIView):
     """GET /api/v1/whatsapp/health/ — returns Evolution API connection state."""
 
-    permission_classes = [IsAuthenticated, _WHATSAPP_MODULE]
+    permission_classes = [IsAuthenticated, _WHATSAPP_MODULE]  # type: ignore[list-item]
 
     def get(self, request):
         try:
@@ -271,7 +271,7 @@ class SetupWebhookView(APIView):
     webhook URL with Evolution API programmatically.
     """
 
-    permission_classes = [IsAuthenticated, _WHATSAPP_MODULE]
+    permission_classes = [IsAuthenticated, _WHATSAPP_MODULE]  # type: ignore[list-item]
 
     def post(self, request):
         # Always derive the webhook URL from the server's own host — never trust
@@ -296,7 +296,7 @@ class MessageLogPagination(PageNumberPagination):
 
 class WhatsAppContactViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = WhatsAppContactSerializer
-    permission_classes = [IsAuthenticated, _WHATSAPP_MODULE]
+    permission_classes = [IsAuthenticated, _WHATSAPP_MODULE]  # type: ignore[list-item]
     pagination_class = MessageLogPagination
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["phone", "patient__full_name"]
@@ -308,7 +308,7 @@ class WhatsAppContactViewSet(viewsets.ReadOnlyModelViewSet):
 
 class MessageLogViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = MessageLogSerializer
-    permission_classes = [IsAuthenticated, _WHATSAPP_MODULE]
+    permission_classes = [IsAuthenticated, _WHATSAPP_MODULE]  # type: ignore[list-item]
     pagination_class = MessageLogPagination
     filter_backends = [filters.OrderingFilter]
     ordering = ["-created_at"]

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Loader2, Plus, Printer, FileText, Pill } from 'lucide-react';
 import { getAccessToken } from '@/lib/auth';
 import { SafetyBadge } from './SafetyBadge';
@@ -136,7 +136,7 @@ export function PrescriptionBuilder({ encounterId, readOnly = false }: Prescript
   });
   const [selectedDrug, setSelectedDrug] = useState<Drug | null>(null);
 
-  const loadPrescriptions = async () => {
+  const loadPrescriptions = useCallback(async () => {
     try {
       const data = await apiFetch<{ results?: Prescription[] } | Prescription[]>(
         `/prescriptions/?encounter=${encounterId}`
@@ -148,9 +148,9 @@ export function PrescriptionBuilder({ encounterId, readOnly = false }: Prescript
     } finally {
       setLoading(false);
     }
-  };
+  }, [encounterId]);
 
-  useEffect(() => { loadPrescriptions(); }, [encounterId]);
+  useEffect(() => { loadPrescriptions(); }, [loadPrescriptions]);
 
   const createPrescription = async () => {
     setCreatingRx(true);

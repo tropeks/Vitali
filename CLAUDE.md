@@ -1,6 +1,6 @@
 # gstack
 
-Use the `/browse` skill from gstack for all web browsing. Never use `mcp__claude-in-chrome__*` tools directly.
+Use the `/browse` skill from gstack for headless QA, dogfooding, and tasks where the visible browser doesn't matter. The `mcp__Claude_in_Chrome__*` tools are also allowed when you need to drive the user's actual logged-in Chrome (e.g. authenticated GitHub UI without re-importing cookies).
 
 Available gstack skills:
 - `/office-hours` — structured async Q&A / brainstorm session

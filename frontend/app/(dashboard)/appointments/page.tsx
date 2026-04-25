@@ -100,7 +100,7 @@ export default function AppointmentsPage() {
       .then((d) => {
         const list = d.results ?? d
         setProfessionals(list)
-        if (list.length > 0 && !selectedProfId) setSelectedProfId(list[0].id)
+        setSelectedProfId((prev) => (list.length > 0 && !prev ? list[0].id : prev))
       })
       .catch(() => {})
   }, [])
