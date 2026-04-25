@@ -21,8 +21,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements/base.txt requirements/production.txt ./requirements/
-RUN pip install --no-cache-dir -r requirements/production.txt
+COPY requirements/base.txt requirements/production.txt requirements/development.txt ./requirements/
+
+# When INSTALL_DEV=true (set by docker-compose.override.yml), bake pytest/ruff/mypy
+# into the image so `make test|lint|typecheck` work without re-installing every time
+# the container is recreated. Production builds keep INSTALL_DEV=false (default) and
+# stay slim.
+ARG INSTALL_DEV=false
+RUN pip install --no-cache-dir -r requirements/production.txt && \
+    if [ "$INSTALL_DEV" = "true" ]; then \
+        pip install --no-cache-dir -r requirements/development.txt; \
+    fi
 
 COPY . .
 

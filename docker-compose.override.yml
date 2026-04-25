@@ -6,6 +6,12 @@ services:
   django:
     build:
       context: ./backend
+      args:
+        # Bakes pytest/ruff/mypy/factory-boy/django-stubs into the image so
+        # `make test|lint|typecheck` work without `pip install` after every
+        # container recreate. Production builds (docker-compose.yml only) leave
+        # this unset (default false) and stay slim.
+        INSTALL_DEV: "true"
     command: python manage.py runserver 0.0.0.0:8000
     environment:
       DJANGO_SETTINGS_MODULE: vitali.settings.development
@@ -18,6 +24,10 @@ services:
       - "8000:8000"
 
   celery-worker:
+    build:
+      context: ./backend
+      args:
+        INSTALL_DEV: "true"
     command: celery -A vitali worker -l debug --concurrency 2
     environment:
       DJANGO_SETTINGS_MODULE: vitali.settings.development
@@ -25,6 +35,10 @@ services:
       - ./backend:/app
 
   celery-beat:
+    build:
+      context: ./backend
+      args:
+        INSTALL_DEV: "true"
     environment:
       DJANGO_SETTINGS_MODULE: vitali.settings.development
     volumes:
