@@ -295,10 +295,7 @@ class PilotHealthView(APIView):
                 # chain crashes mypy 1.15's django-stubs plugin.
                 appt_mgr: Any = Appointment.objects
                 kpis["active_patients_30d"] = (
-                    appt_mgr.filter(start_time__gte=month_ago)
-                    .values("patient")
-                    .distinct()
-                    .count()
+                    appt_mgr.filter(start_time__gte=month_ago).values("patient").distinct().count()
                 )
 
                 # Total patients
