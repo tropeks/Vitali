@@ -407,7 +407,7 @@ class TenantRegistrationView(APIView):
 
 
 class HealthOSTokenObtainPairView(TokenObtainPairView):
-    serializer_class = HealthOSTokenObtainPairSerializer
+    serializer_class = HealthOSTokenObtainPairSerializer  # type: ignore[assignment]
 
 
 # ─── User & Role views ────────────────────────────────────────────────────────

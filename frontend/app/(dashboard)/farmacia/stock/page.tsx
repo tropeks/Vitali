@@ -1,13 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { getAccessToken } from '@/lib/auth'
-
-function debounce(fn: Function, ms: number) {
-  let timer: any
-  return (...args: any[]) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), ms) }
-}
 
 function extractError(err: any): string {
   if (typeof err === 'string') return err
@@ -70,20 +65,25 @@ export default function StockPage() {
 
   useEffect(() => { fetchStock() }, [])
 
-  const searchDrugs = useCallback(
-    debounce(async (q: string) => {
-      if (!q.trim()) { setDrugResults([]); return }
-      setLoadingDrugs(true)
-      try {
-        const token = getAccessToken()
-        const res = await fetch(`/api/v1/pharmacy/drugs/?search=${encodeURIComponent(q)}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        const data = await res.json()
-        setDrugResults(data.results ?? data ?? [])
-      } finally { setLoadingDrugs(false) }
-    }, 300), []
-  )
+  const searchDrugsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const searchDrugsNow = useCallback(async (q: string) => {
+    if (!q.trim()) { setDrugResults([]); return }
+    setLoadingDrugs(true)
+    try {
+      const token = getAccessToken()
+      const res = await fetch(`/api/v1/pharmacy/drugs/?search=${encodeURIComponent(q)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json()
+      setDrugResults(data.results ?? data ?? [])
+    } finally { setLoadingDrugs(false) }
+  }, [])
+
+  const searchDrugs = useCallback((q: string) => {
+    if (searchDrugsTimerRef.current) clearTimeout(searchDrugsTimerRef.current)
+    searchDrugsTimerRef.current = setTimeout(() => searchDrugsNow(q), 300)
+  }, [searchDrugsNow])
 
   const handleEntry = async () => {
     if (!selectedDrug || !lotNumber || !entryQuantity) return

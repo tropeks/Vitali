@@ -1,12 +1,7 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { getAccessToken } from '@/lib/auth'
-
-function debounce(fn: Function, ms: number) {
-  let timer: any
-  return (...args: any[]) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), ms) }
-}
 
 function extractError(err: any): string {
   if (typeof err === 'string') return err
@@ -69,20 +64,25 @@ export default function DispensePage() {
   const [error, setError] = useState('')
   const [result, setResult] = useState<DispenseResult | null>(null)
 
-  const searchPatients = useCallback(
-    debounce(async (q: string) => {
-      if (!q.trim()) { setPatients([]); return }
-      setLoadingPatients(true)
-      try {
-        const token = getAccessToken()
-        const res = await fetch(`/api/v1/emr/patients/?search=${encodeURIComponent(q)}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        const data = await res.json()
-        setPatients(data.results ?? data ?? [])
-      } finally { setLoadingPatients(false) }
-    }, 300), []
-  )
+  const searchPatientsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const searchPatientsNow = useCallback(async (q: string) => {
+    if (!q.trim()) { setPatients([]); return }
+    setLoadingPatients(true)
+    try {
+      const token = getAccessToken()
+      const res = await fetch(`/api/v1/emr/patients/?search=${encodeURIComponent(q)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json()
+      setPatients(data.results ?? data ?? [])
+    } finally { setLoadingPatients(false) }
+  }, [])
+
+  const searchPatients = useCallback((q: string) => {
+    if (searchPatientsTimerRef.current) clearTimeout(searchPatientsTimerRef.current)
+    searchPatientsTimerRef.current = setTimeout(() => searchPatientsNow(q), 300)
+  }, [searchPatientsNow])
 
   const selectPatient = async (patient: Patient) => {
     setSelectedPatient(patient)
@@ -110,24 +110,29 @@ export default function DispensePage() {
     setStep('confirm')
   }
 
-  const fetchLots = useCallback(
-    debounce(async (drugId: string, qty: string) => {
-      if (!drugId || !qty || parseFloat(qty) <= 0) { setLots([]); return }
-      setLoadingLots(true)
-      try {
-        const token = getAccessToken()
-        const res = await fetch(`/api/v1/pharmacy/stock/availability/?drug=${drugId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        const data = await res.json()
-        setLots(data.available_lots ?? [])
-      } finally { setLoadingLots(false) }
-    }, 400), []
-  )
+  const fetchLotsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const fetchLotsNow = useCallback(async (drugId: string, qty: string) => {
+    if (!drugId || !qty || parseFloat(qty) <= 0) { setLots([]); return }
+    setLoadingLots(true)
+    try {
+      const token = getAccessToken()
+      const res = await fetch(`/api/v1/pharmacy/stock/availability/?drug=${drugId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json()
+      setLots(data.available_lots ?? [])
+    } finally { setLoadingLots(false) }
+  }, [])
+
+  const fetchLots = useCallback((drugId: string, qty: string) => {
+    if (fetchLotsTimerRef.current) clearTimeout(fetchLotsTimerRef.current)
+    fetchLotsTimerRef.current = setTimeout(() => fetchLotsNow(drugId, qty), 400)
+  }, [fetchLotsNow])
 
   useEffect(() => {
     if (selectedItem && quantity) fetchLots(selectedItem.drug, quantity)
-  }, [quantity, selectedItem])
+  }, [quantity, selectedItem, fetchLots])
 
   const handleDispense = async () => {
     if (!selectedItem) return

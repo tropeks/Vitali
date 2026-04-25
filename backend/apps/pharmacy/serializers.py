@@ -297,7 +297,7 @@ class POReceiveItemSerializer(serializers.Serializer):
 class POReceiveSerializer(serializers.Serializer):
     """Input for POST /pharmacy/purchase-orders/{id}/receive/"""
 
-    items = POReceiveItemSerializer(many=True, min_length=1)
+    items = POReceiveItemSerializer(many=True, min_length=1)  # type: ignore[call-arg]
 
     def validate_items(self, value):
         ids = [str(item["item_id"]) for item in value]

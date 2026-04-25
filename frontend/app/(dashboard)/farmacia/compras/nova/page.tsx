@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { getAccessToken } from '@/lib/auth';
 import { Plus, Trash2 } from 'lucide-react';
@@ -22,14 +22,6 @@ interface POItem {
   drug_name: string;
   quantity: string;
   unit_price: string;
-}
-
-function debounce<T extends (...args: any[]) => void>(fn: T, ms: number): T {
-  let timer: ReturnType<typeof setTimeout>;
-  return ((...args: any[]) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => fn(...args), ms);
-  }) as T;
 }
 
 function extractError(err: unknown): string {
@@ -83,29 +75,33 @@ export default function NovaCompraPage() {
     loadSuppliers();
   }, []);
 
-  const searchDrugs = useCallback(
-    debounce(async (q: string) => {
-      if (!q.trim()) {
-        setDrugResults([]);
-        return;
+  const searchDrugsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const searchDrugsNow = useCallback(async (q: string) => {
+    if (!q.trim()) {
+      setDrugResults([]);
+      return;
+    }
+    setLoadingDrugs(true);
+    try {
+      const token = getAccessToken();
+      const res = await fetch(
+        `/api/v1/pharmacy/drugs/?search=${encodeURIComponent(q)}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setDrugResults(data.results ?? data ?? []);
       }
-      setLoadingDrugs(true);
-      try {
-        const token = getAccessToken();
-        const res = await fetch(
-          `/api/v1/pharmacy/drugs/?search=${encodeURIComponent(q)}`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        if (res.ok) {
-          const data = await res.json();
-          setDrugResults(data.results ?? data ?? []);
-        }
-      } finally {
-        setLoadingDrugs(false);
-      }
-    }, 300),
-    []
-  );
+    } finally {
+      setLoadingDrugs(false);
+    }
+  }, []);
+
+  const searchDrugs = useCallback((q: string) => {
+    if (searchDrugsTimerRef.current) clearTimeout(searchDrugsTimerRef.current);
+    searchDrugsTimerRef.current = setTimeout(() => searchDrugsNow(q), 300);
+  }, [searchDrugsNow]);
 
   const filteredSuppliers = suppliers.filter((s) =>
     s.name.toLowerCase().includes(supplierQuery.toLowerCase())

@@ -6,6 +6,7 @@ These models live in the public schema — no schema switching needed.
 
 import logging
 import time
+from typing import Any
 
 from django.db import connection, transaction
 from rest_framework import generics, status
@@ -246,13 +247,15 @@ class PilotHealthView(APIView):
 
     def _tenant_kpis(self, tenant) -> dict:
         """Per-tenant behavioral KPIs queried inside schema_context."""
+        from datetime import timedelta
+
         from django.utils import timezone
         from django_tenants.utils import schema_context
 
         now = timezone.now()
         today = now.date()
-        week_ago = now - timezone.timedelta(days=7)
-        month_ago = now - timezone.timedelta(days=30)
+        week_ago = now - timedelta(days=7)
+        month_ago = now - timedelta(days=30)
 
         kpis = {
             "schema": tenant.schema_name,
@@ -287,9 +290,12 @@ class PilotHealthView(APIView):
                 total_closed = completed + no_show
                 kpis["show_rate_30d"] = round(completed / total_closed, 3) if total_closed else None
 
-                # Active patients (had an appointment in last 30 days)
+                # Active patients (had an appointment in last 30 days).
+                # Assign the starting manager to Any first — the .values().distinct().count()
+                # chain crashes mypy 1.15's django-stubs plugin.
+                appt_mgr: Any = Appointment.objects
                 kpis["active_patients_30d"] = (
-                    Appointment.objects.filter(start_time__gte=month_ago)
+                    appt_mgr.filter(start_time__gte=month_ago)
                     .values("patient")
                     .distinct()
                     .count()
@@ -314,7 +320,7 @@ class PilotHealthView(APIView):
 
     def _system_health(self) -> dict:
         """System-level health: DB latency, cache, worker."""
-        health = {}
+        health: dict[str, Any] = {}
 
         # DB round-trip latency
         t0 = time.monotonic()

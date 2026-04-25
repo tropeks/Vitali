@@ -12,7 +12,7 @@ import io
 import json
 import logging
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pyotp
 import qrcode
@@ -171,9 +171,10 @@ def is_mfa_verified(request) -> bool:
         from rest_framework_simplejwt.authentication import JWTAuthentication
 
         jwt_auth = JWTAuthentication()
-        validated = jwt_auth.get_validated_token(
-            jwt_auth.get_raw_token(jwt_auth.get_header(request))
-        )
+        raw_token = jwt_auth.get_raw_token(jwt_auth.get_header(request))
+        if raw_token is None:
+            return False
+        validated = jwt_auth.get_validated_token(raw_token)
         return bool(validated.get("mfa_verified", False))
     except Exception:
         return False
@@ -187,7 +188,7 @@ def get_mfa_grace_expiry(user) -> datetime | None:
     try:
         device = user.totp_device
         if device.is_active and device.confirmed_at:
-            return device.confirmed_at + timezone.timedelta(seconds=MFA_GRACE_PERIOD_SECONDS)
+            return device.confirmed_at + timedelta(seconds=MFA_GRACE_PERIOD_SECONDS)
     except Exception:
         pass
     return None

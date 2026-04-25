@@ -360,7 +360,7 @@ def _competency_for_month(d: date) -> str:
 class BillingOverviewView(APIView):
     """GET /api/v1/analytics/billing/overview/ — current-month KPI cards."""
 
-    permission_classes = [IsAuthenticated, _BILLING_MODULE]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE]  # type: ignore[list-item]
 
     def get(self, request):
         today = _today()
@@ -410,7 +410,7 @@ class BillingOverviewView(APIView):
 class MonthlyRevenueView(APIView):
     """GET /api/v1/analytics/billing/monthly-revenue/?months=6"""
 
-    permission_classes = [IsAuthenticated, _BILLING_MODULE]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE]  # type: ignore[list-item]
 
     def get(self, request):
         months = _months_param(request)
@@ -458,7 +458,7 @@ class DenialByInsurerView(APIView):
     Returns top insurers by denied value, excluding those with <10 non-draft guides.
     """
 
-    permission_classes = [IsAuthenticated, _BILLING_MODULE]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE]  # type: ignore[list-item]
     _VOLUME_FLOOR = 10
 
     def get(self, request):
@@ -502,7 +502,7 @@ class BatchThroughputView(APIView):
     created_at → creation month, closed_at → closure month.
     """
 
-    permission_classes = [IsAuthenticated, _BILLING_MODULE]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE]  # type: ignore[list-item]
 
     def get(self, request):
         months = _months_param(request)
@@ -558,7 +558,7 @@ class BatchThroughputView(APIView):
 class GlosaAccuracyView(APIView):
     """GET /api/v1/analytics/billing/glosa-accuracy/ — prediction accuracy per insurer (S-037)."""
 
-    permission_classes = [IsAuthenticated, _BILLING_MODULE]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE]  # type: ignore[list-item]
 
     def get(self, request):
         from apps.ai.models import GlosaPrediction

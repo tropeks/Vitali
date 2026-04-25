@@ -108,7 +108,9 @@ class PrescriptionSafetyChecker:
         8. Cache result (1h TTL)
         9. Return SafetyResult
         """
-        schema_name = connection.schema_name
+        # django-tenants injects .schema_name on the connection wrapper at runtime;
+        # mypy's Django stubs don't know about the subclass.
+        schema_name = connection.schema_name  # type: ignore[attr-defined]
 
         # 1. Feature flag check
         config = get_tenant_ai_config(schema_name)

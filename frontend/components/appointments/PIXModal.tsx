@@ -101,6 +101,10 @@ export default function PIXModal({ appointmentId, amount, patientName, onClose, 
     return () => {
       if (pollRef.current) clearInterval(pollRef.current)
     }
+    // We deliberately depend on id+status only — restarting on any other charge
+    // field change (e.g. transient pix_copy_paste re-renders) would needlessly
+    // reset the poll interval.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [charge?.id, charge?.status, onPaid])
 
   const handleCopy = async () => {
@@ -242,6 +246,8 @@ export default function PIXModal({ appointmentId, amount, patientName, onClose, 
                 </button>
                 {showQR && charge.pix_qr_code_base64 && (
                   <div className="mt-3 flex justify-center">
+                    {/* base64 data URL — next/image can't optimize these and adds overhead */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={`data:image/png;base64,${charge.pix_qr_code_base64}`}
                       alt="QR Code PIX"
