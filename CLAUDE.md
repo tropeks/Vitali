@@ -35,3 +35,16 @@ If gstack skills aren't working, run the following to build the binary and regis
 ```sh
 cd .claude/skills/gstack && ./setup
 ```
+
+## Health Stack
+
+Tools that `/health` runs. Backend tools live inside the `django` container and
+require `docker compose up -d`. Frontend tools run on the host with
+`frontend/node_modules` installed.
+
+- typecheck (backend): `docker compose exec -T django mypy apps/ vitali/ --ignore-missing-imports`
+- lint (backend): `docker compose exec -T django ruff check apps/ vitali/`
+- format-check (backend): `docker compose exec -T django ruff format --check apps/ vitali/`
+- test (backend): `docker compose exec -T django pytest -v`
+- typecheck (frontend): `cd frontend && npx tsc --noEmit`
+- lint (frontend): `cd frontend && npx next lint`

@@ -132,14 +132,14 @@ class StockItem(models.Model):
                 nulls_distinct=False,
             ),
             models.CheckConstraint(
-                check=(
+                condition=(
                     models.Q(drug__isnull=False, material__isnull=True)
                     | models.Q(drug__isnull=True, material__isnull=False)
                 ),
                 name="stock_item_drug_xor_material",
             ),
             models.CheckConstraint(
-                check=models.Q(quantity__gte=Decimal("0")),
+                condition=models.Q(quantity__gte=Decimal("0")),
                 name="stock_item_quantity_non_negative",
             ),
         ]
@@ -349,11 +349,11 @@ class PurchaseOrderItem(models.Model):
     class Meta:
         constraints = [
             models.CheckConstraint(
-                check=models.Q(drug__isnull=False) | models.Q(material__isnull=False),
+                condition=models.Q(drug__isnull=False) | models.Q(material__isnull=False),
                 name="po_item_must_have_drug_or_material",
             ),
             models.CheckConstraint(
-                check=~(models.Q(drug__isnull=False) & models.Q(material__isnull=False)),
+                condition=~(models.Q(drug__isnull=False) & models.Q(material__isnull=False)),
                 name="po_item_not_both",
             ),
         ]
