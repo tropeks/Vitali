@@ -116,8 +116,15 @@ class TestEmployeeDeactivationService(TenantTestCase):
         assert "tokens_revoked" in actions
         assert "professional_deactivated" not in actions
 
-        # Return value is the updated employee instance
-        assert result.id == employee.id
+        # Return value is a result dict with the updated employee and cascade counts
+        assert result["employee"].id == employee.id
+        assert result["employee"].employment_status == "terminated"
+        assert isinstance(result["tokens_revoked"], int)
+        assert result["tokens_revoked"] >= 0
+        assert isinstance(result["tokens_already_blacklisted"], int)
+        assert result["tokens_already_blacklisted"] >= 0
+        assert result["professional_deactivated"] is False
+        assert result["user_deactivated"] is True
 
     # ── 2. Clinical deactivation with Professional ────────────────────────────
 
@@ -191,6 +198,37 @@ class TestEmployeeDeactivationService(TenantTestCase):
         # All three share the same correlation_id
         assert token_log.new_data["correlation_id"] == cid
         assert prof_log.new_data["correlation_id"] == cid
+
+
+class TestEmployeeDeactivationView(TenantTestCase):
+    """Integration test for DELETE /api/v1/hr/employees/{id}/ response shape."""
+
+    def setUp(self):
+        super().setUp()
+        _admin_role()
+        self.requester = _requesting_user()
+        self.requester.is_staff = True
+        self.requester.is_superuser = True
+        self.requester.save(update_fields=["is_staff", "is_superuser"])
+
+    def test_delete_response_includes_cascade_counts(self):
+        """DELETE response must include tokens_revoked, tokens_already_blacklisted,
+        professional_deactivated, and user_deactivated as concrete values (not undefined).
+        """
+        user = _make_user("view.deact@example.com", role=_admin_role())
+        employee = _make_employee(user)
+
+        client = APIClient()
+        client.defaults["SERVER_NAME"] = self.__class__.domain.domain
+        client.force_authenticate(user=self.requester)
+
+        response = client.delete(f"/api/v1/hr/employees/{employee.id}/")
+
+        assert response.status_code == 200, response.data
+        assert isinstance(response.data["tokens_revoked"], int)
+        assert isinstance(response.data["tokens_already_blacklisted"], int)
+        assert isinstance(response.data["professional_deactivated"], bool)
+        assert response.data["user_deactivated"] is True
 
 
 class TestEmployeeReactivationView(TenantTestCase):

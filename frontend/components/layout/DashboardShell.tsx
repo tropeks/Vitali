@@ -80,6 +80,7 @@ const NAV_ITEMS: NavItem[] = [
       { label: "Assinatura", href: "/configuracoes/assinatura" },
       { label: "WhatsApp", href: "/configuracoes/whatsapp" },
       { label: "Inteligência Artificial", href: "/configuracoes/ai" },
+      { label: "Profissionais", href: "/configuracoes/profissionais" },
     ],
   },
 ];
