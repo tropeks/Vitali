@@ -159,6 +159,11 @@ jobs:
       # DB name ending with _test — POSTGRES_DB below satisfies that check).
       E2E_MODE: "true"
       POSTGRES_DB: vitali_test
+      # CI runs the production frontend image (deps baked) but needs development
+      # Django settings — production settings.production module doesn't wire the
+      # django-tenants schema engine (migrate_schemas would fail with
+      # 'DatabaseWrapper has no attribute set_schema').
+      DJANGO_SETTINGS_MODULE: vitali.settings.development
 
     steps:
       - uses: actions/checkout@v4
