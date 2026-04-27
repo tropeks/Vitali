@@ -27,7 +27,7 @@ const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD || 'AdminPass1!';
 test.describe('Invite flow — admin invites user by email', () => {
   test.beforeEach(async ({ page }) => {
     // Authenticate as admin.
-    await page.goto('/auth/login');
+    await page.goto('/login');
     await page.fill('input[name="email"]', ADMIN_EMAIL);
     await page.fill('input[name="password"]', ADMIN_PASSWORD);
     await page.click('button[type="submit"]');

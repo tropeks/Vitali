@@ -26,7 +26,7 @@ test.describe('HR onboarding cascade — hire a doctor', () => {
     // Navigate to login page and authenticate as admin.
     // The login form is built with react-hook-form and renders inputs that
     // carry name="email" and name="password" via the register() spread.
-    await page.goto('/auth/login');
+    await page.goto('/login');
     await page.fill('input[name="email"]', ADMIN_EMAIL);
     await page.fill('input[name="password"]', ADMIN_PASSWORD);
     await page.click('button[type="submit"]');
