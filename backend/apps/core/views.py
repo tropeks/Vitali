@@ -2,14 +2,18 @@
 Core views — Auth, Tenant registration, User management.
 """
 
+import hashlib
 import logging
 from datetime import timedelta
 
+import jwt
+from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
 from django_tenants.utils import schema_context
 from rest_framework import generics, permissions, status
 from rest_framework import throttling as rest_framework_throttling
+from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
@@ -17,7 +21,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.views import TokenRefreshView as _BaseRefreshView
 
-from .models import AuditLog, Domain, FeatureFlag, Role, Tenant, TUSSSyncLog, User
+from .models import AuditLog, Domain, FeatureFlag, Role, Tenant, TUSSSyncLog, User, UserInvitation
 from .serializers import (
     ChangePasswordSerializer,
     HealthOSTokenObtainPairSerializer,
@@ -105,6 +109,104 @@ def _write_audit(request, user, action: str, resource_type: str = "auth", resour
         )
     except Exception as exc:
         logger.warning("Failed to write audit log: %s", exc)
+
+
+# ─── T6: Invitation helper ────────────────────────────────────────────────────
+
+
+def _create_invitation_for_user(user, *, requesting_user):
+    """
+    Generates a 72h signed JWT token, creates a UserInvitation row with the
+    SHA-256 hash of the token (so DB leak doesn't expose live tokens), and
+    sends the invitation email. Returns (invitation, token).
+    """
+    expires_at = timezone.now() + timedelta(hours=72)
+    payload = {
+        "user_id": str(user.id),
+        "purpose": "password_set",
+        "exp": int(expires_at.timestamp()),
+    }
+    token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    invitation = UserInvitation.objects.create(
+        user=user,
+        created_by=requesting_user,
+        token_hash=token_hash,
+        expires_at=expires_at,
+    )
+    link = f"{getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')}/auth/set-password/{token}"
+    from apps.core.services.email import EmailService
+
+    EmailService.send_user_invitation(user, link)
+    return invitation, token
+
+
+# ─── T6: UserInvitationView ───────────────────────────────────────────────────
+
+
+class UserInvitationView(APIView):
+    """POST /api/v1/auth/invite/ — admin creates a UserInvitation + emails the link."""
+
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def post(self, request):
+        user_id = request.data.get("user_id")
+        if not user_id:
+            return Response({"error": "user_id required"}, status=400)
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response({"error": "User not found"}, status=404)
+        invitation, _token = _create_invitation_for_user(user, requesting_user=request.user)
+        return Response({"invitation_id": str(invitation.id)}, status=201)
+
+
+# ─── T6: SetPasswordView ──────────────────────────────────────────────────────
+
+
+class SetPasswordView(APIView):
+    """POST /api/v1/auth/set-password/<token>/ — public; validates token, sets password."""
+
+    permission_classes = []
+    authentication_classes = []
+
+    def post(self, request, token):
+        try:
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        except jwt.ExpiredSignatureError:
+            return Response({"error": "INVITATION_EXPIRED"}, status=410)
+        except jwt.InvalidTokenError:
+            return Response({"error": "INVALID_TOKEN"}, status=400)
+
+        if payload.get("purpose") != "password_set":
+            return Response({"error": "INVALID_TOKEN_PURPOSE"}, status=400)
+
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        invitation = UserInvitation.objects.filter(token_hash=token_hash).first()
+        if not invitation:
+            return Response({"error": "INVITATION_NOT_FOUND"}, status=400)
+        if invitation.is_consumed:
+            return Response({"error": "INVITATION_ALREADY_CONSUMED"}, status=400)
+        if invitation.is_expired:
+            return Response({"error": "INVITATION_EXPIRED"}, status=410)
+
+        password = request.data.get("password")
+        if not password or len(password) < 8:
+            return Response({"error": "PASSWORD_TOO_SHORT"}, status=400)
+
+        user = invitation.user
+        user.set_password(password)
+        user.must_change_password = False
+        user.save(update_fields=["password", "must_change_password"])
+
+        invitation.consumed_at = timezone.now()
+        invitation.save(update_fields=["consumed_at"])
+
+        refresh = RefreshToken.for_user(user)
+        return Response(
+            {"access": str(refresh.access_token), "refresh": str(refresh)},
+            status=200,
+        )
 
 
 # ─── Auth Views ───────────────────────────────────────────────────────────────
@@ -282,7 +384,8 @@ class ChangePasswordView(APIView):
             )
 
         user.set_password(serializer.validated_data["new_password"])
-        user.save(update_fields=["password", "updated_at"])
+        user.must_change_password = False
+        user.save(update_fields=["password", "must_change_password", "updated_at"])
 
         _write_audit(request, user, "password_changed", resource_id=str(user.pk))
         return Response({"detail": "Senha alterada com sucesso."})

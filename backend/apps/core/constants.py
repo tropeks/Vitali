@@ -11,5 +11,6 @@ ALLOWED_MODULE_KEYS: frozenset = frozenset(
         "ai_tuss",
         "whatsapp",
         "analytics",
+        "rh",
     }
 )

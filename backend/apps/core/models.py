@@ -457,6 +457,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     )
     is_active = models.BooleanField("Ativo", default=True)
     is_staff = models.BooleanField("Staff", default=False)
+    must_change_password = models.BooleanField(
+        "Senha temporária — exige alteração no primeiro login", default=False
+    )
     last_login = models.DateTimeField("Último acesso", null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -567,3 +570,45 @@ class AsaasChargeMap(models.Model):
 
     def __str__(self):
         return f"{self.asaas_charge_id} → {self.tenant_schema}"
+
+
+class UserInvitation(models.Model):
+    """
+    Single-use invitation token for the invite-email onboarding flow (S-076-NEW).
+    token_hash stores SHA-256 of the JWT signature to allow validation without
+    storing the raw token (defense in depth — leaked DB doesn't expose valid tokens).
+    Lives in tenant schema.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey("core.User", on_delete=models.CASCADE, related_name="invitations")
+    created_by = models.ForeignKey(
+        "core.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="invitations_sent",
+        verbose_name="Criado por",
+    )
+    token_hash = models.CharField("Hash do token", max_length=64, unique=True, db_index=True)
+    expires_at = models.DateTimeField("Expira em")
+    consumed_at = models.DateTimeField("Consumido em", null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Convite de usuário"
+        verbose_name_plural = "Convites de usuário"
+        ordering = ["-created_at"]
+
+    @property
+    def is_expired(self) -> bool:
+        from django.utils import timezone
+
+        return timezone.now() > self.expires_at
+
+    @property
+    def is_consumed(self) -> bool:
+        return self.consumed_at is not None
+
+    def __str__(self) -> str:
+        status = "consumed" if self.is_consumed else ("expired" if self.is_expired else "pending")
+        return f"Invitation for {self.user.email} ({status})"

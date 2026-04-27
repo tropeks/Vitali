@@ -22,6 +22,13 @@ urlpatterns = [
     path("auth/logout", views.LogoutView.as_view(), name="logout"),
     path("auth/refresh", views.TokenRefreshView.as_view(), name="token-refresh"),
     path("auth/password", views.ChangePasswordView.as_view(), name="change-password"),
+    # T6: invite-by-email flow
+    path("auth/invite/", views.UserInvitationView.as_view(), name="auth-invite"),
+    path(
+        "auth/set-password/<str:token>/",
+        views.SetPasswordView.as_view(),
+        name="auth-set-password",
+    ),
     # MFA (S-062)
     path("auth/mfa/status/", MFAStatusView.as_view(), name="mfa-status"),
     path("auth/mfa/setup/", MFASetupView.as_view(), name="mfa-setup"),
