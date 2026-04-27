@@ -184,10 +184,15 @@ jobs:
           # interpolation so both the postgres service and the django service pick
           # up the CI overrides without touching the dev defaults.
           docker compose up -d
-          # Wait for Django to pass its health check before proceeding.
-          echo "Waiting for stack health..."
+          # Wait for Django to be reachable.
+          echo "Waiting for Django..."
           timeout 120 bash -c 'until docker compose exec -T django python -c "import sys; sys.exit(0)" 2>/dev/null; do sleep 3; done'
-          sleep 10
+          # docker-compose.override.yml runs nextjs in dev mode with `npm install && npm run dev`,
+          # which can take 60-120s on a cold CI runner before the dev server binds :3000.
+          # Without this wait, Playwright hits ERR_SOCKET_NOT_CONNECTED.
+          echo "Waiting for Next.js dev server on :3000..."
+          timeout 300 bash -c 'until curl -sf http://localhost:3000 > /dev/null 2>&1; do sleep 5; done'
+          echo "Stack is ready."
 
       - name: Run migrations
         run: docker compose exec -T django python manage.py migrate_schemas --shared
