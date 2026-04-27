@@ -145,6 +145,43 @@ jobs:
       - name: TypeScript check
         run: npm run type-check
 
+  # ─── Frontend: E2E (Playwright) ─────────────────────────────────────────────
+  frontend-e2e:
+    name: Frontend — E2E (Playwright)
+    runs-on: ubuntu-latest
+    needs: [backend-test, frontend-lint]
+    continue-on-error: true   # E2E env not yet fully reproducible in CI — Sprint 19 will fix
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: cd frontend && npm ci
+
+      - name: Install Playwright browsers
+        run: cd frontend && npx playwright install --with-deps chromium
+
+      - name: Boot backend stack
+        run: |
+          cp .env.example .env
+          docker compose up -d
+          # Give the stack a moment to become healthy
+          sleep 15
+
+      - name: Run E2E tests
+        run: cd frontend && npm run test:e2e
+        env:
+          E2E_BASE_URL: http://localhost:3000
+          E2E_BACKEND_URL: http://localhost:8000
+          CI: "true"
+
   # ─── Docker Build Validation ─────────────────────────────────────────────────
   docker-validate:
     name: Docker — Validate Build
