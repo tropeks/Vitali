@@ -6,21 +6,26 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('emr', '0014_rename_emr_waitlis_profess_idx_emr_waitlis_profess_558edd_idx_and_more'),
+        ("emr", "0014_rename_emr_waitlis_profess_idx_emr_waitlis_profess_558edd_idx_and_more"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='encounter',
-            name='signed_at',
+            model_name="encounter",
+            name="signed_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='encounter',
-            name='signed_by',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='signed_encounters', to=settings.AUTH_USER_MODEL),
+            model_name="encounter",
+            name="signed_by",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="signed_encounters",
+                to=settings.AUTH_USER_MODEL,
+            ),
         ),
     ]
