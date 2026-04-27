@@ -43,7 +43,7 @@ services:
     environment:
       DATABASE_URL: postgres://vitali:vitali@postgres:5432/${POSTGRES_DB:-vitali}
       REDIS_URL: redis://redis:6379/0
-      DJANGO_SETTINGS_MODULE: vitali.settings.production
+      DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-vitali.settings.production}
       E2E_MODE: ${E2E_MODE:-false}
     ports:
       - "8000:8000"
@@ -73,7 +73,7 @@ services:
     environment:
       DATABASE_URL: postgres://vitali:vitali@postgres:5432/${POSTGRES_DB:-vitali}
       REDIS_URL: redis://redis:6379/0
-      DJANGO_SETTINGS_MODULE: vitali.settings.production
+      DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-vitali.settings.production}
     depends_on:
       postgres:
         condition: service_healthy
@@ -91,7 +91,7 @@ services:
     environment:
       DATABASE_URL: postgres://vitali:vitali@postgres:5432/${POSTGRES_DB:-vitali}
       REDIS_URL: redis://redis:6379/0
-      DJANGO_SETTINGS_MODULE: vitali.settings.production
+      DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-vitali.settings.production}
     depends_on:
       postgres:
         condition: service_healthy
