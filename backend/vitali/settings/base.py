@@ -254,6 +254,12 @@ MIGRATION_MODULES = {
 # Set DEMO_MODE=true in .env for investor demos. Never enable in production.
 DEMO_MODE = env.bool("DEMO_MODE", default=False)
 
+# ─── E2E Mode (S-084) ─────────────────────────────────────────────────────────
+# When True, exposes test-only endpoints (apps/core/views_test_helpers.py).
+# MUST NEVER be True in staging or production. apps/core/checks.py enforces this
+# by failing the deploy if E2E_MODE=True AND DB-name does not end with '_test'.
+E2E_MODE = env.bool("E2E_MODE", default=False)
+
 # ─── Logging ──────────────────────────────────────────────────────────────────
 LOGGING = {
     "version": 1,
