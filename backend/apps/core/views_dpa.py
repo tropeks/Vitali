@@ -1,12 +1,15 @@
 """
-S-070: DPA Signing UI endpoints.
+S-070 / S-081: DPA Signing UI endpoints.
 
 GET  /api/v1/settings/dpa/  — return current DPA status for tenant
-POST /api/v1/settings/dpa/sign/ — admin-only, sign the DPA
+POST /api/v1/settings/dpa/sign/ — admin-only, sign the DPA + cascade AI flags
+
+S-081: DPASignView.post() is now a thin wrapper around DPASigningService.sign(),
+which atomically enables per-tenant AI FeatureFlag rows and queues an admin
+notification email via transaction.on_commit (fail-open, decision 1B).
 """
 
 import logging
-from datetime import date
 
 from django.conf import settings
 from rest_framework import status
@@ -14,7 +17,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import AIDPAStatus, AuditLog
+from .models import AIDPAStatus
 
 logger = logging.getLogger(__name__)
 
@@ -86,29 +89,12 @@ class DPASignView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        dpa_status, _ = AIDPAStatus.objects.get_or_create(tenant=request.tenant)
+        from apps.core.services.dpa import DPASigningService
 
-        if dpa_status.is_signed:
-            return Response(_dpa_response(dpa_status, request.user))
-
-        dpa_status.dpa_signed_date = date.today()
-        dpa_status.signed_by_user = request.user
-        dpa_status.save(update_fields=["dpa_signed_date", "signed_by_user"])
-
-        try:
-            AuditLog.objects.create(
-                user=request.user,
-                action="dpa_sign",
-                resource_type="ai_dpa_status",
-                resource_id=str(dpa_status.pk),
-                new_data={
-                    "signed_at": date.today().isoformat(),
-                    "signed_by_id": str(request.user.pk),
-                },
-                ip_address=_get_client_ip(request),
-                user_agent=request.META.get("HTTP_USER_AGENT", "")[:500],
-            )
-        except Exception as exc:
-            logger.warning("DPASignView: failed to write audit log: %s", exc)
-
-        return Response(_dpa_response(dpa_status, request.user))
+        service = DPASigningService(requesting_user=request.user)
+        result = service.sign(
+            tenant=request.tenant,
+            ip_address=_get_client_ip(request),
+            user_agent=request.META.get("HTTP_USER_AGENT", ""),
+        )
+        return Response(_dpa_response(result["dpa_status"], request.user))

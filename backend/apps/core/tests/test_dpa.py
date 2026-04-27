@@ -85,8 +85,10 @@ class DPAStatusViewTest(TenantTestCase):
         AIDPAStatus.objects.filter(tenant=self.__class__.tenant).delete()
         self._auth(self.admin)
         self.client.post("/api/v1/settings/dpa/sign/")
+        # S-081: service writes action="dpa_signed" (with correlation_id) instead
+        # of the old inline "dpa_sign" in the view.
         log = AuditLog.objects.filter(
-            action="dpa_sign",
+            action="dpa_signed",
             resource_type="ai_dpa_status",
         ).first()
         self.assertIsNotNone(log)
@@ -152,12 +154,13 @@ class DPAStatusViewTest(TenantTestCase):
         resp1 = self.client.post("/api/v1/settings/dpa/sign/")
         self.assertEqual(resp1.status_code, 200)
         first_date = resp1.json()["signed_at"]
-        audit_count_after_first = AuditLog.objects.filter(action="dpa_sign").count()
+        # S-081: service writes action="dpa_signed" (with correlation_id).
+        audit_count_after_first = AuditLog.objects.filter(action="dpa_signed").count()
 
         resp2 = self.client.post("/api/v1/settings/dpa/sign/")
         self.assertEqual(resp2.status_code, 200)
         self.assertEqual(resp2.json()["signed_at"], first_date)
-        audit_count_after_second = AuditLog.objects.filter(action="dpa_sign").count()
+        audit_count_after_second = AuditLog.objects.filter(action="dpa_signed").count()
         self.assertEqual(audit_count_after_first, audit_count_after_second)
 
     def test_get_returns_signed_status_after_signing(self):
