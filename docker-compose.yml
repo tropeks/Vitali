@@ -4,7 +4,7 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: vitali
+      POSTGRES_DB: ${POSTGRES_DB:-vitali}
       POSTGRES_USER: vitali
       POSTGRES_PASSWORD: vitali
     ports:
@@ -13,7 +13,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U vitali -d vitali"]
+      test: ["CMD-SHELL", "pg_isready -U vitali -d ${POSTGRES_DB:-vitali}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -41,9 +41,10 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      DATABASE_URL: postgres://vitali:vitali@postgres:5432/vitali
+      DATABASE_URL: postgres://vitali:vitali@postgres:5432/${POSTGRES_DB:-vitali}
       REDIS_URL: redis://redis:6379/0
-      DJANGO_SETTINGS_MODULE: vitali.settings.production
+      DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-vitali.settings.production}
+      E2E_MODE: ${E2E_MODE:-false}
     ports:
       - "8000:8000"
     volumes:
@@ -70,9 +71,9 @@ services:
     command: celery -A vitali worker -l info --concurrency 4
     env_file: .env
     environment:
-      DATABASE_URL: postgres://vitali:vitali@postgres:5432/vitali
+      DATABASE_URL: postgres://vitali:vitali@postgres:5432/${POSTGRES_DB:-vitali}
       REDIS_URL: redis://redis:6379/0
-      DJANGO_SETTINGS_MODULE: vitali.settings.production
+      DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-vitali.settings.production}
     depends_on:
       postgres:
         condition: service_healthy
@@ -88,9 +89,9 @@ services:
     command: celery -A vitali beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     env_file: .env
     environment:
-      DATABASE_URL: postgres://vitali:vitali@postgres:5432/vitali
+      DATABASE_URL: postgres://vitali:vitali@postgres:5432/${POSTGRES_DB:-vitali}
       REDIS_URL: redis://redis:6379/0
-      DJANGO_SETTINGS_MODULE: vitali.settings.production
+      DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-vitali.settings.production}
     depends_on:
       postgres:
         condition: service_healthy

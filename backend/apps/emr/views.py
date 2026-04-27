@@ -265,16 +265,9 @@ class AppointmentViewSet(viewsets.ModelViewSet):
 
                 raise DRFValidationError({"start_time": "TIME_SLOT_UNAVAILABLE"}) from exc
             raise
-        log_audit(
-            self.request,
-            "appointment_create",
-            "Appointment",
-            appointment.id,
-            new_data={
-                "patient": str(appointment.patient_id),
-                "start_time": str(appointment.start_time),
-            },
-        )
+        from apps.emr.services.appointment_creation import AppointmentCreationService
+
+        AppointmentCreationService(requesting_user=self.request.user).create(appointment)
 
     @action(detail=False, methods=["get"])
     def today(self, request):
