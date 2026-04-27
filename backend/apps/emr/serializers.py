@@ -352,10 +352,12 @@ class EncounterSerializer(serializers.ModelSerializer):
             "soap_note",
             "vital_signs",
             "documents",
+            "signed_at",
+            "signed_by",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        read_only_fields = ["id", "signed_at", "signed_by", "created_at", "updated_at"]
 
 
 class PatientInsuranceSerializer(serializers.ModelSerializer):
