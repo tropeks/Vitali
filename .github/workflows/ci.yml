@@ -150,7 +150,15 @@ jobs:
     name: Frontend — E2E (Playwright)
     runs-on: ubuntu-latest
     needs: [backend-test, frontend-lint]
-    continue-on-error: true   # E2E env not yet fully reproducible in CI — Sprint 19 will fix
+    # continue-on-error removed (S-091): E2E env is now fully wired.
+    # If this job fails the team should see it immediately.
+
+    env:
+      # S-091: E2E_MODE enables the test-only invitation token endpoint
+      # (apps/core/checks.py core.E001 enforces that E2E_MODE=True requires a
+      # DB name ending with _test — POSTGRES_DB below satisfies that check).
+      E2E_MODE: "true"
+      POSTGRES_DB: vitali_test
 
     steps:
       - uses: actions/checkout@v4
@@ -171,15 +179,32 @@ jobs:
       - name: Boot backend stack
         run: |
           cp .env.example .env
+          # POSTGRES_DB and E2E_MODE are exported from the job env block above.
+          # docker-compose.yml uses ${POSTGRES_DB:-vitali} and ${E2E_MODE:-false}
+          # interpolation so both the postgres service and the django service pick
+          # up the CI overrides without touching the dev defaults.
           docker compose up -d
-          # Give the stack a moment to become healthy
-          sleep 15
+          # Wait for Django to pass its health check before proceeding.
+          echo "Waiting for stack health..."
+          timeout 120 bash -c 'until docker compose exec -T django python -c "import sys; sys.exit(0)" 2>/dev/null; do sleep 3; done'
+          sleep 10
+
+      - name: Run migrations
+        run: docker compose exec -T django python manage.py migrate_schemas --shared
+
+      - name: Create test superuser
+        run: |
+          docker compose exec -T django python manage.py shell -c \
+            "from django.contrib.auth import get_user_model; U = get_user_model(); U.objects.create_superuser(email='admin@test.com', password='AdminPass1!') if not U.objects.filter(email='admin@test.com').exists() else print('superuser already exists')"
 
       - name: Run E2E tests
-        run: cd frontend && npm run test:e2e
+        run: cd frontend && npx playwright test
         env:
           E2E_BASE_URL: http://localhost:3000
           E2E_BACKEND_URL: http://localhost:8000
+          E2E_MODE: "true"
+          E2E_ADMIN_EMAIL: admin@test.com
+          E2E_ADMIN_PASSWORD: AdminPass1!
           CI: "true"
 
   # ─── Docker Build Validation ─────────────────────────────────────────────────
