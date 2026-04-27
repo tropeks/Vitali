@@ -55,12 +55,16 @@ class EmployeeOnboardingService:
 
         Raises:
             ValidationError: if payload fails business-rule validation.
-            NotImplementedError: if auth_mode == 'invite' (T6 wires this).
         """
         self._validate(payload)
 
         with transaction.atomic():
             user = self._create_user(payload)
+
+            # T6: invite mode — create UserInvitation + email after user row exists.
+            if payload["auth_mode"] == "invite":
+                self._create_invitation(user)
+
             employee = Employee.objects.create(
                 user=user,
                 hire_date=payload["hire_date"],
@@ -162,12 +166,9 @@ class EmployeeOnboardingService:
         Create the User row.
 
         - typed_password / random_password: sets must_change_password=True.
-        - invite: raises NotImplementedError — T6 wires UserInvitation creation.
+        - invite: must_change_password stays False; user sets password via invite link (T6).
         """
         auth_mode = payload["auth_mode"]
-
-        if auth_mode == "invite":
-            self._create_invitation(payload)  # raises NotImplementedError until T6
 
         role_obj: Role | None = None
         role_name = payload.get("role", "")
@@ -189,14 +190,12 @@ class EmployeeOnboardingService:
         user.phone = payload.get("phone", "")  # type: ignore[attr-defined,unused-ignore]
         return user
 
-    def _create_invitation(self, payload: dict) -> None:
-        """
-        Stub — T6 wires UserInvitation token generation + email send.
-        Raises NotImplementedError so callers know the invite path is pending.
-        """
-        raise NotImplementedError(
-            "T6 wires this — invite mode requires UserInvitation creation + email send"
-        )
+    def _create_invitation(self, user: User) -> None:
+        """T6: create UserInvitation + send email via _create_invitation_for_user helper."""
+        from apps.core.views import _create_invitation_for_user
+
+        invitation, _token = _create_invitation_for_user(user, requesting_user=self.requesting_user)
+        self._audit("user_invitation_sent", "user_invitation", invitation.id)
 
     def _audit(
         self,

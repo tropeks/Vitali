@@ -243,6 +243,8 @@ class PasswordChangeRequiredMiddleware:
             "/api/v1/me",
         }
     )
+    # Prefix-matched paths (startswith) that are always open — no auth required.
+    ALLOWLIST_PREFIXES = ("/api/v1/auth/set-password/",)
 
     def __init__(self, get_response):
         self.get_response = get_response
@@ -269,6 +271,8 @@ class PasswordChangeRequiredMiddleware:
 
     def __call__(self, request):
         if request.path in self.ALLOWLIST:
+            return self.get_response(request)
+        if any(request.path.startswith(prefix) for prefix in self.ALLOWLIST_PREFIXES):
             return self.get_response(request)
         user = self._resolve_user(request)
         if (

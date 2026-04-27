@@ -168,17 +168,38 @@ class TestEmployeeOnboardingService(TenantTestCase):
             or len(user.password) > 20
         )
 
-    # ── T3: invite mode raises NotImplementedError ────────────────────────────
+    # ── T3: invite mode now wired (T6) ───────────────────────────────────────
 
-    def test_onboard_invite_mode_raises_not_implemented(self):
-        """auth_mode=invite must raise NotImplementedError pending T6."""
+    @patch("apps.core.services.email.EmailService.send_user_invitation")
+    def test_onboard_invite_mode_creates_invitation(self, mock_send):
+        """auth_mode=invite creates Employee + User + UserInvitation (T6 wired)."""
+        from apps.core.models import UserInvitation
+
         service = EmployeeOnboardingService(requesting_user=self.requester)
-        payload = _base_payload(auth_mode="invite", password="")
+        payload = _base_payload(
+            auth_mode="invite",
+            password="",
+            email="invite.user@example.com",
+        )
 
-        with pytest.raises(NotImplementedError) as exc_info:
-            service.onboard(payload)
+        employee = service.onboard(payload)
 
-        assert "T6" in str(exc_info.value)
+        # Employee + User created
+        assert Employee.objects.filter(id=employee.id).exists()
+        user = User.objects.get(email="invite.user@example.com")
+        # Invite mode: must_change_password stays False (user sets via link)
+        assert user.must_change_password is False
+        # UserInvitation row created
+        assert UserInvitation.objects.filter(user=user).exists()
+        # Email sent once
+        mock_send.assert_called_once()
+        # AuditLog includes invitation entry
+        from apps.core.models import AuditLog
+
+        assert AuditLog.objects.filter(
+            action="user_invitation_sent",
+            new_data__correlation_id=service.correlation_id,
+        ).exists()
 
     # ── T4: clinical role missing council fields → ValidationError + rollback ──
 

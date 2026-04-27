@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bem-vindo à Vitali</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f9fafb; margin: 0; padding: 20px; color: #111827; }
+    .card { background: #fff; border-radius: 12px; max-width: 520px; margin: 0 auto; padding: 40px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+    .logo { font-weight: 700; font-size: 20px; color: #6366f1; margin-bottom: 32px; }
+    h1 { font-size: 22px; margin: 0 0 16px; }
+    .btn { display: inline-block; background: #6366f1; color: #fff; text-decoration: none; font-weight: 600; font-size: 15px; border-radius: 8px; padding: 12px 28px; margin: 24px 0; }
+    .expiry { font-size: 13px; color: #6b7280; margin-top: 8px; }
+    .fallback { font-size: 12px; color: #9ca3af; word-break: break-all; margin-top: 16px; }
+    .footer { margin-top: 32px; font-size: 13px; color: #9ca3af; text-align: center; border-top: 1px solid #f3f4f6; padding-top: 20px; }
+    a { color: #6366f1; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">Vitali</div>
+    <h1>Bem-vindo(a), {{ user.full_name }}!</h1>
+
+    <p>
+      Você foi convidado(a) para acessar a plataforma Vitali.
+      Clique no botão abaixo para configurar sua senha e ativar sua conta.
+    </p>
+
+    <a href="{{ link }}" class="btn">Configurar minha senha</a>
+
+    <p class="expiry">Este link expira em 72 horas.</p>
+
+    <p class="fallback">
+      Se o botão não funcionar, copie e cole o link abaixo no seu navegador:<br>
+      <a href="{{ link }}">{{ link }}</a>
+    </p>
+
+    <p style="margin-top:24px; font-size:14px; color:#6b7280;">
+      Em caso de dúvidas, entre em contato pelo e-mail
+      <a href="mailto:{{ support_email }}">{{ support_email }}</a>.
+    </p>
+
+    <div class="footer">
+      Vitali &mdash; Plataforma de Saúde
+    </div>
+  </div>
+</body>
+</html>
