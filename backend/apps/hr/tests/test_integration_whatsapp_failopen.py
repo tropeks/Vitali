@@ -10,14 +10,13 @@ Architecture invariant being proven:
   transaction.atomic() commits BEFORE transaction.on_commit() fires the
   Celery task. Any exception inside the task cannot roll back committed rows.
 
-Architectural gaps documented (not test failures — Sprint 19 improvements):
+Architectural notes:
 
-  1. **No correlation_id in task's failure AuditLog**: The task's
-     `whatsapp_setup_failed` AuditLog writes `{"reason": "max_retries_exceeded",
-     "error": "..."}` but NOT `correlation_id`, because the task receives only
-     `user_id` (no correlation handle from the service). The `employee_created`
-     AuditLog carries correlation_id from the service layer. Cross-boundary
-     correlation (service → task) is a Sprint 19 improvement.
+  1. **correlation_id chain (decision 2A)**: As of the post-Sprint-18 follow-up,
+     the service-layer correlation_id IS propagated through to the task. Both
+     `whatsapp_channel_created` and `whatsapp_setup_failed` AuditLog entries
+     carry the same correlation_id as the service's `employee_created` /
+     `user_created` audits — full cross-boundary cascade tracing.
 
   2. **Phone is transient in Sprint 18**: `phone` is set as a Python attribute
      on the User instance by `EmployeeOnboardingService._create_user()` but is
@@ -163,8 +162,9 @@ class WhatsAppFailOpenIntegrationTests(TenantTestCase):
           retries without 4x task re-runs — same pattern as test_tasks.py unit tests).
 
         The employee AuditLog carries correlation_id from the service layer.
-        The task's failure AuditLog does NOT carry correlation_id (see module
-        docstring — Sprint 19 improvement).
+        The task's failure AuditLog now also carries correlation_id —
+        post-Sprint-18 follow-up bridging the service → task boundary. We assert
+        the full chain integrity below.
         """
         from apps.hr.services import EmployeeOnboardingService
 
@@ -260,6 +260,19 @@ class WhatsAppFailOpenIntegrationTests(TenantTestCase):
             "employee_created correlation_id must match the service's correlation_id",
         )
 
+        # ── 3b. Full cascade chain: failure audit shares correlation_id ───────
+        self.assertIn(
+            "correlation_id",
+            failed_audit.new_data,
+            "whatsapp_setup_failed AuditLog must carry correlation_id (decision 2A)",
+        )
+        self.assertEqual(
+            failed_audit.new_data["correlation_id"],
+            employee_audit.new_data["correlation_id"],
+            "whatsapp_setup_failed correlation_id must match employee_created — "
+            "this proves the cascade audit chain is intact across the service → task boundary",
+        )
+
         # ── 4. Gateway was actually called (task ran past phone guard) ─────────
         self.assertTrue(
             mock_gw.send_text.called,
@@ -325,7 +338,7 @@ class WhatsAppFailOpenIntegrationTests(TenantTestCase):
         self.assertTrue(User.objects.filter(email=email).exists())
         self.assertTrue(Professional.objects.filter(user__email=email).exists())
 
-        # ── 2. Success AuditLog written ───────────────────────────────────────
+        # ── 2. Success AuditLog written + carries correlation_id ──────────────
         success_audit = AuditLog.objects.filter(
             action="whatsapp_channel_created",
             resource_type="user",
@@ -333,6 +346,11 @@ class WhatsAppFailOpenIntegrationTests(TenantTestCase):
         self.assertIsNotNone(
             success_audit,
             "AuditLog 'whatsapp_channel_created' must be written on eventual success",
+        )
+        self.assertEqual(
+            success_audit.new_data.get("correlation_id"),
+            service.correlation_id,
+            "whatsapp_channel_created correlation_id must match the service's correlation_id",
         )
 
         # ── 3. No failure AuditLog ────────────────────────────────────────────

@@ -115,7 +115,13 @@ class EmployeeOnboardingService:
             phone_value = getattr(user, "phone", "") or ""
             if payload.get("setup_whatsapp") and self._whatsapp_enabled() and phone_value.strip():
                 user_id = str(user.id)
-                transaction.on_commit(lambda: setup_staff_whatsapp_channel.delay(user_id))
+                # Pass correlation_id so the task's success/failure AuditLog can
+                # be linked back to employee_created → user_created → ... chain
+                # (decision 2A — full cascade tracing).
+                correlation_id = self.correlation_id
+                transaction.on_commit(
+                    lambda: setup_staff_whatsapp_channel.delay(user_id, correlation_id)
+                )
                 self._audit("whatsapp_setup_queued", "user", user.id)
 
         return employee

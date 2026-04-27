@@ -285,7 +285,9 @@ class TestEmployeeOnboardingService(TenantTestCase):
             service.onboard(payload)
 
         user = User.objects.get(email=user_email)
-        mock_task.delay.assert_called_once_with(str(user.id))
+        # The task receives both user_id and correlation_id so its AuditLog
+        # entries can link back to the cascade chain (decision 2A).
+        mock_task.delay.assert_called_once_with(str(user.id), service.correlation_id)
 
         assert AuditLog.objects.filter(
             action="whatsapp_setup_queued",

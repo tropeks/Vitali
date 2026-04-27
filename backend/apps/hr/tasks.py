@@ -6,6 +6,18 @@ setup_staff_whatsapp_channel:
   Enqueued via transaction.on_commit by EmployeeOnboardingService (decision 1B).
   Fail-open: persistent failure writes AuditLog `whatsapp_setup_failed` and
   logs to Sentry; the User/Employee/Professional rows are NEVER rolled back.
+
+Cascade audit chain (decision 2A):
+  Both success (`whatsapp_channel_created`) and failure (`whatsapp_setup_failed`)
+  AuditLog entries carry the same correlation_id as `employee_created`,
+  `user_created`, etc. — so a single UUID4 ties the full cascade together for
+  tracing/debugging.
+
+Attribution decision:
+  AuditLog.user is intentionally None for this task. Celery tasks run outside
+  any HTTP request and have no requesting-user context. The correlation_id
+  links the task's audit back to the service-layer audits (which DO have
+  requesting_user attribution), preserving the full audit trail.
 """
 
 import logging
@@ -20,9 +32,17 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
-def setup_staff_whatsapp_channel(self, user_id: str) -> None:
+def setup_staff_whatsapp_channel(self, user_id: str, correlation_id: str | None = None) -> None:
     """
     Set up WhatsApp staff channel for the given user_id.
+
+    Args:
+        user_id: UUID of the User to set up.
+        correlation_id: UUID4 from EmployeeOnboardingService.correlation_id —
+            included in both success and failure AuditLog entries so the cascade
+            audit chain (decision 2A) stays intact across the service → task
+            boundary. Defaults to None for backward compatibility / system-
+            triggered enqueues that don't originate from the cascade.
 
     Decision 1B fail-open: any failure here is contained — the User/Employee/
     Professional rows from EmployeeOnboardingService NEVER get rolled back.
@@ -69,11 +89,11 @@ def setup_staff_whatsapp_channel(self, user_id: str) -> None:
         gateway.send_text(phone, welcome_text)
 
         AuditLog.objects.create(
-            user=None,  # System action — not attributed to a person
+            user=None,  # System action — see module docstring for attribution decision
             action="whatsapp_channel_created",
             resource_type="user",
             resource_id=str(user_id),
-            new_data={"phone": phone},
+            new_data={"phone": phone, "correlation_id": correlation_id},
         )
         logger.info(
             "setup_staff_whatsapp_channel: success for user %s",
@@ -91,7 +111,11 @@ def setup_staff_whatsapp_channel(self, user_id: str) -> None:
                 action="whatsapp_setup_failed",
                 resource_type="user",
                 resource_id=str(user_id),
-                new_data={"reason": "max_retries_exceeded", "error": str(exc)[:200]},
+                new_data={
+                    "reason": "max_retries_exceeded",
+                    "error": str(exc)[:200],
+                    "correlation_id": correlation_id,
+                },
             )
             logger.error(
                 "setup_staff_whatsapp_channel: persistent failure for user %s after retries",
