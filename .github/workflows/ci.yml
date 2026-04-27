@@ -150,13 +150,8 @@ jobs:
     name: Frontend — E2E (Playwright)
     runs-on: ubuntu-latest
     needs: [backend-test, frontend-lint]
-    # Allowed-to-fail until tenant bootstrap lands in CI (Sprint 22 candidate).
-    # Sprint 20 S-091 wired E2E_MODE + test DB suffix + production frontend image
-    # successfully — that part is healthy. Remaining gap: django-tenants requires
-    # a registered Tenant + Domain row pointing at localhost so the login API
-    # resolves a schema. The CI workflow doesn't yet do that bootstrap. Once it
-    # does (one extra `manage.py shell` step), this flag can be removed.
-    continue-on-error: true
+    # S-111 (Sprint 22): continue-on-error removed. Tenant bootstrap now wires
+    # the Tenant + Domain rows so django-tenants can resolve the testclinic schema.
 
     env:
       # S-091: E2E_MODE enables the test-only invitation token endpoint
@@ -186,6 +181,9 @@ jobs:
       - name: Install Playwright browsers
         run: cd frontend && npx playwright install --with-deps chromium
 
+      - name: Map test tenant subdomain
+        run: echo "127.0.0.1 testclinic.localhost" | sudo tee -a /etc/hosts
+
       - name: Boot stack (production frontend image — skip dev override)
         run: |
           cp .env.example .env
@@ -208,15 +206,37 @@ jobs:
       - name: Run migrations
         run: docker compose --file docker-compose.yml exec -T django python manage.py migrate_schemas --shared
 
-      - name: Create test superuser
+      - name: Bootstrap test tenant
         run: |
-          docker compose --file docker-compose.yml exec -T django python manage.py shell -c \
-            "from django.contrib.auth import get_user_model; U = get_user_model(); U.objects.create_superuser(email='admin@test.com', password='AdminPass1!') if not U.objects.filter(email='admin@test.com').exists() else print('superuser already exists')"
+          docker compose --file docker-compose.yml exec -T django python manage.py shell -c "
+          from apps.core.models import Tenant, Domain
+          # Public tenant (django-tenants reserves schema_name='public' for cross-tenant data)
+          public, _ = Tenant.objects.get_or_create(schema_name='public', defaults={'name': 'public'})
+          Domain.objects.get_or_create(domain='localhost', defaults={'tenant': public, 'is_primary': True})
+          # Test clinic tenant
+          clinic, _ = Tenant.objects.get_or_create(schema_name='testclinic', defaults={'name': 'Test Clinic'})
+          Domain.objects.get_or_create(domain='testclinic.localhost', defaults={'tenant': clinic, 'is_primary': True})
+          print(f'Tenant bootstrap: public={public.id}, clinic={clinic.id}')
+          "
+
+      - name: Create test superuser in clinic tenant
+        run: |
+          docker compose --file docker-compose.yml exec -T django python manage.py shell -c "
+          from apps.core.models import Tenant, User
+          from django_tenants.utils import schema_context
+          clinic = Tenant.objects.get(schema_name='testclinic')
+          with schema_context(clinic.schema_name):
+              if not User.objects.filter(email='admin@test.com').exists():
+                  User.objects.create_superuser(email='admin@test.com', password='AdminPass1!')
+                  print('Superuser created in testclinic schema')
+              else:
+                  print('Superuser already exists')
+          "
 
       - name: Run E2E tests
         run: cd frontend && npx playwright test
         env:
-          E2E_BASE_URL: http://localhost:3000
+          E2E_BASE_URL: http://testclinic.localhost:3000
           E2E_BACKEND_URL: http://localhost:8000
           E2E_MODE: "true"
           E2E_ADMIN_EMAIL: admin@test.com
