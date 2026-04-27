@@ -176,30 +176,31 @@ jobs:
       - name: Install Playwright browsers
         run: cd frontend && npx playwright install --with-deps chromium
 
-      - name: Boot backend stack
+      - name: Boot stack (production frontend image — skip dev override)
         run: |
           cp .env.example .env
-          # POSTGRES_DB and E2E_MODE are exported from the job env block above.
-          # docker-compose.yml uses ${POSTGRES_DB:-vitali} and ${E2E_MODE:-false}
-          # interpolation so both the postgres service and the django service pick
-          # up the CI overrides without touching the dev defaults.
-          docker compose up -d
-          # Wait for Django to be reachable.
+          # CI runs frontend from the production Dockerfile (node server.js, deps baked in).
+          # The dev override (docker-compose.override.yml) does `npm install && npm run dev`
+          # which on a cold CI runner takes 5-8 min — too slow + flaky for E2E.
+          # `--file docker-compose.yml` excludes the override.
+          docker compose --file docker-compose.yml up -d
           echo "Waiting for Django..."
-          timeout 120 bash -c 'until docker compose exec -T django python -c "import sys; sys.exit(0)" 2>/dev/null; do sleep 3; done'
-          # docker-compose.override.yml runs nextjs in dev mode with `npm install && npm run dev`,
-          # which can take 60-120s on a cold CI runner before the dev server binds :3000.
-          # Without this wait, Playwright hits ERR_SOCKET_NOT_CONNECTED.
-          echo "Waiting for Next.js dev server on :3000..."
-          timeout 300 bash -c 'until curl -sf http://localhost:3000 > /dev/null 2>&1; do sleep 5; done'
+          timeout 120 bash -c 'until docker compose --file docker-compose.yml exec -T django python -c "import sys; sys.exit(0)" 2>/dev/null; do sleep 3; done'
+          echo "Waiting for Next.js on :3000..."
+          timeout 180 bash -c 'until curl -sf http://localhost:3000 > /dev/null 2>&1; do sleep 5; done' || {
+            echo "::group::Next.js logs (debug)"
+            docker compose --file docker-compose.yml logs nextjs --tail 100
+            echo "::endgroup::"
+            exit 1
+          }
           echo "Stack is ready."
 
       - name: Run migrations
-        run: docker compose exec -T django python manage.py migrate_schemas --shared
+        run: docker compose --file docker-compose.yml exec -T django python manage.py migrate_schemas --shared
 
       - name: Create test superuser
         run: |
-          docker compose exec -T django python manage.py shell -c \
+          docker compose --file docker-compose.yml exec -T django python manage.py shell -c \
             "from django.contrib.auth import get_user_model; U = get_user_model(); U.objects.create_superuser(email='admin@test.com', password='AdminPass1!') if not U.objects.filter(email='admin@test.com').exists() else print('superuser already exists')"
 
       - name: Run E2E tests
