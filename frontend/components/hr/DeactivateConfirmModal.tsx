@@ -32,28 +32,22 @@ export default function DeactivateConfirmModal({
     setError(null)
     try {
       const result = await apiFetch<{
-        employment_status?: string
-        tokens_revoked?: number
-        professional_deactivated?: boolean
-        user_deactivated?: boolean
+        employment_status: string
+        tokens_revoked: number
+        tokens_already_blacklisted: number
+        professional_deactivated: boolean
+        user_deactivated: boolean
         [key: string]: unknown
       }>(`/api/v1/hr/employees/${employee.id}/`, {
         method: 'DELETE',
       })
 
-      // Build success messages from server response side effects
-      const msgs: string[] = ['Funcionário desativado ✓']
-      if (result && typeof result === 'object') {
-        if (typeof result.tokens_revoked === 'number' && result.tokens_revoked > 0) {
-          msgs.push(`${result.tokens_revoked} tokens revogados ✓`)
-        }
-        if (result.professional_deactivated) {
-          msgs.push('Profissional desativado ✓')
-        }
-        if (result.user_deactivated) {
-          msgs.push('Conta inativada ✓')
-        }
-      }
+      // Build success messages from guaranteed server response fields (S-082)
+      const msgs: string[] = [
+        'Funcionário desativado ✓',
+        `${result.tokens_revoked} tokens revogados ✓`,
+        ...(result.professional_deactivated ? ['Profissional desativado ✓'] : []),
+      ]
 
       onDeactivated(msgs)
     } catch (err) {

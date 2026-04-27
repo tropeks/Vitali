@@ -108,5 +108,11 @@ test.describe('HR onboarding cascade — hire a doctor', () => {
     await page.goto('/rh/funcionarios');
     await expect(page.locator(`text=${doctorEmail}`)).toBeVisible({ timeout: 15_000 });
     await expect(page.locator(`text=${doctorName}`)).toBeVisible({ timeout: 10_000 });
+
+    // ── S-083: verify Professional cascade → /configuracoes/profissionais ───
+    // The HR onboarding cascade creates a Professional row for clinical roles.
+    // Confirm the doctor now appears on the Profissionais list page.
+    await page.goto('/configuracoes/profissionais');
+    await expect(page.locator(`text=${doctorEmail}`)).toBeVisible({ timeout: 10_000 });
   });
 });

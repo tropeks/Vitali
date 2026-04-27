@@ -88,13 +88,10 @@ class PatientViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         patient = serializer.save(created_by=self.request.user)
-        log_audit(
-            self.request,
-            "patient_create",
-            "Patient",
-            patient.id,
-            new_data={"mrn": patient.medical_record_number, "name": patient.full_name},
-        )
+        from apps.emr.services.patient_registration import PatientRegistrationService
+
+        service = PatientRegistrationService(requesting_user=self.request.user)
+        service.register(patient)
 
     def perform_update(self, serializer):
         old = PatientSerializer(self.get_object()).data

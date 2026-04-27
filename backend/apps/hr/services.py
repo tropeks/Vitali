@@ -303,7 +303,13 @@ class EmployeeDeactivationService:
                 professional_deactivated=professional_deactivated,
             )
 
-        return employee
+        return {
+            "employee": employee,
+            "tokens_revoked": tokens_revoked,
+            "tokens_already_blacklisted": tokens_already_blacklisted,
+            "professional_deactivated": professional_deactivated,
+            "user_deactivated": True,
+        }
 
     def _audit_chain(
         self,

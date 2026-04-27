@@ -100,9 +100,15 @@ class EmployeeViewSet(
 
         employee = self.get_object()
         service = EmployeeDeactivationService()
-        employee = service.deactivate(employee, requesting_user=request.user)
+        result = service.deactivate(employee, requesting_user=request.user)
         return Response(
-            EmployeeSerializer(employee).data,
+            {
+                **EmployeeSerializer(result["employee"]).data,
+                "tokens_revoked": result["tokens_revoked"],
+                "tokens_already_blacklisted": result["tokens_already_blacklisted"],
+                "professional_deactivated": result["professional_deactivated"],
+                "user_deactivated": result["user_deactivated"],
+            },
             status=200,
         )
 

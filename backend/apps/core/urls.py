@@ -13,6 +13,7 @@ from .views_mfa import (
 )
 from .views_onboarding import OnboardingView
 from .views_platform import TenantSubscriptionView
+from .views_test_helpers import IssueInvitationTokenView
 
 app_name = "core"
 
@@ -53,4 +54,10 @@ urlpatterns = [
     # DPA (S-070)
     path("settings/dpa/", DPAStatusView.as_view(), name="dpa-status"),
     path("settings/dpa/sign/", DPASignView.as_view(), name="dpa-sign"),
+    # Test-only — gated by E2E_MODE + superuser + _test DB suffix (S-084)
+    path(
+        "_test/invitations/issue-token/",
+        IssueInvitationTokenView.as_view(),
+        name="test-issue-invitation-token",
+    ),
 ]
