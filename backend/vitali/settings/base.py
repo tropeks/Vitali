@@ -66,6 +66,7 @@ MIDDLEWARE = [
     "apps.core.middleware.CurrentUserMiddleware",
     "apps.core.middleware.FeatureFlagMiddleware",
     "apps.core.middleware.MFARequiredMiddleware",  # S-062: blocks staff without mfa_verified JWT
+    "apps.core.middleware.PasswordChangeRequiredMiddleware",  # S-076-NEW: blocks users with temp password
     "apps.core.middleware.DemoModeMiddleware",  # no-op unless DEMO_MODE=true
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",

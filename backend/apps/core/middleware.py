@@ -222,3 +222,68 @@ class MFARequiredMiddleware:
                     except TOTPDevice.DoesNotExist:
                         pass  # No device yet — don't block (grace period)
         return self.get_response(request)
+
+
+# ─── S-076-NEW: Password Change Required Middleware ───────────────────────────
+
+
+class PasswordChangeRequiredMiddleware:
+    """
+    S-076-NEW: gates all authenticated requests behind password change for
+    users with must_change_password=True. Mirrors MFARequiredMiddleware.
+
+    Allowlist: change-password, logout, identity. Everything else → 403 with
+    a structured redirect payload the frontend interceptor (T12) follows.
+    """
+
+    ALLOWLIST = frozenset(
+        {
+            "/api/v1/auth/password",
+            "/api/v1/auth/logout",
+            "/api/v1/me",
+        }
+    )
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def _resolve_user(self, request):
+        """
+        Return the authenticated user, attempting JWT resolution when the
+        session user is anonymous. This is necessary because DRF authentication
+        is lazy and only fires inside the view layer — middleware runs first.
+        """
+        user = getattr(request, "user", None)
+        if user is not None and user.is_authenticated:
+            return user
+        # Attempt JWT authentication so Bearer tokens are honoured in middleware.
+        try:
+            from apps.core.authentication import TenantJWTAuthentication
+
+            result = TenantJWTAuthentication().authenticate(request)
+            if result is not None:
+                return result[0]
+        except Exception:
+            pass
+        return None
+
+    def __call__(self, request):
+        if request.path in self.ALLOWLIST:
+            return self.get_response(request)
+        user = self._resolve_user(request)
+        if (
+            user is not None
+            and user.is_authenticated
+            and getattr(user, "must_change_password", False)
+        ):
+            return JsonResponse(
+                {
+                    "error": {
+                        "code": "PASSWORD_CHANGE_REQUIRED",
+                        "message": "Senha temporária deve ser alterada antes de continuar.",
+                        "redirect": "/auth/change-password",
+                    }
+                },
+                status=403,
+            )
+        return self.get_response(request)

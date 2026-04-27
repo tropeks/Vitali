@@ -282,7 +282,8 @@ class ChangePasswordView(APIView):
             )
 
         user.set_password(serializer.validated_data["new_password"])
-        user.save(update_fields=["password", "updated_at"])
+        user.must_change_password = False
+        user.save(update_fields=["password", "must_change_password", "updated_at"])
 
         _write_audit(request, user, "password_changed", resource_id=str(user.pk))
         return Response({"detail": "Senha alterada com sucesso."})
