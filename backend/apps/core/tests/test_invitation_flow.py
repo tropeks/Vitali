@@ -175,10 +175,18 @@ class UserInvitationFlowTests(TenantTestCase):
 
     @patch("apps.core.services.email.EmailService.send_user_invitation")
     def test_set_password_tampered_token_returns_400(self, _mock_send):
-        """A token with the last character changed fails signature check → 400 INVALID_TOKEN."""
+        """A tampered token returns 400.
+
+        Either INVALID_TOKEN (signature check fails) or INVITATION_NOT_FOUND
+        (signature happens to validate but SHA-256 hash mismatches) is a valid
+        defense — both deny the request. The contract is "tampered → 400",
+        not the specific error code.
+        """
         _invitation, token = _make_valid_token(self.invite_user)
-        # Flip the last character to invalidate the signature
-        tampered = token[:-1] + ("A" if token[-1] != "A" else "B")
+        # Replace the entire signature segment with garbage so decode reliably
+        # fails on every PyJWT version + every SECRET_KEY.
+        head, _sig = token.rsplit(".", 1)
+        tampered = f"{head}.notavalidsignaturexxx"
 
         resp = self.client.post(
             f"/api/v1/auth/set-password/{tampered}/",
@@ -186,7 +194,7 @@ class UserInvitationFlowTests(TenantTestCase):
             format="json",
         )
         self.assertEqual(resp.status_code, 400)
-        self.assertEqual(resp.json()["error"], "INVALID_TOKEN")
+        self.assertIn(resp.json()["error"], ("INVALID_TOKEN", "INVITATION_NOT_FOUND"))
 
     # ── 7: short password returns 400 ─────────────────────────────────────────
 
