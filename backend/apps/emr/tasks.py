@@ -221,3 +221,104 @@ def send_appointment_confirmation_whatsapp(
                 appointment_id,
                 exc_info=True,
             )
+
+
+# ── S-100 / F-03: Post-visit follow-up WhatsApp ───────────────────────────────
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def send_post_visit_followup_whatsapp(
+    self, encounter_id: str, correlation_id: str | None = None
+) -> None:
+    """
+    Send post-visit follow-up WhatsApp 24h after encounter sign.
+    Fail-open: persistent failure writes AuditLog 'followup_failed' but
+    NEVER affects the Encounter row.
+
+    Decision 1B fail-open. Mirrors send_appointment_confirmation_whatsapp.
+
+    Args:
+        encounter_id: UUID of the signed Encounter.
+        correlation_id: UUID4 from EncounterSigningService.correlation_id —
+            included in both success and failure AuditLog entries so the
+            cascade audit chain (decision 2A) stays intact across the
+            service → task boundary.
+
+    Gating: re-checks WhatsAppContact.opt_in at task run time to handle
+    revocations between queue time and execution time. Silent no-op if
+    contact no longer opted in.
+    """
+    from apps.core.models import AuditLog
+    from apps.emr.models import Encounter
+    from apps.whatsapp.gateway import get_gateway
+    from apps.whatsapp.models import WhatsAppContact
+
+    # ── 1. Resolve encounter ──────────────────────────────────────────────────
+    try:
+        encounter = Encounter.objects.select_related(
+            "patient", "professional", "professional__user"
+        ).get(id=encounter_id)
+    except Encounter.DoesNotExist:
+        logger.error(
+            "send_post_visit_followup_whatsapp: encounter %s not found — skipping",
+            encounter_id,
+        )
+        return  # Not a transient error; don't retry.
+
+    # ── 2. Guard: re-check opt-in at task runtime ─────────────────────────────
+    contact = WhatsAppContact.objects.filter(patient=encounter.patient, opt_in=True).first()
+    if not contact:
+        logger.info(
+            "send_post_visit_followup_whatsapp: no opted-in contact for patient %s — skipping",
+            encounter.patient_id,
+        )
+        return
+
+    # ── 3. Send WhatsApp follow-up ────────────────────────────────────────────
+    try:
+        gateway = get_gateway()
+        prof_name = (
+            encounter.professional.user.full_name
+            if encounter.professional and encounter.professional.user
+            else "—"
+        )
+        text = (
+            f"Olá {encounter.patient.full_name}, esperamos que esteja se sentindo melhor "
+            f"após sua consulta com {prof_name}. Se tiver dúvidas, responda aqui."
+        )
+        gateway.send_text(contact.phone, text)
+
+        AuditLog.objects.create(
+            user=None,  # System action — Celery task has no requesting-user context
+            action="followup_sent",
+            resource_type="encounter",
+            resource_id=str(encounter_id),
+            new_data={"phone": contact.phone, "correlation_id": correlation_id},
+        )
+        logger.info(
+            "send_post_visit_followup_whatsapp: success for encounter %s",
+            encounter_id,
+        )
+
+    except Exception as exc:
+        # Transient error — retry. When retries are exhausted, self.retry()
+        # raises MaxRetriesExceededError; we catch that to write the failure log.
+        try:
+            raise self.retry(exc=exc) from exc
+        except MaxRetriesExceededError:
+            AuditLog.objects.create(
+                user=None,
+                action="followup_failed",
+                resource_type="encounter",
+                resource_id=str(encounter_id),
+                new_data={
+                    "reason": "max_retries_exceeded",
+                    "error": str(exc)[:200],
+                    "correlation_id": correlation_id,
+                },
+            )
+            logger.error(
+                "send_post_visit_followup_whatsapp: persistent failure for encounter %s",
+                encounter_id,
+                exc_info=True,
+            )

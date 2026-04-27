@@ -498,7 +498,7 @@ class EncounterViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def sign(self, request, pk=None):
-        """POST /encounters/{id}/sign/ — assina a consulta"""
+        """POST /encounters/{id}/sign/ — assina a consulta + cascade F-03."""
         encounter = self.get_object()
         if encounter.status != "open":
             return Response(
@@ -510,15 +510,10 @@ class EncounterViewSet(viewsets.ModelViewSet):
                 },
                 status=400,
             )
-        encounter.status = "signed"
-        encounter.save(update_fields=["status", "updated_at"])
-        log_audit(
-            request,
-            "encounter_sign",
-            "Encounter",
-            encounter.id,
-            new_data={"status": "signed", "signed_by": str(request.user.id)},
-        )
+        from apps.emr.services.encounter_signing import EncounterSigningService
+
+        service = EncounterSigningService(requesting_user=request.user)
+        service.sign(encounter)
         return Response(EncounterSerializer(encounter).data)
 
 
