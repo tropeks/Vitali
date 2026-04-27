@@ -264,6 +264,7 @@ class Appointment(models.Model):
 
     class Meta:
         ordering = ["start_time"]
+        unique_together = [["professional", "start_time"]]
         indexes = [
             models.Index(fields=["professional", "start_time"]),
             models.Index(fields=["patient", "start_time"]),
