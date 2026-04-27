@@ -58,6 +58,16 @@ const NAV_ITEMS: NavItem[] = [
       { label: "Compras", href: "/farmacia/compras" },
     ],
   },
+  {
+    label: "RH",
+    href: "/rh/funcionarios",
+    icon: Users,
+    module: "rh",
+    adminOnly: true,
+    children: [
+      { label: "Funcionários", href: "/rh/funcionarios" },
+    ],
+  },
   { label: "Faturamento", href: "/billing", icon: Receipt, module: "billing" },
   { label: "Análise", href: "/billing/analytics", icon: BarChart2, module: "billing" },
   { label: "Inteligência Artificial", href: "/dashboard/ia", icon: Sparkles, module: "ai_tuss" },
