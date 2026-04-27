@@ -108,7 +108,8 @@ const EMPLOYEE_2 = {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  vi.useFakeTimers()
+  // NOTE: do NOT use vi.useFakeTimers() here — testing-library's waitFor
+  // relies on real timers to poll, and fake timers cause deadlock.
 })
 
 // ─── Tests ────────────────────────────────────────────────────────────────────

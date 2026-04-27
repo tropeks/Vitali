@@ -37,7 +37,7 @@ describe('ChangePasswordPage', () => {
     render(<ChangePasswordPage />)
 
     expect(screen.getByLabelText(/senha atual/i)).toBeInTheDocument()
-    expect(screen.getByLabelText(/nova senha/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/^nova senha/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/confirme a nova senha/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /alterar senha/i })).toBeInTheDocument()
   })
