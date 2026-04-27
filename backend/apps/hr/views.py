@@ -3,6 +3,7 @@
 list/retrieve/update delegate to DRF mixins.
 create() is an explicit method that delegates to EmployeeOnboardingService
 (locked decision 1A — service-layer, NOT signals due to FK ordering).
+destroy() delegates to EmployeeDeactivationService (F-15 soft-delete cascade).
 """
 
 from rest_framework import mixins, viewsets
@@ -19,6 +20,7 @@ class EmployeeViewSet(
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
     viewsets.GenericViewSet,
 ):
     queryset = Employee.objects.select_related("user__role").all()
@@ -80,3 +82,51 @@ class EmployeeViewSet(
             "correlation_id": service.correlation_id,
         }
         return Response(response_data, status=201)
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        DELETE /api/v1/hr/employees/{id}/
+
+        F-15 soft-delete cascade:
+        - Sets employment_status="terminated" + terminated_at
+        - Deactivates User.is_active
+        - Blacklists all outstanding JWT tokens (idempotent)
+        - Deactivates Professional if clinical
+        - Writes AuditLog chain with shared correlation_id (decision 2A)
+
+        Returns 200 with updated Employee row (not 204 — soft-delete preserves data).
+        """
+        from apps.hr.services import EmployeeDeactivationService
+
+        employee = self.get_object()
+        service = EmployeeDeactivationService()
+        employee = service.deactivate(employee, requesting_user=request.user)
+        return Response(
+            EmployeeSerializer(employee).data,
+            status=200,
+        )
+
+    def partial_update(self, request, *args, **kwargs):
+        """
+        PATCH /api/v1/hr/employees/{id}/
+
+        Standard DRF partial update + reactivation hook:
+        if employment_status flips back to "active", re-enables User.is_active
+        and writes an employee_reactivated AuditLog entry. No token un-blacklist
+        — user must set a new password via standard flow.
+        """
+        response = super().partial_update(request, *args, **kwargs)
+        employee = self.get_object()
+        if employee.employment_status == "active" and not employee.user.is_active:
+            employee.user.is_active = True
+            employee.user.save(update_fields=["is_active"])
+            from apps.core.models import AuditLog
+
+            AuditLog.objects.create(
+                user=request.user,
+                action="employee_reactivated",
+                resource_type="employee",
+                resource_id=str(employee.id),
+                new_data={"user_id": str(employee.user.id)},
+            )
+        return response

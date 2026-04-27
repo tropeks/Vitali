@@ -14,6 +14,7 @@ import logging
 from uuid import uuid4
 
 from django.db import connection, transaction
+from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from apps.core.models import AuditLog, Role, User
@@ -232,3 +233,116 @@ class EmployeeOnboardingService:
                 exc_info=True,
             )
             return False
+
+
+class EmployeeDeactivationService:
+    """
+    F-15 cascade: soft-delete Employee + revoke access + deactivate Professional
+    + mark WhatsApp staff channel inactive + AuditLog chain (decision 2A).
+
+    Soft-delete only in Sprint 18 (decision 1D — preserves CFM Res. 1.821 medical
+    record attribution). Hard-delete is Sprint 19+.
+
+    Token revocation iterates OutstandingToken for the user and blacklists each
+    (idempotent — already-blacklisted tokens are skipped).
+    """
+
+    def deactivate(self, employee, *, requesting_user):
+        from rest_framework_simplejwt.exceptions import TokenError
+        from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        correlation_id = str(uuid4())
+        with transaction.atomic():
+            # Soft-delete Employee
+            employee.employment_status = "terminated"
+            employee.terminated_at = timezone.now()
+            employee.save(update_fields=["employment_status", "terminated_at", "updated_at"])
+
+            # Deactivate User
+            employee.user.is_active = False
+            employee.user.save(update_fields=["is_active"])
+
+            # Revoke all refresh tokens for the user (idempotent)
+            tokens_revoked = 0
+            tokens_already_blacklisted = 0
+            for ot in OutstandingToken.objects.filter(user=employee.user):
+                try:
+                    RefreshToken(ot.token).blacklist()
+                    tokens_revoked += 1
+                except TokenError:
+                    tokens_already_blacklisted += 1
+
+            # Deactivate Professional if it exists
+            professional_deactivated = False
+            try:
+                professional = employee.user.professional
+                if professional and professional.is_active:
+                    professional.is_active = False
+                    professional.save(update_fields=["is_active"])
+                    professional_deactivated = True
+            except Exception:
+                pass  # No Professional row — non-clinical user
+
+            # WhatsApp staff channel inactive — internal flag flip only, no API call.
+            # Sprint 18 doesn't track staff WhatsApp channels separately, so this is
+            # a no-op placeholder for Sprint 21+ when staff-channel tracking lands.
+
+            # AuditLog chain
+            self._audit_chain(
+                employee=employee,
+                correlation_id=correlation_id,
+                requesting_user=requesting_user,
+                tokens_revoked=tokens_revoked,
+                tokens_already_blacklisted=tokens_already_blacklisted,
+                professional_deactivated=professional_deactivated,
+            )
+
+        return employee
+
+    def _audit_chain(
+        self,
+        *,
+        employee,
+        correlation_id,
+        requesting_user,
+        tokens_revoked,
+        tokens_already_blacklisted,
+        professional_deactivated,
+    ):
+        from apps.core.models import AuditLog
+
+        AuditLog.objects.create(
+            user=requesting_user,
+            action="employee_terminated",
+            resource_type="employee",
+            resource_id=str(employee.id),
+            new_data={
+                "correlation_id": correlation_id,
+                "user_id": str(employee.user.id),
+                "terminated_at": employee.terminated_at.isoformat(),
+            },
+        )
+        AuditLog.objects.create(
+            user=requesting_user,
+            action="tokens_revoked",
+            resource_type="user",
+            resource_id=str(employee.user.id),
+            new_data={
+                "correlation_id": correlation_id,
+                "revoked_count": tokens_revoked,
+                "already_blacklisted_count": tokens_already_blacklisted,
+            },
+        )
+        if professional_deactivated:
+            try:
+                professional = employee.user.professional
+                AuditLog.objects.create(
+                    user=requesting_user,
+                    action="professional_deactivated",
+                    resource_type="professional",
+                    resource_id=str(professional.id),
+                    new_data={"correlation_id": correlation_id},
+                )
+            except Exception:
+                pass

@@ -24,6 +24,7 @@ import {
   X,
 } from "lucide-react";
 import type { UserDTO } from "@/lib/auth";
+import { apiFetch } from "@/lib/api";
 import { useActiveModules } from "@/hooks/useHasModule";
 
 interface NavItem {
@@ -99,7 +100,8 @@ export default function DashboardShell({ user, children }: Props) {
   });
 
   const handleLogout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
+    // apiFetch injects the JWT header and handles PASSWORD_CHANGE_REQUIRED (T12)
+    await apiFetch("/api/auth/logout", { method: "POST" }).catch(() => {});
     router.push("/login");
     router.refresh();
   };
