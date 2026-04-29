@@ -6,7 +6,6 @@ from apps.core.models import Role
 from apps.core.permissions import DEFAULT_ROLES
 from apps.test_utils import TenantTestCase
 
-
 HR_ONBOARDING_ROLE_KEYS = {
     "admin",
     "medico",
