@@ -9,7 +9,6 @@ from apps.core.models import Role, User
 from .models import Employee
 from .services import CLINICAL_ROLES
 
-
 CONTRACT_TYPE_ALIASES = {
     "autonomo": "temporary",
     "estagiario": "estagio",
