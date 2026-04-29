@@ -85,6 +85,8 @@ CI is responsible for:
 
 `E2E_MODE=true` enables the test-only invitation token helper. The backend system check requires the database name to end with `_test`, which CI satisfies with `POSTGRES_DB=vitali_test`.
 
+Invite acceptance must go through the Next route `/api/auth/set-password/<token>`, not directly through `/api/v1/auth/set-password/<token>/`, because the Next route converts the Django token response into the browser session cookies (`access_token`, `access_token_js`, `refresh_token`, and `vitali_user`) used by middleware and client API calls.
+
 ## Covered Specs
 
 | Spec | Contract |
@@ -118,4 +120,5 @@ The API still normalizes legacy frontend aliases (`on_leave`, `estagiario`, `aut
 
 - If HR onboarding submits but the employee never appears, check the backend response first. A missing role seed usually surfaces as `Role '<key>' não existe neste tenant.`
 - If the invite setup test cannot fetch a token, verify `E2E_MODE=true`, a `_test` database name, and a superuser-authenticated request.
+- If invite acceptance returns to `/login?next=%2Fdashboard`, verify the set-password page is calling `/api/auth/set-password/<token>` and that the response sets `vitali_user`.
 - If tenant routing fails locally, verify `testclinic.localhost` resolves to `127.0.0.1` and that the `Domain` row exists in the public schema.
