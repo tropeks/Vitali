@@ -150,15 +150,9 @@ jobs:
     name: Frontend — E2E (Playwright)
     runs-on: ubuntu-latest
     needs: [backend-test, frontend-lint]
-    # Sprint 22 S-111 closed the CI INFRA gap — tenant bootstrap works, login
-    # works, modal opens, form submits. The remaining failures are real product
-    # bugs (new employee email doesn't appear in the table after the cascade
-    # completes — likely modal-close + table-refresh timing). Keeping
-    # continue-on-error until those are investigated as a focused Sprint 23
-    # task. The E2E pipeline is now USEFUL: it catches actual UX regressions.
-    continue-on-error: true
-    # S-111 (Sprint 22): continue-on-error removed. Tenant bootstrap now wires
-    # the Tenant + Domain rows so django-tenants can resolve the testclinic schema.
+    # Sprint 23: HR/invite Playwright is a blocking product gate. CI now seeds
+    # the test tenant roles and admin role before E2E, so failures here represent
+    # real product regressions instead of incomplete test bootstrap.
 
     env:
       # S-091: E2E_MODE enables the test-only invitation token endpoint
@@ -228,18 +222,35 @@ jobs:
           print(f'Tenant bootstrap: public={public.id}, clinic={clinic.id}')
           "
 
+      - name: Seed default roles in test tenant
+        run: docker compose --file docker-compose.yml exec -T django python manage.py create_default_roles --schema testclinic --overwrite
+
       - name: Create test superuser in clinic tenant
         run: |
           docker compose --file docker-compose.yml exec -T django python manage.py shell -c "
-          from apps.core.models import Tenant, User
+          from apps.core.models import Tenant, User, Role
           from django_tenants.utils import schema_context
           clinic = Tenant.objects.get(schema_name='testclinic')
           with schema_context(clinic.schema_name):
-              if not User.objects.filter(email='admin@test.com').exists():
-                  User.objects.create_superuser(email='admin@test.com', password='AdminPass1!')
+              admin_role = Role.objects.get(name='admin')
+              user = User.objects.filter(email='admin@test.com').first()
+              if user is None:
+                  user = User.objects.create_superuser(
+                      email='admin@test.com',
+                      password='AdminPass1!',
+                      full_name='E2E Admin',
+                      role=admin_role,
+                  )
                   print('Superuser created in testclinic schema')
               else:
-                  print('Superuser already exists')
+                  user.full_name = user.full_name or 'E2E Admin'
+                  user.role = admin_role
+                  user.is_staff = True
+                  user.is_superuser = True
+                  user.is_active = True
+                  user.set_password('AdminPass1!')
+                  user.save(update_fields=['full_name', 'role', 'is_staff', 'is_superuser', 'is_active', 'password'])
+                  print('Superuser updated in testclinic schema')
           "
 
       - name: Run E2E tests
@@ -252,7 +263,7 @@ jobs:
           E2E_ADMIN_PASSWORD: AdminPass1!
           CI: "true"
 
-  # ─── Docker Build Validation ─────────────────────────────────────────────────
+  # ─── Docker Build Validation ────────────────────────────────────────────────
   docker-validate:
     name: Docker — Validate Build
     runs-on: ubuntu-latest
