@@ -142,6 +142,6 @@ test.describe('Invite flow — admin invites user by email', () => {
 
     // -- Step 4: Assert redirect to dashboard --------------------------------
     await page.waitForURL(/\/dashboard/, { timeout: 15_000 });
-    await expect(page.locator('text=Dashboard')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
   });
 });
