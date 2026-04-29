@@ -25,6 +25,12 @@ const STATUS_STYLES: Record<string, string> = {
   cancelled: 'bg-gray-100 text-gray-500',
 };
 
+const STATUS_LABELS: Record<string, string> = {
+  open: 'Em Aberto',
+  signed: 'Assinada',
+  cancelled: 'Cancelada',
+};
+
 async function apiFetch(path: string) {
   const token = getAccessToken();
   const res = await fetch(`/api/v1${path}`, {
@@ -167,7 +173,7 @@ export default function EncountersPage() {
                 </td>
                 <td className="px-4 py-3">
                   <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[enc.status] ?? ''}`}>
-                    {enc.status_display}
+                    {enc.status_display || STATUS_LABELS[enc.status] || enc.status}
                   </span>
                 </td>
                 <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate">{enc.chief_complaint || '—'}</td>

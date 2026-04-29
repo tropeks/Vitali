@@ -96,8 +96,9 @@ class Command(BaseCommand):
         for _i in range(count):
             p = Patient.objects.create(
                 full_name=f"[DEMO] {fake.name()}",
-                date_of_birth=fake.date_of_birth(minimum_age=18, maximum_age=80),
-                sex=random.choice(["M", "F"]),
+                cpf=fake.cpf(),
+                birth_date=fake.date_of_birth(minimum_age=18, maximum_age=80),
+                gender=random.choice(["M", "F"]),
                 phone=fake.phone_number()[:20],
                 email=fake.email(),
             )
