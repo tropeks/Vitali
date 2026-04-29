@@ -4,6 +4,7 @@ Core views — Auth, Tenant registration, User management.
 
 import hashlib
 import logging
+import uuid
 from datetime import timedelta
 
 import jwt
@@ -125,6 +126,7 @@ def _create_invitation_for_user(user, *, requesting_user):
         "user_id": str(user.id),
         "purpose": "password_set",
         "exp": int(expires_at.timestamp()),
+        "jti": uuid.uuid4().hex,
     }
     token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
     token_hash = hashlib.sha256(token.encode()).hexdigest()
