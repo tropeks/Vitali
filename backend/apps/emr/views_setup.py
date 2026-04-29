@@ -10,6 +10,8 @@ POST /api/v1/emr/setup/professional/rerun/
   Requires is_staff=True.
 """
 
+import datetime
+
 from django.db import transaction
 from rest_framework import permissions, serializers, status
 from rest_framework.response import Response
@@ -28,8 +30,8 @@ class ProfessionalSetupSerializer(serializers.Serializer):
         child=serializers.IntegerField(min_value=0, max_value=6),
         default=[1, 2, 3, 4, 5],  # Mon-Fri
     )
-    work_start = serializers.TimeField(default="08:00")
-    work_end = serializers.TimeField(default="18:00")
+    work_start = serializers.TimeField(default=datetime.time(8, 0))
+    work_end = serializers.TimeField(default=datetime.time(18, 0))
     lunch_start = serializers.TimeField(required=False, allow_null=True, default=None)
     lunch_end = serializers.TimeField(required=False, allow_null=True, default=None)
     slot_duration_minutes = serializers.IntegerField(min_value=10, max_value=120, default=30)

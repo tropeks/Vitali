@@ -22,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 import type { UserDTO } from "@/lib/auth";
+import { apiFetch } from "@/lib/api";
 import { useActiveModules } from "@/hooks/useHasModule";
 
 interface NavItem {
@@ -54,6 +55,16 @@ const NAV_ITEMS: NavItem[] = [
       { label: "Compras", href: "/farmacia/compras" },
     ],
   },
+  {
+    label: "RH",
+    href: "/rh/funcionarios",
+    icon: Users,
+    module: "rh",
+    adminOnly: true,
+    children: [
+      { label: "Funcionários", href: "/rh/funcionarios" },
+    ],
+  },
   { label: "Faturamento", href: "/billing", icon: Receipt, module: "billing" },
   { label: "Análise", href: "/billing/analytics", icon: BarChart2, module: "billing" },
   {
@@ -65,6 +76,7 @@ const NAV_ITEMS: NavItem[] = [
       { label: "Assinatura", href: "/configuracoes/assinatura" },
       { label: "WhatsApp", href: "/configuracoes/whatsapp" },
       { label: "Inteligência Artificial", href: "/configuracoes/ai" },
+      { label: "Profissionais", href: "/configuracoes/profissionais" },
     ],
   },
 ];
@@ -95,7 +107,8 @@ export default function DashboardShell({ user, children }: Props) {
   });
 
   const handleLogout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
+    // apiFetch injects the JWT header and handles PASSWORD_CHANGE_REQUIRED (T12)
+    await apiFetch("/api/auth/logout", { method: "POST" }).catch(() => {});
     router.push("/login");
     router.refresh();
   };

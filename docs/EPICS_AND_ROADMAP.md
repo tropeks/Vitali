@@ -21,6 +21,7 @@
 | E-010 | Subscription & Feature Flags | P1 | E-002 | M |
 | E-011 | BI & Analytics | P1 | E-004, E-006 | L |
 | E-012 | DICOM/PACS Integration | P2 | E-004 | L |
+| E-013 | Workflow Intelligence (Sistema Inteligente) | P1 | E-002, E-005 | XL |
 
 ---
 
@@ -606,6 +607,77 @@
     - [ ] Platform admin panel for subscription management
   Story Points: 8
 ```
+
+---
+
+### E-013: Workflow Intelligence (Sistema Inteligente)
+**Goal:** Make Vitali smart at the seams — every meaningful state change cascades automatically through the right modules. Vitali stops being a database with forms and starts being a system that does things on the user's behalf.
+
+**Why this epic exists:** The competitive moat is not "module count" (Tasy/MV/TOTVS will out-feature us forever). The moat is "this product feels alive." Hire a doctor → access ready in 30 seconds. Sign an encounter → guide drafted, prescription printed, follow-up scheduled. Book an appointment → patient gets WhatsApp confirmation in 2 seconds. Each cascade compounds the AI/automation differentiation.
+
+**Dependencies:** E-002 (Auth/Multi-Tenancy), E-005 (Scheduling), and reuses primitives from E-008 (AI), E-009 (WhatsApp). No new infrastructure required — leverages existing Django signals, Celery + Redis, `appointment_paid` custom signal pattern, and `apps/emr/tasks_waitlist.py` cross-module cascade pattern.
+
+**Stories** (each story = one cascade primitive; a sprint typically ships 1-2):
+```
+[F-01] Employee/User onboarding cascade  -- Sprint 18
+  Trigger: Employee created via /rh/funcionarios
+  Cascade: User created (with OTP/invite), role permissions assigned, optional Professional creation, optional WhatsApp staff channel queued
+  Story Points: 13
+
+[F-15] User-deactivated cascade  -- Sprint 18 (bundle)
+  Trigger: Employee.employment_status = terminated
+  Cascade: JWT refresh tokens revoked, API keys revoked, Professional deactivated, WhatsApp channel deactivated
+  Story Points: 3
+
+[F-02] Appointment-created cascade  -- Sprint 19
+  Trigger: Appointment created
+  Cascade: WhatsApp confirmation to patient, slot reserved, optional draft TISS guide if convênio, optional inventory hold for procedure
+  Story Points: 5-8
+
+[F-05] DPA-signed cascade  -- Sprint 19
+  Trigger: AIDPAStatus.is_signed = True
+  Cascade: All AI feature flags enabled atomically, audit log, optional platform admin email
+  Story Points: 3
+
+[F-03] Encounter-signed cascade  -- Sprint 20
+  Trigger: Encounter status = signed
+  Cascade: TISS guide draft auto-generated from procedures, prescription PDFs rendered, post-visit WhatsApp follow-up (24h delay), patient timeline updated
+  Story Points: 8-13
+
+[F-04] Patient-registered cascade  -- Sprint 20
+  Trigger: Patient created
+  Cascade: WhatsAppContact mapping, welcome message, empty medical_history pre-creation, optional CPF Receita Federal validation
+  Story Points: 5
+
+[F-06] Stock-low cascade (event-driven)  -- Sprint 21
+  Trigger: StockMovement drops StockItem.quantity below min_stock
+  Cascade: Real-time alert, draft PurchaseOrder for the affected item with linked supplier
+  Story Points: 5
+
+[F-10] Prescription-signed cascade  -- Sprint 21
+  Trigger: Prescription signed
+  Cascade: PDF link to patient via WhatsApp (with consent gate), pharmacy queue notification, ANVISA report row for controlled meds
+  Story Points: 5
+
+[F-11] No-show cascade  -- Sprint 22
+  Trigger: Appointment status = no_show
+  Cascade: WhatsApp re-engagement, waitlist slot reopened, patient no-show counter increment, refund or reschedule offer
+  Story Points: 5
+
+[F-12] AI safety alert cascade  -- Sprint 22
+  Trigger: PrescriptionSafetyChecker returns severity=contraindication
+  Cascade: Persistent in-app notification to prescriber, audit log of acknowledgment, optional on-call page
+  Story Points: 5
+
+[F-14] Module-activated cascade  -- Sprint 23+
+  Trigger: Subscription.active_modules adds new module
+  Cascade: Module-specific onboarding flow, WhatsApp quick-start link to admin
+  Story Points: 5/module
+```
+
+**Backlog (post-Sprint 25):** F-16 CID-10 → TUSS pairing (AI deepening, separate epic candidate E-014), F-17 vacation/leave management (HR depth), and ongoing cascade discovery from real pilot usage.
+
+**Reference artifact:** `~/.gstack/projects/tropeks-Vitali/smartness-audit-2026-04-26.md` (full audit + Sprint mapping).
 
 ---
 

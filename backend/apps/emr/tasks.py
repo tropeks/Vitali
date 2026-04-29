@@ -1,17 +1,30 @@
 """
-S-063: Celery tasks for AI prescription safety checking.
+EMR Celery tasks.
 
-The post_save signal is wired in EmrConfig.ready() via apps/emr/signals.py.
-The signal uses transaction.on_commit() so the task fires only after the DB
-transaction commits — prevents race conditions where the task reads data
-before the write is visible.
+check_prescription_safety (S-063):
+  AI prescription safety checking. Wired via post_save signal in
+  EmrConfig.ready() through apps/emr/signals.py.  The signal uses
+  transaction.on_commit() so the task fires only after the DB transaction
+  commits — prevents race conditions where the task reads data before the
+  write is visible.
+
+send_appointment_confirmation_whatsapp (S-090 / F-02):
+  Send WhatsApp appointment confirmation. Fail-open: persistent failure
+  writes AuditLog 'appointment_whatsapp_failed' but never rolls back DB rows.
+  Mirrors apps.hr.tasks.setup_staff_whatsapp_channel (Sprint 18 pattern).
+  Enqueued via transaction.on_commit by AppointmentCreationService (decision 1B).
+  Gated by WhatsAppContact.opt_in — task also re-checks opt-in at runtime
+  (guard against revocation between queue and execution).
 """
 
 import logging
 
 from celery import shared_task
+from celery.exceptions import MaxRetriesExceededError
 from django.core.cache import cache
 from django.db import transaction
+
+from apps.core.models import AuditLog
 
 logger = logging.getLogger(__name__)
 
@@ -109,3 +122,203 @@ def check_prescription_safety(self, item_id: str):
             SAFETY_STATUS_CACHE_TTL,
         )
         raise self.retry(exc=exc) from exc
+
+
+# ── S-090 / F-02: Appointment WhatsApp confirmation ──────────────────────────
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def send_appointment_confirmation_whatsapp(
+    self, appointment_id: str, correlation_id: str | None = None
+) -> None:
+    """
+    Send WhatsApp appointment confirmation. Fail-open: persistent failure
+    writes AuditLog 'appointment_whatsapp_failed' but never affects DB rows.
+
+    Decision 1B fail-open. Mirrors apps.hr.tasks.setup_staff_whatsapp_channel.
+
+    Args:
+        appointment_id: UUID of the Appointment to confirm.
+        correlation_id: UUID4 from AppointmentCreationService.correlation_id —
+            included in both success and failure AuditLog entries so the cascade
+            audit chain (decision 2A) stays intact across the service → task
+            boundary.
+
+    Gating: re-checks WhatsAppContact.opt_in at task run time to handle
+    revocations between queue time and execution time. Silent no-op if
+    contact no longer opted in.
+    """
+    from apps.emr.models import Appointment
+    from apps.whatsapp.gateway import get_gateway
+    from apps.whatsapp.models import WhatsAppContact
+
+    # ── 1. Resolve appointment ────────────────────────────────────────────────
+    try:
+        appt = Appointment.objects.select_related("patient", "professional__user").get(
+            id=appointment_id
+        )
+    except Appointment.DoesNotExist:
+        logger.error(
+            "send_appointment_confirmation_whatsapp: appointment %s not found — skipping",
+            appointment_id,
+        )
+        return  # Not a transient error; don't retry.
+
+    # ── 2. Guard: re-check opt-in at task runtime ─────────────────────────────
+    contact = WhatsAppContact.objects.filter(patient=appt.patient, opt_in=True).first()
+    if not contact:
+        logger.info(
+            "send_appointment_confirmation_whatsapp: no opted-in contact for patient %s — skipping",
+            appt.patient_id,
+        )
+        return
+
+    # ── 3. Send WhatsApp confirmation ─────────────────────────────────────────
+    try:
+        gateway = get_gateway()
+        prof_name = (
+            appt.professional.user.full_name
+            if appt.professional and appt.professional.user
+            else "—"
+        )
+        text = (
+            f"Olá {appt.patient.full_name}! Sua consulta com {prof_name} foi agendada para "
+            f"{appt.start_time.strftime('%d/%m/%Y às %H:%M')}."
+        )
+        gateway.send_text(contact.phone, text)
+
+        AuditLog.objects.create(
+            user=None,  # System action — Celery task has no requesting-user context
+            action="appointment_whatsapp_sent",
+            resource_type="appointment",
+            resource_id=str(appointment_id),
+            new_data={"phone": contact.phone, "correlation_id": correlation_id},
+        )
+        logger.info(
+            "send_appointment_confirmation_whatsapp: success for appointment %s",
+            appointment_id,
+        )
+
+    except Exception as exc:
+        # Transient error — retry. When retries are exhausted, self.retry()
+        # raises MaxRetriesExceededError; we catch that to write the failure log.
+        try:
+            raise self.retry(exc=exc) from exc
+        except MaxRetriesExceededError:
+            AuditLog.objects.create(
+                user=None,
+                action="appointment_whatsapp_failed",
+                resource_type="appointment",
+                resource_id=str(appointment_id),
+                new_data={
+                    "reason": "max_retries_exceeded",
+                    "error": str(exc)[:200],
+                    "correlation_id": correlation_id,
+                },
+            )
+            logger.error(
+                "send_appointment_confirmation_whatsapp: persistent failure for appointment %s",
+                appointment_id,
+                exc_info=True,
+            )
+
+
+# ── S-100 / F-03: Post-visit follow-up WhatsApp ───────────────────────────────
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def send_post_visit_followup_whatsapp(
+    self, encounter_id: str, correlation_id: str | None = None
+) -> None:
+    """
+    Send post-visit follow-up WhatsApp 24h after encounter sign.
+    Fail-open: persistent failure writes AuditLog 'followup_failed' but
+    NEVER affects the Encounter row.
+
+    Decision 1B fail-open. Mirrors send_appointment_confirmation_whatsapp.
+
+    Args:
+        encounter_id: UUID of the signed Encounter.
+        correlation_id: UUID4 from EncounterSigningService.correlation_id —
+            included in both success and failure AuditLog entries so the
+            cascade audit chain (decision 2A) stays intact across the
+            service → task boundary.
+
+    Gating: re-checks WhatsAppContact.opt_in at task run time to handle
+    revocations between queue time and execution time. Silent no-op if
+    contact no longer opted in.
+    """
+    from apps.core.models import AuditLog
+    from apps.emr.models import Encounter
+    from apps.whatsapp.gateway import get_gateway
+    from apps.whatsapp.models import WhatsAppContact
+
+    # ── 1. Resolve encounter ──────────────────────────────────────────────────
+    try:
+        encounter = Encounter.objects.select_related(
+            "patient", "professional", "professional__user"
+        ).get(id=encounter_id)
+    except Encounter.DoesNotExist:
+        logger.error(
+            "send_post_visit_followup_whatsapp: encounter %s not found — skipping",
+            encounter_id,
+        )
+        return  # Not a transient error; don't retry.
+
+    # ── 2. Guard: re-check opt-in at task runtime ─────────────────────────────
+    contact = WhatsAppContact.objects.filter(patient=encounter.patient, opt_in=True).first()
+    if not contact:
+        logger.info(
+            "send_post_visit_followup_whatsapp: no opted-in contact for patient %s — skipping",
+            encounter.patient_id,
+        )
+        return
+
+    # ── 3. Send WhatsApp follow-up ────────────────────────────────────────────
+    try:
+        gateway = get_gateway()
+        prof_name = (
+            encounter.professional.user.full_name
+            if encounter.professional and encounter.professional.user
+            else "—"
+        )
+        text = (
+            f"Olá {encounter.patient.full_name}, esperamos que esteja se sentindo melhor "
+            f"após sua consulta com {prof_name}. Se tiver dúvidas, responda aqui."
+        )
+        gateway.send_text(contact.phone, text)
+
+        AuditLog.objects.create(
+            user=None,  # System action — Celery task has no requesting-user context
+            action="followup_sent",
+            resource_type="encounter",
+            resource_id=str(encounter_id),
+            new_data={"phone": contact.phone, "correlation_id": correlation_id},
+        )
+        logger.info(
+            "send_post_visit_followup_whatsapp: success for encounter %s",
+            encounter_id,
+        )
+
+    except Exception as exc:
+        # Transient error — retry. When retries are exhausted, self.retry()
+        # raises MaxRetriesExceededError; we catch that to write the failure log.
+        try:
+            raise self.retry(exc=exc) from exc
+        except MaxRetriesExceededError:
+            AuditLog.objects.create(
+                user=None,
+                action="followup_failed",
+                resource_type="encounter",
+                resource_id=str(encounter_id),
+                new_data={
+                    "reason": "max_retries_exceeded",
+                    "error": str(exc)[:200],
+                    "correlation_id": correlation_id,
+                },
+            )
+            logger.error(
+                "send_post_visit_followup_whatsapp: persistent failure for encounter %s",
+                encounter_id,
+                exc_info=True,
+            )

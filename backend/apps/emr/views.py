@@ -58,7 +58,7 @@ def log_audit(request, action, resource_type, resource_id, old_data=None, new_da
 
 
 class PatientViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated, HasPermission("emr.read")]
+    permission_classes = [IsAuthenticated, HasPermission("emr.read")]  # type: ignore[list-item]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_class = PatientFilter
     search_fields = ["full_name", "social_name", "medical_record_number", "whatsapp"]
@@ -88,13 +88,10 @@ class PatientViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         patient = serializer.save(created_by=self.request.user)
-        log_audit(
-            self.request,
-            "patient_create",
-            "Patient",
-            patient.id,
-            new_data={"mrn": patient.medical_record_number, "name": patient.full_name},
-        )
+        from apps.emr.services.patient_registration import PatientRegistrationService
+
+        service = PatientRegistrationService(requesting_user=self.request.user)
+        service.register(patient)
 
     def perform_update(self, serializer):
         old = PatientSerializer(self.get_object()).data
@@ -217,7 +214,7 @@ class PatientViewSet(viewsets.ModelViewSet):
 class ProfessionalViewSet(viewsets.ModelViewSet):
     queryset = Professional.objects.select_related("user").filter(is_active=True)
     serializer_class = ProfessionalSerializer
-    permission_classes = [IsAuthenticated, HasPermission("admin")]
+    permission_classes = [IsAuthenticated, HasPermission("admin")]  # type: ignore[list-item]
     filter_backends = [filters.SearchFilter]
     search_fields = ["user__full_name", "council_number", "specialty"]
 
@@ -225,11 +222,11 @@ class ProfessionalViewSet(viewsets.ModelViewSet):
 class ScheduleConfigViewSet(viewsets.ModelViewSet):
     queryset = ScheduleConfig.objects.select_related("professional__user").all()
     serializer_class = ScheduleConfigSerializer
-    permission_classes = [IsAuthenticated, HasPermission("admin")]
+    permission_classes = [IsAuthenticated, HasPermission("admin")]  # type: ignore[list-item]
 
 
 class AppointmentViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated, HasPermission("schedule.read")]
+    permission_classes = [IsAuthenticated, HasPermission("schedule.read")]  # type: ignore[list-item]
     serializer_class = AppointmentSerializer
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     ordering = ["start_time"]
@@ -268,16 +265,9 @@ class AppointmentViewSet(viewsets.ModelViewSet):
 
                 raise DRFValidationError({"start_time": "TIME_SLOT_UNAVAILABLE"}) from exc
             raise
-        log_audit(
-            self.request,
-            "appointment_create",
-            "Appointment",
-            appointment.id,
-            new_data={
-                "patient": str(appointment.patient_id),
-                "start_time": str(appointment.start_time),
-            },
-        )
+        from apps.emr.services.appointment_creation import AppointmentCreationService
+
+        AppointmentCreationService(requesting_user=self.request.user).create(appointment)
 
     @action(detail=False, methods=["get"])
     def today(self, request):
@@ -440,7 +430,7 @@ class WaitingRoomView(APIView):
 class EncounterViewSet(viewsets.ModelViewSet):
     """Consultas clínicas — ponto central do EMR"""
 
-    permission_classes = [IsAuthenticated, HasPermission("emr.read")]
+    permission_classes = [IsAuthenticated, HasPermission("emr.read")]  # type: ignore[list-item]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     ordering = ["-encounter_date"]
 
@@ -508,7 +498,7 @@ class EncounterViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def sign(self, request, pk=None):
-        """POST /encounters/{id}/sign/ — assina a consulta"""
+        """POST /encounters/{id}/sign/ — assina a consulta + cascade F-03."""
         encounter = self.get_object()
         if encounter.status != "open":
             return Response(
@@ -520,15 +510,10 @@ class EncounterViewSet(viewsets.ModelViewSet):
                 },
                 status=400,
             )
-        encounter.status = "signed"
-        encounter.save(update_fields=["status", "updated_at"])
-        log_audit(
-            request,
-            "encounter_sign",
-            "Encounter",
-            encounter.id,
-            new_data={"status": "signed", "signed_by": str(request.user.id)},
-        )
+        from apps.emr.services.encounter_signing import EncounterSigningService
+
+        service = EncounterSigningService(requesting_user=request.user)
+        service.sign(encounter)
         return Response(EncounterSerializer(encounter).data)
 
 
@@ -537,7 +522,7 @@ class SOAPNoteViewSet(viewsets.ModelViewSet):
 
     queryset = SOAPNote.objects.select_related("encounter").all()
     serializer_class = SOAPNoteSerializer
-    permission_classes = [IsAuthenticated, HasPermission("emr.write")]
+    permission_classes = [IsAuthenticated, HasPermission("emr.write")]  # type: ignore[list-item]
     http_method_names = ["get", "patch", "head", "options"]
 
     def perform_update(self, serializer):
@@ -559,7 +544,7 @@ class VitalSignsViewSet(viewsets.ModelViewSet):
 
     queryset = VitalSigns.objects.select_related("encounter").all()
     serializer_class = VitalSignsSerializer
-    permission_classes = [IsAuthenticated, HasPermission("emr.write")]
+    permission_classes = [IsAuthenticated, HasPermission("emr.write")]  # type: ignore[list-item]
     http_method_names = ["get", "patch", "head", "options"]
 
     def perform_update(self, serializer):
@@ -578,7 +563,7 @@ class ClinicalDocumentViewSet(viewsets.ModelViewSet):
 
     queryset = ClinicalDocument.objects.select_related("encounter", "signed_by").all()
     serializer_class = ClinicalDocumentSerializer
-    permission_classes = [IsAuthenticated, HasPermission("emr.write")]
+    permission_classes = [IsAuthenticated, HasPermission("emr.write")]  # type: ignore[list-item]
     filter_backends = [DjangoFilterBackend]
 
     def get_queryset(self):

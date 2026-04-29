@@ -38,10 +38,17 @@ class WhatsAppContact(models.Model):
         return f"{self.phone} ({name})"
 
     def do_opt_in(self):
-        self.opt_in = True
-        self.opt_in_at = timezone.now()
-        self.opt_out_at = None
-        self.save(update_fields=["opt_in", "opt_in_at", "opt_out_at"])
+        from django.db import transaction
+
+        with transaction.atomic():
+            self.opt_in = True
+            self.opt_in_at = timezone.now()
+            self.opt_out_at = None
+            self.save(update_fields=["opt_in", "opt_in_at", "opt_out_at"])
+            # Cascade: enqueue post-opt-in welcome (fail-open, audit-chained)
+            from apps.whatsapp.services.opt_in import notify_opt_in_completed
+
+            notify_opt_in_completed(self)
 
     def do_opt_out(self):
         self.opt_in = False

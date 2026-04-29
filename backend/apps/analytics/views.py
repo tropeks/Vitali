@@ -64,12 +64,18 @@ class OverviewView(APIView):
         appt_agg = appts.aggregate(
             appointments_total=Count("id"),
             appointments_completed=Count("id", filter=Q(status="completed")),
+            appointments_confirmed=Count("id", filter=Q(status="confirmed")),
             appointments_waiting=Count("id", filter=Q(status="waiting")),
             appointments_cancelled=Count("id", filter=Q(status="cancelled")),
+            appointments_no_show=Count("id", filter=Q(status="no_show")),
         )
         total = appt_agg["appointments_total"] or 0
         cancelled = appt_agg["appointments_cancelled"] or 0
+        no_show = appt_agg["appointments_no_show"] or 0
+        confirmed = appt_agg["appointments_confirmed"] or 0
         cancellation_rate = round((cancelled / total) * 100, 1) if total else 0.0
+        # no_show_rate denominator follows plan spec: confirmed OR 1 to avoid div-by-zero
+        no_show_rate = round((no_show / (confirmed or 1)) * 100, 1) if confirmed else 0.0
 
         new_patients = Patient.objects.filter(created_at__date__gte=since).count()
         if period == "today":
@@ -119,9 +125,12 @@ class OverviewView(APIView):
                 "since": since.isoformat(),
                 "appointments_total": total,
                 "appointments_completed": appt_agg["appointments_completed"] or 0,
+                "appointments_confirmed": confirmed,
                 "appointments_waiting": appt_agg["appointments_waiting"] or 0,
                 "appointments_cancelled": cancelled,
+                "appointments_no_show": no_show,
                 "cancellation_rate": cancellation_rate,
+                "no_show_rate": no_show_rate,
                 "new_patients": new_patients,
                 "encounters_open": encounters_open,
                 "encounters_signed": encounters_signed,
@@ -172,7 +181,7 @@ class AppointmentsByDayView(APIView):
 class AppointmentsByStatusView(APIView):
     """GET /api/v1/analytics/appointments-by-status/ — current month, grouped by status."""
 
-    permission_classes = [IsAuthenticated, _BILLING_MODULE]
+    permission_classes = [IsAuthenticated]
 
     STATUS_LABELS = {
         "scheduled": "Agendado",
@@ -207,7 +216,7 @@ class AppointmentsByStatusView(APIView):
 class PatientsByMonthView(APIView):
     """GET /api/v1/analytics/patients-by-month/?months=6"""
 
-    permission_classes = [IsAuthenticated, _BILLING_MODULE]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         months = min(int(request.query_params.get("months", 6)), 24)
@@ -277,7 +286,7 @@ class TopProfessionalsView(APIView):
             [
                 {
                     "professional_id": str(p.id),
-                    "name": p.user.get_full_name() or p.user.email,
+                    "name": p.user.full_name or p.user.email,
                     "specialty": p.specialty or "",
                     "completed": p.completed,
                 }
@@ -289,7 +298,7 @@ class TopProfessionalsView(APIView):
 class WaitingTimeView(APIView):
     """GET /api/v1/analytics/waiting-time/ — average wait stats this month."""
 
-    permission_classes = [IsAuthenticated, _BILLING_MODULE]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         # Waiting time = in_progress appointments this month whose start was recorded.
@@ -351,7 +360,7 @@ def _competency_for_month(d: date) -> str:
 class BillingOverviewView(APIView):
     """GET /api/v1/analytics/billing/overview/ — current-month KPI cards."""
 
-    permission_classes = [IsAuthenticated, _BILLING_MODULE]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE]  # type: ignore[list-item]
 
     def get(self, request):
         today = _today()
@@ -401,7 +410,7 @@ class BillingOverviewView(APIView):
 class MonthlyRevenueView(APIView):
     """GET /api/v1/analytics/billing/monthly-revenue/?months=6"""
 
-    permission_classes = [IsAuthenticated, _BILLING_MODULE]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE]  # type: ignore[list-item]
 
     def get(self, request):
         months = _months_param(request)
@@ -449,7 +458,7 @@ class DenialByInsurerView(APIView):
     Returns top insurers by denied value, excluding those with <10 non-draft guides.
     """
 
-    permission_classes = [IsAuthenticated, _BILLING_MODULE]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE]  # type: ignore[list-item]
     _VOLUME_FLOOR = 10
 
     def get(self, request):
@@ -493,7 +502,7 @@ class BatchThroughputView(APIView):
     created_at → creation month, closed_at → closure month.
     """
 
-    permission_classes = [IsAuthenticated, _BILLING_MODULE]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE]  # type: ignore[list-item]
 
     def get(self, request):
         months = _months_param(request)
@@ -549,7 +558,7 @@ class BatchThroughputView(APIView):
 class GlosaAccuracyView(APIView):
     """GET /api/v1/analytics/billing/glosa-accuracy/ — prediction accuracy per insurer (S-037)."""
 
-    permission_classes = [IsAuthenticated, _BILLING_MODULE]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE]  # type: ignore[list-item]
 
     def get(self, request):
         from apps.ai.models import GlosaPrediction

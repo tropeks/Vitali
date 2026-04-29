@@ -21,8 +21,13 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from apps.test_utils import TenantTestCase
 
 
-def _make_audio_file(size_bytes: int = 1024, content_type: str = "audio/webm") -> tuple:
-    """Return (name, BytesIO, content_type) suitable for APIClient uploads."""
+def _make_audio_file(size_bytes: int = 1024, content_type: str = "audio/webm") -> io.BytesIO:
+    """Return a BytesIO suitable for APIClient multipart audio uploads.
+
+    `content_type` is accepted for callsite readability but APIClient determines
+    the multipart Content-Type automatically — only the byte payload is used.
+    """
+    del content_type  # signature kept for caller clarity; APIClient sets Content-Type
     return io.BytesIO(b"x" * size_bytes)
 
 

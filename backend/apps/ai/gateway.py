@@ -42,7 +42,7 @@ class ClaudeGateway(LLMGateway):
         self, api_key: str | None = None, model: str = MODEL_HAIKU, timeout: int | None = None
     ):
         self.model = model
-        self.timeout = timeout or getattr(settings, "AI_SUGGEST_TIMEOUT_S", 5)
+        self.timeout: int = timeout or int(getattr(settings, "AI_SUGGEST_TIMEOUT_S", 5))
         self._api_key = api_key or getattr(settings, "ANTHROPIC_API_KEY", "")
 
     def complete(self, system: str, user: str, max_tokens: int = 512) -> tuple[str, int, int]:
@@ -73,7 +73,12 @@ class ClaudeGateway(LLMGateway):
                 message.usage.input_tokens,
                 message.usage.output_tokens,
             )
-            text = message.content[0].text if message.content else ""
+            # Anthropic content blocks are a union; we only expect TextBlock in
+            # plain completion responses (no tool use / thinking was requested).
+            text = ""
+            if message.content:
+                first = message.content[0]
+                text = getattr(first, "text", "") or ""
             return text, message.usage.input_tokens, message.usage.output_tokens
         except Exception as exc:
             raise LLMGatewayError(f"Claude API error: {exc}") from exc

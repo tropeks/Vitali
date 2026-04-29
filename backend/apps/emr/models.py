@@ -264,6 +264,7 @@ class Appointment(models.Model):
 
     class Meta:
         ordering = ["start_time"]
+        unique_together = [["professional", "start_time"]]
         indexes = [
             models.Index(fields=["professional", "start_time"]),
             models.Index(fields=["patient", "start_time"]),
@@ -316,6 +317,14 @@ class Encounter(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="open")
     encounter_date = models.DateTimeField(default=timezone.now)
     chief_complaint = models.TextField(blank=True)
+    signed_at = models.DateTimeField(null=True, blank=True)
+    signed_by = models.ForeignKey(
+        "core.User",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="signed_encounters",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

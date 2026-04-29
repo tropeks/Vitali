@@ -15,6 +15,7 @@ from .models import (
     TUSSCode,
     TUSSSyncLog,
     User,
+    UserInvitation,
 )
 
 
@@ -161,7 +162,14 @@ class TUSSCodeAdmin(admin.ModelAdmin):
     readonly_fields = ["search_vector"]
     ordering = ["code"]
 
+    @admin.display(description="Descrição")
     def description_short(self, obj):
         return obj.description[:80]
 
-    description_short.short_description = "Descrição"
+
+@admin.register(UserInvitation)
+class UserInvitationAdmin(admin.ModelAdmin):
+    list_display = ["user", "created_by", "expires_at", "consumed_at", "created_at"]
+    list_filter = [("consumed_at", admin.EmptyFieldListFilter)]
+    search_fields = ["user__email"]
+    readonly_fields = [f.name for f in UserInvitation._meta.get_fields() if hasattr(f, "name")]

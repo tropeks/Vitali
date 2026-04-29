@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -378,15 +378,15 @@ export default function EncounterDetailPage() {
   const [loading, setLoading] = useState(true);
   const [signing, setSigning] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const data = await apiFetch(`/encounters/${id}/`);
       setEncounter(data);
     } catch { router.push('/encounters'); }
     finally { setLoading(false); }
-  };
+  }, [id, router]);
 
-  useEffect(() => { load(); }, [id]);
+  useEffect(() => { load(); }, [load]);
 
   const signEncounter = async () => {
     if (!confirm('Assinar esta consulta? Ela ficará somente leitura após assinatura.')) return;
@@ -402,7 +402,7 @@ export default function EncounterDetailPage() {
   if (!encounter) return null;
 
   const patient = encounter.patient_detail;
-  const lifeThreateningAllergies = patient.allergies.filter(a => a.severity === 'life_threatening');
+  const lifeThreateningAllergies = (patient.allergies ?? []).filter(a => a.severity === 'life_threatening');
   const isReadOnly = encounter.status !== 'open';
 
   return (

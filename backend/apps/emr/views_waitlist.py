@@ -78,7 +78,7 @@ class WaitlistEntrySerializer(serializers.ModelSerializer):
 
     def get_professional_name(self, obj):
         try:
-            return f"Dr(a). {obj.professional.user.get_full_name()}"
+            return f"Dr(a). {obj.professional.user.full_name}"
         except Exception:
             return None
 

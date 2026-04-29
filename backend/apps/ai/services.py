@@ -20,6 +20,7 @@ import re
 import time
 from dataclasses import dataclass
 from datetime import date
+from typing import Any
 
 from django.conf import settings
 from django.core.cache import cache
@@ -164,10 +165,12 @@ def _retrieve_candidates(description: str) -> list:
     from django.contrib.postgres.search import SearchQuery, SearchRank, TrigramSimilarity
 
     try:
-        # Full-text search (Portuguese config)
+        # Full-text search (Portuguese config).
+        # mypy 1.15 + django-stubs crash on this exact chain (SearchRank generics);
+        # assign to a plain QuerySet first to sidestep the traceback.
+        qs: Any = TUSSCode.objects.using("public")
         candidates = list(
-            TUSSCode.objects.using("public")
-            .filter(active=True)
+            qs.filter(active=True)
             .annotate(
                 rank=SearchRank(F("search_vector"), SearchQuery(description, config="portuguese"))
             )
@@ -178,10 +181,11 @@ def _retrieve_candidates(description: str) -> list:
         if candidates:
             return candidates
 
-        # Trigram fallback for abbreviations, typos, accent variants
+        # Trigram fallback for abbreviations, typos, accent variants.
+        # Same mypy-plugin crash workaround as above.
+        qs2: Any = TUSSCode.objects.using("public")
         candidates = list(
-            TUSSCode.objects.using("public")
-            .filter(active=True)
+            qs2.filter(active=True)
             .annotate(rank=TrigramSimilarity("description", description))
             .filter(rank__gt=0.1)
             .order_by("-rank")[:20]
@@ -237,7 +241,7 @@ def _call_llm(
     # Build valid code set from candidates for validation gate
     valid_codes = {c.code: {"description": c.description, "id": c.id} for c in candidates}
 
-    suggestions = []
+    suggestions: list[SuggestionResult] = []
     for item in suggestions_raw[:3]:
         code = str(item.get("code", "")).strip()
         if code in valid_codes:
@@ -413,6 +417,8 @@ class PredictionResult:
     risk_code: str = ""
     degraded: bool = False
     cached: bool = False
+    # Set by the view/service after construction — not serialized by the dataclass.
+    prediction_id: str | None = None
 
 
 def _glosa_cache_key(

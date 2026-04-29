@@ -252,3 +252,62 @@ def cleanup_expired_sessions():
     count, _ = ConversationSession.objects.filter(expires_at__lt=timezone.now()).delete()
     if count:
         logger.info("Cleaned up %d expired WhatsApp conversation sessions", count)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def send_post_opt_in_welcome(self, contact_id: str, correlation_id: str | None = None) -> None:
+    """
+    Send post-opt-in welcome message. Fail-open (decision 1B).
+    """
+    from celery.exceptions import MaxRetriesExceededError
+
+    from apps.core.models import AuditLog
+    from apps.whatsapp.gateway import get_gateway
+    from apps.whatsapp.models import WhatsAppContact
+
+    try:
+        contact = WhatsAppContact.objects.select_related("patient").get(id=contact_id)
+    except WhatsAppContact.DoesNotExist:
+        logger.error("send_post_opt_in_welcome: contact %s not found", contact_id)
+        return
+
+    if not contact.opt_in:
+        # Defensive: opted back out between enqueue and run. No message.
+        return
+
+    patient_name = contact.patient.full_name if contact.patient else "—"
+    try:
+        gateway = get_gateway()
+        text = (
+            f"Olá {patient_name}! Obrigado por confirmar. Você passará a receber "
+            f"confirmações de consultas e lembretes pela Vitali. Para sair a qualquer "
+            f"momento, responda 'sair'."
+        )
+        gateway.send_text(contact.phone, text)
+        AuditLog.objects.create(
+            user=None,
+            action="opt_in_welcome_sent",
+            resource_type="whatsapp_contact",
+            resource_id=str(contact_id),
+            new_data={"phone": contact.phone, "correlation_id": correlation_id},
+        )
+    except Exception as exc:
+        try:
+            raise self.retry(exc=exc) from exc
+        except MaxRetriesExceededError:
+            AuditLog.objects.create(
+                user=None,
+                action="opt_in_welcome_failed",
+                resource_type="whatsapp_contact",
+                resource_id=str(contact_id),
+                new_data={
+                    "reason": "max_retries_exceeded",
+                    "error": str(exc)[:200],
+                    "correlation_id": correlation_id,
+                },
+            )
+            logger.error(
+                "send_post_opt_in_welcome: persistent failure for contact %s",
+                contact_id,
+                exc_info=True,
+            )

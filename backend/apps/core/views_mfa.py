@@ -48,6 +48,25 @@ def _issue_mfa_jwt(user) -> dict:
     }
 
 
+class MFAStatusView(APIView):
+    """
+    GET /auth/mfa/status/
+
+    Returns whether MFA is active for the authenticated user.
+    Response: {is_active: bool}
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            device = request.user.totp_device
+            is_active = bool(device.is_active)
+        except Exception:
+            is_active = False
+        return Response({"is_active": is_active}, status=status.HTTP_200_OK)
+
+
 class MFASetupView(APIView):
     """
     POST /auth/mfa/setup/

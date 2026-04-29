@@ -1,6 +1,6 @@
 # gstack
 
-Use the `/browse` skill from gstack for all web browsing. Never use `mcp__claude-in-chrome__*` tools directly.
+Use the `/browse` skill from gstack for headless QA, dogfooding, and tasks where the visible browser doesn't matter. The `mcp__Claude_in_Chrome__*` tools are also allowed when you need to drive the user's actual logged-in Chrome (e.g. authenticated GitHub UI without re-importing cookies).
 
 Available gstack skills:
 - `/office-hours` — structured async Q&A / brainstorm session
@@ -35,3 +35,16 @@ If gstack skills aren't working, run the following to build the binary and regis
 ```sh
 cd .claude/skills/gstack && ./setup
 ```
+
+## Health Stack
+
+Tools that `/health` runs. Backend tools live inside the `django` container and
+require `docker compose up -d`. Frontend tools run on the host with
+`frontend/node_modules` installed.
+
+- typecheck (backend): `docker compose exec -T django mypy apps/ vitali/ --ignore-missing-imports`
+- lint (backend): `docker compose exec -T django ruff check apps/ vitali/`
+- format-check (backend): `docker compose exec -T django ruff format --check apps/ vitali/`
+- test (backend): `docker compose exec -T django pytest -v`
+- typecheck (frontend): `cd frontend && npx tsc --noEmit`
+- lint (frontend): `cd frontend && npx next lint`

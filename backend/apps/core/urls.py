@@ -4,9 +4,16 @@ from django.urls import path
 
 from . import views
 from .views_dpa import DPASignView, DPAStatusView
-from .views_mfa import MFADisableView, MFALoginView, MFASetupView, MFAVerifyView
+from .views_mfa import (
+    MFADisableView,
+    MFALoginView,
+    MFASetupView,
+    MFAStatusView,
+    MFAVerifyView,
+)
 from .views_onboarding import OnboardingView
 from .views_platform import TenantSubscriptionView
+from .views_test_helpers import IssueInvitationTokenView
 
 app_name = "core"
 
@@ -16,7 +23,15 @@ urlpatterns = [
     path("auth/logout", views.LogoutView.as_view(), name="logout"),
     path("auth/refresh", views.TokenRefreshView.as_view(), name="token-refresh"),
     path("auth/password", views.ChangePasswordView.as_view(), name="change-password"),
+    # T6: invite-by-email flow
+    path("auth/invite/", views.UserInvitationView.as_view(), name="auth-invite"),
+    path(
+        "auth/set-password/<str:token>/",
+        views.SetPasswordView.as_view(),
+        name="auth-set-password",
+    ),
     # MFA (S-062)
+    path("auth/mfa/status/", MFAStatusView.as_view(), name="mfa-status"),
     path("auth/mfa/setup/", MFASetupView.as_view(), name="mfa-setup"),
     path("auth/mfa/verify/", MFAVerifyView.as_view(), name="mfa-verify"),
     path("auth/mfa/login/", MFALoginView.as_view(), name="mfa-login"),
@@ -39,4 +54,10 @@ urlpatterns = [
     # DPA (S-070)
     path("settings/dpa/", DPAStatusView.as_view(), name="dpa-status"),
     path("settings/dpa/sign/", DPASignView.as_view(), name="dpa-sign"),
+    # Test-only — gated by E2E_MODE + superuser + _test DB suffix (S-084)
+    path(
+        "_test/invitations/issue-token/",
+        IssueInvitationTokenView.as_view(),
+        name="test-issue-invitation-token",
+    ),
 ]

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { apiFetch, ApiError } from "@/lib/api";
 import OnboardingWidget from "@/components/OnboardingWidget";
 import WaitTimeCard from "@/components/dashboard/WaitTimeCard";
 import {
@@ -29,9 +30,12 @@ interface Overview {
   since: string;
   appointments_total: number;
   appointments_completed: number;
+  appointments_confirmed: number;
   appointments_waiting: number;
   appointments_cancelled: number;
+  appointments_no_show: number;
   cancellation_rate: number;
+  no_show_rate: number;
   new_patients: number;
   encounters_open: number;
   encounters_signed: number;
@@ -148,24 +152,27 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchOverview = useCallback(async (p: Period) => {
-    const token = getAccessToken();
-    if (!token) { setError("Sessão expirada. Faça login novamente."); setOverviewLoading(false); return; }
+    // Migrated to apiFetch (T12): JWT header injected automatically;
+    // PASSWORD_CHANGE_REQUIRED 403 triggers redirect without reaching catch.
     setOverviewLoading(true);
     try {
-      const res = await fetch(`${ANALYTICS_BASE}/overview/?period=${p}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.status === 403) { setOverviewLoading(false); return; }
-      if (!res.ok) throw new Error("Falha ao carregar visão geral");
-      setOverview(await res.json());
+      const data = await apiFetch<Overview>(`${ANALYTICS_BASE}/overview/?period=${p}`);
+      setOverview(data);
       setError(null);
     } catch (e) {
+      if (e instanceof ApiError && e.status === 403) {
+        // apiFetch already redirects for PASSWORD_CHANGE_REQUIRED;
+        // other 403s (e.g. missing module) — fail silently
+        setOverviewLoading(false);
+        return;
+      }
       setError(e instanceof Error ? e.message : "Erro desconhecido");
     } finally {
       setOverviewLoading(false);
     }
   }, []);
 
+  // TODO(sprint-19): migrate fetchCharts to apiFetch (T12 seed pattern — see fetchOverview above)
   const fetchCharts = useCallback(async () => {
     const token = getAccessToken();
     if (!token) return;
@@ -275,7 +282,7 @@ export default function DashboardPage() {
             <KPICard
               label="Novos Pacientes"
               value={overview?.new_patients ?? 0}
-              sub={`${overview?.cancellation_rate ?? 0}% taxa de cancelamento`}
+              sub={`${overview?.cancellation_rate ?? 0}% cancelamento · ${overview?.no_show_rate ?? 0}% faltas`}
               color="text-green-600"
             />
             <KPICard

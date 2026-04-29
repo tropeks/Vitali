@@ -45,6 +45,11 @@ function LoginContent() {
     const data = await resp.json();
 
     if (resp.ok) {
+      if (data?.mfa_required) {
+        const nextEncoded = encodeURIComponent(nextPath);
+        router.push(`/mfa?next=${nextEncoded}`);
+        return;
+      }
       router.push(nextPath);
       router.refresh();
       return;

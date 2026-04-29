@@ -328,7 +328,7 @@
       <h2>Prescritor</h2>
       {% with prof=prescription.encounter.professional %}
       <div class="doctor-name">
-        Dr(a). {{ prof.user.get_full_name }}
+        Dr(a). {{ prof.user.full_name }}
       </div>
       <div class="doctor-details">
         {{ prof.get_council_display }}: {{ prof.council_number }}
@@ -423,7 +423,7 @@
     <!-- Signature Block -->
     <div class="signature-box">
       {% with prof=prescription.encounter.professional %}
-      <div class="sig-name">Dr(a). {{ prof.user.get_full_name }}</div>
+      <div class="sig-name">Dr(a). {{ prof.user.full_name }}</div>
       <div class="sig-details">
         {{ prof.get_council_display }} {{ prof.council_number }}
         {% if prof.specialty %} — {{ prof.specialty }}{% endif %}

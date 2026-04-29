@@ -1,0 +1,13 @@
+Bem-vindo(a) à Vitali, {{ user.full_name }}!
+
+Você foi convidado(a) para acessar a plataforma Vitali.
+Acesse o link abaixo para configurar sua senha e ativar sua conta:
+
+{{ link }}
+
+Este link expira em 72 horas.
+
+Em caso de dúvidas, entre em contato pelo e-mail {{ support_email }}.
+
+--
+Vitali — Plataforma de Saúde

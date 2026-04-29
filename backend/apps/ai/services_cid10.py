@@ -16,6 +16,7 @@ import hashlib
 import json
 import logging
 from dataclasses import dataclass, field
+from typing import Any
 
 from django.contrib.postgres.search import SearchQuery, SearchRank
 from django.core.cache import cache
@@ -72,11 +73,13 @@ def _retrieve_candidates(text: str) -> list:
 
     candidates = []
 
-    # Try full-text search first
+    # Try full-text search first. mypy 1.15's django-stubs plugin crashes on the
+    # `.using().filter()` chain — route the manager through Any to sidestep.
     try:
         query = SearchQuery(text, config="portuguese")
+        cid_mgr: Any = CID10Code.objects
         qs = (
-            CID10Code.objects.using(_CID10_DB_ALIAS)
+            cid_mgr.using(_CID10_DB_ALIAS)
             .filter(active=True, search_vector=query)
             .annotate(rank=SearchRank("search_vector", query))
             .order_by("-rank")[:MAX_CANDIDATES]
@@ -90,8 +93,10 @@ def _retrieve_candidates(text: str) -> list:
         try:
             from django.contrib.postgres.search import TrigramSimilarity
 
+            # Same mypy-plugin crash workaround.
+            cid_mgr2: Any = CID10Code.objects
             qs_trigram = (
-                CID10Code.objects.using(_CID10_DB_ALIAS)
+                cid_mgr2.using(_CID10_DB_ALIAS)
                 .filter(active=True)
                 .annotate(similarity=TrigramSimilarity("description", text))
                 .filter(similarity__gt=0.1)
