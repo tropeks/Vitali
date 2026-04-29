@@ -22,11 +22,31 @@ class EmployeeOnboardingAPITests(TenantTestCase):
         self.client = APIClient()
         self.client.defaults["SERVER_NAME"] = self.__class__.domain.domain
         admin_role = Role.objects.get(name="admin")
-        self.admin = User.objects.create_superuser(
+        self.admin, _ = User.objects.get_or_create(
             email="admin.hr-api@test.com",
-            password="AdminPass1!",
-            full_name="HR API Admin",
-            role=admin_role,
+            defaults={
+                "full_name": "HR API Admin",
+                "role": admin_role,
+                "is_staff": True,
+                "is_superuser": True,
+                "is_active": True,
+            },
+        )
+        self.admin.full_name = self.admin.full_name or "HR API Admin"
+        self.admin.role = admin_role
+        self.admin.is_staff = True
+        self.admin.is_superuser = True
+        self.admin.is_active = True
+        self.admin.set_password("AdminPass1!")
+        self.admin.save(
+            update_fields=[
+                "full_name",
+                "role",
+                "is_staff",
+                "is_superuser",
+                "is_active",
+                "password",
+            ]
         )
         self.client.force_authenticate(user=self.admin)
 
