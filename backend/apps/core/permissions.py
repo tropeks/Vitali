@@ -98,77 +98,91 @@ def require_permission(perm: str):
     return HasPermission(perm)
 
 
-# ─── Default role permission sets ────────────────────────────────────────────
+# ─── Default role permission sets ─────────────────────────────────────────────
+
+ADMIN_PERMISSIONS = [
+    "emr.read",
+    "emr.write",
+    "emr.sign",
+    "emr.delete",
+    "patients.read",
+    "patients.write",
+    "patients.delete",
+    "billing.read",
+    "billing.write",
+    "billing.full",
+    "schedule.read",
+    "schedule.write",
+    "pharmacy.read",
+    "pharmacy.dispense",
+    "pharmacy.full",
+    "pharmacy.catalog_manage",
+    "pharmacy.stock_manage",
+    "pharmacy.dispense_controlled",
+    "users.read",
+    "users.write",
+    "roles.read",
+    "roles.write",
+    "reports.read",
+    "ai.use",
+    "ai.manage",
+]
+
+CLINICAL_PRESCRIBER_PERMISSIONS = [
+    "emr.read",
+    "emr.write",
+    "emr.sign",
+    "patients.read",
+    "patients.write",
+    "billing.read",
+    "schedule.read",
+    "schedule.write",
+    "pharmacy.read",
+    "ai.use",
+]
+
+NURSING_PERMISSIONS = [
+    "emr.read",
+    "emr.partial_write",
+    "patients.read",
+    "schedule.read",
+    "pharmacy.dispense",
+]
+
+RECEPTION_PERMISSIONS = [
+    "patients.limited_read",
+    "schedule.read",
+    "schedule.write",
+    "billing.read",
+]
+
+PHARMACY_PERMISSIONS = [
+    "emr.read",
+    "pharmacy.read",
+    "pharmacy.dispense",
+    "pharmacy.full",
+    "pharmacy.catalog_manage",
+    "pharmacy.stock_manage",
+    "pharmacy.dispense_controlled",
+    "patients.limited_read",
+]
+
+BILLING_PERMISSIONS = [
+    "billing.read",
+    "billing.write",
+    "billing.full",
+    "patients.limited_read",
+    "emr.read",
+    "ai.use",
+]
 
 DEFAULT_ROLES = {
-    "admin": [
-        "emr.read",
-        "emr.write",
-        "emr.sign",
-        "emr.delete",
-        "patients.read",
-        "patients.write",
-        "patients.delete",
-        "billing.read",
-        "billing.write",
-        "billing.full",
-        "schedule.read",
-        "schedule.write",
-        "pharmacy.read",
-        "pharmacy.dispense",
-        "pharmacy.full",
-        "pharmacy.catalog_manage",
-        "pharmacy.stock_manage",
-        "pharmacy.dispense_controlled",
-        "users.read",
-        "users.write",
-        "roles.read",
-        "roles.write",
-        "reports.read",
-        "ai.use",
-        "ai.manage",
-    ],
-    "medico": [
-        "emr.read",
-        "emr.write",
-        "emr.sign",
-        "patients.read",
-        "patients.write",
-        "billing.read",
-        "schedule.read",
-        "schedule.write",
-        "pharmacy.read",
-        "ai.use",
-    ],
-    "enfermeiro": [
-        "emr.read",
-        "emr.partial_write",
-        "patients.read",
-        "schedule.read",
-        "pharmacy.dispense",
-    ],
-    "recepcionista": [
-        "patients.limited_read",
-        "schedule.read",
-        "schedule.write",
-        "billing.read",
-    ],
-    "farmaceutico": [
-        "emr.read",
-        "pharmacy.read",
-        "pharmacy.dispense",
-        "pharmacy.full",
-        "pharmacy.catalog_manage",
-        "pharmacy.stock_manage",
-        "pharmacy.dispense_controlled",
-        "patients.limited_read",
-    ],
-    "faturista": [
-        "billing.read",
-        "billing.write",
-        "billing.full",
-        "patients.limited_read",
-        "emr.read",
-        "ai.use",
-    ],
+    "admin": ADMIN_PERMISSIONS,
+    "medico": CLINICAL_PRESCRIBER_PERMISSIONS,
+    "enfermeiro": NURSING_PERMISSIONS,
+    "recepcao": RECEPTION_PERMISSIONS,
+    "recepcionista": RECEPTION_PERMISSIONS,
+    "farmaceutico": PHARMACY_PERMISSIONS,
+    "faturista": BILLING_PERMISSIONS,
+    "dentista": CLINICAL_PRESCRIBER_PERMISSIONS,
 }
