@@ -104,3 +104,26 @@ class EmployeeOnboardingAPITests(TenantTestCase):
         self.assertEqual(response.status_code, 201, response.json())
         self.assertTrue(Employee.objects.filter(user__email="dentista.api@test.com").exists())
         self.assertTrue(Professional.objects.filter(user__email="dentista.api@test.com").exists())
+
+    def test_legacy_frontend_employee_enum_aliases_are_normalized(self):
+        response = self.client.post(
+            "/api/v1/hr/employees/",
+            {
+                "full_name": "Alias Legado",
+                "email": "alias.legado@test.com",
+                "cpf": "55555555555",
+                "role": "recepcao",
+                "hire_date": "2026-01-01",
+                "contract_type": "estagiario",
+                "employment_status": "on_leave",
+                "auth_mode": "typed_password",
+                "password": "GeneratedPass123!",
+                "setup_whatsapp": False,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        employee = Employee.objects.get(user__email="alias.legado@test.com")
+        self.assertEqual(employee.contract_type, "estagio")
+        self.assertEqual(employee.employment_status, "leave")
