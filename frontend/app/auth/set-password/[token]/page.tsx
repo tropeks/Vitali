@@ -29,17 +29,15 @@ export default function SetPasswordPage() {
 
     setSubmitting(true)
     try {
-      const res = await fetch(`/api/v1/auth/set-password/${token}/`, {
+      const res = await fetch(`/api/auth/set-password/${encodeURIComponent(token)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
       })
 
       if (res.ok) {
-        const { access, refresh } = await res.json()
-        localStorage.setItem('access_token', access)
-        localStorage.setItem('refresh_token', refresh)
         router.push('/dashboard')
+        router.refresh()
         return
       }
 
