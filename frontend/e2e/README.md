@@ -1,127 +1,121 @@
-# E2E tests
+# Frontend E2E
 
-Playwright tests for Vitali HR onboarding flows (Sprint 18, E-013).
+Playwright covers the tenant-aware browser flows that must keep working across backend, frontend, Docker, and CI changes.
 
-## Specs
+## Required Local Setup
 
-| File | Description | Status |
-|------|-------------|--------|
-| `hr-onboarding.spec.ts` | Admin hires a doctor via 3-step modal; verifies row appears in `/rh/funcionarios` table | Runnable end-to-end |
-| `invite-flow.spec.ts` | Admin creates employee with invite auth mode; set-password journey is skipped | Admin step runnable; token step skipped (Sprint 19) |
-
-## Run locally
-
-### 1. Start the backend stack
+Start the stack with Docker Compose, run migrations, create the test tenant/domain, seed roles, and create an admin user inside the tenant schema.
 
 ```bash
-docker compose up -d
-docker compose exec django python manage.py migrate_schemas --shared
+cp .env.example .env
+docker compose --file docker-compose.yml up -d
+docker compose --file docker-compose.yml exec -T django python manage.py migrate_schemas --shared
 ```
 
-### 2. Seed a test admin user
+Create tenant/domain rows:
 
 ```bash
-docker compose exec django python manage.py createsuperuser \
-  --email admin@test.com \
-  --noinput
-# Then set the password manually:
-docker compose exec django python manage.py shell -c "
-from django.contrib.auth import get_user_model
-u = get_user_model().objects.get(email='admin@test.com')
-u.set_password('AdminPass1!')
-u.save()
+docker compose --file docker-compose.yml exec -T django python manage.py shell -c "
+from apps.core.models import Tenant, Domain
+public, _ = Tenant.objects.get_or_create(slug='public', defaults={'name': 'public'})
+Domain.objects.get_or_create(domain='localhost', defaults={'tenant': public, 'is_primary': True})
+clinic, _ = Tenant.objects.get_or_create(slug='testclinic', defaults={'name': 'Test Clinic'})
+Domain.objects.get_or_create(domain='testclinic.localhost', defaults={'tenant': clinic, 'is_primary': True})
 "
 ```
 
-### 3. Start the frontend dev server
+Seed the tenant roles before exercising HR onboarding:
 
 ```bash
-cd frontend && npm run dev
+docker compose --file docker-compose.yml exec -T django python manage.py create_default_roles --schema testclinic --overwrite
 ```
 
-### 4. Run the E2E tests
+Create or refresh the E2E admin user:
 
 ```bash
-cd frontend && npm run test:e2e
+docker compose --file docker-compose.yml exec -T django python manage.py shell -c "
+from apps.core.models import Tenant, User, Role
+from django_tenants.utils import schema_context
+clinic = Tenant.objects.get(schema_name='testclinic')
+with schema_context(clinic.schema_name):
+    admin_role = Role.objects.get(name='admin')
+    user = User.objects.filter(email='admin@test.com').first()
+    if user is None:
+        User.objects.create_superuser(
+            email='admin@test.com',
+            password='AdminPass1!',
+            full_name='E2E Admin',
+            role=admin_role,
+        )
+    else:
+        user.full_name = user.full_name or 'E2E Admin'
+        user.role = admin_role
+        user.is_staff = True
+        user.is_superuser = True
+        user.is_active = True
+        user.set_password('AdminPass1!')
+        user.save(update_fields=['full_name', 'role', 'is_staff', 'is_superuser', 'is_active', 'password'])
+"
 ```
 
-Or with the Playwright UI (interactive, shows browser):
+Add `127.0.0.1 testclinic.localhost` to your hosts file, then run:
 
 ```bash
-cd frontend && npm run test:e2e:ui
+cd frontend
+E2E_BASE_URL=http://testclinic.localhost:3000 \
+E2E_BACKEND_URL=http://localhost:8000 \
+E2E_MODE=true \
+E2E_ADMIN_EMAIL=admin@test.com \
+E2E_ADMIN_PASSWORD=AdminPass1! \
+npx playwright test
 ```
 
-### Environment variables
+## CI Contract
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `E2E_BASE_URL` | `http://localhost:3000` | Frontend URL |
-| `E2E_BACKEND_URL` | `http://localhost:8000` | Backend URL (reserved for future use) |
-| `E2E_ADMIN_EMAIL` | `admin@test.com` | Pre-seeded admin email |
-| `E2E_ADMIN_PASSWORD` | `AdminPass1!` | Pre-seeded admin password |
+The `Frontend — E2E (Playwright)` job is a blocking CI gate. It must not use `continue-on-error`.
 
-## Selector strategy
+CI is responsible for:
 
-All form inputs inside `AddEmployeeModal` use `id=` attributes matching the
-form field names (`#full_name`, `#email`, `#cpf`, `#phone`, `#role`,
-`#hire_date`, `#contract_type`, `#council_type`, `#council_number`,
-`#council_state`, `#specialty`). Auth-mode radios are selected via
-`input[type="radio"][value="<mode>"]`. No `data-testid` attributes were
-needed because the existing `id=` coverage is sufficient.
+- Booting the production frontend image without the dev Compose override.
+- Running shared migrations.
+- Creating the `public` and `testclinic` tenants/domains.
+- Running `create_default_roles --schema testclinic --overwrite`.
+- Creating `admin@test.com` in the `testclinic` schema with the `admin` role.
+- Running Playwright with `E2E_MODE=true` against `http://testclinic.localhost:3000`.
 
-The login form (`/auth/login`) uses `react-hook-form`'s `register()` spread
-which renders `name="email"` and `name="password"` on the inputs — selectors
-`input[name="email"]` and `input[name="password"]` target these reliably.
+`E2E_MODE=true` enables the test-only invitation token helper. The backend system check requires the database name to end with `_test`, which CI satisfies with `POSTGRES_DB=vitali_test`.
 
-## Known gaps (Sprint 19)
+## Covered Specs
 
-### 1. Invite token retrieval
+| Spec | Contract |
+| --- | --- |
+| `auth.spec.ts` | Login, logout, and tenant route protection. |
+| `invite-flow.spec.ts` | HR invite creation, test-only token retrieval, invite acceptance, and password setup. |
+| `hr-onboarding.spec.ts` | HR employee onboarding through invite and generated-password modes. |
 
-The invite-flow test (`invite-flow.spec.ts`) skips the set-password portion
-because Playwright has no way to retrieve the `UserInvitation` JWT that the
-backend mints when an employee is created with `auth_mode=invite`.
+## HR Onboarding Data Contract
 
-Proposed solutions for Sprint 19 (pick one):
+Playwright and the HR UI use these role keys:
 
-**a) Management command**
+- `admin`
+- `medico`
+- `enfermeiro`
+- `recepcao`
+- `faturista`
+- `farmaceutico`
+- `dentista`
 
-```bash
-docker compose exec django python manage.py get_invitation_token <email>
-```
+`create_default_roles` must seed every key above in each tenant. `recepcao` is the canonical reception role for the product UI; `recepcionista` remains a legacy alias for existing tenants and permission checks.
 
-Would output the raw JWT. The test can run this via `execSync` in a `test.beforeAll`.
+Canonical employee enum values are:
 
-**b) DEBUG-gated REST endpoint**
+- `employment_status`: `active`, `leave`, `terminated`
+- `contract_type`: `clt`, `pj`, `estagio`, `temporary`
 
-```
-GET /api/v1/auth/invitations/by-email/<email>/token/
-```
+The API still normalizes legacy frontend aliases (`on_leave`, `estagiario`, `autonomo`) before validation so older clients fail gracefully into the canonical model values.
 
-Only enabled when `DEBUG=True`. Returns `{ "token": "<jwt>" }`.
-Playwright can call this via `request.get(...)` before visiting the link.
+## Troubleshooting
 
-**c) Email backend mock**
-
-Configure `EMAIL_BACKEND = 'django.core.mail.backends.filebased.EmailBackend'`
-and `EMAIL_FILE_PATH = /tmp/e2e-emails` in the test settings. Parse the token
-from the saved `.eml` file after employee creation.
-
-### 2. Database isolation
-
-Tests use timestamped emails (`dr.teste+<timestamp>@vitali.com`) to avoid
-collisions between runs. Full DB reset between tests is not implemented.
-Sprint 19 should add a fixture that resets the `employees` and `users` tables
-(or uses a dedicated test tenant) to make runs fully idempotent.
-
-### 3. /configuracoes/profissionais page
-
-The `hr-onboarding.spec.ts` verifies the doctor row in `/rh/funcionarios`
-only. The `/configuracoes/profissionais` page does not exist yet (not created
-in Sprint 18 scope). Add an assertion there once that page is built.
-
-### 4. must_change_password middleware
-
-After a successful login with a temporary/random password, the
-`MustChangePasswordMiddleware` (T2) redirects the user to a change-password
-page. E2E tests that log in as a newly-created employee (rather than the
-seeded admin) will hit this redirect and need to handle it.
+- If HR onboarding submits but the employee never appears, check the backend response first. A missing role seed usually surfaces as `Role '<key>' não existe neste tenant.`
+- If the invite setup test cannot fetch a token, verify `E2E_MODE=true`, a `_test` database name, and a superuser-authenticated request.
+- If tenant routing fails locally, verify `testclinic.localhost` resolves to `127.0.0.1` and that the `Domain` row exists in the public schema.
