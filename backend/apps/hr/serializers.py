@@ -10,6 +10,15 @@ from .models import Employee
 from .services import CLINICAL_ROLES
 
 
+CONTRACT_TYPE_ALIASES = {
+    "autonomo": "temporary",
+    "estagiario": "estagio",
+}
+EMPLOYMENT_STATUS_ALIASES = {
+    "on_leave": "leave",
+}
+
+
 class EmployeeSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(source="user.full_name", read_only=True)
     email = serializers.EmailField(source="user.email", read_only=True)
@@ -77,6 +86,17 @@ class EmployeeOnboardingSerializer(serializers.Serializer):
 
     # WhatsApp opt-in
     setup_whatsapp = serializers.BooleanField(default=False)
+
+    def to_internal_value(self, data):
+        """Normalize legacy frontend enum values before DRF ChoiceField validation."""
+        mutable = data.copy() if hasattr(data, "copy") else dict(data)
+        contract_type = mutable.get("contract_type")
+        employment_status = mutable.get("employment_status")
+        if contract_type in CONTRACT_TYPE_ALIASES:
+            mutable["contract_type"] = CONTRACT_TYPE_ALIASES[contract_type]
+        if employment_status in EMPLOYMENT_STATUS_ALIASES:
+            mutable["employment_status"] = EMPLOYMENT_STATUS_ALIASES[employment_status]
+        return super().to_internal_value(mutable)
 
     # ── Field-level validators ───────────────────────────────────────────────
 
