@@ -234,7 +234,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = Appointment.objects.select_related(
             "patient", "professional__user", "created_by"
-        ).filter(start_time__date__gte=timezone.now().date())
+        ).filter(start_time__date__gte=timezone.localdate())
 
         date_param = self.request.query_params.get("date")
         if date_param:
@@ -271,7 +271,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"])
     def today(self, request):
-        today = timezone.now().date()
+        today = timezone.localdate()
         qs = (
             Appointment.objects.select_related("patient", "professional__user")
             .filter(start_time__date=today)
@@ -412,7 +412,7 @@ class WaitingRoomView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        today = timezone.now().date()
+        today = timezone.localdate()
         waiting = (
             Appointment.objects.select_related("patient", "professional__user")
             .filter(
@@ -603,7 +603,7 @@ class ClinicalDocumentViewSet(viewsets.ModelViewSet):
         return Response(ClinicalDocumentSerializer(doc).data)
 
 
-# ─── Sprint 7 (S-015): Prescription ──────────────────────────────────────────
+# ─── Sprint 7 (S-015): Prescription ───────────────────────────────────────────
 
 
 class PrescriptionViewSet(viewsets.ModelViewSet):
