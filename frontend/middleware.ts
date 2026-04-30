@@ -36,12 +36,8 @@ function isProtectedPath(pathname: string): boolean {
 export function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
-  // Always allow static files and public paths.
-  if (
-    pathname.startsWith("/_next") ||
-    pathname.startsWith("/favicon") ||
-    isPublicPath(pathname)
-  ) {
+  // Always allow static files.
+  if (pathname.startsWith("/_next") || pathname.startsWith("/favicon")) {
     return NextResponse.next();
   }
 
@@ -50,6 +46,19 @@ export function middleware(request: NextRequest) {
     try { return JSON.parse(userCookie)?.id; } catch { return false; }
   })());
 
+  // Redirect authenticated users away from login before the public-path allowlist.
+  if (isAuthenticated && pathname === "/login") {
+    const dashUrl = request.nextUrl.clone();
+    dashUrl.pathname = "/dashboard";
+    dashUrl.search = "";
+    return NextResponse.redirect(dashUrl);
+  }
+
+  // Allow public auth/API paths for unauthenticated users.
+  if (isPublicPath(pathname)) {
+    return NextResponse.next();
+  }
+
   // Redirect unauthenticated users to login while preserving the app route.
   if (!isAuthenticated && isProtectedPath(pathname)) {
     const loginUrl = request.nextUrl.clone();
@@ -57,14 +66,6 @@ export function middleware(request: NextRequest) {
     loginUrl.search = "";
     loginUrl.searchParams.set("next", `${pathname}${search}`);
     return NextResponse.redirect(loginUrl);
-  }
-
-  // Redirect authenticated users away from login.
-  if (isAuthenticated && pathname === "/login") {
-    const dashUrl = request.nextUrl.clone();
-    dashUrl.pathname = "/dashboard";
-    dashUrl.search = "";
-    return NextResponse.redirect(dashUrl);
   }
 
   return NextResponse.next();
