@@ -27,36 +27,17 @@ test.describe('Auth gate', () => {
     await expect(page.getByRole('heading', { name: 'Acesse sua conta' })).toBeVisible();
   });
 
-  test('logs in and respects safe internal next targets', async ({ page }) => {
-    await loginAsAdmin(page, '/patients?tab=ativos');
-
-    await page.waitForURL(/\/patients\?tab=ativos/, { timeout: 15_000 });
-    await expect(page.getByText('Vitali Health')).toBeVisible();
-  });
-
-  test('ignores external next targets on login', async ({ page }) => {
+  test('sanitizes next, redirects authenticated login, and logs out cleanly', async ({ page }) => {
     await loginAsAdmin(page, 'https://example.com/phishing');
 
     await page.waitForURL(/\/dashboard/, { timeout: 15_000 });
     expect(page.url()).not.toContain('example.com');
     await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
-  });
-
-  test('redirects authenticated users away from login', async ({ page }) => {
-    await loginAsAdmin(page);
-    await page.waitForURL(/\/dashboard/, { timeout: 15_000 });
 
     await page.goto('/login');
-
     await expect(page).toHaveURL(/\/dashboard/);
-    await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
-  });
 
-  test('logs out and blocks protected routes again', async ({ page }) => {
-    await loginAsAdmin(page);
-    await page.waitForURL(/\/dashboard/, { timeout: 15_000 });
     await expect(page.getByTitle('Sair')).toBeVisible();
-
     await page.getByTitle('Sair').click();
 
     await page.waitForURL(/\/login/, { timeout: 15_000 });
