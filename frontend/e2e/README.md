@@ -87,11 +87,13 @@ CI is responsible for:
 
 Invite acceptance must go through the Next route `/api/auth/set-password/<token>`, not directly through `/api/v1/auth/set-password/<token>/`, because the Next route converts the Django token response into the browser session cookies (`access_token`, `access_token_js`, `refresh_token`, and `vitali_user`) used by middleware and client API calls.
 
+Protected app routes must either redirect unauthenticated users through middleware with a same-origin `next=` target or through the dashboard layout fallback. The `auth.spec.ts` contract covers `/patients`, login redirect behavior, logout cookie clearing, and rejection of external `next=` targets.
+
 ## Covered Specs
 
 | Spec | Contract |
 | --- | --- |
-| `auth.spec.ts` | Login, logout, and tenant route protection. |
+| `auth.spec.ts` | Login, logout, protected app route redirects, safe `next=` handling, and tenant shell access. |
 | `invite-flow.spec.ts` | HR invite creation, test-only token retrieval, invite acceptance, and password setup. |
 | `hr-onboarding.spec.ts` | HR employee onboarding through invite and generated-password modes. |
 

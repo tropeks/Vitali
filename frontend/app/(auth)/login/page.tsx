@@ -17,10 +17,17 @@ const loginSchema = z.object({
 
 type LoginForm = z.infer<typeof loginSchema>;
 
+function getSafeNextPath(next: string | null): string {
+  if (!next || !next.startsWith("/") || next.startsWith("//")) {
+    return "/dashboard";
+  }
+  return next;
+}
+
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const nextPath = searchParams.get("next") ?? "/dashboard";
+  const nextPath = getSafeNextPath(searchParams.get("next"));
 
   const [showPassword, setShowPassword] = useState(false);
   const [lockoutSeconds, setLockoutSeconds] = useState<number | null>(null);
