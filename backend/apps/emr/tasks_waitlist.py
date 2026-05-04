@@ -22,6 +22,7 @@ from celery import shared_task
 from django.db import transaction
 from django.utils import timezone
 
+from apps.core.tenancy import for_each_tenant_schema
 from apps.whatsapp.gateway import get_gateway
 
 logger = logging.getLogger(__name__)
@@ -228,7 +229,7 @@ def expire_single_waitlist_entry(entry_id: str, professional_id: str, slot: dict
 
 
 @shared_task
-def expire_waitlist_notifications():
+def expire_waitlist_notifications() -> int:
     """
     Periodic task (every 5 minutes via Celery beat).
     Find all WaitlistEntry where status='notified' and expires_at < now().
@@ -237,6 +238,18 @@ def expire_waitlist_notifications():
     Uses select_for_update() to prevent double-expiry.
     Idempotency: checks status == 'notified' inside the locked block.
     """
+    counts = for_each_tenant_schema(
+        _expire_waitlist_notifications_for_schema,
+        logger=logger,
+        operation="expire_waitlist_notifications",
+    )
+    total = sum(count or 0 for count in counts)
+    logger.info("expire_waitlist_notifications: expired %d entries", total)
+    return total
+
+
+def _expire_waitlist_notifications_for_schema(schema_name: str) -> int:
+    """Expire notified waitlist rows in the active tenant schema."""
     from apps.emr.models import WaitlistEntry
 
     now = timezone.now()
@@ -274,5 +287,9 @@ def expire_waitlist_notifications():
         except Exception:
             logger.exception("Error expiring waitlist entry %s", entry.id)
 
-    logger.info("expire_waitlist_notifications: expired %d entries", count)
+    logger.info(
+        "expire_waitlist_notifications.schema_done schema=%s expired=%d",
+        schema_name,
+        count,
+    )
     return count

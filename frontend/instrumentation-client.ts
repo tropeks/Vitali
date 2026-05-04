@@ -1,5 +1,5 @@
 // Sentry client-side configuration for Next.js.
-// This file is loaded automatically by @sentry/nextjs when running in the browser.
+// This file is loaded automatically by Next.js instrumentation in the browser.
 // See: https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
 import * as Sentry from "@sentry/nextjs";
@@ -40,3 +40,5 @@ Sentry.init({
     return event;
   },
 });
+
+export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;

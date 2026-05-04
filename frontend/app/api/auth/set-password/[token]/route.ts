@@ -64,7 +64,7 @@ function setSessionCookies(response: NextResponse, access: string, refresh: stri
   });
 }
 
-export async function POST(req: NextRequest, { params }: { params: { token: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   const body = await req.json().catch(() => null);
   if (!body?.password) {
     return NextResponse.json(
@@ -74,10 +74,11 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
   }
 
   const forwardedHost = forwardedHostFrom(req);
+  const { token } = await params;
 
   let djangoResp: Response;
   try {
-    djangoResp = await fetch(`${DJANGO_API}/api/v1/auth/set-password/${encodeURIComponent(params.token)}/`, {
+    djangoResp = await fetch(`${DJANGO_API}/api/v1/auth/set-password/${encodeURIComponent(token)}/`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

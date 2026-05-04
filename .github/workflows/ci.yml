@@ -39,7 +39,6 @@ jobs:
 
       - name: mypy
         run: mypy apps/ vitali/ --ignore-missing-imports
-        continue-on-error: true  # Type annotations are a known follow-up (post-Sprint 15)
 
   # ─── Backend: Tests ──────────────────────────────────────────────────────────
   backend-test:
@@ -189,8 +188,8 @@ jobs:
         run: |
           cp .env.example .env
           # CI runs frontend from the production Dockerfile (node server.js, deps baked in).
-          # The dev override (docker-compose.override.yml) does `npm install && npm run dev`
-          # which on a cold CI runner takes 5-8 min — too slow + flaky for E2E.
+          # The dev override (docker-compose.override.yml) does `npm ci && npm run dev`
+          # into a fresh volume, which is still slower and noisier than the production image.
           # `--file docker-compose.yml` excludes the override.
           docker compose --file docker-compose.yml up -d
           echo "Waiting for Django..."
@@ -267,7 +266,6 @@ jobs:
   docker-validate:
     name: Docker — Validate Build
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
 
     steps:
       - uses: actions/checkout@v4
@@ -275,8 +273,14 @@ jobs:
       - name: Seed .env from example
         run: cp .env.example .env
 
+      - name: Validate smoke script syntax
+        run: bash -n scripts/smoke_test.sh
+
       - name: Validate docker-compose config
         run: docker compose config
+
+      - name: Validate staging compose config
+        run: STAGING_ENV_FILE=.env.staging.example GHCR_REPO=${{ github.repository_owner }} IMAGE_TAG=ci docker compose -f docker-compose.staging.yml --env-file .env.staging.example config
 
       - name: Build backend image
         run: docker build ./backend -t vitali-backend:ci

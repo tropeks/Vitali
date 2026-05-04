@@ -70,6 +70,8 @@ E2E_ADMIN_PASSWORD=AdminPass1! \
 npx playwright test
 ```
 
+On Windows, Playwright's browser can usually resolve `testclinic.localhost`, but Node-side API requests may not. For local runs, mapping the `localhost` domain row to `testclinic` and using `E2E_BASE_URL=http://localhost:3000` exercises the same tenant while avoiding OS resolver differences.
+
 ## CI Contract
 
 The `Frontend — E2E (Playwright)` job is a blocking CI gate. It must not use `continue-on-error`.
@@ -131,3 +133,4 @@ The API still normalizes legacy frontend aliases (`on_leave`, `estagiario`, `aut
 - If the invite setup test cannot fetch a token, verify `E2E_MODE=true`, a `_test` database name, and a superuser-authenticated request.
 - If invite acceptance returns to `/login?next=%2Fdashboard`, verify the set-password page is calling `/api/auth/set-password/<token>` and that the response sets `vitali_user`.
 - If tenant routing fails locally, verify `testclinic.localhost` resolves to `127.0.0.1` and that the `Domain` row exists in the public schema.
+- If browser navigation works but Playwright API requests fail with `ENOTFOUND testclinic.localhost`, use the `localhost` domain mapping described above.

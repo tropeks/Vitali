@@ -22,12 +22,15 @@ export default withSentryConfig(nextConfig, {
 
   // Upload source maps to Sentry and delete them from the build output so they
   // are not served publicly (prevents reverse-engineering of client code).
-  hideSourceMaps: true,
+  sourcemaps: {
+    deleteSourcemapsAfterUpload: true,
+  },
 
   // Suppress verbose Sentry CLI output during builds.
   silent: true,
 
-  // Automatically create Sentry releases tied to the git commit SHA.
-  // This powers "Suspect Commits" in the Sentry UI.
-  automaticVercelMonitors: false,
+  webpack: {
+    // Keep Sentry from creating Vercel cron monitors for this self-hosted app.
+    automaticVercelMonitors: false,
+  },
 });

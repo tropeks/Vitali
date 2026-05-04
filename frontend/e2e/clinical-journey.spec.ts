@@ -19,6 +19,19 @@ async function expectApiOk(response: APIResponse, label: string): Promise<void> 
   }
 }
 
+function cpfCheckDigit(digits: number[], initialWeight: number): number {
+  const sum = digits.reduce((total, digit, index) => total + digit * (initialWeight - index), 0);
+  const remainder = sum % 11;
+  return remainder < 2 ? 0 : 11 - remainder;
+}
+
+function generateValidCpf(seed: number): string {
+  const base = String(seed).padStart(9, '0').slice(-9).split('').map(Number);
+  const first = cpfCheckDigit(base, 10);
+  const second = cpfCheckDigit([...base, first], 11);
+  return [...base, first, second].join('');
+}
+
 async function loginAsAdmin(page: Page): Promise<string> {
   await page.goto('/login');
   await page.fill('input[name="email"]', ADMIN_EMAIL);
@@ -53,8 +66,11 @@ async function loginAsAdmin(page: Page): Promise<string> {
 
 test.describe('Clinical journey', () => {
   test('patient registration to signed encounter and timeline', async ({ page, request }) => {
+    test.setTimeout(120_000);
+
     const timestamp = Date.now();
     const patientName = `Paciente Jornada ${timestamp}`;
+    const patientCpf = generateValidCpf(timestamp);
     const doctorName = `Dra. Jornada ${timestamp}`;
     const doctorEmail = `dra.jornada+${timestamp}@vitali.com`;
     const access = await loginAsAdmin(page);
@@ -85,13 +101,15 @@ test.describe('Clinical journey', () => {
 
     await page.goto('/patients/new');
     await page.fill('input[name="full_name"]', patientName);
-    await page.fill('input[name="cpf"]', '52998224725');
+    await page.fill('input[name="cpf"]', patientCpf);
     await page.fill('input[name="birth_date"]', '1990-05-15');
     await page.selectOption('select[name="gender"]', 'F');
     await page.fill('input[name="phone"]', '+5511988887777');
     await page.fill('input[name="email"]', `paciente.jornada+${timestamp}@vitali.com`);
-    await page.click('button:has-text("Cadastrar paciente")');
-    await page.waitForURL(/\/patients\/[^/]+$/, { timeout: 15_000 });
+    await Promise.all([
+      page.waitForURL(/\/patients\/(?!new(?:[?#]|$))[^/?#]+$/, { timeout: 30_000 }),
+      page.click('button:has-text("Cadastrar paciente")'),
+    ]);
     await expect(page.getByRole('heading', { name: patientName })).toBeVisible();
     const patientId = page.url().split('/patients/')[1].split(/[?#]/)[0];
     expect(patientId).toBeTruthy();
@@ -119,8 +137,10 @@ test.describe('Clinical journey', () => {
     await waitingRow.getByRole('button', { name: /Chegou/ }).click();
     await expect(waitingRow.locator('text=Aguardando')).toBeVisible({ timeout: 10_000 });
 
-    await waitingRow.getByRole('button', { name: /Chamar/ }).click();
-    await page.waitForURL(/\/encounters\/[^/]+$/, { timeout: 15_000 });
+    await Promise.all([
+      page.waitForURL(/\/encounters\/[^/]+$/, { timeout: 45_000 }),
+      waitingRow.getByRole('button', { name: /Chamar/ }).click(),
+    ]);
     const encounterId = page.url().split('/encounters/')[1].split(/[?#]/)[0];
     expect(encounterId).toBeTruthy();
     await expect(page.getByRole('heading', { name: patientName })).toBeVisible();

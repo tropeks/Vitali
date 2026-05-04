@@ -7,6 +7,7 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "vitali.settings.development")
 
 app = Celery("vitali")
 app.config_from_object("django.conf:settings", namespace="CELERY")
+app.conf.imports = ("apps.emr.tasks_waitlist",)
 app.autodiscover_tasks()
 
 # ─── Periodic tasks (S-055/S-056) ────────────────────────────────────────────

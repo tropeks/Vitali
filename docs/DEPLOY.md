@@ -29,11 +29,11 @@ cp .env.staging.example .env.staging
 echo $GITHUB_TOKEN | docker login ghcr.io -u tropeks --password-stdin
 
 # 4. Pull images (first time uses :latest tag)
-GHCR_REPO=tropeks/Vitali IMAGE_TAG=latest \
+GHCR_REPO=tropeks IMAGE_TAG=latest \
   docker compose -f docker-compose.staging.yml pull
 
 # 5. Start services
-GHCR_REPO=tropeks/Vitali IMAGE_TAG=latest \
+GHCR_REPO=tropeks IMAGE_TAG=latest \
   docker compose -f docker-compose.staging.yml up -d
 
 # 6. Run database migrations
@@ -49,7 +49,10 @@ docker compose -f docker-compose.staging.yml exec django \
   python manage.py createsuperuser
 
 # 9. Run smoke tests to verify
-BASE_URL=https://staging.vitali.com.br bash scripts/smoke_test.sh
+BASE_URL=https://staging.vitali.com.br \
+COMPOSE_FILE=docker-compose.staging.yml \
+COMPOSE_ENV_FILE=.env.staging \
+  bash scripts/smoke_test.sh
 ```
 
 Subsequent deploys are handled automatically by `.github/workflows/deploy-staging.yml` on every push to `master`.
@@ -73,7 +76,7 @@ All variables must be set in `.env.staging` (and GitHub Secrets for the CI pipel
 | `DATABASE_URL` | ✅ | `postgres://vitali:PASSWORD@postgres:5432/vitali` | Derived from above |
 | `REDIS_PASSWORD` | ✅ | Strong random string | Generate locally |
 | `REDIS_URL` | ✅ | `redis://:PASSWORD@redis:6379/0` | Derived from above |
-| `GHCR_REPO` | ✅ | `tropeks/Vitali` | Fixed |
+| `GHCR_REPO` | ✅ | `tropeks` | GitHub package owner |
 | `IMAGE_TAG` | ✅ | `sha-abc1234` or `latest` | Set by CI |
 | `FIELD_ENCRYPTION_KEY` | ✅ | Base64 Fernet key | `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
 | `SENTRY_DSN` | ✅ | `https://...@sentry.io/...` | Sentry project settings |
@@ -123,17 +126,20 @@ docker tag "${FRONTEND_IMG}:rollback" "${FRONTEND_IMG}:latest"
 docker compose -f docker-compose.staging.yml up -d
 
 # 3. Verify recovery
-BASE_URL=https://staging.vitali.com.br bash scripts/smoke_test.sh
+BASE_URL=https://staging.vitali.com.br \
+COMPOSE_FILE=docker-compose.staging.yml \
+COMPOSE_ENV_FILE=.env.staging \
+  bash scripts/smoke_test.sh
 ```
 
 ### Rollback to a specific image tag
 
 ```bash
 # List available tags (requires ghcr.io access)
-IMAGE_TAG=sha-abc1234 GHCR_REPO=tropeks/Vitali \
+IMAGE_TAG=sha-abc1234 GHCR_REPO=tropeks \
   docker compose -f docker-compose.staging.yml pull
 
-IMAGE_TAG=sha-abc1234 GHCR_REPO=tropeks/Vitali \
+IMAGE_TAG=sha-abc1234 GHCR_REPO=tropeks \
   docker compose -f docker-compose.staging.yml up -d
 ```
 
