@@ -20,6 +20,7 @@ interface CID10SuggestProps {
   /** Currently selected CID-10 principal (for replace-confirm flow) */
   currentCid10?: string;
   onCid10Change?: (code: string) => void;
+  testId?: string;
 }
 
 const DEBOUNCE_MS = 1500;
@@ -35,6 +36,7 @@ export function CID10Suggest({
   readOnly = false,
   currentCid10,
   onCid10Change,
+  testId,
 }: CID10SuggestProps) {
   const [suggestions, setSuggestions] = useState<CID10Suggestion[]>([]);
   const [loading, setLoading] = useState(false);
@@ -129,6 +131,7 @@ export function CID10Suggest({
   return (
     <div className="space-y-2">
       <textarea
+        data-testid={testId}
         value={value}
         onChange={e => onChange(e.target.value)}
         readOnly={readOnly}

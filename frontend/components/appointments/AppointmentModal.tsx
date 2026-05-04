@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { X, Search } from 'lucide-react'
+import { apiFetch, ApiError } from '@/lib/api'
 
 interface Patient {
   id: string
@@ -76,8 +77,7 @@ export default function AppointmentModal({
 
   // Load professionals on mount
   useEffect(() => {
-    fetch('/api/v1/professionals?ordering=user__full_name')
-      .then((r) => r.json())
+    apiFetch('/api/v1/professionals/?ordering=user__full_name')
       .then((d) => setProfessionals(d.results ?? d))
       .catch(() => {})
   }, [])
@@ -86,8 +86,7 @@ export default function AppointmentModal({
   useEffect(() => {
     if (!selectedProfId || !date) { setSlots([]); return }
     setSlotsLoading(true)
-    fetch(`/api/v1/professionals/${selectedProfId}/available-slots?date=${date}&duration=30`)
-      .then((r) => r.json())
+    apiFetch(`/api/v1/professionals/${selectedProfId}/available-slots/?date=${date}&duration=30`)
       .then((d) => setSlots(d.slots ?? []))
       .catch(() => setSlots([]))
       .finally(() => setSlotsLoading(false))
@@ -98,8 +97,7 @@ export default function AppointmentModal({
   const searchPatients = useCallback(
     debounce(async (q: string) => {
       if (!q.trim()) { setPatientResults([]); return }
-      const r = await fetch(`/api/v1/patients?search=${encodeURIComponent(q)}&ordering=full_name`)
-      const d = await r.json()
+      const d = await apiFetch(`/api/v1/patients/?search=${encodeURIComponent(q)}&ordering=full_name`)
       setPatientResults(d.results ?? [])
     }, 300),
     [],
@@ -114,9 +112,8 @@ export default function AppointmentModal({
     setLoading(true)
     setError('')
     try {
-      const res = await fetch('/api/v1/appointments', {
+      await apiFetch('/api/v1/appointments/', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           patient: selectedPatient.id,
           professional: selectedProfId,
@@ -127,21 +124,19 @@ export default function AppointmentModal({
           source: 'receptionist',
         }),
       })
-      if (res.status === 409 || res.status === 400) {
-        const data = await res.json()
+      onCreated()
+    } catch (err) {
+      if (err instanceof ApiError && (err.status === 409 || err.status === 400)) {
+        const data = err.body
         const msg =
           data?.start_time?.[0] ??
           data?.error?.message ??
           'Horário indisponível. Escolha outro slot.'
-        const isConflict = res.status === 409 || msg.includes('TIME_SLOT_UNAVAILABLE')
+        const isConflict = err.status === 409 || msg.includes('TIME_SLOT_UNAVAILABLE')
         setError(isConflict ? 'Horário já ocupado. Escolha outro ou entre na fila de espera.' : msg)
         return
       }
-      if (!res.ok) {
-        setError('Erro ao criar agendamento.')
-        return
-      }
-      onCreated()
+      setError('Erro ao criar agendamento.')
     } finally {
       setLoading(false)
     }
@@ -155,9 +150,8 @@ export default function AppointmentModal({
     setWaitlistLoading(true)
     setError('')
     try {
-      const res = await fetch('/api/v1/waitlist/', {
+      await apiFetch('/api/v1/waitlist/', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           patient_id: selectedPatient.id,
           professional_id: selectedProfId,
@@ -165,14 +159,13 @@ export default function AppointmentModal({
           preferred_date_to: date,
         }),
       })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        setError(data.error?.message ?? data.detail ?? 'Erro ao entrar na lista de espera.')
-        return
-      }
       setWaitlistDone(true)
-    } catch {
-      setError('Erro ao entrar na lista de espera.')
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.body?.error?.message ?? err.body?.detail ?? 'Erro ao entrar na lista de espera.')
+      } else {
+        setError('Erro ao entrar na lista de espera.')
+      }
     } finally {
       setWaitlistLoading(false)
     }

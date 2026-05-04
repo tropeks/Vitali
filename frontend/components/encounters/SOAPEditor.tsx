@@ -102,9 +102,11 @@ export function SOAPEditor({ soapNote, readOnly = false, encounterId }: SOAPEdit
               readOnly={readOnly}
               currentCid10={currentCid10}
               onCid10Change={setCurrentCid10}
+              testId={`soap-${key}`}
             />
           ) : (
             <textarea
+              data-testid={`soap-${key}`}
               value={values[key]}
               onChange={e => handleChange(key, e.target.value)}
               readOnly={readOnly}

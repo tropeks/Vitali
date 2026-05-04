@@ -114,10 +114,39 @@ class TestCheckInAction(TenantTestCase):
         data = resp.json()
         self.assertIsNotNone(data["started_at"])
         self.assertEqual(data["status"], "in_progress")
+        self.assertIsNotNone(data["encounter_id"])
+        self.assertTrue(data["encounter_created"])
 
         self.appt.refresh_from_db()
         self.assertIsNotNone(self.appt.started_at)
         self.assertEqual(self.appt.status, "in_progress")
+        self.assertTrue(hasattr(self.appt, "encounter"))
+        self.assertEqual(self.appt.encounter.patient_id, self.patient.id)
+        self.assertEqual(self.appt.encounter.professional_id, self.professional.id)
+        self.assertTrue(hasattr(self.appt.encounter, "soap_note"))
+        self.assertTrue(hasattr(self.appt.encounter, "vital_signs"))
+
+    def test_start_is_idempotent_and_reuses_existing_encounter(self):
+        c = self._client(self.user)
+        first = c.post(f"/api/v1/appointments/{self.appt.id}/start/")
+        self.assertEqual(first.status_code, 200)
+        first_data = first.json()
+
+        second = c.post(f"/api/v1/appointments/{self.appt.id}/start/")
+        self.assertEqual(second.status_code, 200)
+        second_data = second.json()
+
+        self.assertEqual(second_data["encounter_id"], first_data["encounter_id"])
+        self.assertFalse(second_data["encounter_created"])
+
+    def test_start_rejects_terminal_appointment(self):
+        self.appt.status = "cancelled"
+        self.appt.save(update_fields=["status", "updated_at"])
+
+        c = self._client(self.user)
+        resp = c.post(f"/api/v1/appointments/{self.appt.id}/start/")
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.json()["error"]["code"], "APPOINTMENT_NOT_STARTABLE")
 
     # ── auth ─────────────────────────────────────────────────────────────────────
 

@@ -94,8 +94,15 @@ Protected app routes must either redirect unauthenticated users through middlewa
 | Spec | Contract |
 | --- | --- |
 | `auth.spec.ts` | Login, logout, protected app route redirects, safe `next=` handling, and tenant shell access. |
+| `clinical-journey.spec.ts` | Patient registration, appointment check-in, appointment start, linked encounter creation, SOAP/vitals documentation, encounter signing, and patient timeline navigation. |
 | `invite-flow.spec.ts` | HR invite creation, test-only token retrieval, invite acceptance, and password setup. |
 | `hr-onboarding.spec.ts` | HR employee onboarding through invite and generated-password modes. |
+
+## Clinical Journey Contract
+
+Starting an appointment must call `POST /api/v1/appointments/<id>/start/`, not a generic status patch. The start action is idempotent and returns `encounter_id`; the frontend must route clinicians to `/encounters/<encounter_id>` so check-in naturally becomes documentation.
+
+Clinical HR onboarding creates a default weekday schedule for the new professional. That keeps agenda slot lookup and E2E appointment setup independent from manual configuration.
 
 ## HR Onboarding Data Contract
 

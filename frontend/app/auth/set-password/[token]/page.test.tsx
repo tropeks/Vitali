@@ -5,8 +5,9 @@ import SetPasswordPage from './page'
 
 // Mock next/navigation
 const mockPush = vi.fn()
+const mockRefresh = vi.fn()
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: mockPush }),
+  useRouter: () => ({ push: mockPush, refresh: mockRefresh }),
   useParams: () => ({ token: 'fake-jwt-token' }),
 }))
 
@@ -59,10 +60,9 @@ describe('SetPasswordPage', () => {
     expect(mockFetch).not.toHaveBeenCalled()
   })
 
-  it('successful submit stores tokens and redirects to /dashboard', async () => {
+  it('successful submit delegates session cookies to Next route and redirects to /dashboard', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ access: 'access-token-abc', refresh: 'refresh-token-xyz' }),
     })
 
     render(<SetPasswordPage />)
@@ -76,8 +76,14 @@ describe('SetPasswordPage', () => {
     await waitFor(() => {
       expect(mockPush).toHaveBeenCalledWith('/dashboard')
     })
-    expect(localStorage.getItem('access_token')).toBe('access-token-abc')
-    expect(localStorage.getItem('refresh_token')).toBe('refresh-token-xyz')
+    expect(mockRefresh).toHaveBeenCalled()
+    expect(mockFetch).toHaveBeenCalledWith('/api/auth/set-password/fake-jwt-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: 'minhasenha123' }),
+    })
+    expect(localStorage.getItem('access_token')).toBeNull()
+    expect(localStorage.getItem('refresh_token')).toBeNull()
   })
 
   it('expired token shows 410 message', async () => {

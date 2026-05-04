@@ -251,7 +251,14 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         return qs
 
     def get_permissions(self):
-        if self.action in ("create", "update", "partial_update", "update_status"):
+        if self.action in (
+            "create",
+            "update",
+            "partial_update",
+            "update_status",
+            "check_in",
+            "start",
+        ):
             return [IsAuthenticated(), HasPermission("schedule.write")]
         return super().get_permissions()
 
@@ -323,19 +330,54 @@ class AppointmentViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="start")
     def start(self, request, pk=None):
-        """POST /appointments/{id}/start/ — médico inicia o atendimento."""
+        """POST /appointments/{id}/start/ — inicia atendimento e abre a consulta vinculada."""
         appointment = self.get_object()
-        appointment.started_at = timezone.now()
+        if appointment.status in {"completed", "cancelled", "no_show"}:
+            return Response(
+                {
+                    "error": {
+                        "code": "APPOINTMENT_NOT_STARTABLE",
+                        "message": "Agendamento concluído, cancelado ou faltante não pode ser iniciado.",
+                    }
+                },
+                status=400,
+            )
+
+        old_status = appointment.status
+        if appointment.started_at is None:
+            appointment.started_at = timezone.now()
         appointment.status = "in_progress"
         appointment.save(update_fields=["started_at", "status", "updated_at"])
+
+        encounter, created = Encounter.objects.get_or_create(
+            appointment=appointment,
+            defaults={
+                "patient": appointment.patient,
+                "professional": appointment.professional,
+                "encounter_date": appointment.started_at,
+                "chief_complaint": appointment.notes,
+            },
+        )
+        SOAPNote.objects.get_or_create(encounter=encounter)
+        VitalSigns.objects.get_or_create(encounter=encounter)
+
         log_audit(
             request,
             "appointment_start",
             "Appointment",
             appointment.id,
-            new_data={"started_at": appointment.started_at.isoformat(), "status": "in_progress"},
+            old_data={"status": old_status},
+            new_data={
+                "started_at": appointment.started_at.isoformat(),
+                "status": "in_progress",
+                "encounter_id": str(encounter.id),
+                "encounter_created": created,
+            },
         )
-        return Response(AppointmentSerializer(appointment).data)
+        data = AppointmentSerializer(appointment).data
+        data["encounter_id"] = str(encounter.id)
+        data["encounter_created"] = created
+        return Response(data)
 
 
 class AvailableSlotsView(APIView):

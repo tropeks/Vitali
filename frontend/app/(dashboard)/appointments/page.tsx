@@ -1,9 +1,11 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import AppointmentModal from '@/components/appointments/AppointmentModal'
 import PIXModal from '@/components/appointments/PIXModal'
+import { apiFetch } from '@/lib/api'
 
 interface Appointment {
   id: string
@@ -69,6 +71,7 @@ function dayAbbr(d: Date) {
 }
 
 export default function AppointmentsPage() {
+  const router = useRouter()
   const [weekBase, setWeekBase] = useState(() => {
     const d = new Date()
     d.setHours(0, 0, 0, 0)
@@ -95,8 +98,7 @@ export default function AppointmentsPage() {
 
   // Load professionals
   useEffect(() => {
-    fetch('/api/v1/professionals?ordering=user__full_name')
-      .then((r) => r.json())
+    apiFetch('/api/v1/professionals/?ordering=user__full_name')
       .then((d) => {
         const list = d.results ?? d
         setProfessionals(list)
@@ -108,12 +110,11 @@ export default function AppointmentsPage() {
   const fetchAppointments = useCallback(async () => {
     setLoading(true)
     try {
-      let url = `/api/v1/appointments?ordering=start_time`
+      let url = `/api/v1/appointments/?ordering=start_time`
       if (selectedProfId) url += `&professional_id=${selectedProfId}`
       // fetch the full week range via multiple date requests (API filters by date)
       // We fetch without date filter then filter client-side for the week
-      const r = await fetch(url)
-      const d = await r.json()
+      const d = await apiFetch(url)
       const all: Appointment[] = d.results ?? d
       // Filter for current week
       const filtered = all.filter((a) => {
@@ -170,15 +171,24 @@ export default function AppointmentsPage() {
   const handleStatusChange = async (appt: Appointment, newStatus: string) => {
     setStatusUpdating(true)
     try {
-      const r = await fetch(`/api/v1/appointments/${appt.id}/status`, {
+      if (newStatus === 'in_progress') {
+        const data = await apiFetch<{ encounter_id?: string }>(`/api/v1/appointments/${appt.id}/start/`, {
+          method: 'POST',
+        })
+        setDetailAppt(null)
+        if (data.encounter_id) {
+          router.push(`/encounters/${data.encounter_id}`)
+          return
+        }
+        fetchAppointments()
+        return
+      }
+      await apiFetch(`/api/v1/appointments/${appt.id}/status/`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       })
-      if (r.ok) {
-        setDetailAppt(null)
-        fetchAppointments()
-      }
+      setDetailAppt(null)
+      fetchAppointments()
     } finally {
       setStatusUpdating(false)
     }

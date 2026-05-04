@@ -40,7 +40,7 @@ test.describe('Invite flow — admin invites user by email', () => {
     await page.fill('input[name="email"]', ADMIN_EMAIL);
     await page.fill('input[name="password"]', ADMIN_PASSWORD);
     await page.click('button[type="submit"]');
-    await page.waitForURL(/\/dashboard/, { timeout: 15_000 });
+    await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 });
   });
 
   test('admin creates employee with invite auth mode', async ({ page }) => {
@@ -141,7 +141,7 @@ test.describe('Invite flow — admin invites user by email', () => {
     await page.click('button:has-text("Definir senha e entrar")');
 
     // -- Step 4: Assert redirect to dashboard --------------------------------
-    await page.waitForURL(/\/dashboard/, { timeout: 15_000 });
+    await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 });
     await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
   });
 });

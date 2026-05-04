@@ -37,7 +37,7 @@ function ConveniosTab({ patientId }: { patientId: string }) {
   const [error, setError] = useState('')
 
   const load = useCallback(() => {
-    apiFetch(`/emr/patients/${patientId}/insurance/`)
+    apiFetch(`/patients/${patientId}/insurance/`)
       .then(setCards)
       .catch(() => setCards([]))
       .finally(() => setLoading(false))
@@ -69,9 +69,9 @@ function ConveniosTab({ patientId }: { patientId: string }) {
     try {
       const body = { ...form, valid_until: form.valid_until || null }
       if (editId) {
-        await apiFetch(`/emr/patients/${patientId}/insurance/${editId}/`, { method: 'PATCH', body: JSON.stringify(body) })
+        await apiFetch(`/patients/${patientId}/insurance/${editId}/`, { method: 'PATCH', body: JSON.stringify(body) })
       } else {
-        await apiFetch(`/emr/patients/${patientId}/insurance/`, { method: 'POST', body: JSON.stringify(body) })
+        await apiFetch(`/patients/${patientId}/insurance/`, { method: 'POST', body: JSON.stringify(body) })
       }
       setShowForm(false)
       load()
@@ -85,7 +85,7 @@ function ConveniosTab({ patientId }: { patientId: string }) {
   const deactivate = async (c: any) => {
     if (!confirm(`Desativar carteirinha ${c.provider_name}?`)) return
     try {
-      await apiFetch(`/emr/patients/${patientId}/insurance/${c.id}/`, {
+      await apiFetch(`/patients/${patientId}/insurance/${c.id}/`, {
         method: 'PATCH',
         body: JSON.stringify({ is_active: false }),
       })
@@ -174,6 +174,58 @@ function ConveniosTab({ patientId }: { patientId: string }) {
   )
 }
 
+function TimelineTab({ patientId }: { patientId: string }) {
+  const router = useRouter()
+  const [events, setEvents] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    apiFetch(`/patients/${patientId}/timeline/`)
+      .then((data) => setEvents(data.events ?? []))
+      .catch(() => setEvents([]))
+      .finally(() => setLoading(false))
+  }, [patientId])
+
+  if (loading) return <div className="h-24 bg-gray-100 rounded animate-pulse" />
+
+  if (events.length === 0) {
+    return (
+      <div className="text-center py-12 text-gray-400">
+        <p className="text-sm">Nenhum evento clínico registrado.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      {events.map((event) => (
+        <button
+          key={`${event.type}-${event.id}`}
+          onClick={() => event.type === 'encounter' && router.push(`/encounters/${event.id}`)}
+          className="w-full rounded-lg border border-gray-200 bg-white p-4 text-left hover:bg-blue-50"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-gray-900">
+                Consulta com {event.professional || 'profissional'}
+              </p>
+              <p className="mt-1 text-xs text-gray-500">
+                {event.date ? new Date(event.date).toLocaleString('pt-BR') : 'Data não informada'}
+              </p>
+            </div>
+            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+              {event.status}
+            </span>
+          </div>
+          {event.chief_complaint && (
+            <p className="mt-3 text-sm text-gray-600 line-clamp-2">{event.chief_complaint}</p>
+          )}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function PatientDetailPage() {
@@ -185,7 +237,7 @@ export default function PatientDetailPage() {
 
   useEffect(() => {
     const token = getAccessToken()
-    fetch(`/api/v1/emr/patients/${id}`, {
+    fetch(`/api/v1/patients/${id}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(r => r.json())
@@ -323,9 +375,7 @@ export default function PatientDetailPage() {
       )}
 
       {activeTab === 'timeline' && (
-        <div className="text-center py-12 text-gray-400">
-          <p className="text-sm">Timeline disponível no Sprint 4 com atendimentos clínicos.</p>
-        </div>
+        <TimelineTab patientId={id as string} />
       )}
     </div>
   )
