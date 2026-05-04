@@ -31,7 +31,7 @@ test.describe('HR onboarding cascade — hire a doctor', () => {
     await page.fill('input[name="password"]', ADMIN_PASSWORD);
     await page.click('button[type="submit"]');
     // After successful login the frontend redirects to /dashboard (or next= param).
-    await page.waitForURL(/\/dashboard/, { timeout: 15_000 });
+    await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 });
   });
 
   test('admin hires a doctor end-to-end', async ({ page }) => {

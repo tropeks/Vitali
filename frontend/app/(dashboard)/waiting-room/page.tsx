@@ -1,7 +1,9 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { RefreshCw, Clock, UserCheck, CheckCircle2, XCircle } from 'lucide-react'
+import { apiFetch } from '@/lib/api'
 
 interface Appointment {
   id: string
@@ -28,6 +30,7 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 export default function WaitingRoomPage() {
+  const router = useRouter()
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
@@ -35,8 +38,7 @@ export default function WaitingRoomPage() {
 
   const fetchWaiting = useCallback(async () => {
     try {
-      const r = await fetch('/api/v1/waiting-room')
-      const d = await r.json()
+      const d = await apiFetch<Appointment[]>('/api/v1/waiting-room/')
       setAppointments(Array.isArray(d) ? d : [])
       setLastUpdated(new Date())
     } catch {
@@ -55,12 +57,11 @@ export default function WaitingRoomPage() {
   const updateStatus = async (appt: Appointment, newStatus: string) => {
     setUpdating(appt.id)
     try {
-      const r = await fetch(`/api/v1/appointments/${appt.id}/status`, {
+      await apiFetch(`/api/v1/appointments/${appt.id}/status/`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       })
-      if (r.ok) await fetchWaiting()
+      await fetchWaiting()
     } finally {
       setUpdating(null)
     }
@@ -69,10 +70,26 @@ export default function WaitingRoomPage() {
   const checkIn = async (appt: Appointment) => {
     setUpdating(appt.id)
     try {
-      const r = await fetch(`/api/v1/appointments/${appt.id}/check-in/`, {
+      await apiFetch(`/api/v1/appointments/${appt.id}/check-in/`, {
         method: 'POST',
       })
-      if (r.ok) await fetchWaiting()
+      await fetchWaiting()
+    } finally {
+      setUpdating(null)
+    }
+  }
+
+  const startAppointment = async (appt: Appointment) => {
+    setUpdating(appt.id)
+    try {
+      const data = await apiFetch<{ encounter_id?: string }>(`/api/v1/appointments/${appt.id}/start/`, {
+        method: 'POST',
+      })
+      if (data.encounter_id) {
+        router.push(`/encounters/${data.encounter_id}`)
+        return
+      }
+      await fetchWaiting()
     } finally {
       setUpdating(null)
     }
@@ -84,8 +101,7 @@ export default function WaitingRoomPage() {
   // Fetch all of today for the counter totals (waiting-room only returns pending)
   const [todayAll, setTodayAll] = useState<Appointment[]>([])
   useEffect(() => {
-    fetch('/api/v1/appointments/today')
-      .then((r) => r.json())
+    apiFetch<Appointment[]>('/api/v1/appointments/today/')
       .then((d) => setTodayAll(Array.isArray(d) ? d : []))
       .catch(() => {})
   }, [lastUpdated])
@@ -192,7 +208,7 @@ export default function WaitingRoomPage() {
                       {appt.status !== 'in_progress' && (
                         <button
                           disabled={updating === appt.id}
-                          onClick={() => updateStatus(appt, 'in_progress')}
+                          onClick={() => startAppointment(appt)}
                           className="flex items-center gap-1 px-2.5 py-1 bg-green-100 text-green-700 text-xs rounded-lg hover:bg-green-200 disabled:opacity-50 font-medium"
                           title="Chamar paciente"
                         >

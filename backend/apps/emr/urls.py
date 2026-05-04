@@ -35,8 +35,8 @@ router.register("prescriptions", PrescriptionViewSet, basename="prescription")
 router.register("prescription-items", PrescriptionItemViewSet, basename="prescription-item")
 
 urlpatterns = router.urls + [
-    path("professionals/<uuid:professional_id>/available-slots", AvailableSlotsView.as_view()),
-    path("waiting-room", WaitingRoomView.as_view()),
+    path("professionals/<uuid:professional_id>/available-slots/", AvailableSlotsView.as_view()),
+    path("waiting-room/", WaitingRoomView.as_view()),
     # S-054: Onboarding wizard setup
     path(
         "emr/setup/professional/",

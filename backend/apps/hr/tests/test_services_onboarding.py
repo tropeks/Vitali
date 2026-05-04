@@ -21,7 +21,7 @@ from django.test import override_settings
 from rest_framework.exceptions import ValidationError
 
 from apps.core.models import AuditLog, FeatureFlag, Role, User
-from apps.emr.models import Professional
+from apps.emr.models import Professional, ScheduleConfig
 from apps.hr.models import Employee
 from apps.hr.services import EmployeeOnboardingService
 from apps.test_utils import TenantTestCase
@@ -155,11 +155,19 @@ class TestEmployeeOnboardingService(TenantTestCase):
         assert professional.council_number == "123456"
         assert professional.council_state == "SP"
 
-        # 3 AuditLog entries
+        schedule = ScheduleConfig.objects.get(professional=professional)
+        assert schedule.working_days == [0, 1, 2, 3, 4]
+
+        # 4 AuditLog entries
         logs = AuditLog.objects.filter(new_data__correlation_id=service.correlation_id)
-        assert logs.count() == 3
+        assert logs.count() == 4
         actions = set(logs.values_list("action", flat=True))
-        assert actions == {"employee_created", "user_created", "professional_created"}
+        assert actions == {
+            "employee_created",
+            "user_created",
+            "professional_created",
+            "professional_schedule_created",
+        }
 
         # Password must NOT be stored in plaintext
         assert user.password != payload["password"]  # should be hashed

@@ -71,7 +71,7 @@ export default function DispensePage() {
     setLoadingPatients(true)
     try {
       const token = getAccessToken()
-      const res = await fetch(`/api/v1/emr/patients/?search=${encodeURIComponent(q)}`, {
+      const res = await fetch(`/api/v1/patients/?search=${encodeURIComponent(q)}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       const data = await res.json()
@@ -91,7 +91,7 @@ export default function DispensePage() {
     setLoadingRx(true)
     try {
       const token = getAccessToken()
-      const res = await fetch(`/api/v1/emr/prescriptions/?patient=${patient.id}&status=signed`, {
+      const res = await fetch(`/api/v1/prescriptions/?patient=${patient.id}&status=signed`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       const data = await res.json()

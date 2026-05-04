@@ -92,7 +92,7 @@ class EmployeeOnboardingService:
             )
 
             if payload["role"] in CLINICAL_ROLES:
-                from apps.emr.models import Professional
+                from apps.emr.models import Professional, ScheduleConfig
 
                 professional = Professional.objects.create(
                     user=user,
@@ -109,6 +109,22 @@ class EmployeeOnboardingService:
                         "council_type": professional.council_type,
                         "council_number": professional.council_number,
                         "council_state": professional.council_state,
+                    },
+                )
+                ScheduleConfig.objects.get_or_create(
+                    professional=professional,
+                    defaults={
+                        "working_days": [0, 1, 2, 3, 4],
+                    },
+                )
+                self._audit(
+                    "professional_schedule_created",
+                    "professional",
+                    professional.id,
+                    new_data={
+                        "working_days": [0, 1, 2, 3, 4],
+                        "working_hours_start": "08:00",
+                        "working_hours_end": "18:00",
                     },
                 )
 

@@ -6,7 +6,7 @@ from django.core.management import call_command
 from rest_framework.test import APIClient
 
 from apps.core.models import Role, User
-from apps.emr.models import Professional
+from apps.emr.models import Professional, ScheduleConfig
 from apps.hr.models import Employee
 from apps.test_utils import TenantTestCase
 
@@ -97,7 +97,8 @@ class EmployeeOnboardingAPITests(TenantTestCase):
 
         self.assertEqual(response.status_code, 201, response.json())
         self.assertTrue(Employee.objects.filter(user__email="dr.api@test.com").exists())
-        self.assertTrue(Professional.objects.filter(user__email="dr.api@test.com").exists())
+        professional = Professional.objects.get(user__email="dr.api@test.com")
+        self.assertTrue(ScheduleConfig.objects.filter(professional=professional).exists())
 
     def test_create_dentista_employee_with_seeded_default_role(self):
         response = self.client.post(

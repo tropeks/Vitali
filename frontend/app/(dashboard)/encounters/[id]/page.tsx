@@ -131,6 +131,7 @@ function VitalSignsForm({ vs, encounterId, readOnly }: { vs: VitalSigns | null; 
       <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
       <div className="flex items-center gap-1">
         <input
+          data-testid={`vitals-${field}`}
           type="number"
           value={vals[field]}
           onChange={e => setVals(v => ({ ...v, [field]: e.target.value }))}
@@ -468,11 +469,11 @@ export default function EncounterDetailPage() {
                 <span className="text-gray-500">Sexo</span>
                 <span className="text-gray-800">{patient.gender_display}</span>
               </div>
-              {patient.allergies.length > 0 && (
+              {(patient.allergies ?? []).length > 0 && (
                 <div className="pt-2 border-t border-gray-100">
                   <p className="text-gray-500 mb-1.5">Alergias</p>
                   <div className="flex flex-wrap gap-1">
-                    {patient.allergies.map(a => (
+                    {(patient.allergies ?? []).map(a => (
                       <span
                         key={a.id}
                         className={`text-xs px-2 py-0.5 rounded-full font-medium ${

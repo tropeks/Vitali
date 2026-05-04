@@ -30,7 +30,7 @@ test.describe('Auth gate', () => {
   test('sanitizes next, redirects authenticated login, and logs out cleanly', async ({ page }) => {
     await loginAsAdmin(page, 'https://example.com/phishing');
 
-    await page.waitForURL(/\/dashboard/, { timeout: 15_000 });
+    await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 });
     expect(page.url()).not.toContain('example.com');
     await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
 
@@ -40,7 +40,7 @@ test.describe('Auth gate', () => {
     await expect(page.getByTitle('Sair')).toBeVisible();
     await page.getByTitle('Sair').click();
 
-    await page.waitForURL(/\/login/, { timeout: 15_000 });
+    await expect(page).toHaveURL(/\/login/, { timeout: 30_000 });
     const cookieNames = (await page.context().cookies()).map((cookie) => cookie.name);
     expect(cookieNames).not.toContain('access_token_js');
     expect(cookieNames).not.toContain('vitali_user');

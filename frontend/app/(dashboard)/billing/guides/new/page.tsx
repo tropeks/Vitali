@@ -50,7 +50,7 @@ export default function NewGuidePage() {
 
   useEffect(() => {
     Promise.all([
-      apiFetch('/emr/patients/?page_size=200'),
+      apiFetch('/patients/?page_size=200'),
       apiFetch('/billing/providers/'),
     ])
       .then(([p, prov]) => {
@@ -64,7 +64,7 @@ export default function NewGuidePage() {
   // Prefill patient/provider if encounter param is present
   useEffect(() => {
     if (!prefillEncounter) return;
-    apiFetch(`/emr/encounters/${prefillEncounter}/`)
+    apiFetch(`/encounters/${prefillEncounter}/`)
       .then((enc: any) => {
         if (enc.patient) setForm(f => ({ ...f, patient_id: enc.patient }));
       })

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 
 export default function PatientsPage() {
@@ -25,6 +25,13 @@ export default function PatientsPage() {
   const fetchPatients = useCallback((q: string) => {
     if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current)
     fetchTimerRef.current = setTimeout(() => fetchPatientsNow(q), 300)
+  }, [fetchPatientsNow])
+
+  useEffect(() => {
+    fetchPatientsNow('')
+    return () => {
+      if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current)
+    }
   }, [fetchPatientsNow])
 
   return (
