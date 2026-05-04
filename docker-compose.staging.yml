@@ -11,7 +11,7 @@
 # Usage:
 #   cp .env.staging.example .env.staging
 #   # fill in all required vars (see docs/DEPLOY.md)
-#   docker compose -f docker-compose.staging.yml --env-file .env.staging up -d
+#   GHCR_REPO=tropeks docker compose -f docker-compose.staging.yml --env-file .env.staging up -d
 
 services:
   # ─── PostgreSQL 16 ────────────────────────────────────────────────────────
@@ -50,7 +50,7 @@ services:
   django:
     image: ghcr.io/${GHCR_REPO}/vitali-backend:${IMAGE_TAG:-latest}
     restart: always
-    env_file: .env.staging
+    env_file: ${STAGING_ENV_FILE:-.env.staging}
     environment:
       DJANGO_SETTINGS_MODULE: vitali.settings.production
     depends_on:
@@ -73,7 +73,7 @@ services:
     image: ghcr.io/${GHCR_REPO}/vitali-backend:${IMAGE_TAG:-latest}
     restart: always
     command: celery -A vitali worker --loglevel=info --concurrency=2
-    env_file: .env.staging
+    env_file: ${STAGING_ENV_FILE:-.env.staging}
     environment:
       DJANGO_SETTINGS_MODULE: vitali.settings.production
     depends_on:
@@ -87,7 +87,7 @@ services:
     image: ghcr.io/${GHCR_REPO}/vitali-backend:${IMAGE_TAG:-latest}
     restart: always
     command: celery -A vitali beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
-    env_file: .env.staging
+    env_file: ${STAGING_ENV_FILE:-.env.staging}
     environment:
       DJANGO_SETTINGS_MODULE: vitali.settings.production
     depends_on:

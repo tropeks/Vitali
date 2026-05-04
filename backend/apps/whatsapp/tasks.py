@@ -17,6 +17,8 @@ from celery import shared_task
 from django.db import transaction
 from django.utils import timezone
 
+from apps.core.tenancy import for_each_tenant_schema
+
 from .gateway import OptOutError, get_gateway
 
 logger = logging.getLogger(__name__)
@@ -31,6 +33,16 @@ def send_appointment_reminders(self):
     Runs every 15 min (registered in migration 0002).
     select_for_update(skip_locked=True) prevents double-send on concurrent workers.
     """
+    counts = for_each_tenant_schema(
+        _send_appointment_reminders_for_schema,
+        logger=logger,
+        operation="whatsapp.send_appointment_reminders",
+    )
+    return sum(count or 0 for count in counts)
+
+
+def _send_appointment_reminders_for_schema(schema_name: str) -> int:
+    """Send due WhatsApp appointment reminders in the active tenant schema."""
     from .models import ScheduledReminder
 
     now = timezone.now()
@@ -76,6 +88,14 @@ def send_appointment_reminders(self):
 
         for reminder in reminders_24h + reminders_2h:
             _send_reminder(gateway, reminder)
+
+    sent_count = len(reminders_24h) + len(reminders_2h)
+    logger.info(
+        "whatsapp.send_appointment_reminders.schema_done schema=%s sent=%d",
+        schema_name,
+        sent_count,
+    )
+    return sent_count
 
 
 def _ensure_reminders_exist(now):
@@ -158,6 +178,16 @@ def mark_no_shows(self):
 
     Runs every hour.
     """
+    counts = for_each_tenant_schema(
+        _mark_no_shows_for_schema,
+        logger=logger,
+        operation="whatsapp.mark_no_shows",
+    )
+    return sum(count or 0 for count in counts)
+
+
+def _mark_no_shows_for_schema(schema_name: str) -> int:
+    """Mark no-show appointments in the active tenant schema."""
     from apps.emr.models import Appointment
 
     cutoff = timezone.now() - timedelta(minutes=30)
@@ -169,7 +199,8 @@ def mark_no_shows(self):
     ).update(status="no_show")
 
     if updated:
-        logger.info("Marked %d appointments as no_show", updated)
+        logger.info("Marked %d appointments as no_show in schema=%s", updated, schema_name)
+    return updated
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
@@ -180,6 +211,16 @@ def send_satisfaction_surveys(self):
 
     Runs every hour.
     """
+    counts = for_each_tenant_schema(
+        _send_satisfaction_surveys_for_schema,
+        logger=logger,
+        operation="whatsapp.send_satisfaction_surveys",
+    )
+    return sum(count or 0 for count in counts)
+
+
+def _send_satisfaction_surveys_for_schema(schema_name: str) -> int:
+    """Send due post-visit satisfaction surveys in the active tenant schema."""
     from apps.emr.models import Appointment
 
     from .models import ScheduledReminder, WhatsAppContact
@@ -194,6 +235,7 @@ def send_satisfaction_surveys(self):
         end_time__lte=cutoff_end,
     ).select_related("patient", "professional__user")
 
+    sent = 0
     for appt in completed:
         reminder, created = ScheduledReminder.objects.get_or_create(
             appointment=appt,
@@ -235,6 +277,7 @@ def send_satisfaction_surveys(self):
                 locked.status = "sent"
                 locked.sent_at = timezone.now()
                 locked.save(update_fields=["status", "sent_at"])
+                sent += 1
             except OptOutError:
                 locked.status = "skipped"
                 locked.save(update_fields=["status"])
@@ -243,15 +286,37 @@ def send_satisfaction_surveys(self):
                 locked.status = "failed"
                 locked.save(update_fields=["status"])
 
+    logger.info(
+        "whatsapp.send_satisfaction_surveys.schema_done schema=%s sent=%d",
+        schema_name,
+        sent,
+    )
+    return sent
+
 
 @shared_task
-def cleanup_expired_sessions():
+def cleanup_expired_sessions() -> int:
     """Delete ConversationSession rows past their expires_at. Runs every 15 min."""
+    counts = for_each_tenant_schema(
+        _cleanup_expired_sessions_for_schema,
+        logger=logger,
+        operation="whatsapp.cleanup_expired_sessions",
+    )
+    return sum(count or 0 for count in counts)
+
+
+def _cleanup_expired_sessions_for_schema(schema_name: str) -> int:
+    """Delete expired WhatsApp sessions in the active tenant schema."""
     from .models import ConversationSession
 
     count, _ = ConversationSession.objects.filter(expires_at__lt=timezone.now()).delete()
     if count:
-        logger.info("Cleaned up %d expired WhatsApp conversation sessions", count)
+        logger.info(
+            "Cleaned up %d expired WhatsApp conversation sessions in schema=%s",
+            count,
+            schema_name,
+        )
+    return count
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)

@@ -3,8 +3,8 @@ import { redirect } from "next/navigation";
 import DashboardShell from "@/components/layout/DashboardShell";
 import type { UserDTO } from "@/lib/auth";
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const cookieStore = cookies();
+export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const cookieStore = await cookies();
   const raw = cookieStore.get("vitali_user")?.value;
 
   if (!raw) {

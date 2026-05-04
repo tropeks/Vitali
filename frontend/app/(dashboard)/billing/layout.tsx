@@ -2,8 +2,8 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import type { UserDTO } from '@/lib/auth';
 
-export default function BillingLayout({ children }: { children: React.ReactNode }) {
-  const cookieStore = cookies();
+export default async function BillingLayout({ children }: { children: React.ReactNode }) {
+  const cookieStore = await cookies();
   const raw = cookieStore.get('vitali_user')?.value;
 
   if (!raw) {

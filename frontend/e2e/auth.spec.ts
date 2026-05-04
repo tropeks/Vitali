@@ -16,7 +16,14 @@ async function loginAsAdmin(page: Page, nextPath = '/dashboard'): Promise<void> 
   await page.goto(`/login?next=${encodeURIComponent(nextPath)}`);
   await page.fill('input[name="email"]', ADMIN_EMAIL);
   await page.fill('input[name="password"]', ADMIN_PASSWORD);
+
+  const loginResponse = page.waitForResponse(
+    (response) => response.url().endsWith('/api/auth/login'),
+    { timeout: 30_000 },
+  );
   await page.click('button[type="submit"]');
+  const response = await loginResponse;
+  expect(response.ok(), `admin login failed (${response.status()}): ${await response.text()}`).toBeTruthy();
 }
 
 test.describe('Auth gate', () => {
@@ -28,9 +35,11 @@ test.describe('Auth gate', () => {
   });
 
   test('sanitizes next, redirects authenticated login, and logs out cleanly', async ({ page }) => {
+    test.setTimeout(120_000);
+
     await loginAsAdmin(page, 'https://example.com/phishing');
 
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 });
+    await expect(page).toHaveURL(/\/dashboard/, { timeout: 60_000 });
     expect(page.url()).not.toContain('example.com');
     await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
 

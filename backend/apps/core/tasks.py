@@ -30,6 +30,12 @@ from apps.core.models import AuditLog, User
 logger = logging.getLogger(__name__)
 
 
+@shared_task(name="apps.core.tasks.smoke_ping")
+def smoke_ping() -> str:
+    """Small Celery round-trip used by post-deploy smoke tests."""
+    return "pong"
+
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def send_dpa_signed_admin_email(
     self, user_id: str, flags_enabled: list, correlation_id: str | None = None
