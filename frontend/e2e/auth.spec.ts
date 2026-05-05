@@ -41,7 +41,7 @@ test.describe('Auth gate', () => {
 
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 60_000 });
     expect(page.url()).not.toContain('example.com');
-    await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Centro operacional' })).toBeVisible();
 
     await page.goto('/login');
     await expect(page).toHaveURL(/\/dashboard/);

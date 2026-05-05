@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import AppointmentModal from '@/components/appointments/AppointmentModal'
 import PIXModal from '@/components/appointments/PIXModal'
 import { apiFetch } from '@/lib/api'
+import { getAppointmentStatusMeta } from '@/lib/operational-ui'
 
 interface Appointment {
   id: string
@@ -29,16 +30,6 @@ interface Professional {
   id: string
   user_name: string
   specialty: string
-}
-
-const STATUS_COLORS: Record<string, string> = {
-  scheduled: 'bg-blue-100 text-blue-800 border-blue-200',
-  confirmed: 'bg-blue-500 text-white border-blue-600',
-  waiting: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-  in_progress: 'bg-green-100 text-green-800 border-green-200',
-  completed: 'bg-slate-100 text-slate-600 border-slate-200',
-  cancelled: 'bg-red-100 text-red-600 border-red-200',
-  no_show: 'bg-red-100 text-red-600 border-red-200',
 }
 
 const HOURS = Array.from({ length: 21 }, (_, i) => {
@@ -77,6 +68,7 @@ export default function AppointmentsPage() {
     d.setHours(0, 0, 0, 0)
     return d
   })
+  const [clientNow, setClientNow] = useState<Date | null>(null)
   const [professionals, setProfessionals] = useState<Professional[]>([])
   const [selectedProfId, setSelectedProfId] = useState<string>('')
   const [appointments, setAppointments] = useState<Appointment[]>([])
@@ -95,6 +87,13 @@ export default function AppointmentsPage() {
   const weekDates = getWeekDates(weekBase)
   const weekStart = isoDate(weekDates[0])
   const weekEnd = isoDate(weekDates[6])
+
+  useEffect(() => {
+    const tick = () => setClientNow(new Date())
+    tick()
+    const interval = setInterval(tick, 60_000)
+    return () => clearInterval(interval)
+  }, [])
 
   // Load professionals
   useEffect(() => {
@@ -262,7 +261,7 @@ export default function AppointmentsPage() {
           { status: 'completed', label: 'Concluído' },
           { status: 'cancelled', label: 'Cancelado' },
         ].map(({ status, label }) => (
-          <span key={status} className={`px-2 py-0.5 rounded-full border text-xs ${STATUS_COLORS[status]}`}>
+          <span key={status} className={`px-2 py-0.5 rounded-full border text-xs ${getAppointmentStatusMeta(status).badgeClass}`}>
             {label}
           </span>
         ))}
@@ -280,7 +279,7 @@ export default function AppointmentsPage() {
               <tr>
                 <th className="w-14 border-b border-r border-slate-200 py-2 text-slate-400 font-normal" />
                 {weekDates.map((d) => {
-                  const isToday = isoDate(d) === isoDate(new Date())
+                  const isToday = clientNow ? isoDate(d) === isoDate(clientNow) : false
                   return (
                     <th
                       key={d.toISOString()}
@@ -306,7 +305,7 @@ export default function AppointmentsPage() {
                   {weekDates.map((d) => {
                     const slotAppts = getApptForSlot(d, hour)
                     const isPast =
-                      new Date(`${isoDate(d)}T${hour}:00`) < new Date()
+                      clientNow ? new Date(`${isoDate(d)}T${hour}:00`) < clientNow : false
                     return (
                       <td
                         key={d.toISOString()}
@@ -319,7 +318,7 @@ export default function AppointmentsPage() {
                           <button
                             key={appt.id}
                             className={`w-full text-left px-1.5 py-1 rounded border text-xs leading-tight truncate ${
-                              STATUS_COLORS[appt.status] ?? 'bg-slate-100 text-slate-700 border-slate-200'
+                              getAppointmentStatusMeta(appt.status).badgeClass
                             }`}
                             onClick={(e) => { e.stopPropagation(); setDetailAppt(appt) }}
                             title={`${appt.patient_name} — ${appt.type_display}`}
@@ -384,7 +383,7 @@ export default function AppointmentsPage() {
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-slate-900 text-sm truncate">{appt.patient_name}</p>
                         <p className="text-xs text-slate-500 truncate">{appt.type_display}</p>
-                        <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs border ${STATUS_COLORS[appt.status] ?? ''}`}>
+                        <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs border ${getAppointmentStatusMeta(appt.status).badgeClass}`}>
                           {appt.status_display}
                         </span>
                       </div>
@@ -443,7 +442,7 @@ export default function AppointmentsPage() {
               </div>
               <div>
                 <p className="text-slate-500 text-xs mb-1">Status</p>
-                <span className={`inline-block px-2 py-0.5 rounded-full text-xs border ${STATUS_COLORS[detailAppt.status]}`}>
+                <span className={`inline-block px-2 py-0.5 rounded-full text-xs border ${getAppointmentStatusMeta(detailAppt.status).badgeClass}`}>
                   {detailAppt.status_display}
                 </span>
               </div>
@@ -494,7 +493,7 @@ export default function AppointmentsPage() {
                         key={s.value}
                         disabled={statusUpdating}
                         onClick={() => handleStatusChange(detailAppt, s.value)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors disabled:opacity-50 ${STATUS_COLORS[s.value]}`}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors disabled:opacity-50 ${getAppointmentStatusMeta(s.value).badgeClass}`}
                       >
                         {s.label}
                       </button>
