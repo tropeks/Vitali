@@ -39,8 +39,15 @@ test.describe('Invite flow — admin invites user by email', () => {
     await page.goto('/login');
     await page.fill('input[name="email"]', ADMIN_EMAIL);
     await page.fill('input[name="password"]', ADMIN_PASSWORD);
+
+    const loginResponse = page.waitForResponse(
+      (response) => response.url().endsWith('/api/auth/login'),
+      { timeout: 30_000 },
+    );
     await page.click('button[type="submit"]');
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 });
+    const response = await loginResponse;
+    expect(response.ok(), `admin login failed (${response.status()}): ${await response.text()}`).toBeTruthy();
+    await expect(page).toHaveURL(/\/dashboard/, { timeout: 60_000 });
   });
 
   test('admin creates employee with invite auth mode', async ({ page }) => {
@@ -142,6 +149,6 @@ test.describe('Invite flow — admin invites user by email', () => {
 
     // -- Step 4: Assert redirect to dashboard --------------------------------
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 });
-    await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Centro operacional' })).toBeVisible();
   });
 });

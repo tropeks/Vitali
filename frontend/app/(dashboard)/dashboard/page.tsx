@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { getAccessToken } from "@/lib/auth";
+import Link from "next/link";
 import { apiFetch, ApiError } from "@/lib/api";
 import OnboardingWidget from "@/components/OnboardingWidget";
 import WaitTimeCard from "@/components/dashboard/WaitTimeCard";
+import { AlertTriangle, ArrowRight, ClipboardCheck, Clock3 } from "lucide-react";
+import { buildDashboardActionQueue, type OperationalTone } from "@/lib/operational-ui";
 import {
   LineChart,
   Line,
@@ -89,6 +91,22 @@ const PERIOD_LABELS: Record<Period, string> = {
   month: "Mês",
 };
 
+const ACTION_TONE_CLASSES: Record<OperationalTone, string> = {
+  neutral: "border-slate-200 bg-white text-slate-700",
+  info: "border-blue-200 bg-blue-50 text-blue-800",
+  attention: "border-yellow-200 bg-yellow-50 text-yellow-800",
+  success: "border-green-200 bg-green-50 text-green-800",
+  critical: "border-red-200 bg-red-50 text-red-800",
+};
+
+const ACTION_VALUE_CLASSES: Record<OperationalTone, string> = {
+  neutral: "text-slate-700",
+  info: "text-blue-700",
+  attention: "text-yellow-800",
+  success: "text-green-700",
+  critical: "text-red-700",
+};
+
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 
 function KPICard({
@@ -103,10 +121,10 @@ function KPICard({
   color: string;
 }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
-      <p className="text-sm text-slate-500">{label}</p>
-      <p className={`text-3xl font-bold mt-1 ${color}`}>{value}</p>
-      {sub && <p className="text-xs text-slate-400 mt-1">{sub}</p>}
+    <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-sm">
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
+      <p className={`mt-1 text-2xl font-bold ${color}`}>{value}</p>
+      {sub && <p className="mt-1 text-xs text-slate-500">{sub}</p>}
     </div>
   );
 }
@@ -121,7 +139,7 @@ function Skeleton({ className }: { className?: string }) {
 
 function KPISkeleton() {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-3">
+    <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-sm space-y-3">
       <Skeleton className="h-4 w-32" />
       <Skeleton className="h-9 w-20" />
       <Skeleton className="h-3 w-40" />
@@ -132,9 +150,17 @@ function KPISkeleton() {
 function ChartSkeleton({ height = 240 }: { height?: number }) {
   return (
     <div
-      className="animate-pulse bg-slate-200 rounded-xl"
+      className="animate-pulse bg-slate-200 rounded-lg"
       style={{ height }}
     />
+  );
+}
+
+function ChartEmpty({ label }: { label: string }) {
+  return (
+    <div className="flex h-full min-h-[220px] items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 text-sm text-slate-500">
+      {label}
+    </div>
   );
 }
 
@@ -150,6 +176,7 @@ export default function DashboardPage() {
   const [overviewLoading, setOverviewLoading] = useState(true);
   const [chartsLoading, setChartsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [dateLabel, setDateLabel] = useState("Operação de hoje");
 
   const fetchOverview = useCallback(async (p: Period) => {
     // Migrated to apiFetch (T12): JWT header injected automatically;
@@ -172,23 +199,14 @@ export default function DashboardPage() {
     }
   }, []);
 
-  // TODO(sprint-19): migrate fetchCharts to apiFetch (T12 seed pattern — see fetchOverview above)
-  const fetchCharts = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    const headers = { Authorization: `Bearer ${token}` };
+  const fetchCharts = useCallback(async (showLoading = false) => {
+    if (showLoading) setChartsLoading(true);
     try {
-      const [dayRes, statusRes, monthRes, proRes] = await Promise.all([
-        fetch(`${ANALYTICS_BASE}/appointments-by-day/?days=30`, { headers }),
-        fetch(`${ANALYTICS_BASE}/appointments-by-status/`, { headers }),
-        fetch(`${ANALYTICS_BASE}/patients-by-month/?months=6`, { headers }),
-        fetch(`${ANALYTICS_BASE}/top-professionals/?limit=5`, { headers }),
-      ]);
       const [dayData, statusData, monthData, proData] = await Promise.all([
-        dayRes.ok ? dayRes.json() : [],
-        statusRes.ok ? statusRes.json() : [],
-        monthRes.ok ? monthRes.json() : [],
-        proRes.ok ? proRes.json() : [],
+        apiFetch<DayRow[]>(`${ANALYTICS_BASE}/appointments-by-day/?days=30`).catch(() => []),
+        apiFetch<StatusRow[]>(`${ANALYTICS_BASE}/appointments-by-status/`).catch(() => []),
+        apiFetch<MonthRow[]>(`${ANALYTICS_BASE}/patients-by-month/?months=6`).catch(() => []),
+        apiFetch<Professional[]>(`${ANALYTICS_BASE}/top-professionals/?limit=5`).catch(() => []),
       ]);
       setByDay(dayData);
       setByStatus(statusData);
@@ -202,8 +220,8 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    fetchCharts();
-    const interval = setInterval(fetchCharts, 60_000);
+    fetchCharts(true);
+    const interval = setInterval(() => fetchCharts(false), 60_000);
     return () => clearInterval(interval);
   }, [fetchCharts]);
 
@@ -211,27 +229,33 @@ export default function DashboardPage() {
     fetchOverview(period);
   }, [period, fetchOverview]);
 
+  useEffect(() => {
+    setDateLabel(
+      new Date().toLocaleDateString("pt-BR", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })
+    );
+  }, []);
+
   const fmtRevenue = (val: string | number | undefined) => {
     const n = parseFloat(String(val ?? 0));
     return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
   };
 
-  const dateLabel = new Date().toLocaleDateString("pt-BR", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+  const actionQueue = buildDashboardActionQueue(overview);
 
   if (!overviewLoading && !chartsLoading && error) {
     return (
       <div className="space-y-6">
         <OnboardingWidget />
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Centro operacional</h1>
           <p className="text-slate-500 text-sm mt-1">{dateLabel}</p>
         </div>
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-5">
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-5">
           {error}
         </div>
       </div>
@@ -239,14 +263,15 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <OnboardingWidget />
+    <div className="space-y-5">
 
       {/* ── Header ── */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-          <p className="text-slate-500 text-sm mt-1">{dateLabel}</p>
+          <h1 className="text-2xl font-bold text-slate-900">Centro operacional</h1>
+          <p className="text-sm text-slate-500 mt-1">
+            {dateLabel} · status clínico, agenda e pendências em uma visão
+          </p>
         </div>
 
         {/* Period toggle */}
@@ -265,6 +290,54 @@ export default function DashboardPage() {
             </button>
           ))}
         </div>
+      </div>
+
+      <OnboardingWidget />
+
+      {/* ── Operational Queue ── */}
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+        {overviewLoading
+          ? Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                <Skeleton className="h-4 w-28" />
+                <Skeleton className="mt-3 h-8 w-12" />
+                <Skeleton className="mt-2 h-3 w-40" />
+              </div>
+            ))
+          : actionQueue.map((item) => {
+              const Icon =
+                item.tone === "critical"
+                  ? AlertTriangle
+                  : item.id === "open-encounters"
+                    ? ClipboardCheck
+                    : Clock3;
+              return (
+                <Link
+                  key={item.id}
+                  href={item.href}
+                  className={`group rounded-lg border p-4 shadow-sm transition-colors hover:bg-white ${ACTION_TONE_CLASSES[item.tone]}`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Icon size={16} className="shrink-0" />
+                        <p className="truncate text-xs font-semibold uppercase tracking-wide">
+                          {item.label}
+                        </p>
+                      </div>
+                      <p className={`mt-2 text-3xl font-bold ${ACTION_VALUE_CLASSES[item.tone]}`}>
+                        {item.value}
+                      </p>
+                      <p className="mt-1 text-xs opacity-80">{item.detail}</p>
+                    </div>
+                    <span className="mt-1 inline-flex items-center gap-1 text-xs font-semibold">
+                      {item.actionLabel}
+                      <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" />
+                    </span>
+                  </div>
+                </Link>
+              );
+            })}
       </div>
 
       {/* ── KPI Cards ── */}
@@ -304,13 +377,15 @@ export default function DashboardPage() {
 
       {/* ── Charts Row 1: Line + Donut ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+        <div className="lg:col-span-2 bg-white rounded-lg border border-slate-200 p-5 shadow-sm">
           <h2 className="font-semibold text-slate-900 mb-4">
             Consultas por Dia{" "}
             <span className="text-xs text-slate-400 font-normal">(últimos 30 dias)</span>
           </h2>
           {chartsLoading ? (
             <ChartSkeleton height={240} />
+          ) : byDay.length === 0 ? (
+            <ChartEmpty label="Sem consultas no período para montar tendência." />
           ) : (
             <ResponsiveContainer width="100%" height={240}>
               <LineChart data={byDay} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
@@ -344,13 +419,15 @@ export default function DashboardPage() {
           )}
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+        <div className="bg-white rounded-lg border border-slate-200 p-5 shadow-sm">
           <h2 className="font-semibold text-slate-900 mb-4">
             Status das Consultas{" "}
             <span className="text-xs text-slate-400 font-normal">(mês atual)</span>
           </h2>
           {chartsLoading ? (
             <ChartSkeleton height={240} />
+          ) : byStatus.length === 0 ? (
+            <ChartEmpty label="Sem status de consulta para exibir." />
           ) : (
             <ResponsiveContainer width="100%" height={240}>
               <PieChart>
@@ -378,13 +455,15 @@ export default function DashboardPage() {
 
       {/* ── Charts Row 2: Bar + Table ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+        <div className="bg-white rounded-lg border border-slate-200 p-5 shadow-sm">
           <h2 className="font-semibold text-slate-900 mb-4">
             Novos Pacientes por Mês{" "}
             <span className="text-xs text-slate-400 font-normal">(últimos 6 meses)</span>
           </h2>
           {chartsLoading ? (
             <ChartSkeleton height={220} />
+          ) : byMonth.length === 0 ? (
+            <ChartEmpty label="Sem novos pacientes nos últimos meses." />
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={byMonth} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
@@ -398,7 +477,7 @@ export default function DashboardPage() {
           )}
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+        <div className="bg-white rounded-lg border border-slate-200 p-5 shadow-sm">
           <h2 className="font-semibold text-slate-900 mb-4">
             Top Profissionais{" "}
             <span className="text-xs text-slate-400 font-normal">(consultas concluídas este mês)</span>

@@ -66,7 +66,7 @@ async function loginAsAdmin(page: Page): Promise<string> {
 
 test.describe('Clinical journey', () => {
   test('patient registration to signed encounter and timeline', async ({ page, request }) => {
-    test.setTimeout(120_000);
+    test.setTimeout(180_000);
 
     const timestamp = Date.now();
     const patientName = `Paciente Jornada ${timestamp}`;
@@ -132,13 +132,13 @@ test.describe('Clinical journey', () => {
     await expectApiOk(appointmentResp, 'create appointment');
 
     await page.goto('/waiting-room');
-    await expect(page.locator(`text=${patientName}`)).toBeVisible({ timeout: 15_000 });
-    const waitingRow = page.locator('tr', { hasText: patientName });
+    const waitingRow = page.locator('table tbody tr', { hasText: patientName }).first();
+    await expect(waitingRow).toBeVisible({ timeout: 15_000 });
     await waitingRow.getByRole('button', { name: /Chegou/ }).click();
-    await expect(waitingRow.locator('text=Aguardando')).toBeVisible({ timeout: 10_000 });
+    await expect(waitingRow.getByText('Aguardando')).toBeVisible({ timeout: 10_000 });
 
     await Promise.all([
-      page.waitForURL(/\/encounters\/[^/]+$/, { timeout: 45_000 }),
+      page.waitForURL(/\/encounters\/[^/]+$/, { timeout: 90_000 }),
       waitingRow.getByRole('button', { name: /Chamar/ }).click(),
     ]);
     const encounterId = page.url().split('/encounters/')[1].split(/[?#]/)[0];

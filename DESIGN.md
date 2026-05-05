@@ -16,6 +16,16 @@
 3. **Status is sacred** — Clinical status (alergias, guia status, encounter status) always uses the semantic color system. Never reuse red for decoration.
 4. **Trust through consistency** — Same pattern for the same action everywhere. Buttons, modals, toasts — don't reinvent them per-page.
 
+### Enterprise/Tasy-grade UX contract
+
+The benchmark is Tasy/Rede D'Or-style hospital operations: integrated, dense, status-first, and fast to scan. Vitali should not feel like a generic SaaS dashboard with isolated modules.
+
+- **Operational first screen:** Dashboard pages must expose the immediate queue of work before secondary analytics: waiting patients, open encounters, schedule friction, billing blockers.
+- **Integrated patient context:** Patient detail is the clinical command center. Header surfaces identity, MRN, risk flags, active conditions, coverage, contact, and direct actions into agenda, encounters, and billing.
+- **Tables for comparison, cards for mobile:** Desktop record lists use compact tables. Mobile uses dedicated record cards, not squeezed desktop tables.
+- **No ambiguous loading:** Loading states use skeletons or explicit retryable errors. A page must never look indefinitely blank or stuck.
+- **Status text is mandatory:** Every semantic color has a visible Portuguese label. Icons and colors are supporting cues, never the only signal.
+
 ---
 
 ## 2. Color System
