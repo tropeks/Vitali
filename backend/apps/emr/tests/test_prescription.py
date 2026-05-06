@@ -109,3 +109,44 @@ class TestPrescriptionSignAPI(TenantTestCase):
 
         body = json.dumps(resp.data).lower()
         self.assertIn("assinada", body)
+
+    def test_prescription_create_infers_patient_and_prescriber_from_encounter(self):
+        """Creating an Rx from CPOE only needs encounter; patient/prescriber come from it."""
+        resp = self._client(self.medico_user).post(
+            "/api/v1/prescriptions/",
+            {"encounter": str(self.encounter.id)},
+            format="json",
+        )
+
+        self.assertEqual(resp.status_code, 201)
+        rx = Prescription.objects.get(id=resp.data["id"])
+        self.assertEqual(rx.patient_id, self.patient.id)
+        self.assertEqual(rx.prescriber_id, self.prescriber.id)
+
+    def test_add_item_to_draft_prescription_saves_prescription_link(self):
+        """CPOE item creation must persist the prescription FK from the request."""
+        drug = Drug.objects.create(
+            name="Dipirona 1g/mL",
+            generic_name="Dipirona sódica",
+            unit_of_measure="ampola",
+        )
+        rx = Prescription.objects.create(
+            encounter=self.encounter, patient=self.patient, prescriber=self.prescriber
+        )
+
+        resp = self._client(self.medico_user).post(
+            "/api/v1/prescription-items/",
+            {
+                "prescription": str(rx.id),
+                "drug": str(drug.id),
+                "quantity": "1",
+                "unit_of_measure": "ampola",
+                "dosage_instructions": "EV a cada 6h se dor ou febre",
+            },
+            format="json",
+        )
+
+        self.assertEqual(resp.status_code, 201)
+        item = PrescriptionItem.objects.get(id=resp.data["id"])
+        self.assertEqual(item.prescription_id, rx.id)
+        self.assertEqual(item.generic_name, "Dipirona sódica")
