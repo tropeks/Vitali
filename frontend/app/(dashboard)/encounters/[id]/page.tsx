@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type ElementType, type ReactNode } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -9,6 +9,17 @@ import { PrescriptionBuilder } from '@/components/prescriptions/PrescriptionBuil
 import { ScribeButton } from '@/components/emr/ScribeButton';
 import { getAccessToken } from '@/lib/auth';
 import Link from 'next/link';
+import {
+  AlertTriangle,
+  ArrowLeft,
+  ClipboardList,
+  FileText,
+  HeartPulse,
+  Pill,
+  Receipt,
+  ShieldAlert,
+  UserRound,
+} from 'lucide-react';
 
 interface VitalSigns {
   id: number;
@@ -64,10 +75,29 @@ interface Encounter {
 }
 
 const STATUS_STYLES: Record<string, string> = {
-  open: 'bg-yellow-100 text-yellow-800',
-  signed: 'bg-green-100 text-green-800',
-  cancelled: 'bg-gray-100 text-gray-500',
+  open: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+  signed: 'bg-green-100 text-green-800 border-green-200',
+  cancelled: 'bg-gray-100 text-gray-500 border-gray-200',
 };
+
+type EncounterTab = 'summary' | 'soap' | 'cpoe' | 'vitals' | 'documents' | 'billing';
+
+const ENCOUNTER_TABS: {
+  id: EncounterTab;
+  label: string;
+  description: string;
+  icon: ElementType;
+}[] = [
+  { id: 'summary', label: 'Resumo', description: 'Contexto do paciente', icon: ClipboardList },
+  { id: 'soap', label: 'Evolução SOAP', description: 'Registro clínico', icon: FileText },
+  { id: 'cpoe', label: 'CPOE', description: 'Prescrição e ordens', icon: Pill },
+  { id: 'vitals', label: 'Sinais vitais', description: 'Parâmetros clínicos', icon: HeartPulse },
+  { id: 'documents', label: 'Documentos', description: 'Atestados e laudos', icon: FileText },
+  { id: 'billing', label: 'Faturamento', description: 'Guia TISS', icon: Receipt },
+];
+
+const isEncounterTab = (value: string): value is EncounterTab =>
+  ENCOUNTER_TABS.some((tab) => tab.id === value);
 
 async function apiFetch(path: string) {
   const token = getAccessToken();
@@ -378,6 +408,7 @@ export default function EncounterDetailPage() {
   const [encounter, setEncounter] = useState<Encounter | null>(null);
   const [loading, setLoading] = useState(true);
   const [signing, setSigning] = useState(false);
+  const [activeTab, setActiveTab] = useState<EncounterTab>('summary');
 
   const load = useCallback(async () => {
     try {
@@ -388,6 +419,16 @@ export default function EncounterDetailPage() {
   }, [id, router]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    const hash = window.location.hash.replace('#', '');
+    if (isEncounterTab(hash)) setActiveTab(hash);
+  }, []);
+
+  const selectTab = (tab: EncounterTab) => {
+    setActiveTab(tab);
+    window.history.replaceState(null, '', `#${tab}`);
+  };
 
   const signEncounter = async () => {
     if (!confirm('Assinar esta consulta? Ela ficará somente leitura após assinatura.')) return;
@@ -405,137 +446,261 @@ export default function EncounterDetailPage() {
   const patient = encounter.patient_detail;
   const lifeThreateningAllergies = (patient.allergies ?? []).filter(a => a.severity === 'life_threatening');
   const isReadOnly = encounter.status !== 'open';
+  const vitalSigns = encounter.vital_signs;
 
-  return (
-    <div className="p-6 space-y-4 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <button onClick={() => router.push('/encounters')} className="text-gray-400 hover:text-gray-600 text-sm">
-              ← Consultas
-            </button>
-          </div>
-          <h1 className="text-xl font-bold text-gray-900">{patient.full_name}</h1>
-          <p className="text-sm text-gray-500">
-            {encounter.professional_name} {encounter.professional_specialty && `· ${encounter.professional_specialty}`} ·{' '}
-            {format(new Date(encounter.encounter_date), "dd 'de' MMMM 'de' yyyy 'às' HH:mm", { locale: ptBR })}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className={`px-3 py-1 rounded-full text-sm font-medium ${STATUS_STYLES[encounter.status]}`}>
-            {encounter.status_display}
-          </span>
-          {!isReadOnly && (
-            <button
-              onClick={signEncounter}
-              disabled={signing}
-              className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
-            >
-              {signing ? 'Assinando...' : 'Assinar Consulta'}
-            </button>
-          )}
-        </div>
-      </div>
+  const renderTabContent = (): ReactNode => {
+    switch (activeTab) {
+      case 'summary':
+        return (
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
+            <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                <ClipboardList size={16} className="text-blue-600" />
+                Sumário clínico
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Queixa</p>
+                  <p className="mt-1 text-sm font-medium text-slate-900">{encounter.chief_complaint || 'Não registrada'}</p>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Pressão arterial</p>
+                  <p className="mt-1 font-mono text-sm font-semibold text-slate-900">
+                    {vitalSigns?.blood_pressure_systolic && vitalSigns?.blood_pressure_diastolic
+                      ? `${vitalSigns.blood_pressure_systolic}/${vitalSigns.blood_pressure_diastolic}`
+                      : '—'}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">FC / SpO2</p>
+                  <p className="mt-1 font-mono text-sm font-semibold text-slate-900">
+                    {vitalSigns?.heart_rate ?? '—'} bpm · {vitalSigns?.oxygen_saturation ?? '—'}%
+                  </p>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">IMC</p>
+                  <p className="mt-1 font-mono text-sm font-semibold text-slate-900">{vitalSigns?.bmi ?? '—'}</p>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                <button
+                  onClick={() => selectTab('soap')}
+                  className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-left hover:bg-blue-100"
+                >
+                  <p className="text-sm font-semibold text-blue-900">Continuar evolução</p>
+                  <p className="mt-1 text-xs text-blue-700">Abrir SOAP e documentação clínica.</p>
+                </button>
+                <button
+                  onClick={() => selectTab('cpoe')}
+                  className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-left hover:bg-green-100"
+                >
+                  <p className="text-sm font-semibold text-green-900">Abrir CPOE</p>
+                  <p className="mt-1 text-xs text-green-700">Prescrever medicamentos e checar alertas.</p>
+                </button>
+                <button
+                  onClick={() => selectTab('billing')}
+                  className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-left hover:bg-slate-50"
+                >
+                  <p className="text-sm font-semibold text-slate-900">Gerar guia TISS</p>
+                  <p className="mt-1 text-xs text-slate-500">Capturar cobrança vinculada ao cuidado.</p>
+                </button>
+              </div>
+            </section>
 
-      {/* Life-threatening allergy alert */}
-      {lifeThreateningAllergies.length > 0 && (
-        <div className="bg-red-50 border border-red-300 rounded-xl p-4 flex items-start gap-3">
-          <span className="text-red-500 text-xl">⚠️</span>
-          <div>
-            <p className="font-semibold text-red-700 text-sm">Alergia de Risco de Vida</p>
-            <p className="text-red-600 text-sm">{lifeThreateningAllergies.map(a => a.substance).join(', ')}</p>
-          </div>
-        </div>
-      )}
-
-      {/* Main layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Left column */}
-        <div className="space-y-4">
-          {/* Patient card */}
-          <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3 shadow-sm">
-            <h3 className="text-sm font-semibold text-gray-700">Dados do Paciente</h3>
-            <div className="space-y-1.5 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-500">Prontuário</span>
-                <span className="font-mono font-medium text-gray-800">{patient.medical_record_number}</span>
+            <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                <UserRound size={16} className="text-blue-600" />
+                Identificação e riscos
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Nascimento</span>
-                <span className="text-gray-800">{format(new Date(patient.birth_date), 'dd/MM/yyyy')}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Sexo</span>
-                <span className="text-gray-800">{patient.gender_display}</span>
-              </div>
-              {(patient.allergies ?? []).length > 0 && (
-                <div className="pt-2 border-t border-gray-100">
-                  <p className="text-gray-500 mb-1.5">Alergias</p>
-                  <div className="flex flex-wrap gap-1">
-                    {(patient.allergies ?? []).map(a => (
+              <dl className="mt-4 space-y-2 text-sm">
+                <div className="flex justify-between gap-3">
+                  <dt className="text-slate-500">Prontuário</dt>
+                  <dd className="font-mono font-semibold text-slate-900">{patient.medical_record_number}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-slate-500">Nascimento</dt>
+                  <dd className="text-slate-900">{format(new Date(patient.birth_date), 'dd/MM/yyyy')}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-slate-500">Sexo</dt>
+                  <dd className="text-slate-900">{patient.gender_display}</dd>
+                </div>
+              </dl>
+              <div className="mt-4 border-t border-slate-100 pt-4">
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Alergias ativas</p>
+                {(patient.allergies ?? []).length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {(patient.allergies ?? []).map((allergy) => (
                       <span
-                        key={a.id}
-                        className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                          a.severity === 'life_threatening' ? 'bg-red-100 text-red-700' :
-                          a.severity === 'severe' ? 'bg-orange-100 text-orange-700' :
-                          a.severity === 'moderate' ? 'bg-yellow-100 text-yellow-700' :
-                          'bg-blue-100 text-blue-700'
+                        key={allergy.id}
+                        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                          allergy.severity === 'life_threatening'
+                            ? 'bg-red-100 text-red-700'
+                            : allergy.severity === 'severe'
+                              ? 'bg-orange-100 text-orange-700'
+                              : allergy.severity === 'moderate'
+                                ? 'bg-yellow-100 text-yellow-700'
+                                : 'bg-blue-100 text-blue-700'
                         }`}
                       >
-                        {a.substance}
+                        {allergy.substance}
                       </span>
                     ))}
                   </div>
-                </div>
+                ) : (
+                  <p className="mt-2 text-sm text-slate-500">Nenhuma alergia ativa registrada.</p>
+                )}
+              </div>
+            </section>
+          </div>
+        );
+      case 'soap':
+        return (
+          <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <SOAPEditor soapNote={encounter.soap_note} readOnly={isReadOnly} encounterId={id} />
+            {!isReadOnly && (
+              <div className="mt-4 border-t border-slate-100 pt-4">
+                <ScribeButton
+                  encounterId={id}
+                  soapNoteId={encounter.soap_note?.id ?? null}
+                  onApplied={load}
+                />
+              </div>
+            )}
+          </section>
+        );
+      case 'cpoe':
+        return (
+          <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-100 px-4 py-3">
+              <h2 className="text-base font-semibold text-slate-900">CPOE - Prescrição e ordens</h2>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Medicamentos, alertas de segurança e rastreabilidade da prescrição.
+              </p>
+            </div>
+            <div className="p-4">
+              <PrescriptionBuilder encounterId={id} readOnly={isReadOnly} />
+            </div>
+          </section>
+        );
+      case 'vitals':
+        return (
+          <section className="max-w-3xl rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <VitalSignsForm vs={encounter.vital_signs} encounterId={id} readOnly={isReadOnly} />
+          </section>
+        );
+      case 'documents':
+        return (
+          <section className="max-w-3xl rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <DocumentsPanel documents={encounter.documents} encounterId={id} readOnly={isReadOnly} onRefresh={load} />
+          </section>
+        );
+      case 'billing':
+        return (
+          <section className="max-w-3xl">
+            <FaturamentoCard encounterId={id} />
+          </section>
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="min-h-full bg-slate-100">
+      <div className="sticky top-0 z-20 border-b border-slate-200 bg-white shadow-sm">
+        <div className="px-4 py-3 lg:px-6">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0 space-y-2">
+              <button
+                onClick={() => router.push('/encounters')}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900"
+              >
+                <ArrowLeft size={14} />
+                Consultas
+              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <UserRound size={18} className="text-blue-600" />
+                <h1 className="truncate text-xl font-bold text-slate-950">{patient.full_name}</h1>
+                <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${STATUS_STYLES[encounter.status]}`}>
+                  {encounter.status_display}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
+                <span className="font-mono font-semibold text-slate-800">{patient.medical_record_number}</span>
+                <span>{patient.gender_display}</span>
+                <span>{format(new Date(patient.birth_date), 'dd/MM/yyyy')}</span>
+                <span>
+                  {encounter.professional_name}
+                  {encounter.professional_specialty ? ` · ${encounter.professional_specialty}` : ''}
+                </span>
+                <span>{format(new Date(encounter.encounter_date), "dd/MM/yyyy HH:mm", { locale: ptBR })}</span>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {lifeThreateningAllergies.length > 0 && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700">
+                  <ShieldAlert size={14} />
+                  Alergia crítica
+                </span>
+              )}
+              {!isReadOnly && (
+                <button
+                  onClick={signEncounter}
+                  disabled={signing}
+                  className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
+                >
+                  {signing ? 'Assinando...' : 'Assinar Consulta'}
+                </button>
               )}
             </div>
           </div>
 
-          {/* Vital signs */}
-          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-            <VitalSignsForm
-              vs={encounter.vital_signs}
-              encounterId={id}
-              readOnly={isReadOnly}
-            />
-          </div>
-
-          {/* Documents */}
-          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-            <DocumentsPanel
-              documents={encounter.documents}
-              encounterId={id}
-              readOnly={isReadOnly}
-              onRefresh={load}
-            />
-          </div>
-
-          {/* Faturamento */}
-          <FaturamentoCard encounterId={id} />
+          {lifeThreateningAllergies.length > 0 && (
+            <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+              <div>
+                <p className="font-semibold">Alergia de risco de vida</p>
+                <p>{lifeThreateningAllergies.map((allergy) => allergy.substance).join(', ')}</p>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Right column — SOAP + Prescriptions */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm space-y-4">
-            <SOAPEditor
-              soapNote={encounter.soap_note}
-              readOnly={isReadOnly}
-              encounterId={id}
-            />
-            {!isReadOnly && (
-              <ScribeButton
-                encounterId={id}
-                soapNoteId={encounter.soap_note?.id ?? null}
-                onApplied={load}
-              />
-            )}
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-            <PrescriptionBuilder encounterId={id} readOnly={isReadOnly} />
-          </div>
-        </div>
+        <nav
+          aria-label="Abas do atendimento"
+          className="flex gap-1 overflow-x-auto border-t border-slate-200 px-3 py-2 lg:px-6"
+        >
+          {ENCOUNTER_TABS.map((tab) => {
+            const Icon = tab.icon;
+            const selected = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                onClick={() => selectTab(tab.id)}
+                className={`flex min-w-fit items-center gap-2 rounded-lg border px-3 py-2 text-left transition ${
+                  selected
+                    ? 'border-blue-300 bg-blue-50 text-blue-800'
+                    : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                <Icon size={15} />
+                <span>
+                  <span className="block text-sm font-semibold leading-tight">{tab.label}</span>
+                  <span className="hidden text-xs leading-tight text-slate-500 md:block">{tab.description}</span>
+                </span>
+              </button>
+            );
+          })}
+        </nav>
       </div>
+
+      <main className="px-4 py-4 lg:px-6">
+        {renderTabContent()}
+      </main>
     </div>
   );
 }

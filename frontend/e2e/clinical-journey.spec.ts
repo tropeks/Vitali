@@ -145,11 +145,13 @@ test.describe('Clinical journey', () => {
     expect(encounterId).toBeTruthy();
     await expect(page.getByRole('heading', { name: patientName })).toBeVisible();
 
+    await page.getByRole('tab', { name: /Sinais vitais/ }).click();
     await page.getByTestId('vitals-weight_kg').fill('70');
     await page.getByTestId('vitals-height_cm').fill('168');
     await page.getByTestId('vitals-heart_rate').fill('76');
     await page.getByRole('button', { name: 'Salvar' }).first().click();
 
+    await page.getByRole('tab', { name: /Evolução SOAP/ }).click();
     await page.getByTestId('soap-subjective').fill('Paciente relata dor abdominal em cólica há dois dias.');
     await page.getByTestId('soap-objective').fill('Bom estado geral, hidratada, abdome doloroso à palpação profunda.');
     await page.getByTestId('soap-assessment').fill('Quadro compatível com gastroenterite aguda sem sinais de alarme.');

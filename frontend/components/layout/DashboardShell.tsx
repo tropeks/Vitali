@@ -91,6 +91,7 @@ export default function DashboardShell({ user, children }: Props) {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const clinicalWorkspace = /^\/encounters\/[^/]+$/.test(pathname ?? "");
 
   const activeModules = useActiveModules();
   // null = still loading; treat as all-visible (fail-open, no layout shift)
@@ -123,7 +124,7 @@ export default function DashboardShell({ user, children }: Props) {
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       {/* Sidebar overlay (mobile) */}
-      {sidebarOpen && (
+      {sidebarOpen && !clinicalWorkspace && (
         <div
           className="fixed inset-0 z-20 bg-black/50 lg:hidden"
           onClick={() => setSidebarOpen(false)}
@@ -131,125 +132,134 @@ export default function DashboardShell({ user, children }: Props) {
       )}
 
       {/* Sidebar */}
-      <aside
-        className={`fixed inset-y-0 left-0 z-30 w-64 bg-slate-900 text-white flex flex-col transition-transform lg:translate-x-0 lg:static lg:z-auto ${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
-      >
-        {/* Logo */}
-        <div className="flex items-center gap-3 px-6 py-5 border-b border-white/10">
-          <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shrink-0">
-            <span className="font-bold text-sm">V</span>
-          </div>
-          <span className="font-bold text-lg tracking-tight">Vitali</span>
-          <button
-            className="ml-auto lg:hidden text-slate-400 hover:text-white"
-            onClick={() => setSidebarOpen(false)}
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        {/* Navigation */}
-        <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-          {visibleItems.map((item) => {
-            const Icon = item.icon;
-            const active =
-              pathname === item.href || pathname.startsWith(item.href + "/");
-            const hasChildren = item.children && item.children.length > 0;
-
-            const linkEl = (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setSidebarOpen(false)}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                  active
-                    ? "bg-blue-600 text-white font-medium"
-                    : "text-slate-400 hover:text-white hover:bg-white/5"
-                }`}
-              >
-                <Icon size={18} />
-                <span className="flex-1">{item.label}</span>
-                {hasChildren && (
-                  <ChevronRight
-                    size={14}
-                    className={`transition-transform ${active ? "rotate-90" : ""}`}
-                  />
-                )}
-              </Link>
-            );
-
-            if (!hasChildren) return linkEl;
-
-            return (
-              <div key={item.href}>
-                {linkEl}
-                {active && (
-                  <div className="ml-7 mt-0.5 space-y-0.5">
-                    {item.children!.map((child) => {
-                      const childActive =
-                        pathname === child.href ||
-                        pathname.startsWith(child.href + "/");
-                      return (
-                        <Link
-                          key={child.href}
-                          href={child.href}
-                          onClick={() => setSidebarOpen(false)}
-                          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors ${
-                            childActive
-                              ? "bg-blue-500/30 text-white font-medium"
-                              : "text-slate-400 hover:text-white hover:bg-white/5"
-                          }`}
-                        >
-                          {child.label}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </nav>
-
-        {/* User footer */}
-        <div className="px-4 py-4 border-t border-white/10">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-xs font-bold shrink-0">
-              {initials}
+      {!clinicalWorkspace && (
+        <aside
+          className={`fixed inset-y-0 left-0 z-30 w-64 bg-slate-900 text-white flex flex-col transition-transform lg:translate-x-0 lg:static lg:z-auto ${
+            sidebarOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
+        >
+          {/* Logo */}
+          <div className="flex items-center gap-3 px-6 py-5 border-b border-white/10">
+            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shrink-0">
+              <span className="font-bold text-sm">V</span>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-white truncate">{user.full_name}</p>
-              <p className="text-xs text-slate-400 capitalize">{user.role_name ?? "—"}</p>
-            </div>
+            <span className="font-bold text-lg tracking-tight">Vitali</span>
             <button
-              onClick={handleLogout}
-              className="text-slate-400 hover:text-red-400 transition-colors"
-              title="Sair"
+              className="ml-auto lg:hidden text-slate-400 hover:text-white"
+              onClick={() => setSidebarOpen(false)}
             >
-              <LogOut size={16} />
+              <X size={18} />
             </button>
           </div>
-        </div>
-      </aside>
+
+          {/* Navigation */}
+          <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+            {visibleItems.map((item) => {
+              const Icon = item.icon;
+              const active =
+                pathname === item.href || pathname.startsWith(item.href + "/");
+              const hasChildren = item.children && item.children.length > 0;
+
+              const linkEl = (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setSidebarOpen(false)}
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                    active
+                      ? "bg-blue-600 text-white font-medium"
+                      : "text-slate-400 hover:text-white hover:bg-white/5"
+                  }`}
+                >
+                  <Icon size={18} />
+                  <span className="flex-1">{item.label}</span>
+                  {hasChildren && (
+                    <ChevronRight
+                      size={14}
+                      className={`transition-transform ${active ? "rotate-90" : ""}`}
+                    />
+                  )}
+                </Link>
+              );
+
+              if (!hasChildren) return linkEl;
+
+              return (
+                <div key={item.href}>
+                  {linkEl}
+                  {active && (
+                    <div className="ml-7 mt-0.5 space-y-0.5">
+                      {item.children!.map((child) => {
+                        const childActive =
+                          pathname === child.href ||
+                          pathname.startsWith(child.href + "/");
+                        return (
+                          <Link
+                            key={child.href}
+                            href={child.href}
+                            onClick={() => setSidebarOpen(false)}
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors ${
+                              childActive
+                                ? "bg-blue-500/30 text-white font-medium"
+                                : "text-slate-400 hover:text-white hover:bg-white/5"
+                            }`}
+                          >
+                            {child.label}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </nav>
+
+          {/* User footer */}
+          <div className="px-4 py-4 border-t border-white/10">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-xs font-bold shrink-0">
+                {initials}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-white truncate">{user.full_name}</p>
+                <p className="text-xs text-slate-400 capitalize">{user.role_name ?? "—"}</p>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="text-slate-400 hover:text-red-400 transition-colors"
+                title="Sair"
+              >
+                <LogOut size={16} />
+              </button>
+            </div>
+          </div>
+        </aside>
+      )}
 
       {/* Main area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Topbar */}
         <header className="h-14 bg-white border-b border-slate-200 flex items-center px-4 gap-4 shrink-0">
-          <button
-            className="lg:hidden text-slate-500 hover:text-slate-900"
-            onClick={() => setSidebarOpen(true)}
-          >
-            <Menu size={20} />
-          </button>
+          {!clinicalWorkspace && (
+            <button
+              className="lg:hidden text-slate-500 hover:text-slate-900"
+              onClick={() => setSidebarOpen(true)}
+            >
+              <Menu size={20} />
+            </button>
+          )}
 
           {/* Tenant name placeholder */}
-          <div className="flex-1">
+          <div className="flex flex-1 items-center gap-3 min-w-0">
             <span className="text-sm font-medium text-slate-700">
               Vitali Health
             </span>
+            {clinicalWorkspace && (
+              <span className="hidden rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 sm:inline-flex">
+                Atendimento
+              </span>
+            )}
           </div>
 
           {/* Notifications */}
@@ -321,7 +331,7 @@ export default function DashboardShell({ user, children }: Props) {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        <main className={`flex-1 overflow-y-auto ${clinicalWorkspace ? "p-0" : "p-6"}`}>{children}</main>
       </div>
     </div>
   );
