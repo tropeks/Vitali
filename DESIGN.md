@@ -22,6 +22,7 @@ The benchmark is Tasy/Rede D'Or-style hospital operations: integrated, dense, st
 
 - **Operational first screen:** Dashboard pages must expose the immediate queue of work before secondary analytics: waiting patients, open encounters, schedule friction, billing blockers.
 - **Integrated patient context:** Patient detail is the clinical command center. Header surfaces identity, MRN, risk flags, active conditions, coverage, contact, and direct actions into agenda, encounters, and billing.
+- **Tabbed clinical workspace:** After entering an encounter, the user stays inside one patient workspace with a persistent patient bar and tabs for summary, SOAP, CPOE, vital signs, documents, and billing. Clinical workspaces do not show the global left sidebar; CPOE must be a tab-level work surface, not a side-menu flow.
 - **Tables for comparison, cards for mobile:** Desktop record lists use compact tables. Mobile uses dedicated record cards, not squeezed desktop tables.
 - **No ambiguous loading:** Loading states use skeletons or explicit retryable errors. A page must never look indefinitely blank or stuck.
 - **Status text is mandatory:** Every semantic color has a visible Portuguese label. Icons and colors are supporting cues, never the only signal.
