@@ -173,6 +173,38 @@ class BillingTestCase(TenantTestCase):
         n2 = int(r2.json()["guide_number"][6:])
         self.assertEqual(n2, n1 + 1)
 
+    def test_guides_can_filter_by_patient_for_command_center(self):
+        """Patient command center can request only the selected patient's guides."""
+        other_patient = Patient.objects.create(
+            full_name="Outro Paciente",
+            cpf="111.111.111-11",
+            birth_date=datetime.date(1991, 2, 2),
+            gender="M",
+        )
+        other_encounter = Encounter.objects.create(
+            patient=other_patient,
+            professional=self.professional,
+        )
+        guide_resp = self._create_guide()
+        self.assertEqual(guide_resp.status_code, 201)
+        other_guide = TISSGuide.objects.create(
+            guide_type="consultation",
+            encounter=other_encounter,
+            patient=other_patient,
+            provider=self.provider,
+            competency="2026-03",
+        )
+
+        client = self._auth(self.fat_token)
+        resp = client.get(f"/api/v1/billing/guides/?patient={self.patient.id}")
+
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        items = body["results"] if isinstance(body, dict) else body
+        ids = {item["id"] for item in items}
+        self.assertIn(guide_resp.json()["id"], ids)
+        self.assertNotIn(str(other_guide.id), ids)
+
     # ── Guide Status ──────────────────────────────────────────────────────────
 
     def test_guide_status_patch_ignored(self):
