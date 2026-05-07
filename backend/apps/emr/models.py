@@ -2,14 +2,25 @@ import uuid
 from decimal import Decimal
 
 from django.core.validators import MinValueValidator
-from django.db import models
+from django.db import connection, models, transaction
 from django.utils import timezone
 from encrypted_model_fields.fields import EncryptedCharField
+
+
+def lock_mrn_generation(year):
+    """Serialize MRN generation per tenant/year on PostgreSQL."""
+    if connection.vendor != "postgresql":
+        return
+    schema = getattr(connection, "schema_name", "public")
+    lock_name = f"emr.patient.mrn.{schema}.{year}"
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", [lock_name])
 
 
 def generate_mrn():
     """Auto-generate medical record number: PAC-YYYY-NNNNN"""
     year = timezone.now().year
+    lock_mrn_generation(year)
     last = (
         Patient.objects.filter(medical_record_number__startswith=f"PAC-{year}-")
         .order_by("-medical_record_number")
@@ -81,7 +92,10 @@ class Patient(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.medical_record_number:
-            self.medical_record_number = generate_mrn()
+            with transaction.atomic():
+                self.medical_record_number = generate_mrn()
+                super().save(*args, **kwargs)
+            return
         super().save(*args, **kwargs)
 
     def __str__(self):
