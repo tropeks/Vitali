@@ -49,6 +49,7 @@ const NAV_ITEMS: NavItem[] = [
     icon: Pill,
     module: "pharmacy",
     children: [
+      { label: "Cockpit", href: "/farmacia" },
       { label: "Dispensar", href: "/farmacia/dispense" },
       { label: "Estoque", href: "/farmacia/stock" },
       { label: "Catálogo", href: "/farmacia/catalog" },

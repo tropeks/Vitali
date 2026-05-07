@@ -283,7 +283,7 @@ class DispensationViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         qs = Dispensation.objects.select_related(
             "prescription", "prescription_item", "patient", "dispensed_by"
-        ).prefetch_related("lots__stock_item")
+        ).prefetch_related("lots__stock_item__drug", "lots__stock_item__material")
         patient_id = self.request.query_params.get("patient")
         if patient_id:
             qs = qs.filter(patient_id=patient_id)

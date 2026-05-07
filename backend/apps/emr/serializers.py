@@ -407,6 +407,8 @@ class PrescriptionSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     is_signed = serializers.BooleanField(read_only=True)
     prescriber_name = serializers.CharField(source="prescriber.user.full_name", read_only=True)
+    patient_name = serializers.CharField(source="patient.full_name", read_only=True)
+    patient_mrn = serializers.CharField(source="patient.medical_record_number", read_only=True)
 
     class Meta:
         model = Prescription
@@ -414,6 +416,8 @@ class PrescriptionSerializer(serializers.ModelSerializer):
             "id",
             "encounter",
             "patient",
+            "patient_name",
+            "patient_mrn",
             "prescriber",
             "prescriber_name",
             "status",
