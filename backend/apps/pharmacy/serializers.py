@@ -150,9 +150,12 @@ class StockMovementSerializer(serializers.ModelSerializer):
 
 
 class DispensationLotSerializer(serializers.ModelSerializer):
+    lot_number = serializers.CharField(source="stock_item.lot_number", read_only=True)
+    expiry_date = serializers.DateField(source="stock_item.expiry_date", read_only=True)
+
     class Meta:
         model = DispensationLot
-        fields = ["id", "stock_item", "quantity"]
+        fields = ["id", "stock_item", "lot_number", "expiry_date", "quantity"]
         read_only_fields = ["id"]
 
 

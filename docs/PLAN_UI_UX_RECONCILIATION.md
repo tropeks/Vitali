@@ -65,13 +65,20 @@ Target:
 
 ### R4 - Pharmacy Cockpit
 
-Status: planned
+Status: started
 
 Target:
 
 - Dispensation becomes a pharmacy queue/workbench, not a narrow wizard.
 - Stock, lot selection, expiry, controlled-substance status, and prescription context are visible together.
 - Pharmacy root gets an operational landing surface instead of redirect-only behavior.
+
+First slice:
+
+- Reconcile `/farmacia` into a cockpit with prescription queue, controlled-substance workload, stock alerts, and recent dispensation audit context.
+- Reconcile `/farmacia/dispense` into a dispensation workbench with patient search/prefill, signed/partially-dispensed prescription queue, FEFO lots, Portaria 344 blockers, and explicit readiness.
+- Expose patient name/MRN in prescription API responses so pharmacy workflows do not depend on raw patient UUIDs.
+- Add focused frontend tests for cockpit metrics, queue links, FEFO context, and controlled-substance blockers.
 
 ### R5 - Admin, AI, WhatsApp, HR
 
@@ -97,3 +104,5 @@ Target:
 
 - 2026-05-07: Started R1 Billing/TISS Workbench on branch `codex/ui-reconciliation-billing-workbench`.
 - 2026-05-07: Reconciled `/billing/guides/new` into a TISS workbench; visual evidence captured at `output/playwright/ui-reconciliation/billing-tiss-workbench-desktop.png` and `output/playwright/ui-reconciliation/billing-tiss-workbench-mobile.png`.
+- 2026-05-07: Started R4 Pharmacy Cockpit on branch `codex/ui-reconciliation-pharmacy-cockpit`.
+- 2026-05-07: Reconciled `/farmacia` and `/farmacia/dispense`; visual evidence captured at `output/playwright/ui-reconciliation/pharmacy-cockpit-desktop.png`, `output/playwright/ui-reconciliation/pharmacy-cockpit-mobile.png`, `output/playwright/ui-reconciliation/pharmacy-dispense-desktop.png`, and `output/playwright/ui-reconciliation/pharmacy-dispense-mobile.png`.

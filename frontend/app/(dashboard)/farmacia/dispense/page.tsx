@@ -1,6 +1,17 @@
 'use client'
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ClipboardList,
+  PackageSearch,
+  Pill,
+  RotateCcw,
+  Search,
+  ShieldAlert,
+} from 'lucide-react'
 import { getAccessToken } from '@/lib/auth'
 
 function extractError(err: any): string {
@@ -12,7 +23,15 @@ function extractError(err: any): string {
   return 'Erro ao dispensar. Tente novamente.'
 }
 
-type Patient = { id: string; full_name: string; birth_date: string }
+type ApiList<T> = T[] | { results?: T[] }
+
+type Patient = {
+  id: string
+  full_name: string
+  medical_record_number?: string
+  birth_date?: string
+}
+
 type RxItem = {
   id: string
   drug: string
@@ -23,34 +42,91 @@ type RxItem = {
   unit_of_measure: string
   dosage_instructions: string
 }
+
 type Prescription = {
   id: string
+  patient?: string
+  patient_name?: string
+  patient_mrn?: string
   prescriber_name: string
   status: string
+  status_display?: string
   is_signed: boolean
   created_at: string
   items: RxItem[]
 }
-type Lot = { id: string; lot_number: string; expiry_date: string | null; quantity: string }
+
+type Lot = {
+  id: string
+  lot_number: string
+  expiry_date: string | null
+  quantity: string
+  location?: string
+  is_expired?: boolean
+  is_low_stock?: boolean
+}
+
+type AvailabilityResult = {
+  available_lots?: Lot[]
+  total?: number
+}
+
 type DispenseResult = {
   id: string
   total_quantity: string
-  lots: { stock_item: string; quantity: string }[]
+  lots: {
+    stock_item: string
+    lot_number?: string
+    expiry_date?: string | null
+    quantity: string
+  }[]
 }
 
-type Step = 'search' | 'items' | 'confirm' | 'success'
+function listFromResponse<T>(data: ApiList<T>): T[] {
+  return Array.isArray(data) ? data : data.results ?? []
+}
 
-const STEP_LABELS: Record<string, string> = {
-  search: 'Buscar paciente',
-  items: 'Itens da receita',
-  confirm: 'Confirmar',
+async function apiGet<T>(path: string): Promise<T> {
+  const token = getAccessToken()
+  if (!token) throw new Error('Sessão expirada')
+  const response = await fetch(`/api/v1${path}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!response.ok) throw new Error(`Falha ${response.status}`)
+  return response.json()
+}
+
+function parseQty(value: string | number | null | undefined) {
+  const parsed = Number.parseFloat(String(value ?? 0))
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function formatQty(value: string | number | null | undefined) {
+  return parseQty(value).toLocaleString('pt-BR', { maximumFractionDigits: 3 })
+}
+
+function formatDate(value?: string | null) {
+  return value ? value.slice(0, 10) : '-'
+}
+
+function patientMrn(patient: Patient | null, rx?: Prescription | null) {
+  return patient?.medical_record_number ?? rx?.patient_mrn ?? 'MRN pendente'
+}
+
+function itemStatus(item: RxItem, selectedItem: RxItem | null) {
+  if (selectedItem?.id === item.id) return 'Em fechamento'
+  if (item.drug_is_controlled) return 'Controlado'
+  return 'Liberado'
 }
 
 export default function DispensePage() {
-  const [step, setStep] = useState<Step>('search')
+  const searchParams = useSearchParams()
+  const prefillPatientId = searchParams.get('patient')
+
   const [patientQuery, setPatientQuery] = useState('')
   const [patients, setPatients] = useState<Patient[]>([])
   const [loadingPatients, setLoadingPatients] = useState(false)
+  const [loadingPrefill, setLoadingPrefill] = useState(false)
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
   const [loadingRx, setLoadingRx] = useState(false)
@@ -65,18 +141,22 @@ export default function DispensePage() {
   const [result, setResult] = useState<DispenseResult | null>(null)
 
   const searchPatientsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const prefillLoadedRef = useRef(false)
 
   const searchPatientsNow = useCallback(async (q: string) => {
-    if (!q.trim()) { setPatients([]); return }
+    if (!q.trim()) {
+      setPatients([])
+      return
+    }
     setLoadingPatients(true)
     try {
-      const token = getAccessToken()
-      const res = await fetch(`/api/v1/patients/?search=${encodeURIComponent(q)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      const data = await res.json()
-      setPatients(data.results ?? data ?? [])
-    } finally { setLoadingPatients(false) }
+      const data = await apiGet<ApiList<Patient>>(`/patients/?search=${encodeURIComponent(q)}`)
+      setPatients(listFromResponse(data))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível buscar pacientes.')
+    } finally {
+      setLoadingPatients(false)
+    }
   }, [])
 
   const searchPatients = useCallback((q: string) => {
@@ -84,84 +164,89 @@ export default function DispensePage() {
     searchPatientsTimerRef.current = setTimeout(() => searchPatientsNow(q), 300)
   }, [searchPatientsNow])
 
-  const selectPatient = async (patient: Patient) => {
+  const loadPrescriptions = useCallback(async (patientId: string) => {
+    setLoadingRx(true)
+    try {
+      const [signedData, partialData] = await Promise.all([
+        apiGet<ApiList<Prescription>>(`/prescriptions/?patient=${patientId}&status=signed`),
+        apiGet<ApiList<Prescription>>(`/prescriptions/?patient=${patientId}&status=partially_dispensed`),
+      ])
+      const merged = [...listFromResponse(signedData), ...listFromResponse(partialData)]
+      setPrescriptions(merged)
+      return merged
+    } catch (err) {
+      setPrescriptions([])
+      setError(err instanceof Error ? err.message : 'Não foi possível carregar prescrições.')
+      return []
+    } finally {
+      setLoadingRx(false)
+    }
+  }, [])
+
+  const selectPatient = useCallback(async (patient: Patient) => {
     setSelectedPatient(patient)
     setPatients([])
     setPatientQuery(patient.full_name)
-    setLoadingRx(true)
-    try {
-      const token = getAccessToken()
-      const res = await fetch(`/api/v1/prescriptions/?patient=${patient.id}&status=signed`, {
-        headers: { Authorization: `Bearer ${token}` },
+    setSelectedRx(null)
+    setSelectedItem(null)
+    setQuantity('')
+    setNotes('')
+    setLots([])
+    setResult(null)
+    setError('')
+    await loadPrescriptions(patient.id)
+  }, [loadPrescriptions])
+
+  useEffect(() => {
+    if (!prefillPatientId || prefillLoadedRef.current) return
+    prefillLoadedRef.current = true
+    let active = true
+    setLoadingPrefill(true)
+    apiGet<Patient>(`/patients/${prefillPatientId}/`)
+      .then(async (patient) => {
+        if (!active) return
+        await selectPatient(patient)
       })
-      const data = await res.json()
-      setPrescriptions(data.results ?? data ?? [])
-      setStep('items')
-    } finally { setLoadingRx(false) }
-  }
+      .catch((err) => {
+        if (active) setError(err instanceof Error ? err.message : 'Não foi possível abrir o paciente informado.')
+      })
+      .finally(() => {
+        if (active) setLoadingPrefill(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [prefillPatientId, selectPatient])
+
+  const loadLots = useCallback(async (drugId: string) => {
+    if (!drugId) {
+      setLots([])
+      return
+    }
+    setLoadingLots(true)
+    try {
+      const data = await apiGet<AvailabilityResult>(`/pharmacy/stock/availability/?drug=${drugId}`)
+      setLots(data.available_lots ?? [])
+    } catch (err) {
+      setLots([])
+      setError(err instanceof Error ? err.message : 'Não foi possível verificar estoque FEFO.')
+    } finally {
+      setLoadingLots(false)
+    }
+  }, [])
 
   const selectItem = (rx: Prescription, item: RxItem) => {
     setSelectedRx(rx)
     setSelectedItem(item)
-    setQuantity('')
+    setQuantity(item.quantity)
     setNotes('')
     setLots([])
     setError('')
-    setStep('confirm')
-  }
-
-  const fetchLotsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const fetchLotsNow = useCallback(async (drugId: string, qty: string) => {
-    if (!drugId || !qty || parseFloat(qty) <= 0) { setLots([]); return }
-    setLoadingLots(true)
-    try {
-      const token = getAccessToken()
-      const res = await fetch(`/api/v1/pharmacy/stock/availability/?drug=${drugId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      const data = await res.json()
-      setLots(data.available_lots ?? [])
-    } finally { setLoadingLots(false) }
-  }, [])
-
-  const fetchLots = useCallback((drugId: string, qty: string) => {
-    if (fetchLotsTimerRef.current) clearTimeout(fetchLotsTimerRef.current)
-    fetchLotsTimerRef.current = setTimeout(() => fetchLotsNow(drugId, qty), 400)
-  }, [fetchLotsNow])
-
-  useEffect(() => {
-    if (selectedItem && quantity) fetchLots(selectedItem.drug, quantity)
-  }, [quantity, selectedItem, fetchLots])
-
-  const handleDispense = async () => {
-    if (!selectedItem) return
-    setSaving(true)
-    setError('')
-    try {
-      const token = getAccessToken()
-      if (!token) { setError('Sessão expirada'); setSaving(false); return }
-      const res = await fetch('/api/v1/pharmacy/dispense/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          prescription_item_id: selectedItem.id,
-          quantity: parseFloat(quantity),
-          notes,
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(extractError(data))
-        return
-      }
-      setResult(data)
-      setStep('success')
-    } finally { setSaving(false) }
+    setResult(null)
+    loadLots(item.drug)
   }
 
   const reset = () => {
-    setStep('search')
     setPatientQuery('')
     setPatients([])
     setSelectedPatient(null)
@@ -175,275 +260,445 @@ export default function DispensePage() {
     setResult(null)
   }
 
+  const requestedQty = parseQty(quantity)
+  const prescribedQty = parseQty(selectedItem?.quantity)
+  const availableQty = lots.reduce((sum, lot) => sum + parseQty(lot.quantity), 0)
+  const totalItems = prescriptions.reduce((sum, rx) => sum + rx.items.length, 0)
+  const controlledItems = prescriptions.reduce(
+    (sum, rx) => sum + rx.items.filter((item) => item.drug_is_controlled).length,
+    0,
+  )
+  const selectedControlled = Boolean(selectedItem?.drug_is_controlled)
+
+  const blockers = useMemo(() => {
+    const current: string[] = []
+    if (!selectedPatient) current.push('Selecionar paciente')
+    if (!selectedItem) current.push('Selecionar item da prescrição')
+    if (!quantity || requestedQty <= 0) current.push('Informar quantidade maior que zero')
+    if (selectedItem && requestedQty > prescribedQty) current.push('Quantidade acima do prescrito')
+    if (selectedItem && !loadingLots && requestedQty > 0 && availableQty < requestedQty) {
+      current.push('Estoque FEFO insuficiente')
+    }
+    if (selectedControlled && !notes.trim()) current.push('Registrar observação Portaria 344')
+    return current
+  }, [
+    availableQty,
+    loadingLots,
+    notes,
+    prescribedQty,
+    quantity,
+    requestedQty,
+    selectedControlled,
+    selectedItem,
+    selectedPatient,
+  ])
+
+  const ready = blockers.length === 0
+
+  const handleDispense = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!selectedItem) return
+    if (blockers.length > 0) {
+      setError(`Pendências antes de dispensar: ${blockers.join(', ')}.`)
+      return
+    }
+
+    const token = getAccessToken()
+    if (!token) {
+      setError('Sessão expirada')
+      return
+    }
+
+    setSaving(true)
+    setError('')
+    try {
+      const response = await fetch('/api/v1/pharmacy/dispense/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          prescription_item_id: selectedItem.id,
+          quantity: requestedQty,
+          notes,
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        setError(extractError(data))
+        return
+      }
+      setResult(data)
+      if (selectedPatient) await loadPrescriptions(selectedPatient.id)
+      await loadLots(selectedItem.drug)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
-    <div className="max-w-3xl space-y-5">
-      {/* Step indicator */}
-      <div className="flex items-center gap-2 text-xs text-slate-400">
-        {(['search', 'items', 'confirm'] as const).map((s, i) => {
-          const done =
-            (s === 'search' && ['items', 'confirm', 'success'].includes(step)) ||
-            (s === 'items' && ['confirm', 'success'].includes(step))
-          const active = step === s || (step === 'success' && s === 'confirm')
-          return (
-            <span key={s} className="flex items-center gap-2">
-              {i > 0 && <span className="text-slate-200">›</span>}
-              <span className={
-                done ? 'text-green-600 font-medium' :
-                active ? 'text-blue-600 font-medium' :
-                'text-slate-400'
-              }>
-                {i + 1}. {STEP_LABELS[s]}
-              </span>
-            </span>
-          )
-        })}
-      </div>
-
-      {/* Step 1: Search patient */}
-      {(step === 'search' || step === 'items') && (
-        <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-3">
-          <label className="block text-sm font-medium text-slate-700">Paciente</label>
-          <input
-            type="text"
-            placeholder="Buscar por nome do paciente..."
-            value={patientQuery}
-            onChange={e => { setPatientQuery(e.target.value); searchPatients(e.target.value) }}
-            className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          {loadingPatients && <p className="text-sm text-slate-400">Buscando...</p>}
-          {patients.length > 0 && (
-            <div className="border border-slate-200 rounded-lg divide-y divide-slate-100 overflow-hidden">
-              {patients.map(p => (
-                <button
-                  key={p.id}
-                  onClick={() => selectPatient(p)}
-                  className="w-full text-left px-4 py-2.5 hover:bg-slate-50 transition-colors"
-                >
-                  <span className="text-sm font-medium text-slate-900">{p.full_name}</span>
-                  <span className="text-xs text-slate-400 ml-2">{p.birth_date}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Step 2: Prescription items */}
-      {step === 'items' && (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-          {loadingRx && (
-            <p className="px-6 py-4 text-sm text-slate-400">Carregando receitas...</p>
-          )}
-          {!loadingRx && prescriptions.length === 0 && (
-            <div className="px-6 py-10 text-center space-y-1">
-              <p className="text-sm font-medium text-slate-700">Nenhuma receita assinada</p>
-              <p className="text-xs text-slate-400">
-                Só receitas assinadas por um médico podem ser dispensadas.
-              </p>
-            </div>
-          )}
-          {prescriptions.map(rx => (
-            <div key={rx.id} className="border-b border-slate-100 last:border-b-0">
-              <div className="px-5 py-3 bg-slate-50 flex items-center justify-between">
-                <div className="text-sm">
-                  <span className="font-medium text-slate-900">Dr. {rx.prescriber_name}</span>
-                  <span className="text-slate-400 ml-2 text-xs">{rx.created_at?.slice(0, 10)}</span>
-                </div>
-                <span className="px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded font-medium">
-                  Assinada ✓
-                </span>
-              </div>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100">
-                    <th className="text-left px-5 py-2 text-xs font-medium text-slate-500">Medicamento</th>
-                    <th className="text-left px-4 py-2 text-xs font-medium text-slate-500">Prescrito</th>
-                    <th className="text-left px-4 py-2 text-xs font-medium text-slate-500">Tipo</th>
-                    <th className="px-4 py-2"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rx.items.map(item => (
-                    <tr key={item.id} className="border-b border-slate-50 hover:bg-slate-50">
-                      <td className="px-5 py-3">
-                        <p className="font-medium text-slate-900">{item.drug_name}</p>
-                        {item.drug_generic_name && (
-                          <p className="text-xs text-slate-400">{item.drug_generic_name}</p>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-slate-700 text-xs">
-                        {item.quantity} {item.unit_of_measure || 'un'}
-                      </td>
-                      <td className="px-4 py-3">
-                        {item.drug_is_controlled
-                          ? <span className="px-2 py-0.5 text-xs bg-orange-100 text-orange-700 rounded font-medium">Controlado</span>
-                          : <span className="text-slate-300 text-xs">—</span>}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <button
-                          onClick={() => selectItem(rx, item)}
-                          className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700"
-                        >
-                          Dispensar
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Step 3: Confirm */}
-      {step === 'confirm' && selectedItem && (
-        <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-5">
-          <div>
-            <button
-              onClick={() => setStep('items')}
-              className="text-xs text-blue-600 hover:underline mb-3 inline-block"
-            >
-              ← Voltar à receita
-            </button>
-            <h3 className="text-base font-semibold text-slate-900">{selectedItem.drug_name}</h3>
+    <div className="min-h-full bg-slate-50">
+      <div className="mx-auto max-w-[1500px] space-y-4">
+        <header className="flex flex-wrap items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-2xl font-semibold text-slate-900">Bancada de Dispensação</h2>
             <p className="text-sm text-slate-500">
-              {selectedItem.drug_generic_name && `${selectedItem.drug_generic_name} • `}
-              Prescrito: {selectedItem.quantity} {selectedItem.unit_of_measure || 'un'}
+              Paciente, prescrição, FEFO, controle especial e fechamento permanecem visíveis.
             </p>
-            {selectedItem.drug_is_controlled && (
-              <span className="inline-flex mt-2 px-2 py-0.5 text-xs bg-orange-100 text-orange-700 rounded font-medium">
-                Medicamento controlado — observações obrigatórias
-              </span>
-            )}
           </div>
+          <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${
+            ready
+              ? 'border-green-200 bg-green-50 text-green-700'
+              : 'border-yellow-200 bg-yellow-50 text-yellow-800'
+          }`}>
+            {ready ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
+            {ready ? 'Pronta para dispensar' : `${blockers.length} pendência(s)`}
+          </span>
+        </header>
 
-          {error && (
-            <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-              {error}
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase text-slate-400">
+              <Search size={14} />
+              Paciente
             </div>
-          )}
-
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">
-              Quantidade a dispensar *
-            </label>
-            <input
-              type="number"
-              step="0.001"
-              min="0.001"
-              max={selectedItem.quantity}
-              placeholder={`Ex: ${selectedItem.quantity}`}
-              className="w-48 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={quantity}
-              onChange={e => setQuantity(e.target.value)}
-            />
+            <p className="mt-2 truncate text-sm font-semibold text-slate-900">
+              {loadingPrefill ? 'Carregando paciente...' : selectedPatient?.full_name ?? 'Nenhum selecionado'}
+            </p>
+            <p className="mt-1 truncate font-mono text-xs text-slate-500">{patientMrn(selectedPatient, selectedRx)}</p>
           </div>
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase text-slate-400">
+              <ClipboardList size={14} />
+              Prescrições
+            </div>
+            <p className="mt-2 text-sm font-semibold text-slate-900">{prescriptions.length} receita(s)</p>
+            <p className="mt-1 text-xs text-slate-500">{totalItems} item(ns) liberado(s)</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase text-slate-400">
+              <PackageSearch size={14} />
+              FEFO
+            </div>
+            <p className="mt-2 text-sm font-semibold text-slate-900">{loadingLots ? 'Verificando...' : `${formatQty(availableQty)} disponível`}</p>
+            <p className="mt-1 text-xs text-slate-500">{lots.length} lote(s) elegível(is)</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase text-slate-400">
+              <ShieldAlert size={14} />
+              Portaria
+            </div>
+            <p className="mt-2 text-sm font-semibold text-slate-900">{controlledItems} item(ns) controlado(s)</p>
+            <p className="mt-1 text-xs text-slate-500">{selectedControlled ? 'Observação obrigatória' : 'Sem bloqueio no item'}</p>
+          </div>
+        </section>
 
-          {/* FEFO lot preview */}
-          {quantity && parseFloat(quantity) > 0 && (
-            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-2">
-              <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-                Lotes selecionados automaticamente (FEFO)
-              </p>
-              {loadingLots && <p className="text-xs text-slate-400">Verificando estoque...</p>}
-              {!loadingLots && lots.length === 0 && (
-                <p className="text-xs text-red-600 font-medium">
-                  Estoque insuficiente ou nenhum lote disponível para esse medicamento.
-                </p>
-              )}
-              {!loadingLots && lots.map(lot => (
-                <div key={lot.id} className="flex items-center justify-between text-xs">
-                  <span className="font-mono text-slate-700 font-medium">Lote {lot.lot_number}</span>
-                  {lot.expiry_date && (
-                    <span className="text-slate-400">Val: {lot.expiry_date}</span>
-                  )}
-                  <span className="text-slate-600">{lot.quantity} un disponíveis</span>
+        {error && (
+          <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {result && selectedItem && (
+          <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+            <p className="font-semibold">Dispensação registrada</p>
+            <p className="mt-1">
+              {formatQty(result.total_quantity)} {selectedItem.unit_of_measure || 'un'} de {selectedItem.drug_name} em {result.lots.length} lote(s).
+            </p>
+          </div>
+        )}
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
+          <div className="space-y-4">
+            <section className="rounded-lg border border-slate-200 bg-white">
+              <div className="border-b border-slate-100 px-4 py-3">
+                <h3 className="text-base font-semibold text-slate-900">Busca e contexto do paciente</h3>
+                <p className="text-xs text-slate-500">A fila de receitas aparece abaixo sem retornar para outra tela.</p>
+              </div>
+              <div className="space-y-3 p-4">
+                <label htmlFor="patient-search" className="block text-xs font-medium text-slate-700">
+                  Buscar paciente
+                </label>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-2.5 text-slate-400" size={16} />
+                  <input
+                    id="patient-search"
+                    type="text"
+                    placeholder="Nome, CPF ou prontuário"
+                    value={patientQuery}
+                    onChange={(event) => {
+                      setPatientQuery(event.target.value)
+                      searchPatients(event.target.value)
+                    }}
+                    className="w-full rounded-lg border border-slate-200 py-2 pl-9 pr-3 text-sm outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500"
+                  />
                 </div>
-              ))}
-            </div>
-          )}
+                {loadingPatients && <p className="text-sm text-slate-400">Buscando pacientes...</p>}
+                {patients.length > 0 && (
+                  <div className="overflow-hidden rounded-lg border border-slate-200">
+                    {patients.map((patient) => (
+                      <button
+                        type="button"
+                        key={patient.id}
+                        onClick={() => selectPatient(patient)}
+                        className="flex w-full items-center justify-between gap-3 border-b border-slate-100 px-4 py-2.5 text-left last:border-b-0 hover:bg-slate-50"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-semibold text-slate-900">{patient.full_name}</span>
+                          <span className="block truncate font-mono text-xs text-slate-500">
+                            {patient.medical_record_number ?? 'MRN pendente'}
+                          </span>
+                        </span>
+                        <span className="text-xs text-slate-400">{formatDate(patient.birth_date)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </section>
 
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">
-              Observações{' '}
-              {selectedItem.drug_is_controlled
-                ? <span className="text-red-600">* obrigatório (Portaria 344)</span>
-                : <span className="text-slate-400">(opcional)</span>}
-            </label>
-            <textarea
-              rows={3}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder={
-                selectedItem.drug_is_controlled
-                  ? 'Registro de dispensação controlada (Portaria 344)...'
-                  : 'Posologia, orientações ao paciente...'
-              }
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-            />
+            <section className="rounded-lg border border-slate-200 bg-white">
+              <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-base font-semibold text-slate-900">Itens para dispensar</h3>
+                  <p className="text-xs text-slate-500">Status, prescrição, posologia, controle especial e ação ficam na mesma grade.</p>
+                </div>
+                {selectedPatient && (
+                  <button
+                    type="button"
+                    onClick={() => loadPrescriptions(selectedPatient.id)}
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <RotateCcw size={14} />
+                    Atualizar
+                  </button>
+                )}
+              </div>
+
+              <div className="hidden grid-cols-[96px_minmax(0,1fr)_120px_130px] gap-3 border-b border-slate-100 px-4 py-2 text-xs font-semibold uppercase text-slate-400 lg:grid">
+                <span>Status</span>
+                <span>Medicamento / posologia</span>
+                <span>Prescrito</span>
+                <span>Ação</span>
+              </div>
+
+              <div className="divide-y divide-slate-100">
+                {!selectedPatient && !loadingPrefill && (
+                  <div className="px-4 py-10 text-center">
+                    <p className="text-sm font-semibold text-slate-700">Selecione um paciente para abrir a fila.</p>
+                    <p className="mt-1 text-xs text-slate-500">O cockpit pode abrir esta bancada já com paciente preenchido.</p>
+                  </div>
+                )}
+                {selectedPatient && loadingRx && (
+                  <div className="px-4 py-10 text-center text-sm text-slate-400">Carregando prescrições assinadas...</div>
+                )}
+                {selectedPatient && !loadingRx && prescriptions.length === 0 && (
+                  <div className="px-4 py-10 text-center">
+                    <p className="text-sm font-semibold text-slate-700">Nenhuma prescrição assinada para dispensar.</p>
+                    <p className="mt-1 text-xs text-slate-500">Rascunhos e receitas canceladas não entram na fila da farmácia.</p>
+                  </div>
+                )}
+                {prescriptions.map((rx) => (
+                  <div key={rx.id} className="divide-y divide-slate-100">
+                    <div className="bg-slate-50 px-4 py-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${
+                          rx.status === 'partially_dispensed'
+                            ? 'border-blue-200 bg-blue-50 text-blue-700'
+                            : 'border-green-200 bg-green-50 text-green-700'
+                        }`}>
+                          {rx.status_display ?? rx.status}
+                        </span>
+                        <span className="text-xs text-slate-500">{formatDate(rx.created_at)}</span>
+                        <span className="text-xs text-slate-500">{rx.prescriber_name || 'Prescritor não informado'}</span>
+                      </div>
+                    </div>
+                    {rx.items.map((item) => (
+                      <div
+                        key={item.id}
+                        className={`grid gap-3 px-4 py-4 lg:grid-cols-[96px_minmax(0,1fr)_120px_130px] lg:items-center ${
+                          selectedItem?.id === item.id ? 'bg-blue-50/40' : ''
+                        }`}
+                      >
+                        <div>
+                          <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${
+                            selectedItem?.id === item.id
+                              ? 'border-blue-200 bg-blue-50 text-blue-700'
+                              : item.drug_is_controlled
+                              ? 'border-orange-200 bg-orange-50 text-orange-700'
+                              : 'border-green-200 bg-green-50 text-green-700'
+                          }`}>
+                            {itemStatus(item, selectedItem)}
+                          </span>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <Pill size={15} className="shrink-0 text-slate-400" />
+                            <p className="truncate text-sm font-semibold text-slate-900">{item.drug_name}</p>
+                          </div>
+                          {item.drug_generic_name && (
+                            <p className="mt-1 truncate text-xs text-slate-500">{item.drug_generic_name}</p>
+                          )}
+                          {item.dosage_instructions && (
+                            <p className="mt-1 line-clamp-2 text-xs text-slate-500">{item.dosage_instructions}</p>
+                          )}
+                        </div>
+                        <div>
+                          <span className="block text-xs font-medium text-slate-500 lg:hidden">Prescrito</span>
+                          <p className="font-mono text-sm font-semibold text-slate-900">
+                            {formatQty(item.quantity)} {item.unit_of_measure || 'un'}
+                          </p>
+                        </div>
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() => selectItem(rx, item)}
+                            className="w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            Fechar item
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </section>
           </div>
 
-          <div className="flex gap-3 pt-1">
-            <button
-              onClick={handleDispense}
-              disabled={
-                saving ||
-                !quantity ||
-                parseFloat(quantity) <= 0 ||
-                (selectedItem.drug_is_controlled && !notes.trim())
-              }
-              className="px-6 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50"
-            >
-              {saving ? 'Dispensando...' : 'Confirmar Dispensação'}
-            </button>
-            <button
-              onClick={() => setStep('items')}
-              className="px-4 py-2 text-sm text-slate-600 hover:text-slate-900"
-            >
-              Cancelar
-            </button>
-          </div>
+          <aside>
+            <form onSubmit={handleDispense} noValidate className="sticky top-4 rounded-lg border border-slate-200 bg-white">
+              <div className="border-b border-slate-100 px-4 py-3">
+                <h3 className="text-base font-semibold text-slate-900">Fechamento</h3>
+                <p className="text-xs text-slate-500">Quantidade, lotes FEFO e registro auditável.</p>
+              </div>
+              <div className="space-y-4 p-4">
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between gap-3">
+                    <span className="text-slate-500">Paciente</span>
+                    <span className="max-w-[210px] truncate text-right font-medium text-slate-900">
+                      {selectedPatient?.full_name ?? 'Pendente'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-slate-500">Medicamento</span>
+                    <span className="max-w-[210px] truncate text-right font-medium text-slate-900">
+                      {selectedItem?.drug_name ?? 'Pendente'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-slate-500">Prescrito</span>
+                    <span className="font-mono font-medium text-slate-900">
+                      {selectedItem ? `${formatQty(selectedItem.quantity)} ${selectedItem.unit_of_measure || 'un'}` : '-'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-slate-500">FEFO disponível</span>
+                    <span className="font-mono font-medium text-slate-900">{formatQty(availableQty)}</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor="dispense-quantity" className="mb-1 block text-xs font-medium text-slate-700">
+                    Quantidade a dispensar
+                  </label>
+                  <input
+                    id="dispense-quantity"
+                    type="number"
+                    step="0.001"
+                    min="0.001"
+                    value={quantity}
+                    onChange={(event) => setQuantity(event.target.value)}
+                    placeholder={selectedItem ? selectedItem.quantity : '0'}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div className="rounded-lg border border-slate-200 p-3">
+                  <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <PackageSearch size={15} />
+                    Lotes FEFO
+                  </div>
+                  {loadingLots && <p className="text-sm text-slate-400">Verificando estoque...</p>}
+                  {!loadingLots && !selectedItem && (
+                    <p className="text-sm text-slate-500">Selecione um item para ver os lotes elegíveis.</p>
+                  )}
+                  {!loadingLots && selectedItem && lots.length === 0 && (
+                    <p className="text-sm font-medium text-red-700">Nenhum lote disponível para este medicamento.</p>
+                  )}
+                  {!loadingLots && lots.length > 0 && (
+                    <div className="space-y-2">
+                      {lots.slice(0, 5).map((lot) => (
+                        <div key={lot.id} className="rounded-lg bg-slate-50 px-3 py-2 text-xs">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="truncate font-mono font-semibold text-slate-800">Lote {lot.lot_number || '-'}</span>
+                            <span className="font-mono text-slate-700">{formatQty(lot.quantity)}</span>
+                          </div>
+                          <p className="mt-1 text-slate-500">
+                            Validade {formatDate(lot.expiry_date)}{lot.location ? ` - ${lot.location}` : ''}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label htmlFor="dispense-notes" className="mb-1 block text-xs font-medium text-slate-700">
+                    Observações de dispensação
+                    {selectedControlled && <span className="text-red-600"> *</span>}
+                  </label>
+                  <textarea
+                    id="dispense-notes"
+                    rows={4}
+                    value={notes}
+                    onChange={(event) => setNotes(event.target.value)}
+                    placeholder={
+                      selectedControlled
+                        ? 'Registro obrigatório para medicamento controlado.'
+                        : 'Orientações ao paciente, intercorrências ou referência interna.'
+                    }
+                    className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div className="rounded-lg border border-slate-200 p-3">
+                  <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <Search size={15} />
+                    Prontidão
+                  </div>
+                  {ready ? (
+                    <p className="text-sm text-green-700">Sem bloqueios. A dispensação pode ser registrada.</p>
+                  ) : (
+                    <ul className="space-y-1 text-sm text-yellow-800">
+                      {blockers.map((blocker) => (
+                        <li key={blocker} className="flex gap-2">
+                          <span aria-hidden="true">-</span>
+                          <span>{blocker}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="w-full rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {saving ? 'Dispensando...' : 'Confirmar dispensação'}
+                </button>
+                <button
+                  type="button"
+                  onClick={reset}
+                  className="w-full rounded-lg py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  Nova dispensação
+                </button>
+              </div>
+            </form>
+          </aside>
         </div>
-      )}
-
-      {/* Step 4: Success */}
-      {step === 'success' && result && selectedItem && (
-        <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
-          <div className="flex items-start gap-3">
-            <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-              <svg className="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-base font-semibold text-slate-900">Dispensação registrada</p>
-              <p className="text-sm text-slate-500 mt-0.5">
-                {result.total_quantity} {selectedItem.unit_of_measure || 'un'} de{' '}
-                <span className="font-medium text-slate-700">{selectedItem.drug_name}</span>{' '}
-                dispensados em {result.lots.length} lote(s).
-              </p>
-            </div>
-          </div>
-          <div className="bg-slate-50 rounded-lg px-4 py-2">
-            <p className="text-xs text-slate-400 font-mono">ID: {result.id}</p>
-          </div>
-          <div className="flex gap-3 pt-1">
-            <button
-              onClick={() => { setStep('items'); setError(''); setResult(null) }}
-              className="px-4 py-2 text-sm font-medium text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50"
-            >
-              Dispensar outro item
-            </button>
-            <button
-              onClick={reset}
-              className="px-4 py-2 text-sm text-slate-600 hover:text-slate-900"
-            >
-              Nova dispensação
-            </button>
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   )
 }
