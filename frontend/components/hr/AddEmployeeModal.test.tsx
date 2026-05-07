@@ -43,19 +43,16 @@ const DEFAULT_PROPS = {
 
 // Fill step 1 required fields
 async function fillStep1(overrides: { full_name?: string; email?: string; cpf?: string } = {}) {
-  await userEvent.type(
-    screen.getByLabelText(/nome completo/i),
-    overrides.full_name ?? 'Ana Lima'
-  )
-  await userEvent.type(
-    screen.getByLabelText(/e-mail/i),
-    overrides.email ?? 'ana@clinica.com.br'
-  )
+  fireEvent.change(screen.getByLabelText(/nome completo/i), {
+    target: { value: overrides.full_name ?? 'Ana Lima' },
+  })
+  fireEvent.change(screen.getByLabelText(/e-mail/i), {
+    target: { value: overrides.email ?? 'ana@clinica.com.br' },
+  })
   // Type raw digits — CPF input applies mask
-  await userEvent.type(
-    screen.getByLabelText(/cpf/i),
-    overrides.cpf ?? '12345678901'
-  )
+  fireEvent.change(screen.getByLabelText(/cpf/i), {
+    target: { value: overrides.cpf ?? '12345678901' },
+  })
 }
 
 // Advance from step 1 to step 2
@@ -186,7 +183,9 @@ describe('AddEmployeeModal', () => {
     fireEvent.click(screen.getByRole('button', { name: /voltar/i }))
     await waitFor(() => screen.getByText(/etapa 1 de 3/i))
 
-    await userEvent.type(screen.getByLabelText(/telefone/i), '+5511999999999')
+    fireEvent.change(screen.getByLabelText(/telefone/i), {
+      target: { value: '+5511999999999' },
+    })
 
     fireEvent.click(screen.getByRole('button', { name: /próximo/i }))
     await waitFor(() => screen.getByText(/etapa 2 de 3/i))
@@ -210,9 +209,15 @@ describe('AddEmployeeModal', () => {
     render(<AddEmployeeModal {...DEFAULT_PROPS} />)
 
     // Step 1
-    await userEvent.type(screen.getByLabelText(/nome completo/i), 'Carlos Souza')
-    await userEvent.type(screen.getByLabelText(/e-mail/i), 'carlos@clinica.com.br')
-    await userEvent.type(screen.getByLabelText(/cpf/i), '98765432100')
+    fireEvent.change(screen.getByLabelText(/nome completo/i), {
+      target: { value: 'Carlos Souza' },
+    })
+    fireEvent.change(screen.getByLabelText(/e-mail/i), {
+      target: { value: 'carlos@clinica.com.br' },
+    })
+    fireEvent.change(screen.getByLabelText(/cpf/i), {
+      target: { value: '98765432100' },
+    })
     fireEvent.click(screen.getByRole('button', { name: /próximo/i }))
     await waitFor(() => screen.getByText(/etapa 2 de 3/i))
 
@@ -223,7 +228,9 @@ describe('AddEmployeeModal', () => {
     // Step 3: select typed_password and enter a password
     const radioTyped = screen.getByDisplayValue('typed_password')
     fireEvent.click(radioTyped)
-    await userEvent.type(screen.getByPlaceholderText(/senha temporária/i), 'Temp@1234')
+    fireEvent.change(screen.getByPlaceholderText(/senha temporária/i), {
+      target: { value: 'Temp@1234' },
+    })
 
     const submitBtn = screen.getByRole('button', { name: /cadastrar funcionário/i })
     fireEvent.click(submitBtn)

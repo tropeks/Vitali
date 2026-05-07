@@ -1,18 +1,52 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import {
+  AlertTriangle,
+  ArrowLeft,
+  Bot,
+  CheckCircle2,
+  ClipboardList,
+  FileText,
+  Plus,
+  Receipt,
+  Search,
+  ShieldCheck,
+  Trash2,
+} from 'lucide-react';
 import { getAccessToken } from '@/lib/auth';
 import TUSSCodeSearch, { TUSSOption } from '@/components/billing/TUSSCodeSearch';
 import TUSSSuggestionInline, { TUSSSuggestion } from '@/components/billing/TUSSSuggestionInline';
 import GlosaRiskBadge from '@/components/billing/GlosaRiskBadge';
 
-function apiFetch(path: string) {
-  const token = getAccessToken();
-  if (!token) return Promise.reject(new Error('Sessão expirada'));
-  return fetch(`/api/v1${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  }).then(r => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); });
+interface PatientOption {
+  id: string | number;
+  full_name?: string;
+  medical_record_number?: string;
+  age?: number;
+  birth_date?: string;
+  active_allergies_count?: number;
+}
+
+interface ProviderOption {
+  id: string | number;
+  name?: string;
+  provider_name?: string;
+  ans_code?: string;
+  cnpj?: string;
+}
+
+interface EncounterContext {
+  id: string;
+  patient?: string;
+  patient_name?: string;
+  patient_mrn?: string;
+  professional_name?: string;
+  status?: string;
+  status_display?: string;
+  chief_complaint?: string;
+  started_at?: string;
 }
 
 interface GuideItem {
@@ -22,61 +56,141 @@ interface GuideItem {
   unit_value: string;
 }
 
+interface FormState {
+  encounter_id: string;
+  patient_id: string;
+  provider_id: string;
+  insured_card_number: string;
+  competency: string;
+  guide_type: string;
+}
+
 const emptyItem = (): GuideItem => ({ tuss_code: null, description: '', quantity: 1, unit_value: '' });
+
+function apiFetch<T>(path: string): Promise<T> {
+  const token = getAccessToken();
+  if (!token) return Promise.reject(new Error('Sessão expirada'));
+  return fetch(`/api/v1${path}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  }).then((r) => {
+    if (!r.ok) throw new Error(`${r.status}`);
+    return r.json();
+  });
+}
+
+function listFromResponse<T>(data: T[] | { results?: T[] }): T[] {
+  return Array.isArray(data) ? data : data.results ?? [];
+}
+
+function providerName(provider?: ProviderOption) {
+  return provider?.name ?? provider?.provider_name ?? 'Operadora não selecionada';
+}
+
+function sameId(left: string | number | undefined, right: string | number | undefined) {
+  return left !== undefined && right !== undefined && String(left) === String(right);
+}
+
+function patientName(patient?: PatientOption, encounter?: EncounterContext | null) {
+  return patient?.full_name ?? encounter?.patient_name ?? 'Paciente não selecionado';
+}
+
+function patientMrn(patient?: PatientOption, encounter?: EncounterContext | null) {
+  return patient?.medical_record_number ?? encounter?.patient_mrn ?? 'MRN pendente';
+}
+
+function itemTotal(item: GuideItem) {
+  const val = Number.parseFloat(item.unit_value || '0');
+  return Number.isFinite(val) ? val * item.quantity : 0;
+}
+
+function fmtBRL(n: number) {
+  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function itemBlockers(item: GuideItem) {
+  const blockers: string[] = [];
+  if (!item.tuss_code) blockers.push('TUSS');
+  if (!item.unit_value || Number.parseFloat(item.unit_value) <= 0) blockers.push('valor');
+  if (!item.quantity || item.quantity <= 0) blockers.push('quantidade');
+  return blockers;
+}
+
+function readinessBlockers(form: FormState, items: GuideItem[]) {
+  const blockers: string[] = [];
+  if (!form.patient_id) blockers.push('Selecionar paciente');
+  if (!form.provider_id) blockers.push('Selecionar operadora');
+  if (items.some((item) => !item.tuss_code)) blockers.push('Completar códigos TUSS');
+  if (items.some((item) => !item.unit_value || Number.parseFloat(item.unit_value) <= 0)) {
+    blockers.push('Informar valores unitários');
+  }
+  if (items.some((item) => !item.quantity || item.quantity <= 0)) blockers.push('Revisar quantidades');
+  return blockers;
+}
 
 export default function NewGuidePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const prefillEncounter = searchParams.get('encounter') ?? '';
 
-  const [patients, setPatients] = useState<any[]>([]);
-  const [providers, setProviders] = useState<any[]>([]);
+  const [patients, setPatients] = useState<PatientOption[]>([]);
+  const [providers, setProviders] = useState<ProviderOption[]>([]);
+  const [encounterContext, setEncounterContext] = useState<EncounterContext | null>(null);
   const [loadingOptions, setLoadingOptions] = useState(true);
+  const [loadingEncounter, setLoadingEncounter] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<FormState>({
     encounter_id: prefillEncounter,
     patient_id: '',
     provider_id: '',
     insured_card_number: '',
-    competency: new Date().toISOString().slice(0, 7), // default YYYY-MM
+    competency: new Date().toISOString().slice(0, 7),
     guide_type: 'sadt',
   });
 
   const [items, setItems] = useState<GuideItem[]>([emptyItem()]);
-  // Maps item index → glosa prediction_id (null if not predicted yet or degraded)
   const [glosaPredictionIds, setGlosaPredictionIds] = useState<Record<number, string | null>>({});
 
   useEffect(() => {
     Promise.all([
-      apiFetch('/patients/?page_size=200'),
-      apiFetch('/billing/providers/'),
+      apiFetch<PatientOption[] | { results?: PatientOption[] }>('/patients/?page_size=200'),
+      apiFetch<ProviderOption[] | { results?: ProviderOption[] }>('/billing/providers/'),
     ])
-      .then(([p, prov]) => {
-        setPatients(Array.isArray(p) ? p : p.results ?? []);
-        setProviders(Array.isArray(prov) ? prov : prov.results ?? []);
+      .then(([patientData, providerData]) => {
+        setPatients(listFromResponse(patientData));
+        setProviders(listFromResponse(providerData));
       })
-      .catch(e => setError(e.message))
+      .catch((e) => setError(e.message))
       .finally(() => setLoadingOptions(false));
   }, []);
 
-  // Prefill patient/provider if encounter param is present
   useEffect(() => {
     if (!prefillEncounter) return;
-    apiFetch(`/encounters/${prefillEncounter}/`)
-      .then((enc: any) => {
-        if (enc.patient) setForm(f => ({ ...f, patient_id: enc.patient }));
+    setLoadingEncounter(true);
+    apiFetch<EncounterContext>(`/encounters/${prefillEncounter}/`)
+      .then((enc) => {
+        setEncounterContext(enc);
+        const patientId = enc.patient;
+        if (typeof patientId === 'string' && patientId) {
+          setForm((f) => ({ ...f, patient_id: patientId }));
+        }
       })
-      .catch(() => {});
+      .catch(() => {
+        setEncounterContext(null);
+      })
+      .finally(() => setLoadingEncounter(false));
   }, [prefillEncounter]);
 
-  const setField = (key: string, value: string) => setForm(f => ({ ...f, [key]: value }));
+  const setField = (key: keyof FormState, value: string) => {
+    setForm((f) => ({ ...f, [key]: value }));
+  };
 
-  const addItem = () => setItems(i => [...i, emptyItem()]);
+  const addItem = () => setItems((i) => [...i, emptyItem()]);
+
   const removeItem = (idx: number) => {
-    setItems(i => i.filter((_, ii) => ii !== idx));
-    setGlosaPredictionIds(prev => {
+    setItems((i) => i.filter((_, ii) => ii !== idx));
+    setGlosaPredictionIds((prev) => {
       const next: Record<number, string | null> = {};
       Object.entries(prev).forEach(([k, v]) => {
         const n = Number(k);
@@ -86,15 +200,21 @@ export default function NewGuidePage() {
       return next;
     });
   };
-  const updateItem = <K extends keyof GuideItem>(idx: number, key: K, value: GuideItem[K]) =>
-    setItems(i => i.map((item, ii) => ii === idx ? { ...item, [key]: value } : item));
 
-  const selectedProvider = providers.find((p: any) => p.id === form.provider_id);
-  const insurerAnsCode: string | null = selectedProvider?.ans_code ?? null;
+  const updateItem = <K extends keyof GuideItem>(idx: number, key: K, value: GuideItem[K]) => {
+    setItems((current) => current.map((item, ii) => (ii === idx ? { ...item, [key]: value } : item)));
+  };
 
-  // When TUSS code is selected, auto-fill description from it
+  const selectedPatient = patients.find((p) => sameId(p.id, form.patient_id));
+  const selectedProvider = providers.find((p) => sameId(p.id, form.provider_id));
+  const insurerAnsCode = selectedProvider?.ans_code ?? null;
+  const grandTotal = items.reduce((sum, item) => sum + itemTotal(item), 0);
+  const blockers = useMemo(() => readinessBlockers(form, items), [form, items]);
+  const ready = blockers.length === 0;
+  const predictedCount = Object.values(glosaPredictionIds).filter(Boolean).length;
+
   const handleTUSSSelect = (idx: number, opt: TUSSOption | null) => {
-    setItems(i => i.map((item, ii) => {
+    setItems((current) => current.map((item, ii) => {
       if (ii !== idx) return item;
       return {
         ...item,
@@ -105,33 +225,34 @@ export default function NewGuidePage() {
   };
 
   const handleAISuggestionSelect = (idx: number, suggestion: TUSSSuggestion) => {
-    setItems(i => i.map((item, ii) => {
+    setItems((current) => current.map((item, ii) => {
       if (ii !== idx) return item;
       return {
         ...item,
-        tuss_code: { id: suggestion.tuss_code_id, code: suggestion.tuss_code, description: suggestion.description },
+        tuss_code: {
+          id: suggestion.tuss_code_id,
+          code: suggestion.tuss_code,
+          description: suggestion.description,
+        },
         description: suggestion.description.slice(0, 300),
       };
     }));
   };
 
-  const itemTotal = (item: GuideItem) => {
-    const val = parseFloat(item.unit_value || '0');
-    return isNaN(val) ? 0 : val * item.quantity;
-  };
-
-  const grandTotal = items.reduce((s, i) => s + itemTotal(i), 0);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.patient_id || !form.provider_id) { setError('Paciente e operadora são obrigatórios.'); return; }
-    if (items.some(i => !i.tuss_code)) { setError('Todos os procedimentos precisam de um código TUSS.'); return; }
-    if (items.some(i => !i.unit_value || parseFloat(i.unit_value) <= 0)) {
-      setError('Todos os procedimentos precisam de valor unitário maior que zero.');
+    const currentBlockers = readinessBlockers(form, items);
+    if (currentBlockers.length > 0) {
+      setError(`Pendências antes de criar a guia: ${currentBlockers.join(', ')}.`);
       return;
     }
+
     const token = getAccessToken();
-    if (!token) { setError('Sessão expirada'); return; }
+    if (!token) {
+      setError('Sessão expirada');
+      return;
+    }
+
     setSaving(true);
     setError('');
     try {
@@ -143,14 +264,15 @@ export default function NewGuidePage() {
         competency: form.competency,
         guide_type: form.guide_type,
         glosa_prediction_ids: predictionIds,
-        items: items.map(i => ({
-          tuss_code: i.tuss_code!.id,
-          description: i.description,
-          quantity: i.quantity,
-          unit_value: i.unit_value,
+        items: items.map((item) => ({
+          tuss_code: item.tuss_code!.id,
+          description: item.description,
+          quantity: item.quantity,
+          unit_value: item.unit_value,
         })),
       };
       if (form.encounter_id) body.encounter = form.encounter_id;
+
       const res = await fetch('/api/v1/billing/guides/', {
         method: 'POST',
         headers: {
@@ -172,275 +294,398 @@ export default function NewGuidePage() {
     }
   };
 
-  const fmtBRL = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <button onClick={() => router.back()} className="text-gray-400 hover:text-gray-600 text-sm">← Voltar</button>
-        <h1 className="text-2xl font-semibold text-gray-900">Nova Guia TISS</h1>
-      </div>
+    <div className="min-h-full bg-slate-50">
+      <div className="mx-auto max-w-[1500px] space-y-4">
+        <header className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            aria-label="Voltar"
+          >
+            <ArrowLeft size={16} />
+          </button>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-2xl font-semibold text-slate-900">Bancada TISS</h1>
+            <p className="text-sm text-slate-500">
+              Guia, contexto clínico, TUSS, glosa e total em uma única superfície de faturamento.
+            </p>
+          </div>
+          <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${
+            ready
+              ? 'border-green-200 bg-green-50 text-green-700'
+              : 'border-yellow-200 bg-yellow-50 text-yellow-800'
+          }`}>
+            {ready ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
+            {ready ? 'Pronta para criar' : `${blockers.length} pendência(s)`}
+          </span>
+        </header>
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">{error}</div>
-      )}
-
-      <form onSubmit={handleSubmit}>
-        <div className="flex flex-col lg:flex-row gap-6">
-          {/* Left: form */}
-          <div className="flex-1 space-y-5">
-
-            {/* Encontro */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-              <h2 className="font-semibold text-gray-900">Encontro</h2>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">ID do Encontro (opcional)</label>
-                <input
-                  type="text"
-                  value={form.encounter_id}
-                  onChange={e => setField('encounter_id', e.target.value)}
-                  placeholder="UUID do encontro..."
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-              </div>
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase text-slate-400">
+              <ClipboardList size={14} />
+              Atendimento
             </div>
-
-            {/* Paciente */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-              <h2 className="font-semibold text-gray-900">Paciente</h2>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Paciente *</label>
-                {loadingOptions ? (
-                  <div className="h-9 bg-gray-100 rounded animate-pulse" />
-                ) : (
-                  <select
-                    value={form.patient_id}
-                    onChange={e => setField('patient_id', e.target.value)}
-                    required
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                  >
-                    <option value="">Selecione o paciente...</option>
-                    {patients.map(p => (
-                      <option key={p.id} value={p.id}>{p.full_name} — {p.medical_record_number ?? p.id}</option>
-                    ))}
-                  </select>
-                )}
-              </div>
+            <p className="mt-2 truncate text-sm font-semibold text-slate-900">
+              {loadingEncounter ? 'Carregando atendimento...' : encounterContext?.status_display ?? encounterContext?.status ?? 'Guia avulsa'}
+            </p>
+            <p className="mt-1 truncate font-mono text-xs text-slate-500">
+              {form.encounter_id || 'Sem atendimento vinculado'}
+            </p>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase text-slate-400">
+              <FileText size={14} />
+              Paciente
             </div>
-
-            {/* Convênio */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-              <h2 className="font-semibold text-gray-900">Convênio</h2>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Operadora *</label>
-                  {loadingOptions ? (
-                    <div className="h-9 bg-gray-100 rounded animate-pulse" />
-                  ) : (
-                    <select
-                      value={form.provider_id}
-                      onChange={e => setField('provider_id', e.target.value)}
-                      required
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                    >
-                      <option value="">Selecione a operadora...</option>
-                      {providers.map(p => (
-                        <option key={p.id} value={p.id}>{p.name ?? p.provider_name ?? p.id}</option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nº Carteirinha</label>
-                  <input
-                    type="text"
-                    value={form.insured_card_number}
-                    onChange={e => setField('insured_card_number', e.target.value)}
-                    placeholder="000000000000000"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Competência (AAAA-MM)</label>
-                  <input
-                    type="text"
-                    value={form.competency}
-                    onChange={e => setField('competency', e.target.value)}
-                    placeholder="2024-03"
-                    pattern="\d{4}-\d{2}"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Guia</label>
-                  <select
-                    value={form.guide_type}
-                    onChange={e => setField('guide_type', e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                  >
-                    <option value="sadt">SADT</option>
-                    <option value="consulta">Consulta</option>
-                  </select>
-                </div>
-              </div>
+            <p className="mt-2 truncate text-sm font-semibold text-slate-900">
+              {patientName(selectedPatient, encounterContext)}
+            </p>
+            <p className="mt-1 truncate font-mono text-xs text-slate-500">
+              {patientMrn(selectedPatient, encounterContext)}
+            </p>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase text-slate-400">
+              <Receipt size={14} />
+              Operadora
             </div>
+            <p className="mt-2 truncate text-sm font-semibold text-slate-900">
+              {providerName(selectedProvider)}
+            </p>
+            <p className="mt-1 truncate font-mono text-xs text-slate-500">
+              {selectedProvider?.ans_code ? `ANS ${selectedProvider.ans_code}` : 'ANS pendente'}
+            </p>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase text-slate-400">
+              <ShieldCheck size={14} />
+              Glosa / IA
+            </div>
+            <p className="mt-2 text-sm font-semibold text-slate-900">
+              {predictedCount}/{items.length} item(ns) avaliados
+            </p>
+            <p className="mt-1 text-xs text-slate-500">Sugestão TUSS e risco inline</p>
+          </div>
+        </section>
 
-            {/* Procedimentos */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="font-semibold text-gray-900">Procedimentos</h2>
-                <button type="button" onClick={addItem} className="text-sm text-blue-600 hover:underline">
-                  + Adicionar
-                </button>
-              </div>
+        {error && (
+          <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
 
-              {items.map((item, idx) => (
-                <div key={idx} className="border border-gray-100 rounded-lg p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Item {idx + 1}</span>
-                    {items.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeItem(idx)}
-                        className="text-red-400 hover:text-red-600 text-xs"
+        <form onSubmit={handleSubmit} noValidate>
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="space-y-4">
+              <section className="rounded-lg border border-slate-200 bg-white">
+                <div className="border-b border-slate-100 px-4 py-3">
+                  <h2 className="text-base font-semibold text-slate-900">Contexto da guia</h2>
+                </div>
+                <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
+                  <div>
+                    <label htmlFor="guide-patient" className="mb-1 block text-xs font-medium text-slate-700">Paciente *</label>
+                    {loadingOptions ? (
+                      <div className="h-9 animate-pulse rounded-lg bg-slate-100" />
+                    ) : (
+                      <select
+                        id="guide-patient"
+                        value={form.patient_id}
+                        onChange={(e) => setField('patient_id', e.target.value)}
+                        required
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                       >
-                        Remover
-                      </button>
+                        <option value="">Selecionar paciente</option>
+                        {patients.map((patient) => (
+                          <option key={patient.id} value={patient.id}>
+                            {patient.full_name} - {patient.medical_record_number ?? patient.id}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                  <div>
+                    <label htmlFor="guide-provider" className="mb-1 block text-xs font-medium text-slate-700">Operadora *</label>
+                    {loadingOptions ? (
+                      <div className="h-9 animate-pulse rounded-lg bg-slate-100" />
+                    ) : (
+                      <select
+                        id="guide-provider"
+                        value={form.provider_id}
+                        onChange={(e) => setField('provider_id', e.target.value)}
+                        required
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Selecionar operadora</option>
+                        {providers.map((provider) => (
+                          <option key={provider.id} value={provider.id}>
+                            {providerName(provider)}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                  <div>
+                    <label htmlFor="guide-card-number" className="mb-1 block text-xs font-medium text-slate-700">Carteirinha</label>
+                    <input
+                      id="guide-card-number"
+                      type="text"
+                      value={form.insured_card_number}
+                      onChange={(e) => setField('insured_card_number', e.target.value)}
+                      placeholder="Número da carteirinha"
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="guide-competency" className="mb-1 block text-xs font-medium text-slate-700">Competência</label>
+                    <input
+                      id="guide-competency"
+                      type="month"
+                      value={form.competency}
+                      onChange={(e) => setField('competency', e.target.value)}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="guide-type" className="mb-1 block text-xs font-medium text-slate-700">Tipo de guia</label>
+                    <select
+                      id="guide-type"
+                      value={form.guide_type}
+                      onChange={(e) => setField('guide_type', e.target.value)}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="sadt">SADT</option>
+                      <option value="consulta">Consulta</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="guide-encounter" className="mb-1 block text-xs font-medium text-slate-700">Atendimento vinculado</label>
+                    <input
+                      id="guide-encounter"
+                      type="text"
+                      value={form.encounter_id}
+                      onChange={(e) => setField('encounter_id', e.target.value)}
+                      placeholder="Vincular por ID quando necessário"
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-sm outline-none placeholder:font-sans placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded-lg border border-slate-200 bg-white">
+                <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-base font-semibold text-slate-900">Procedimentos e riscos</h2>
+                    <p className="text-xs text-slate-500">Cada linha precisa sair com TUSS, preço e status de glosa visíveis.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addItem}
+                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <Plus size={16} />
+                    Adicionar item
+                  </button>
+                </div>
+
+                <div className="hidden grid-cols-[76px_minmax(0,1fr)_68px_92px_92px_36px] gap-3 border-b border-slate-100 px-4 py-2 text-xs font-semibold uppercase text-slate-400 lg:grid">
+                  <span>Status</span>
+                  <span>Procedimento / TUSS / IA</span>
+                  <span>Qtd.</span>
+                  <span>Valor</span>
+                  <span>Total</span>
+                  <span />
+                </div>
+
+                <div className="divide-y divide-slate-100">
+                  {items.map((item, idx) => {
+                    const missing = itemBlockers(item);
+                    const itemReady = missing.length === 0;
+                    return (
+                      <div
+                        key={idx}
+                        className="grid gap-3 px-4 py-4 lg:grid-cols-[76px_minmax(0,1fr)_68px_92px_92px_36px] lg:items-start"
+                      >
+                        <div className="min-w-0">
+                          <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${
+                            itemReady
+                              ? 'border-green-200 bg-green-50 text-green-700'
+                              : 'border-yellow-200 bg-yellow-50 text-yellow-800'
+                          }`}>
+                            {itemReady ? 'Pronto' : `Falta ${missing.join('/')}`}
+                          </span>
+                          <p className="mt-1 text-xs text-slate-400">Item {idx + 1}</p>
+                        </div>
+
+                        <div className="min-w-0 space-y-2">
+                          <label className="mb-1 block text-xs font-medium text-slate-500 lg:hidden">Código TUSS *</label>
+                          <TUSSCodeSearch
+                            value={item.tuss_code}
+                            onChange={(opt) => handleTUSSSelect(idx, opt)}
+                            placeholder="Buscar por código ou procedimento"
+                          />
+                          <GlosaRiskBadge
+                            tussCode={item.tuss_code?.code ?? null}
+                            insurerAnsCode={insurerAnsCode}
+                            insurerName={providerName(selectedProvider)}
+                            guideType={form.guide_type}
+                            onPrediction={(predId) => setGlosaPredictionIds((prev) => ({ ...prev, [idx]: predId }))}
+                          />
+                          <label htmlFor={`guide-item-description-${idx}`} className="mb-1 block text-xs font-medium text-slate-500 lg:hidden">Descrição</label>
+                          <input
+                            id={`guide-item-description-${idx}`}
+                            type="text"
+                            value={item.description}
+                            onChange={(e) => updateItem(idx, 'description', e.target.value)}
+                            placeholder="Descrição do procedimento"
+                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500"
+                          />
+                          <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-400">
+                            <Bot size={13} />
+                            <span>IA sugere TUSS a partir da descrição</span>
+                          </div>
+                          <TUSSSuggestionInline
+                            description={item.description}
+                            guideType={form.guide_type}
+                            onSelect={(suggestion) => handleAISuggestionSelect(idx, suggestion)}
+                            hasExistingCode={!!item.tuss_code}
+                          />
+                        </div>
+
+                        <div className="min-w-0">
+                          <label htmlFor={`guide-item-quantity-${idx}`} className="mb-1 block text-xs font-medium text-slate-500 lg:hidden">Quantidade</label>
+                          <input
+                            id={`guide-item-quantity-${idx}`}
+                            type="number"
+                            min={1}
+                            step="0.01"
+                            value={item.quantity}
+                            onChange={(e) => updateItem(idx, 'quantity', Number(e.target.value || 0))}
+                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+
+                        <div className="min-w-0">
+                          <label htmlFor={`guide-item-unit-value-${idx}`} className="mb-1 block text-xs font-medium text-slate-500 lg:hidden">Valor unitário</label>
+                          <input
+                            id={`guide-item-unit-value-${idx}`}
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            value={item.unit_value}
+                            onChange={(e) => updateItem(idx, 'unit_value', e.target.value)}
+                            placeholder="0,00"
+                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+
+                        <div>
+                          <span className="block text-xs font-medium text-slate-500 lg:hidden">Total</span>
+                          <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-900">
+                            {fmtBRL(itemTotal(item))}
+                          </p>
+                        </div>
+
+                        <div className="flex justify-end">
+                          {items.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeItem(idx)}
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-red-500 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500"
+                              aria-label={`Remover item ${idx + 1}`}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            </div>
+
+            <aside className="space-y-4">
+              <div className="sticky top-4 rounded-lg border border-slate-200 bg-white">
+                <div className="border-b border-slate-100 px-4 py-3">
+                  <h2 className="text-base font-semibold text-slate-900">Fechamento</h2>
+                  <p className="text-xs text-slate-500">Resumo operacional antes da criação da guia.</p>
+                </div>
+                <div className="space-y-4 p-4">
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between gap-3">
+                      <span className="text-slate-500">Paciente</span>
+                      <span className="max-w-[190px] truncate text-right font-medium text-slate-900">
+                        {patientName(selectedPatient, encounterContext)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-slate-500">Operadora</span>
+                      <span className="max-w-[190px] truncate text-right font-medium text-slate-900">
+                        {providerName(selectedProvider)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-slate-500">Tipo</span>
+                      <span className="font-medium text-slate-900">{form.guide_type === 'sadt' ? 'SADT' : 'Consulta'}</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-slate-500">Competência</span>
+                      <span className="font-medium text-slate-900">{form.competency || '-'}</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-slate-500">Procedimentos</span>
+                      <span className="font-medium text-slate-900">{items.length}</span>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg bg-blue-50 p-4">
+                    <p className="text-xs font-semibold uppercase text-blue-700">Total da guia</p>
+                    <p className="mt-1 text-2xl font-bold text-blue-900">{fmtBRL(grandTotal)}</p>
+                  </div>
+
+                  <div className="rounded-lg border border-slate-200 p-3">
+                    <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-900">
+                      <Search size={15} />
+                      Prontidão
+                    </div>
+                    {ready ? (
+                      <p className="text-sm text-green-700">Sem bloqueios. A guia pode ser criada.</p>
+                    ) : (
+                      <ul className="space-y-1 text-sm text-yellow-800">
+                        {blockers.map((blocker) => (
+                          <li key={blocker} className="flex gap-2">
+                            <span aria-hidden="true">-</span>
+                            <span>{blocker}</span>
+                          </li>
+                        ))}
+                      </ul>
                     )}
                   </div>
 
-                  {/* TUSS code */}
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Código TUSS *</label>
-                    <TUSSCodeSearch
-                      value={item.tuss_code}
-                      onChange={opt => handleTUSSSelect(idx, opt)}
-                    />
-                    <GlosaRiskBadge
-                      tussCode={item.tuss_code?.code ?? null}
-                      insurerAnsCode={insurerAnsCode}
-                      insurerName={selectedProvider?.name ?? ''}
-                      guideType={form.guide_type}
-                      onPrediction={predId => setGlosaPredictionIds(prev => ({ ...prev, [idx]: predId }))}
-                    />
-                  </div>
-
-                  {/* Description + AI suggestion */}
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Descrição</label>
-                    <input
-                      type="text"
-                      value={item.description}
-                      onChange={e => updateItem(idx, 'description', e.target.value)}
-                      placeholder="Descrição do procedimento..."
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                    />
-                    <TUSSSuggestionInline
-                      description={item.description}
-                      guideType={form.guide_type}
-                      onSelect={suggestion => handleAISuggestionSelect(idx, suggestion)}
-                      hasExistingCode={!!item.tuss_code}
-                    />
-                  </div>
-
-                  {/* Qty + unit value */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Quantidade</label>
-                      <input
-                        type="number"
-                        min={1}
-                        step="0.01"
-                        value={item.quantity}
-                        onChange={e => updateItem(idx, 'quantity', Number(e.target.value))}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Valor Unitário (R$) *</label>
-                      <input
-                        type="number"
-                        min="0.01"
-                        step="0.01"
-                        value={item.unit_value}
-                        onChange={e => updateItem(idx, 'unit_value', e.target.value)}
-                        placeholder="0,00"
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Item subtotal */}
-                  {item.unit_value && (
-                    <div className="text-right text-xs text-gray-500">
-                      Subtotal: <span className="font-medium text-gray-800">{fmtBRL(itemTotal(item))}</span>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Right: summary */}
-          <div className="lg:w-72 space-y-4">
-            <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3 sticky top-6">
-              <h2 className="font-semibold text-gray-900">Resumo</h2>
-              <div className="text-sm space-y-2 text-gray-600">
-                <div className="flex justify-between">
-                  <span>Paciente</span>
-                  <span className="text-gray-900 font-medium text-right max-w-[140px] truncate">
-                    {patients.find(p => p.id === form.patient_id)?.full_name ?? '—'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Operadora</span>
-                  <span className="text-gray-900 font-medium text-right max-w-[140px] truncate">
-                    {providers.find(p => p.id === form.provider_id)?.name ?? '—'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Tipo</span>
-                  <span className="text-gray-900 font-medium">{form.guide_type === 'sadt' ? 'SADT' : 'Consulta'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Competência</span>
-                  <span className="text-gray-900 font-medium">{form.competency || '—'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Procedimentos</span>
-                  <span className="text-gray-900 font-medium">{items.length} item(s)</span>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="w-full rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {saving ? 'Criando guia...' : 'Criar guia TISS'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => router.back()}
+                    className="w-full rounded-lg py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    Cancelar
+                  </button>
                 </div>
               </div>
-              {grandTotal > 0 && (
-                <div className="pt-3 border-t border-gray-100">
-                  <div className="flex justify-between text-sm font-semibold">
-                    <span>Total</span>
-                    <span className="text-blue-700">{fmtBRL(grandTotal)}</span>
-                  </div>
-                </div>
-              )}
-              <div className="pt-3 border-t border-gray-100 space-y-2">
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="w-full bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {saving ? 'Criando...' : 'Criar Guia'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => router.back()}
-                  className="w-full text-gray-600 py-2 rounded-lg text-sm hover:text-gray-800"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </div>
+            </aside>
           </div>
-        </div>
-      </form>
+        </form>
+      </div>
     </div>
   );
 }
