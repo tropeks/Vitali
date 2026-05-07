@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   AlertTriangle,
+  CalendarDays,
   CheckCircle2,
   Clock,
   PlayCircle,
@@ -147,18 +148,27 @@ export default function WaitingRoomPage() {
     <div className="space-y-5">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Sala de Espera</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">Sala de Espera Operacional</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Chegada, chamada e início de atendimento em tempo real.
+            Fila de hoje com atualização automática.
           </p>
         </div>
-        <button
-          onClick={refresh}
-          className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          Atualizar
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => router.push('/appointments')}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <CalendarDays size={14} />
+            Agenda
+          </button>
+          <button
+            onClick={refresh}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            Atualizar
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">

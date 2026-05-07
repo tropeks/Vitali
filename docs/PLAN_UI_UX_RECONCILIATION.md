@@ -63,12 +63,18 @@ First slice:
 
 ### R3 - Scheduling And Waiting Room
 
-Status: planned
+Status: started
 
 Target:
 
 - Agenda and waiting room become one operational flow: schedule friction, arrivals, delayed patients, check-in/start-encounter actions, and queue state.
-- Replace derived/demo wait metrics with real `arrived_at`/`started_at` once backend support lands.
+- Use real `arrived_at`/`started_at` timestamps for waiting-room signals and direct encounter start.
+
+First slice:
+
+- Reconcile `/appointments` into an operational schedule cockpit with today's queue, delay/friction signals, check-in/start/PIX actions, and the weekly grid as a secondary planning surface.
+- Keep `/waiting-room` as the focused real-time queue companion with explicit navigation back to the schedule cockpit.
+- Add focused frontend tests for queue rendering, dedicated check-in, direct encounter start, and schedule/waiting-room navigation.
 
 ### R4 - Pharmacy Cockpit
 
@@ -115,3 +121,5 @@ Target:
 - 2026-05-07: Reconciled `/farmacia` and `/farmacia/dispense`; visual evidence captured at `output/playwright/ui-reconciliation/pharmacy-cockpit-desktop.png`, `output/playwright/ui-reconciliation/pharmacy-cockpit-mobile.png`, `output/playwright/ui-reconciliation/pharmacy-dispense-desktop.png`, and `output/playwright/ui-reconciliation/pharmacy-dispense-mobile.png`.
 - 2026-05-07: Started R2 Patient Command Center on branch `codex/ui-reconciliation-patient-command-center`.
 - 2026-05-07: Reconciled `/patients/[id]`; visual evidence captured at `output/playwright/ui-reconciliation/patient-command-center-desktop.png` and `output/playwright/ui-reconciliation/patient-command-center-mobile.png`.
+- 2026-05-07: Started R3 Scheduling And Waiting Room on branch `codex/ui-reconciliation-schedule-waiting-room`.
+- 2026-05-07: Reconciled `/appointments` and `/waiting-room`; visual evidence captured at `output/playwright/ui-reconciliation/schedule-operational-desktop.png`, `output/playwright/ui-reconciliation/schedule-operational-mobile.png`, `output/playwright/ui-reconciliation/waiting-room-operational-desktop.png`, and `output/playwright/ui-reconciliation/waiting-room-operational-mobile.png`.
