@@ -248,6 +248,10 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         if professional_id:
             qs = qs.filter(professional_id=professional_id)
 
+        patient_id = self.request.query_params.get("patient_id")
+        if patient_id:
+            qs = qs.filter(patient_id=patient_id)
+
         return qs
 
     def get_permissions(self):

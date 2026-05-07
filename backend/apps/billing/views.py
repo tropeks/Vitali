@@ -158,6 +158,9 @@ class TISSGuideViewSet(viewsets.ModelViewSet):
         provider = self.request.query_params.get("provider")
         if provider:
             qs = qs.filter(provider=provider)
+        patient = self.request.query_params.get("patient")
+        if patient:
+            qs = qs.filter(patient_id=patient)
         competency = self.request.query_params.get("competency")
         if competency:
             qs = qs.filter(competency=competency)

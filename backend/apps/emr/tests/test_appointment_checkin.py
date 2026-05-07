@@ -160,6 +160,27 @@ class TestCheckInAction(TenantTestCase):
         resp = c.post(f"/api/v1/appointments/{self.appt.id}/start/")
         self.assertEqual(resp.status_code, 401)
 
+    def test_appointments_can_filter_by_patient_for_command_center(self):
+        from apps.emr.models import Patient
+
+        other_patient = Patient.objects.create(
+            full_name="Paciente Fora do Command Center",
+            birth_date=datetime.date(1992, 7, 10),
+            gender="F",
+            cpf="44444444444",
+        )
+        other_appt = _make_appointment(other_patient, self.professional, offset_hours=3)
+
+        c = self._client(self.user)
+        resp = c.get(f"/api/v1/appointments/?patient_id={self.patient.id}")
+
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        items = body["results"] if isinstance(body, dict) else body
+        ids = {item["id"] for item in items}
+        self.assertIn(str(self.appt.id), ids)
+        self.assertNotIn(str(other_appt.id), ids)
+
 
 class TestWaitTimeAvgAnalytics(TenantTestCase):
     """

@@ -47,12 +47,19 @@ First slice:
 
 ### R2 - Patient Command Center
 
-Status: planned
+Status: started
 
 Target:
 
 - Patient detail becomes the operational command center: identity, MRN, alerts, coverage, timeline, encounters, billing, and direct actions.
 - Patient list remains dense on desktop and card-based on mobile.
+
+First slice:
+
+- Reconcile `/patients/[id]` into a patient command center with persistent identity, MRN, active risk, coverage, next appointment, open encounters, prescriptions, billing guides, and direct actions.
+- Add patient-scoped API filters for appointments and TISS guides so the page does not depend on global list scans.
+- Add focused frontend tests for risk/coverage/billing context, direct encounter navigation, and degraded module states.
+- Add backend tests for patient-scoped appointment and guide filtering.
 
 ### R3 - Scheduling And Waiting Room
 
@@ -106,3 +113,5 @@ Target:
 - 2026-05-07: Reconciled `/billing/guides/new` into a TISS workbench; visual evidence captured at `output/playwright/ui-reconciliation/billing-tiss-workbench-desktop.png` and `output/playwright/ui-reconciliation/billing-tiss-workbench-mobile.png`.
 - 2026-05-07: Started R4 Pharmacy Cockpit on branch `codex/ui-reconciliation-pharmacy-cockpit`.
 - 2026-05-07: Reconciled `/farmacia` and `/farmacia/dispense`; visual evidence captured at `output/playwright/ui-reconciliation/pharmacy-cockpit-desktop.png`, `output/playwright/ui-reconciliation/pharmacy-cockpit-mobile.png`, `output/playwright/ui-reconciliation/pharmacy-dispense-desktop.png`, and `output/playwright/ui-reconciliation/pharmacy-dispense-mobile.png`.
+- 2026-05-07: Started R2 Patient Command Center on branch `codex/ui-reconciliation-patient-command-center`.
+- 2026-05-07: Reconciled `/patients/[id]`; visual evidence captured at `output/playwright/ui-reconciliation/patient-command-center-desktop.png` and `output/playwright/ui-reconciliation/patient-command-center-mobile.png`.
