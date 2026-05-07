@@ -388,6 +388,7 @@ class PrescriptionItemSerializer(serializers.ModelSerializer):
         model = PrescriptionItem
         fields = [
             "id",
+            "prescription",
             "drug",
             "drug_name",
             "drug_generic_name",
@@ -425,4 +426,19 @@ class PrescriptionSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "signed_at", "signed_by", "status", "created_at", "updated_at"]
+        read_only_fields = [
+            "id",
+            "patient",
+            "prescriber",
+            "signed_at",
+            "signed_by",
+            "status",
+            "created_at",
+            "updated_at",
+        ]
+
+    def create(self, validated_data):
+        encounter = validated_data["encounter"]
+        validated_data["patient"] = encounter.patient
+        validated_data["prescriber"] = encounter.professional
+        return super().create(validated_data)

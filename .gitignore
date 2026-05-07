@@ -50,6 +50,8 @@ coverage.xml
 htmlcov/
 .tox/
 nosetests.xml
+frontend/test-results/
+output/
 
 # ─── Node / Next.js ───────────────────────────────────────────────────────────
 node_modules/

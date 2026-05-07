@@ -748,4 +748,4 @@ class PrescriptionItemViewSet(viewsets.ModelViewSet):
                     "prescription": "Não é possível adicionar itens a uma receita já assinada ou cancelada."
                 }
             )
-        serializer.save()
+        serializer.save(prescription=rx)

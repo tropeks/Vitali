@@ -19,7 +19,15 @@ import {
   Receipt,
   ShieldAlert,
   UserRound,
+  X,
 } from 'lucide-react';
+import {
+  CLINICAL_WORKSPACE_STORAGE_KEY,
+  parseClinicalWorkspaceTabs,
+  removeClinicalWorkspaceTab,
+  upsertClinicalWorkspaceTab,
+  type ClinicalWorkspaceTab,
+} from '@/lib/clinical-workspaces';
 
 interface VitalSigns {
   id: number;
@@ -409,6 +417,7 @@ export default function EncounterDetailPage() {
   const [loading, setLoading] = useState(true);
   const [signing, setSigning] = useState(false);
   const [activeTab, setActiveTab] = useState<EncounterTab>('summary');
+  const [workspaceTabs, setWorkspaceTabs] = useState<ClinicalWorkspaceTab[]>([]);
 
   const load = useCallback(async () => {
     try {
@@ -425,9 +434,43 @@ export default function EncounterDetailPage() {
     if (isEncounterTab(hash)) setActiveTab(hash);
   }, []);
 
+  useEffect(() => {
+    if (!encounter) return;
+
+    const nextTab: ClinicalWorkspaceTab = {
+      encounterId: encounter.id,
+      patientName: encounter.patient_detail.full_name,
+      medicalRecordNumber: encounter.patient_detail.medical_record_number,
+      status: encounter.status,
+      statusDisplay: encounter.status_display,
+      lastOpenedAt: new Date().toISOString(),
+    };
+
+    const persisted = parseClinicalWorkspaceTabs(
+      window.localStorage.getItem(CLINICAL_WORKSPACE_STORAGE_KEY)
+    );
+    const updated = upsertClinicalWorkspaceTab(persisted, nextTab);
+    window.localStorage.setItem(CLINICAL_WORKSPACE_STORAGE_KEY, JSON.stringify(updated));
+    setWorkspaceTabs(updated);
+  }, [encounter]);
+
   const selectTab = (tab: EncounterTab) => {
     setActiveTab(tab);
     window.history.replaceState(null, '', `#${tab}`);
+  };
+
+  const closeWorkspaceTab = (encounterId: string) => {
+    const persisted = parseClinicalWorkspaceTabs(
+      window.localStorage.getItem(CLINICAL_WORKSPACE_STORAGE_KEY)
+    );
+    const updated = removeClinicalWorkspaceTab(persisted, encounterId);
+    window.localStorage.setItem(CLINICAL_WORKSPACE_STORAGE_KEY, JSON.stringify(updated));
+    setWorkspaceTabs(updated);
+
+    if (encounterId === id) {
+      const fallback = updated[0];
+      router.push(fallback ? `/encounters/${fallback.encounterId}` : '/encounters');
+    }
   };
 
   const signEncounter = async () => {
@@ -609,6 +652,48 @@ export default function EncounterDetailPage() {
   return (
     <div className="min-h-full bg-slate-100">
       <div className="sticky top-0 z-20 border-b border-slate-200 bg-white shadow-sm">
+        {workspaceTabs.length > 0 && (
+          <div className="border-b border-slate-200 bg-slate-50 px-3 py-1.5 lg:px-6">
+            <div className="flex items-center gap-2 overflow-x-auto">
+              <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Atendimentos abertos
+              </span>
+              {workspaceTabs.map((tab) => {
+                const selected = tab.encounterId === id;
+                return (
+                  <div
+                    key={tab.encounterId}
+                    className={`flex shrink-0 items-stretch overflow-hidden rounded-lg border text-xs shadow-sm ${
+                      selected
+                        ? 'border-blue-300 bg-white text-blue-900'
+                        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                    }`}
+                  >
+                    <Link
+                      href={`/encounters/${tab.encounterId}#${activeTab}`}
+                      aria-current={selected ? 'page' : undefined}
+                      className="flex min-w-0 items-center gap-2 px-3 py-1.5"
+                    >
+                      <span className="max-w-[150px] truncate font-semibold">{tab.patientName}</span>
+                      <span className="font-mono text-slate-500">{tab.medicalRecordNumber}</span>
+                      <span className={`rounded-full border px-1.5 py-0.5 font-semibold ${STATUS_STYLES[tab.status] ?? STATUS_STYLES.open}`}>
+                        {tab.statusDisplay}
+                      </span>
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => closeWorkspaceTab(tab.encounterId)}
+                      className="border-l border-slate-200 px-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                      aria-label={`Fechar atendimento de ${tab.patientName}`}
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <div className="px-4 py-3 lg:px-6">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0 space-y-2">
@@ -622,7 +707,10 @@ export default function EncounterDetailPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <UserRound size={18} className="text-blue-600" />
                 <h1 className="truncate text-xl font-bold text-slate-950">{patient.full_name}</h1>
-                <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${STATUS_STYLES[encounter.status]}`}>
+                <span
+                  data-testid="encounter-status"
+                  className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${STATUS_STYLES[encounter.status]}`}
+                >
                   {encounter.status_display}
                 </span>
               </div>

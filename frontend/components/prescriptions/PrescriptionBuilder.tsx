@@ -1,7 +1,17 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Loader2, Plus, Printer, FileText, Pill } from 'lucide-react';
+import {
+  AlertTriangle,
+  ClipboardPlus,
+  FileText,
+  Loader2,
+  Pill,
+  Plus,
+  Printer,
+  Search,
+  Trash2,
+} from 'lucide-react';
 import { getAccessToken } from '@/lib/auth';
 import { SafetyBadge } from './SafetyBadge';
 import { SafetyAlertModal } from './SafetyAlertModal';
@@ -45,6 +55,47 @@ interface PrescriptionBuilderProps {
   readOnly?: boolean;
 }
 
+interface ApiList<T> {
+  results?: T[];
+}
+
+const PRESCRIPTION_STATUS_STYLES: Record<string, string> = {
+  draft: 'bg-slate-100 text-slate-700 border-slate-200',
+  active: 'bg-blue-100 text-blue-800 border-blue-200',
+  signed: 'bg-green-100 text-green-800 border-green-200',
+  cancelled: 'bg-red-100 text-red-700 border-red-200',
+};
+
+const ORDER_PRESETS = [
+  {
+    label: 'Dor/febre',
+    search: 'dipirona',
+    quantity: '1',
+    unit: 'ampola',
+    dosage: 'Dipirona 1g EV/VO a cada 6h se dor ou febre',
+  },
+  {
+    label: 'Náusea',
+    search: 'ondansetrona',
+    quantity: '1',
+    unit: 'ampola',
+    dosage: 'Ondansetrona 4mg EV a cada 8h se náusea',
+  },
+  {
+    label: 'Hidratação',
+    search: 'soro fisiologico',
+    quantity: '500',
+    unit: 'ml',
+    dosage: 'SF 0,9% 500ml EV em 2h, conforme avaliação clínica',
+  },
+];
+
+const defaultItemForm = {
+  quantity: '1',
+  unit_of_measure: 'cp',
+  dosage_instructions: '',
+};
+
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const token = getAccessToken();
   const res = await fetch(`/api/v1${path}`, {
@@ -57,64 +108,142 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.error ?? `Erro ${res.status}`);
+    const message =
+      typeof data.error === 'string'
+        ? data.error
+        : typeof data.detail === 'string'
+          ? data.detail
+          : `Erro ${res.status}`;
+    throw new Error(message);
   }
   return res.json();
 }
 
-function ItemRow({
-  item,
-  prescriptionId,
-  readOnly,
-  onRemove,
-}: {
-  item: PrescriptionItem;
-  prescriptionId: string;
-  readOnly: boolean;
-  onRemove: (id: string) => void;
-}) {
+function asList<T>(data: ApiList<T> | T[]): T[] {
+  return Array.isArray(data) ? data : data.results ?? [];
+}
+
+function formatDateTime(value: string) {
+  return new Date(value).toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function OrderSafetyBadge({ prescriptionId, itemId }: { prescriptionId: string; itemId: string }) {
   const [alertsToShow, setAlertsToShow] = useState<SafetyAlert[] | null>(null);
 
   return (
-    <div className="flex items-start gap-3 py-2.5 border-b border-slate-100 last:border-0">
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium text-slate-800">{item.drug_name}</span>
-          {item.drug_is_controlled && (
-            <span className="text-xs px-1.5 py-0.5 bg-orange-50 text-orange-700 border border-orange-200 rounded font-medium">
-              Controlado
-            </span>
-          )}
-          <SafetyBadge
-            prescriptionId={prescriptionId}
-            itemId={item.id}
-            onAlertsClick={alerts => setAlertsToShow(alerts)}
-          />
-        </div>
-        <p className="text-xs text-slate-500 mt-0.5">
-          {item.drug_generic_name && item.drug_generic_name !== item.drug_name
-            ? `${item.drug_generic_name} · `
-            : ''}
-          {item.quantity} {item.unit_of_measure}
-          {item.dosage_instructions ? ` · ${item.dosage_instructions}` : ''}
-        </p>
-      </div>
-      {!readOnly && (
-        <button
-          onClick={() => onRemove(item.id)}
-          className="text-xs text-red-500 hover:text-red-700 shrink-0 mt-0.5"
-          aria-label="Remover item"
-        >
-          Remover
-        </button>
-      )}
-
+    <>
+      <SafetyBadge
+        prescriptionId={prescriptionId}
+        itemId={itemId}
+        onAlertsClick={alerts => setAlertsToShow(alerts)}
+      />
       {alertsToShow && (
         <SafetyAlertModal
           alerts={alertsToShow}
           onClose={() => setAlertsToShow(null)}
         />
       )}
+    </>
+  );
+}
+
+function OrderGridRow({
+  item,
+  prescriptionId,
+  prescriptionStatus,
+  readOnly,
+  onRemove,
+}: {
+  item: PrescriptionItem;
+  prescriptionId: string;
+  prescriptionStatus: string;
+  readOnly: boolean;
+  onRemove: (id: string) => void;
+}) {
+  return (
+    <div className="grid gap-2 border-t border-slate-100 px-3 py-3 text-sm lg:grid-cols-[minmax(220px,1.3fr)_80px_96px_minmax(220px,1fr)_140px_112px_88px] lg:items-center">
+      <div className="min-w-0">
+        <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-slate-400 lg:hidden">
+          Medicamento
+        </span>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="font-semibold text-slate-900">{item.drug_name}</span>
+          {item.drug_is_controlled && (
+            <span className="rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-700">
+              Controlado
+            </span>
+          )}
+        </div>
+        {item.drug_generic_name && item.drug_generic_name !== item.drug_name && (
+          <p className="mt-0.5 truncate text-xs text-slate-500">{item.drug_generic_name}</p>
+        )}
+      </div>
+
+      <div>
+        <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-slate-400 lg:hidden">
+          Quantidade
+        </span>
+        <span className="font-mono text-slate-800">{item.quantity}</span>
+      </div>
+
+      <div>
+        <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-slate-400 lg:hidden">
+          Unidade
+        </span>
+        <span className="text-slate-700">{item.unit_of_measure}</span>
+      </div>
+
+      <div className="min-w-0">
+        <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-slate-400 lg:hidden">
+          Posologia
+        </span>
+        <span className="text-slate-800">{item.dosage_instructions || 'Não informada'}</span>
+      </div>
+
+      <div>
+        <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-slate-400 lg:hidden">
+          Segurança
+        </span>
+        <OrderSafetyBadge prescriptionId={prescriptionId} itemId={item.id} />
+      </div>
+
+      <div>
+        <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-slate-400 lg:hidden">
+          Status
+        </span>
+        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-700">
+          {prescriptionStatus}
+        </span>
+      </div>
+
+      <div className="flex justify-start lg:justify-end">
+        {!readOnly && (
+          <button
+            onClick={() => onRemove(item.id)}
+            className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 hover:text-red-700"
+            aria-label={`Remover ${item.drug_name}`}
+          >
+            <Trash2 size={13} />
+            Remover
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StatusStripItem({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return (
+    <div className="bg-white px-3 py-2">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="mt-0.5 text-lg font-bold text-slate-950">{value}</p>
+      <p className="text-xs text-slate-500">{detail}</p>
     </div>
   );
 }
@@ -122,6 +251,7 @@ function ItemRow({
 export function PrescriptionBuilder({ encounterId, readOnly = false }: PrescriptionBuilderProps) {
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [creatingRx, setCreatingRx] = useState(false);
   const [printingId, setPrintingId] = useState<string | null>(null);
   const [drugSearch, setDrugSearch] = useState('');
@@ -129,22 +259,20 @@ export function PrescriptionBuilder({ encounterId, readOnly = false }: Prescript
   const [searching, setSearching] = useState(false);
   const [activePrescriptionId, setActivePrescriptionId] = useState<string | null>(null);
   const [addingItem, setAddingItem] = useState(false);
-  const [newItemForm, setNewItemForm] = useState({
-    quantity: '1',
-    unit_of_measure: 'cp',
-    dosage_instructions: '',
-  });
+  const [newItemForm, setNewItemForm] = useState(defaultItemForm);
   const [selectedDrug, setSelectedDrug] = useState<Drug | null>(null);
 
   const loadPrescriptions = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const data = await apiFetch<{ results?: Prescription[] } | Prescription[]>(
+      const data = await apiFetch<ApiList<Prescription> | Prescription[]>(
         `/prescriptions/?encounter=${encounterId}`
       );
-      const list = Array.isArray(data) ? data : (data as any).results ?? [];
-      setPrescriptions(list);
-    } catch {
-      // fail-open: show empty state
+      setPrescriptions(asList(data));
+    } catch (e) {
+      setPrescriptions([]);
+      setError(e instanceof Error ? e.message : 'Não foi possível carregar prescrições.');
     } finally {
       setLoading(false);
     }
@@ -154,37 +282,72 @@ export function PrescriptionBuilder({ encounterId, readOnly = false }: Prescript
 
   const createPrescription = async () => {
     setCreatingRx(true);
+    setError(null);
     try {
       const rx = await apiFetch<Prescription>('/prescriptions/', {
         method: 'POST',
         body: JSON.stringify({ encounter: encounterId }),
       });
-      setPrescriptions(prev => [...prev, { ...rx, items: [] }]);
+      const next = { ...rx, items: rx.items ?? [] };
+      setPrescriptions(prev => [next, ...prev]);
       setActivePrescriptionId(rx.id);
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Erro ao criar receita.');
+      setError(e instanceof Error ? e.message : 'Erro ao criar prescrição.');
     } finally {
       setCreatingRx(false);
     }
   };
 
   const searchDrugs = async (q: string) => {
-    if (!q.trim()) { setDrugResults([]); return; }
+    if (!q.trim()) {
+      setDrugResults([]);
+      setSearching(false);
+      return;
+    }
     setSearching(true);
     try {
-      const data = await apiFetch<{ results?: Drug[] } | Drug[]>(`/pharmacy/drugs/?search=${encodeURIComponent(q)}&limit=5`);
-      const list = Array.isArray(data) ? data : (data as any).results ?? [];
-      setDrugResults(list);
+      const data = await apiFetch<ApiList<Drug> | Drug[]>(`/pharmacy/drugs/?search=${encodeURIComponent(q)}&limit=5`);
+      setDrugResults(asList(data));
     } catch {
       setDrugResults([]);
+      setError('Busca de medicamentos indisponível no momento.');
     } finally {
       setSearching(false);
     }
   };
 
+  const resetComposer = () => {
+    setSelectedDrug(null);
+    setDrugSearch('');
+    setDrugResults([]);
+    setNewItemForm(defaultItemForm);
+  };
+
+  const beginAddItem = (prescriptionId: string) => {
+    setActivePrescriptionId(prescriptionId);
+    resetComposer();
+    setError(null);
+  };
+
+  const applyPreset = (preset: typeof ORDER_PRESETS[number]) => {
+    const editablePrescription = prescriptions.find(rx => !rx.is_signed);
+    if (!activePrescriptionId && editablePrescription) {
+      setActivePrescriptionId(editablePrescription.id);
+    }
+    setSelectedDrug(null);
+    setDrugSearch(preset.search);
+    setNewItemForm({
+      quantity: preset.quantity,
+      unit_of_measure: preset.unit,
+      dosage_instructions: preset.dosage,
+    });
+    void searchDrugs(preset.search);
+  };
+
   const addItem = async (prescriptionId: string) => {
     if (!selectedDrug) return;
     setAddingItem(true);
+    setError(null);
     try {
       const item = await apiFetch<PrescriptionItem>('/prescription-items/', {
         method: 'POST',
@@ -199,18 +362,16 @@ export function PrescriptionBuilder({ encounterId, readOnly = false }: Prescript
       setPrescriptions(prev =>
         prev.map(rx => rx.id === prescriptionId ? { ...rx, items: [...rx.items, item] } : rx)
       );
-      setSelectedDrug(null);
-      setDrugSearch('');
-      setDrugResults([]);
-      setNewItemForm({ quantity: '1', unit_of_measure: 'cp', dosage_instructions: '' });
+      resetComposer();
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Erro ao adicionar item.');
+      setError(e instanceof Error ? e.message : 'Erro ao adicionar ordem.');
     } finally {
       setAddingItem(false);
     }
   };
 
   const removeItem = async (prescriptionId: string, itemId: string) => {
+    setError(null);
     try {
       await apiFetch(`/prescription-items/${itemId}/`, { method: 'DELETE' });
       setPrescriptions(prev =>
@@ -220,16 +381,17 @@ export function PrescriptionBuilder({ encounterId, readOnly = false }: Prescript
         )
       );
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Erro ao remover item.');
+      setError(e instanceof Error ? e.message : 'Erro ao remover ordem.');
     }
   };
 
   const printPDF = async (prescriptionId: string, isSigned: boolean) => {
     if (!isSigned) {
-      alert('A receita precisa estar assinada para imprimir. Assine a consulta primeiro.');
+      setError('A prescrição precisa estar assinada para imprimir.');
       return;
     }
     setPrintingId(prescriptionId);
+    setError(null);
     try {
       const token = getAccessToken();
       const res = await fetch(`/api/v1/prescriptions/${prescriptionId}/pdf/`, {
@@ -238,10 +400,10 @@ export function PrescriptionBuilder({ encounterId, readOnly = false }: Prescript
       if (!res.ok) throw new Error(`Erro ${res.status}`);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
+      window.open(url, '_blank', 'noopener,noreferrer');
       setTimeout(() => URL.revokeObjectURL(url), 30000);
     } catch {
-      alert('Erro ao gerar PDF. Verifique se a receita está assinada.');
+      setError('Erro ao gerar PDF. Verifique se a prescrição está assinada.');
     } finally {
       setPrintingId(null);
     }
@@ -249,185 +411,321 @@ export function PrescriptionBuilder({ encounterId, readOnly = false }: Prescript
 
   if (loading) {
     return (
-      <div className="py-4 flex justify-center">
-        <Loader2 className="animate-spin text-slate-300" size={20} />
+      <div className="space-y-3" role="status" aria-label="Carregando CPOE">
+        <div className="h-16 animate-pulse rounded-lg bg-slate-100" />
+        <div className="h-44 animate-pulse rounded-lg bg-slate-100" />
       </div>
     );
   }
 
+  const totalItems = prescriptions.reduce((sum, rx) => sum + rx.items.length, 0);
+  const controlledItems = prescriptions.reduce(
+    (sum, rx) => sum + rx.items.filter(item => item.drug_is_controlled).length,
+    0
+  );
+  const unsignedPrescriptions = prescriptions.filter(rx => !rx.is_signed).length;
+  const hasEditablePrescription = prescriptions.some(rx => !rx.is_signed);
+
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
-          <Pill size={15} /> Receitas
-        </h3>
+    <div className="space-y-4">
+      <div className="grid gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 md:grid-cols-4">
+        <StatusStripItem
+          label="Prescrições"
+          value={String(prescriptions.length)}
+          detail={`${unsignedPrescriptions} pendente(s) de assinatura`}
+        />
+        <StatusStripItem
+          label="Ordens ativas"
+          value={String(totalItems)}
+          detail="Medicamentos vinculados ao atendimento"
+        />
+        <StatusStripItem
+          label="Controlados"
+          value={String(controlledItems)}
+          detail="Exigem atenção na dispensação"
+        />
+        <StatusStripItem
+          label="Modo"
+          value={readOnly ? 'Leitura' : 'Edição'}
+          detail={readOnly ? 'Consulta assinada ou encerrada' : 'CPOE liberado para ordens'}
+        />
+      </div>
+
+      {error && (
+        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+          <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+            <Pill size={16} className="text-blue-600" />
+            Ordens médicas
+          </h3>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Prescritor, horário, segurança e status por prescrição.
+          </p>
+        </div>
         {!readOnly && (
           <button
             onClick={createPrescription}
             disabled={creatingRx}
-            className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium disabled:opacity-40"
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
           >
-            {creatingRx ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
-            Nova Receita
+            {creatingRx ? <Loader2 size={14} className="animate-spin" /> : <ClipboardPlus size={15} />}
+            Nova prescrição
           </button>
         )}
       </div>
 
+      {!readOnly && hasEditablePrescription && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Protocolos rápidos
+            </span>
+            {ORDER_PRESETS.map((preset) => (
+              <button
+                key={preset.label}
+                type="button"
+                onClick={() => applyPreset(preset)}
+                className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:border-blue-300 hover:text-blue-700"
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {prescriptions.length === 0 ? (
-        <p className="text-xs text-slate-400 text-center py-4">
-          {readOnly ? 'Nenhuma receita nesta consulta.' : 'Nenhuma receita criada ainda.'}
-        </p>
+        <div className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-8 text-center">
+          <FileText size={22} className="mx-auto text-slate-300" />
+          <p className="mt-2 text-sm font-semibold text-slate-800">
+            Nenhuma prescrição neste atendimento.
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            {readOnly ? 'O atendimento está em modo leitura.' : 'Crie a primeira prescrição para adicionar ordens.'}
+          </p>
+          {!readOnly && (
+            <button
+              onClick={createPrescription}
+              disabled={creatingRx}
+              className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {creatingRx ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+              Criar prescrição
+            </button>
+          )}
+        </div>
       ) : (
-        prescriptions.map(rx => (
-          <div key={rx.id} className="border border-slate-200 rounded-lg overflow-hidden">
-            {/* Prescription header */}
-            <div className="px-3 py-2.5 bg-slate-50 flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                <FileText size={14} className="text-slate-400" />
-                <span className="text-xs font-medium text-slate-700">{rx.status_display}</span>
-                {rx.is_signed && (
-                  <span className="text-xs text-green-600 font-medium">✓ Assinada</span>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                {/* Imprimir Receita button */}
-                <button
-                  onClick={() => printPDF(rx.id, rx.is_signed)}
-                  disabled={!rx.is_signed || printingId === rx.id}
-                  title={rx.is_signed ? 'Imprimir Receita (PDF)' : 'A receita precisa estar assinada para imprimir'}
-                  className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-lg transition ${
-                    rx.is_signed
-                      ? 'bg-blue-600 text-white hover:bg-blue-700'
-                      : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                  }`}
-                >
-                  {printingId === rx.id ? (
-                    <Loader2 size={12} className="animate-spin" />
-                  ) : (
-                    <Printer size={12} />
-                  )}
-                  Imprimir Receita
-                </button>
-              </div>
-            </div>
-
-            {/* Items */}
-            <div className="px-3">
-              {rx.items.length === 0 ? (
-                <p className="text-xs text-slate-400 py-3 text-center">
-                  {readOnly ? 'Sem itens.' : 'Adicione medicamentos abaixo.'}
-                </p>
-              ) : (
-                rx.items.map(item => (
-                  <ItemRow
-                    key={item.id}
-                    item={item}
-                    prescriptionId={rx.id}
-                    readOnly={readOnly}
-                    onRemove={itemId => removeItem(rx.id, itemId)}
-                  />
-                ))
-              )}
-            </div>
-
-            {/* Add item form */}
-            {!readOnly && activePrescriptionId === rx.id && (
-              <div className="px-3 pb-3 pt-2 border-t border-slate-100 space-y-2">
-                {/* Drug search */}
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={selectedDrug ? selectedDrug.name : drugSearch}
-                    onChange={e => {
-                      setDrugSearch(e.target.value);
-                      setSelectedDrug(null);
-                      searchDrugs(e.target.value);
-                    }}
-                    placeholder="Buscar medicamento..."
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  {drugResults.length > 0 && !selectedDrug && (
-                    <div className="absolute z-10 w-full bg-white border border-slate-200 rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto">
-                      {searching && <div className="px-3 py-2 text-xs text-slate-400">Buscando...</div>}
-                      {drugResults.map(d => (
-                        <button
-                          key={d.id}
-                          onClick={() => {
-                            setSelectedDrug(d);
-                            setDrugSearch(d.name);
-                            setDrugResults([]);
-                          }}
-                          className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 flex items-center justify-between"
-                        >
-                          <span className="font-medium">{d.name}</span>
-                          {d.is_controlled && (
-                            <span className="text-orange-600 text-xs">Controlado</span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+        <div className="space-y-3">
+          {prescriptions.map((rx, index) => {
+            const isComposerOpen = activePrescriptionId === rx.id && !readOnly && !rx.is_signed;
+            return (
+              <article key={rx.id} className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+                <div className="flex flex-col gap-3 border-b border-slate-100 bg-slate-50 px-3 py-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <FileText size={15} className="text-slate-400" />
+                    <span className="text-sm font-semibold text-slate-900">Prescrição #{index + 1}</span>
+                    <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${PRESCRIPTION_STATUS_STYLES[rx.status] ?? PRESCRIPTION_STATUS_STYLES.draft}`}>
+                      {rx.status_display}
+                    </span>
+                    {rx.is_signed && (
+                      <span className="rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-700">
+                        Assinada
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                    <span>{formatDateTime(rx.created_at)}</span>
+                    {rx.prescriber_name && <span>{rx.prescriber_name}</span>}
+                    <button
+                      onClick={() => printPDF(rx.id, rx.is_signed)}
+                      disabled={!rx.is_signed || printingId === rx.id}
+                      title={rx.is_signed ? 'Imprimir prescrição em PDF' : 'A prescrição precisa estar assinada para imprimir'}
+                      className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${
+                        rx.is_signed
+                          ? 'bg-blue-600 text-white hover:bg-blue-700'
+                          : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                      }`}
+                    >
+                      {printingId === rx.id ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        <Printer size={12} />
+                      )}
+                      Imprimir
+                    </button>
+                  </div>
                 </div>
 
-                {selectedDrug && (
-                  <div className="grid grid-cols-3 gap-2">
-                    <input
-                      type="number"
-                      min="0.001"
-                      step="0.001"
-                      value={newItemForm.quantity}
-                      onChange={e => setNewItemForm(f => ({ ...f, quantity: e.target.value }))}
-                      placeholder="Qtd"
-                      className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <input
-                      type="text"
-                      value={newItemForm.unit_of_measure}
-                      onChange={e => setNewItemForm(f => ({ ...f, unit_of_measure: e.target.value }))}
-                      placeholder="Un (cp, ml...)"
-                      className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <input
-                      type="text"
-                      value={newItemForm.dosage_instructions}
-                      onChange={e => setNewItemForm(f => ({ ...f, dosage_instructions: e.target.value }))}
-                      placeholder="Posologia"
-                      className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
+                {rx.items.length === 0 ? (
+                  <div className="px-3 py-6 text-center text-sm text-slate-500">
+                    Sem ordens nesta prescrição.
+                  </div>
+                ) : (
+                  <div>
+                    <div className="hidden border-b border-slate-100 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500 lg:grid lg:grid-cols-[minmax(220px,1.3fr)_80px_96px_minmax(220px,1fr)_140px_112px_88px]">
+                      <span>Medicamento</span>
+                      <span>Qtd</span>
+                      <span>Unidade</span>
+                      <span>Posologia</span>
+                      <span>Segurança</span>
+                      <span>Status</span>
+                      <span className="text-right">Ação</span>
+                    </div>
+                    {rx.items.map(item => (
+                      <OrderGridRow
+                        key={item.id}
+                        item={item}
+                        prescriptionId={rx.id}
+                        prescriptionStatus={rx.status_display}
+                        readOnly={readOnly || rx.is_signed}
+                        onRemove={itemId => removeItem(rx.id, itemId)}
+                      />
+                    ))}
                   </div>
                 )}
 
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => addItem(rx.id)}
-                    disabled={!selectedDrug || addingItem}
-                    className="flex-1 bg-blue-600 text-white text-xs font-medium py-1.5 rounded-lg hover:bg-blue-700 disabled:opacity-40 transition flex items-center justify-center gap-1"
-                  >
-                    {addingItem ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
-                    Adicionar
-                  </button>
-                  <button
-                    onClick={() => { setActivePrescriptionId(null); setSelectedDrug(null); setDrugSearch(''); setDrugResults([]); }}
-                    className="text-xs text-slate-500 hover:text-slate-700 px-3"
-                  >
-                    Cancelar
-                  </button>
-                </div>
-              </div>
-            )}
+                {isComposerOpen && (
+                  <div className="border-t border-blue-100 bg-blue-50 px-3 py-3">
+                    <div className="grid gap-3 lg:grid-cols-[minmax(260px,1.2fr)_90px_120px_minmax(260px,1fr)]">
+                      <div className="relative">
+                        <label className="mb-1 block text-xs font-semibold text-slate-700">
+                          Medicamento
+                        </label>
+                        <div className="relative">
+                          <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
+                          <input
+                            aria-label="Medicamento"
+                            type="text"
+                            value={selectedDrug ? selectedDrug.name : drugSearch}
+                            onChange={e => {
+                              setDrugSearch(e.target.value);
+                              setSelectedDrug(null);
+                              void searchDrugs(e.target.value);
+                            }}
+                            placeholder="Buscar medicamento"
+                            className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                        {(searching || drugResults.length > 0) && !selectedDrug && drugSearch.trim() && (
+                          <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+                            {searching && (
+                              <div className="flex items-center gap-2 px-3 py-2 text-xs text-slate-500">
+                                <Loader2 size={12} className="animate-spin" />
+                                Buscando...
+                              </div>
+                            )}
+                            {drugResults.map(d => (
+                              <button
+                                key={d.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedDrug(d);
+                                  setDrugSearch(d.name);
+                                  setDrugResults([]);
+                                }}
+                                className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50"
+                              >
+                                <span>
+                                  <span className="block font-semibold text-slate-900">{d.name}</span>
+                                  {d.generic_name && d.generic_name !== d.name && (
+                                    <span className="block text-xs text-slate-500">{d.generic_name}</span>
+                                  )}
+                                </span>
+                                {d.is_controlled && (
+                                  <span className="rounded-full bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-700">
+                                    Controlado
+                                  </span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
 
-            {!readOnly && activePrescriptionId !== rx.id && !rx.is_signed && (
-              <div className="px-3 pb-2.5">
-                <button
-                  onClick={() => setActivePrescriptionId(rx.id)}
-                  className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
-                >
-                  <Plus size={12} /> Adicionar medicamento
-                </button>
-              </div>
-            )}
-          </div>
-        ))
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold text-slate-700">
+                          Quantidade
+                        </label>
+                        <input
+                          aria-label="Quantidade"
+                          type="number"
+                          min="0.001"
+                          step="0.001"
+                          value={newItemForm.quantity}
+                          onChange={e => setNewItemForm(f => ({ ...f, quantity: e.target.value }))}
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold text-slate-700">
+                          Unidade
+                        </label>
+                        <input
+                          aria-label="Unidade"
+                          type="text"
+                          value={newItemForm.unit_of_measure}
+                          onChange={e => setNewItemForm(f => ({ ...f, unit_of_measure: e.target.value }))}
+                          placeholder="cp, ml, ampola"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold text-slate-700">
+                          Posologia
+                        </label>
+                        <input
+                          aria-label="Posologia"
+                          type="text"
+                          value={newItemForm.dosage_instructions}
+                          onChange={e => setNewItemForm(f => ({ ...f, dosage_instructions: e.target.value }))}
+                          placeholder="Ex.: 1 cp VO 8/8h"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                      <button
+                        onClick={() => addItem(rx.id)}
+                        disabled={!selectedDrug || addingItem}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {addingItem ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                        Adicionar ordem
+                      </button>
+                      <button
+                        onClick={() => { setActivePrescriptionId(null); resetComposer(); }}
+                        className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-white"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {!readOnly && !rx.is_signed && !isComposerOpen && (
+                  <div className="border-t border-slate-100 px-3 py-2.5">
+                    <button
+                      onClick={() => beginAddItem(rx.id)}
+                      className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50"
+                    >
+                      <Plus size={13} />
+                      Adicionar ordem
+                    </button>
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </div>
       )}
     </div>
   );

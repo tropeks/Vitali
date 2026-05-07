@@ -160,7 +160,8 @@ test.describe('Clinical journey', () => {
 
     page.once('dialog', (dialog) => dialog.accept());
     await page.getByRole('button', { name: 'Assinar Consulta' }).click();
-    await expect(page.locator('text=Assinada')).toBeVisible({ timeout: 15_000 });
+    const encounterHeader = page.getByRole('heading', { name: patientName }).locator('..');
+    await expect(encounterHeader.getByText('Assinada')).toBeVisible({ timeout: 15_000 });
 
     await page.goto(`/patients/${patientId}`);
     await page.getByRole('button', { name: 'Timeline' }).click();
