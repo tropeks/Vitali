@@ -13,6 +13,8 @@ import {
   ShieldAlert,
 } from 'lucide-react'
 import { getAccessToken } from '@/lib/auth'
+import { PRESCRIPTION_STATUS_META, resolveBadgeMeta } from '@/lib/operational-ui'
+import { PageShell, ReadinessPanel, StatusBadge } from '@/components/shared'
 
 function extractError(err: any): string {
   if (typeof err === 'string') return err
@@ -335,11 +337,10 @@ export default function DispensePage() {
   }
 
   return (
-    <div className="min-h-full bg-slate-50">
-      <div className="mx-auto max-w-[1500px] space-y-4">
+    <PageShell variant="workbench">
         <header className="flex flex-wrap items-center gap-3">
           <div className="min-w-0 flex-1">
-            <h2 className="text-2xl font-semibold text-slate-900">Bancada de Dispensação</h2>
+            <h1 className="text-2xl font-semibold text-slate-900">Bancada de Dispensação</h1>
             <p className="text-sm text-slate-500">
               Paciente, prescrição, FEFO, controle especial e fechamento permanecem visíveis.
             </p>
@@ -501,13 +502,13 @@ export default function DispensePage() {
                   <div key={rx.id} className="divide-y divide-slate-100">
                     <div className="bg-slate-50 px-4 py-3">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${
-                          rx.status === 'partially_dispensed'
-                            ? 'border-blue-200 bg-blue-50 text-blue-700'
-                            : 'border-green-200 bg-green-50 text-green-700'
-                        }`}>
-                          {rx.status_display ?? rx.status}
-                        </span>
+                        <StatusBadge
+                          meta={resolveBadgeMeta(
+                            PRESCRIPTION_STATUS_META,
+                            rx.status,
+                            rx.status_display,
+                          )}
+                        />
                         <span className="text-xs text-slate-500">{formatDate(rx.created_at)}</span>
                         <span className="text-xs text-slate-500">{rx.prescriber_name || 'Prescritor não informado'}</span>
                       </div>
@@ -661,24 +662,10 @@ export default function DispensePage() {
                   />
                 </div>
 
-                <div className="rounded-lg border border-slate-200 p-3">
-                  <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-900">
-                    <Search size={15} />
-                    Prontidão
-                  </div>
-                  {ready ? (
-                    <p className="text-sm text-green-700">Sem bloqueios. A dispensação pode ser registrada.</p>
-                  ) : (
-                    <ul className="space-y-1 text-sm text-yellow-800">
-                      {blockers.map((blocker) => (
-                        <li key={blocker} className="flex gap-2">
-                          <span aria-hidden="true">-</span>
-                          <span>{blocker}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
+                <ReadinessPanel
+                  blockers={blockers}
+                  readyText="Sem bloqueios. A dispensação pode ser registrada."
+                />
 
                 <button
                   type="submit"
@@ -698,7 +685,6 @@ export default function DispensePage() {
             </form>
           </aside>
         </div>
-      </div>
-    </div>
+    </PageShell>
   )
 }

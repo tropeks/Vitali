@@ -13,6 +13,12 @@ import {
   Truck,
 } from 'lucide-react'
 import { getAccessToken } from '@/lib/auth'
+import {
+  getStockStatusMeta,
+  PRESCRIPTION_STATUS_META,
+  resolveBadgeMeta,
+} from '@/lib/operational-ui'
+import { KpiTile, PageShell, StatusBadge } from '@/components/shared'
 
 type ApiList<T> = T[] | { results?: T[]; count?: number }
 
@@ -159,11 +165,10 @@ export default function FarmaciaPage() {
   const recentDispensations = dispensations.slice(0, 6)
 
   return (
-    <div className="min-h-full bg-slate-50">
-      <div className="mx-auto max-w-[1500px] space-y-4">
+    <PageShell variant="workbench">
         <header className="flex flex-wrap items-center gap-3">
           <div className="min-w-0 flex-1">
-            <h2 className="text-2xl font-semibold text-slate-900">Cockpit de Farmácia</h2>
+            <h1 className="text-2xl font-semibold text-slate-900">Cockpit de Farmácia</h1>
             <p className="text-sm text-slate-500">
               Fila de prescrições, estoque crítico, validade e dispensações recentes em uma superfície.
             </p>
@@ -185,38 +190,30 @@ export default function FarmaciaPage() {
         )}
 
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-lg border border-slate-200 bg-white p-4">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase text-slate-400">
-              <ClipboardList size={14} />
-              Fila assinada
-            </div>
-            <p className="mt-2 text-2xl font-semibold text-slate-900">{loading ? '-' : queue.length}</p>
-            <p className="text-xs text-slate-500">Receitas liberadas para dispensar</p>
-          </div>
-          <div className="rounded-lg border border-slate-200 bg-white p-4">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase text-slate-400">
-              <ShieldAlert size={14} />
-              Controlados
-            </div>
-            <p className="mt-2 text-2xl font-semibold text-slate-900">{loading ? '-' : controlledQueue}</p>
-            <p className="text-xs text-slate-500">Itens exigindo registro Portaria 344</p>
-          </div>
-          <div className="rounded-lg border border-slate-200 bg-white p-4">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase text-slate-400">
-              <PackageCheck size={14} />
-              Estoque crítico
-            </div>
-            <p className="mt-2 text-2xl font-semibold text-slate-900">{loading ? '-' : lowStock.length}</p>
-            <p className="text-xs text-slate-500">{formatQty(totalUnits)} unidade(s) rastreadas</p>
-          </div>
-          <div className="rounded-lg border border-slate-200 bg-white p-4">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase text-slate-400">
-              <Truck size={14} />
-              Validade
-            </div>
-            <p className="mt-2 text-2xl font-semibold text-slate-900">{loading ? '-' : expiringStock.length}</p>
-            <p className="text-xs text-slate-500">{expiredStock.length} lote(s) vencido(s)</p>
-          </div>
+          <KpiTile
+            icon={<ClipboardList size={14} />}
+            label="Fila assinada"
+            value={loading ? '-' : queue.length}
+            hint="Receitas liberadas para dispensar"
+          />
+          <KpiTile
+            icon={<ShieldAlert size={14} />}
+            label="Controlados"
+            value={loading ? '-' : controlledQueue}
+            hint="Itens exigindo registro Portaria 344"
+          />
+          <KpiTile
+            icon={<PackageCheck size={14} />}
+            label="Estoque crítico"
+            value={loading ? '-' : lowStock.length}
+            hint={`${formatQty(totalUnits)} unidade(s) rastreadas`}
+          />
+          <KpiTile
+            icon={<Truck size={14} />}
+            label="Validade"
+            value={loading ? '-' : expiringStock.length}
+            hint={`${expiredStock.length} lote(s) vencido(s)`}
+          />
         </section>
 
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
@@ -262,13 +259,13 @@ export default function FarmaciaPage() {
                     </div>
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${
-                          rx.status === 'partially_dispensed'
-                            ? 'border-blue-200 bg-blue-50 text-blue-700'
-                            : 'border-green-200 bg-green-50 text-green-700'
-                        }`}>
-                          {rx.status_display ?? rx.status}
-                        </span>
+                        <StatusBadge
+                          meta={resolveBadgeMeta(
+                            PRESCRIPTION_STATUS_META,
+                            rx.status,
+                            rx.status_display,
+                          )}
+                        />
                         <span className="text-xs text-slate-500">{formatDate(rx.created_at)}</span>
                       </div>
                       <p className="mt-1 truncate text-xs text-slate-500">
@@ -314,12 +311,7 @@ export default function FarmaciaPage() {
                   <p className="px-4 py-6 text-sm text-green-700">Sem alertas críticos no estoque.</p>
                 )}
                 {alertItems.map((item) => {
-                  const days = daysUntil(item.expiry_date)
-                  const status = item.is_expired
-                    ? 'Vencido'
-                    : days !== null && days <= 30
-                    ? `Vence em ${days}d`
-                    : 'Estoque baixo'
+                  const stockMeta = getStockStatusMeta(item)
                   return (
                     <Link
                       key={item.id}
@@ -333,15 +325,7 @@ export default function FarmaciaPage() {
                             Lote {item.lot_number || '-'} - {item.location || 'sem local'}
                           </p>
                         </div>
-                        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold ${
-                          item.is_expired
-                            ? 'border-red-200 bg-red-50 text-red-700'
-                            : days !== null && days <= 30
-                            ? 'border-yellow-200 bg-yellow-50 text-yellow-800'
-                            : 'border-orange-200 bg-orange-50 text-orange-700'
-                        }`}>
-                          {status}
-                        </span>
+                        {stockMeta && <StatusBadge meta={stockMeta} className="shrink-0" />}
                       </div>
                       <p className="mt-2 text-xs text-slate-500">
                         {formatQty(item.quantity)} disponível - mínimo {formatQty(item.min_stock)}
@@ -380,7 +364,6 @@ export default function FarmaciaPage() {
             </section>
           </aside>
         </div>
-      </div>
-    </div>
+    </PageShell>
   )
 }

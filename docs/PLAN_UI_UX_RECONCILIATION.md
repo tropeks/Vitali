@@ -123,3 +123,14 @@ Target:
 - 2026-05-07: Reconciled `/patients/[id]`; visual evidence captured at `output/playwright/ui-reconciliation/patient-command-center-desktop.png` and `output/playwright/ui-reconciliation/patient-command-center-mobile.png`.
 - 2026-05-07: Started R3 Scheduling And Waiting Room on branch `codex/ui-reconciliation-schedule-waiting-room`.
 - 2026-05-07: Reconciled `/appointments` and `/waiting-room`; visual evidence captured at `output/playwright/ui-reconciliation/schedule-operational-desktop.png`, `output/playwright/ui-reconciliation/schedule-operational-mobile.png`, `output/playwright/ui-reconciliation/waiting-room-operational-desktop.png`, and `output/playwright/ui-reconciliation/waiting-room-operational-mobile.png`.
+- 2026-05-17: Cross-screen convergence sprint. The four reconciled blocks had drifted (two page-shell camps, `<h2>` vs `<h1>` titles, `font-bold` vs `font-semibold` KPIs, prescription `signed` rendered green in pharmacy/dispensação but blue in the patient command center, status colours re-declared inline per screen). Resolved by:
+  - `lib/operational-ui.ts` extended into the single source of truth for status: `GUIDE/PRESCRIPTION/ENCOUNTER/ALLERGY/STOCK` metas + `TONE_CLASSES` + `resolveBadgeMeta` (canonical label wins for known status; `signed`→blue, `dispensed`→green resolves the conflict).
+  - New shared primitives `components/shared/` — `PageShell` (two named shells: `workbench` capped/centred, `operational` full-bleed — the approved "hybrid by screen type"), `StatusBadge`, `KpiTile`, `SectionState`, `ReadinessPanel`.
+  - All six screens (`/billing/guides/new`, `/farmacia`, `/farmacia/dispense`, `/patients/[id]`, `/appointments`, `/waiting-room`) refactored onto the primitives; `<h2>`→`<h1>` on the workbenches; KPI numbers unified to `font-semibold`; cards flattened (`shadow-sm` only on floating surfaces).
+  - `DESIGN.md` promoted to **v2.0** — retires the unused v1.0.0 `rounded-xl`/`gray-200` card spec and documents the reconciled language, the two named shells, the canonical status system, and the shared primitives as the contract.
+  - Verified: `tsc --noEmit` clean · `next lint` clean · 20/20 vitest (6 screen suites + `operational-ui`).
+- 2026-05-17: Tasy-grade visual direction **approved**. Reference spec at `output/design/vitali-tasy.html` (six surfaces; gitignored local evidence, same convention as the playwright shots). Adds Philips-Tasy idioms on top of the v2.0 foundation — barra do paciente (context-scoped, slide+fade on context change), pasta tabs, grid toolbars, lupa lookup fields, semáforo status, bottom F-key status bar. Codifying these idioms into shared primitives + `DESIGN.md` is the scope of the next sprint (R5 onward), not this one.
+
+## Status
+
+R0–R4 reconciled and **converged** (single design system, verified green). R5 (Admin/AI/WhatsApp/HR) and the approved Tasy-idiom codification remain as the next sprint.

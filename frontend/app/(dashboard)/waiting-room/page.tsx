@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { formatPtTime, getAppointmentStatusMeta } from '@/lib/operational-ui'
+import { KpiTile, PageShell, StatusBadge } from '@/components/shared'
 
 interface Appointment {
   id: string
@@ -145,7 +146,7 @@ export default function WaitingRoomPage() {
   }
 
   return (
-    <div className="space-y-5">
+    <PageShell variant="operational">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Sala de Espera Operacional</h1>
@@ -172,44 +173,36 @@ export default function WaitingRoomPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 shadow-sm">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-yellow-700">
-            <Clock size={14} />
-            Aguardando
-          </div>
-          <p className="mt-2 text-2xl font-bold text-yellow-800">{waitingCount}</p>
-          <p className="mt-1 text-xs text-yellow-700">{checkedInCount} com chegada registrada</p>
-        </div>
-        <div className="rounded-lg border border-green-200 bg-green-50 p-4 shadow-sm">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-green-700">
-            <UserCheck size={14} />
-            Em atendimento
-          </div>
-          <p className="mt-2 text-2xl font-bold text-green-700">{inProgressCount}</p>
-          <p className="mt-1 text-xs text-green-700">consultas em execução</p>
-        </div>
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            <CheckCircle2 size={14} />
-            Concluídos
-          </div>
-          <p className="mt-2 text-2xl font-bold text-slate-700">{completedCount}</p>
-          <p className="mt-1 text-xs text-slate-500">finalizados hoje</p>
-        </div>
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            <Clock size={14} />
-            Maior espera
-          </div>
-          <p className="mt-2 text-2xl font-bold text-slate-900">
-            {longestWaitMin == null ? '—' : `${longestWaitMin} min`}
-          </p>
-          <p className="mt-1 text-xs text-slate-500">
-            {lastUpdated
+        <KpiTile
+          tone="attention"
+          icon={<Clock size={14} />}
+          label="Aguardando"
+          value={waitingCount}
+          hint={`${checkedInCount} com chegada registrada`}
+        />
+        <KpiTile
+          tone="success"
+          icon={<UserCheck size={14} />}
+          label="Em atendimento"
+          value={inProgressCount}
+          hint="consultas em execução"
+        />
+        <KpiTile
+          icon={<CheckCircle2 size={14} />}
+          label="Concluídos"
+          value={completedCount}
+          hint="finalizados hoje"
+        />
+        <KpiTile
+          icon={<Clock size={14} />}
+          label="Maior espera"
+          value={longestWaitMin == null ? '—' : `${longestWaitMin} min`}
+          hint={
+            lastUpdated
               ? `Atualizado ${lastUpdated.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
-              : 'Atualização automática a cada 30s'}
-          </p>
-        </div>
+              : 'Atualização automática a cada 30s'
+          }
+        />
       </div>
 
       {error && (
@@ -220,7 +213,7 @@ export default function WaitingRoomPage() {
       )}
 
       {nextPatient && !loading && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 shadow-sm">
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Próximo paciente</p>
@@ -241,7 +234,7 @@ export default function WaitingRoomPage() {
         </div>
       )}
 
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
         <div className="hidden overflow-x-auto lg:block">
           <table className="w-full min-w-[960px] text-sm">
             <thead>
@@ -278,9 +271,7 @@ export default function WaitingRoomPage() {
                     <td className="px-4 py-3 text-slate-500">{appt.type_display}</td>
                     <td className="px-4 py-3 text-slate-700">{waitMin == null ? '—' : `${waitMin} min`}</td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${meta.badgeClass}`}>
-                        {appt.status_display || meta.label}
-                      </span>
+                      <StatusBadge meta={meta} />
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
@@ -359,9 +350,7 @@ export default function WaitingRoomPage() {
                     </p>
                     <p className="mt-1 font-mono text-xs text-slate-500">{appt.patient_mrn}</p>
                   </div>
-                  <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold ${meta.badgeClass}`}>
-                    {appt.status_display || meta.label}
-                  </span>
+                  <StatusBadge meta={meta} className="shrink-0" />
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
                   <span>{appt.type_display}</span>
@@ -396,6 +385,6 @@ export default function WaitingRoomPage() {
           })}
         </div>
       </div>
-    </div>
+    </PageShell>
   )
 }
