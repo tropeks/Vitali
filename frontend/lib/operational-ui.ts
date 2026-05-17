@@ -73,6 +73,23 @@ export function getAppointmentStatusMeta(status?: string | null): StatusMeta {
   return APPOINTMENT_STATUS_META[status] ?? { ...FALLBACK_STATUS_META, label: status }
 }
 
+/**
+ * Canonical display label for an appointment status, applying the same
+ * single-source-of-truth rule as `resolveBadgeMeta`: the canonical label
+ * wins for a *known* status (deterministic, immune to server display drift);
+ * the server `statusDisplay` is used only when the status is unknown to the
+ * map (so new/custom statuses still render a human label, never a raw key).
+ * Every appointment badge — agenda, sala de espera, patient command center —
+ * must render through this, never `status_display || meta.label`.
+ */
+export function appointmentBadgeLabel(
+  status?: string | null,
+  statusDisplay?: string | null,
+): string {
+  if (status && APPOINTMENT_STATUS_META[status]) return APPOINTMENT_STATUS_META[status].label
+  return statusDisplay || status || FALLBACK_STATUS_META.label
+}
+
 export interface DashboardOverviewLike {
   appointments_waiting?: number | null
   appointments_confirmed?: number | null

@@ -24,9 +24,11 @@ import {
 import { apiFetch } from '@/lib/api'
 import {
   ALLERGY_SEVERITY_BLOCK,
+  ALLERGY_SEVERITY_META,
   ENCOUNTER_STATUS_META,
   GUIDE_STATUS_META,
   PRESCRIPTION_STATUS_META,
+  appointmentBadgeLabel,
   getAppointmentStatusMeta,
   resolveBadgeMeta,
   type BadgeMeta,
@@ -888,7 +890,7 @@ export default function PatientDetailPage() {
                                 </td>
                                 <td className="px-4 py-3">
                                   <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${meta.badgeClass}`}>
-                                    {appointment.status_display ?? meta.label}
+                                    {appointmentBadgeLabel(appointment.status, appointment.status_display)}
                                   </span>
                                 </td>
                                 <td className="px-4 py-3">
@@ -938,7 +940,7 @@ export default function PatientDetailPage() {
                                 <p className="mt-1 text-xs text-slate-500">{appointment.professional_name || 'Profissional não informado'}</p>
                               </div>
                               <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${meta.badgeClass}`}>
-                                {appointment.status_display ?? meta.label}
+                                {appointmentBadgeLabel(appointment.status, appointment.status_display)}
                               </span>
                             </div>
                             <p className="mt-3 text-sm text-slate-700">{formatDateTime(appointment.start_time)}</p>
@@ -1018,7 +1020,7 @@ export default function PatientDetailPage() {
                               <p className="text-sm font-semibold">{allergy.substance}</p>
                               {allergy.reaction && <p className="mt-1 text-xs opacity-80">{allergy.reaction}</p>}
                             </div>
-                            <span className="text-xs font-semibold">{allergy.severity_display ?? allergy.severity}</span>
+                            <span className="text-xs font-semibold">{resolveBadgeMeta(ALLERGY_SEVERITY_META, allergy.severity, allergy.severity_display).label}</span>
                           </div>
                           <p className="mt-2 text-xs opacity-80">Status: {allergy.status_display ?? allergy.status}</p>
                         </div>

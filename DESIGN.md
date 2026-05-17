@@ -111,7 +111,8 @@ This module is the **single source of truth** for every workflow status. Screens
 
 | Export | Covers |
 |---|---|
-| `getAppointmentStatusMeta(status)` | Appointment lifecycle (incl. row stripe + left border for tables) |
+| `getAppointmentStatusMeta(status)` | Appointment lifecycle styling (badge class + row stripe + left border for tables) |
+| `appointmentBadgeLabel(status, statusDisplay?)` | The appointment badge **label** — same canonical-wins rule as `resolveBadgeMeta` (canonical for a known status, server `statusDisplay` only for unknown). Every appointment badge (agenda, sala de espera, patient command center) renders through this, never `status_display \|\| meta.label` |
 | `GUIDE_STATUS_META` | TISS guide: `draft → pending → submitted → paid / denied → appeal` |
 | `PRESCRIPTION_STATUS_META` | `draft → signed → partially_dispensed → dispensed / cancelled` |
 | `ENCOUNTER_STATUS_META` | `open / signed / cancelled` |

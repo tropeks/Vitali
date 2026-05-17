@@ -22,6 +22,7 @@ import AppointmentModal from '@/components/appointments/AppointmentModal'
 import PIXModal from '@/components/appointments/PIXModal'
 import { apiFetch } from '@/lib/api'
 import {
+  appointmentBadgeLabel,
   formatPtTime,
   getAppointmentStatusMeta,
   TONE_CLASSES,
@@ -367,7 +368,7 @@ export default function AppointmentsPage() {
         <td className="px-3 py-3 text-sm text-slate-500">{appt.type_display}</td>
         <td className="px-3 py-3">
           <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${meta.badgeClass}`}>
-            {appt.status_display || meta.label}
+            {appointmentBadgeLabel(appt.status, appt.status_display)}
           </span>
         </td>
         <td className="px-3 py-3">
@@ -598,7 +599,7 @@ export default function AppointmentsPage() {
                       <p className="mt-1 font-mono text-xs text-slate-500">{appt.patient_mrn}</p>
                     </div>
                     <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold ${meta.badgeClass}`}>
-                      {appt.status_display || meta.label}
+                      {appointmentBadgeLabel(appt.status, appt.status_display)}
                     </span>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs">
@@ -858,7 +859,7 @@ export default function AppointmentsPage() {
                         <p className="truncate text-sm font-semibold text-slate-900">{appt.patient_name}</p>
                         <p className="truncate text-xs text-slate-500">{appt.type_display} · {appt.professional_name}</p>
                         <span className={`mt-1 inline-block rounded-full border px-2 py-0.5 text-xs ${meta.badgeClass}`}>
-                          {appt.status_display || meta.label}
+                          {appointmentBadgeLabel(appt.status, appt.status_display)}
                         </span>
                       </div>
                       <button
@@ -912,7 +913,7 @@ export default function AppointmentsPage() {
 
               <div className="flex flex-wrap gap-2">
                 <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${getAppointmentStatusMeta(detailAppt.status).badgeClass}`}>
-                  {detailAppt.status_display || getAppointmentStatusMeta(detailAppt.status).label}
+                  {appointmentBadgeLabel(detailAppt.status, detailAppt.status_display)}
                 </span>
                 <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${TONE_CLASSES[getQueueTone(detailAppt, clientNow)]}`}>
                   {getQueueSignal(detailAppt, clientNow)}

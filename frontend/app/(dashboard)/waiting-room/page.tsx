@@ -13,7 +13,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
-import { formatPtTime, getAppointmentStatusMeta } from '@/lib/operational-ui'
+import { appointmentBadgeLabel, formatPtTime, getAppointmentStatusMeta } from '@/lib/operational-ui'
 import { KpiTile, PageShell, StatusBadge } from '@/components/shared'
 
 interface Appointment {
@@ -271,7 +271,7 @@ export default function WaitingRoomPage() {
                     <td className="px-4 py-3 text-slate-500">{appt.type_display}</td>
                     <td className="px-4 py-3 text-slate-700">{waitMin == null ? '—' : `${waitMin} min`}</td>
                     <td className="px-4 py-3">
-                      <StatusBadge meta={meta} label={appt.status_display} />
+                      <StatusBadge meta={meta} label={appointmentBadgeLabel(appt.status, appt.status_display)} />
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
@@ -350,7 +350,7 @@ export default function WaitingRoomPage() {
                     </p>
                     <p className="mt-1 font-mono text-xs text-slate-500">{appt.patient_mrn}</p>
                   </div>
-                  <StatusBadge meta={meta} label={appt.status_display} className="shrink-0" />
+                  <StatusBadge meta={meta} label={appointmentBadgeLabel(appt.status, appt.status_display)} className="shrink-0" />
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
                   <span>{appt.type_display}</span>

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  appointmentBadgeLabel,
   buildDashboardActionQueue,
   getAppointmentStatusMeta,
   getStockStatusMeta,
@@ -92,6 +93,16 @@ describe('operational-ui', () => {
     expect(resolveBadgeMeta(GUIDE_STATUS_META, null)).toMatchObject({
       label: 'Indefinido',
     })
+  })
+
+  it('renders appointment labels canonical-first, server display only for unknown', () => {
+    // canonical wins for a known status even if the server sent something else
+    expect(appointmentBadgeLabel('waiting', 'Na fila')).toBe('Aguardando')
+    expect(appointmentBadgeLabel('no_show', undefined)).toBe('Não compareceu')
+    // unknown status falls back to the server display, then the raw key
+    expect(appointmentBadgeLabel('rescheduled', 'Reagendado')).toBe('Reagendado')
+    expect(appointmentBadgeLabel('rescheduled')).toBe('rescheduled')
+    expect(appointmentBadgeLabel(null)).toBe('Indefinido')
   })
 
   it('keeps a signed prescription blue (actionable), not green (completed)', () => {

@@ -3,8 +3,13 @@ import type { BadgeMeta } from '@/lib/operational-ui'
 /**
  * The single bordered status pill used across every operational surface.
  * `meta` comes from a canonical map in `lib/operational-ui` — never inline
- * status colours at the call site. `label` overrides the canonical label
- * when the server returns a localized `status_display`.
+ * status colours at the call site.
+ *
+ * `label` is an OVERRIDE for an already contract-resolved display string
+ * (e.g. `appointmentBadgeLabel(status, status_display)` — canonical for a
+ * known status, server display only for unknown). Do NOT pass a raw server
+ * `status_display` directly: that would relabel known canonical statuses and
+ * break the single-source-of-truth rule. Omit `label` to render `meta.label`.
  */
 interface StatusBadgeProps {
   meta: Pick<BadgeMeta, 'label' | 'badgeClass'>
