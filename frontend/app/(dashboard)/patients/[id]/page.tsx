@@ -22,40 +22,18 @@ import {
   WalletCards,
 } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
-import { getAppointmentStatusMeta } from '@/lib/operational-ui'
-
-const SEVERITY_COLORS: Record<string, string> = {
-  life_threatening: 'border-red-200 bg-red-50 text-red-800',
-  severe: 'border-orange-200 bg-orange-50 text-orange-800',
-  moderate: 'border-yellow-200 bg-yellow-50 text-yellow-800',
-  mild: 'border-green-200 bg-green-50 text-green-800',
-}
-
-const ENCOUNTER_STATUS: Record<string, { label: string; className: string }> = {
-  open: { label: 'Em aberto', className: 'border-yellow-200 bg-yellow-50 text-yellow-800' },
-  signed: { label: 'Assinada', className: 'border-green-200 bg-green-50 text-green-800' },
-  cancelled: { label: 'Cancelada', className: 'border-red-200 bg-red-50 text-red-700' },
-}
-
-const PRESCRIPTION_STATUS: Record<string, { label: string; className: string }> = {
-  draft: { label: 'Rascunho', className: 'border-slate-200 bg-slate-50 text-slate-600' },
-  signed: { label: 'Assinada', className: 'border-blue-200 bg-blue-50 text-blue-800' },
-  partially_dispensed: {
-    label: 'Parcial',
-    className: 'border-yellow-200 bg-yellow-50 text-yellow-800',
-  },
-  dispensed: { label: 'Dispensada', className: 'border-green-200 bg-green-50 text-green-800' },
-  cancelled: { label: 'Cancelada', className: 'border-red-200 bg-red-50 text-red-700' },
-}
-
-const GUIDE_STATUS: Record<string, { label: string; className: string }> = {
-  draft: { label: 'Rascunho', className: 'border-slate-200 bg-slate-50 text-slate-600' },
-  pending: { label: 'Pendente', className: 'border-yellow-200 bg-yellow-50 text-yellow-800' },
-  submitted: { label: 'Enviada', className: 'border-blue-200 bg-blue-50 text-blue-800' },
-  paid: { label: 'Paga', className: 'border-green-200 bg-green-50 text-green-800' },
-  denied: { label: 'Glosada', className: 'border-red-200 bg-red-50 text-red-700' },
-  appeal: { label: 'Recurso', className: 'border-orange-200 bg-orange-50 text-orange-800' },
-}
+import {
+  ALLERGY_SEVERITY_BLOCK,
+  ALLERGY_SEVERITY_META,
+  ENCOUNTER_STATUS_META,
+  GUIDE_STATUS_META,
+  PRESCRIPTION_STATUS_META,
+  appointmentBadgeLabel,
+  getAppointmentStatusMeta,
+  resolveBadgeMeta,
+  type BadgeMeta,
+} from '@/lib/operational-ui'
+import { PageShell, SectionState, StatusBadge } from '@/components/shared'
 
 type TabId = 'resumo' | 'timeline' | 'clinico' | 'convenios' | 'dados'
 
@@ -251,37 +229,16 @@ function formatMoney(value?: string | number | null) {
   }).format(Number.isFinite(numberValue) ? numberValue : 0)
 }
 
+/** Ad-hoc derived badge (active/inactive, history state) — domain workflow
+ *  statuses must use the canonical maps via resolveBadgeMeta instead. */
 function statusBadge(meta?: { label: string; className: string }, fallback?: string | null) {
   const label = meta?.label ?? fallback ?? 'Indefinido'
-  const className = meta?.className ?? 'border-slate-200 bg-slate-50 text-slate-600'
-  return (
-    <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${className}`}>
-      {label}
-    </span>
-  )
+  const badgeClass = meta?.className ?? 'border-slate-200 bg-slate-50 text-slate-600'
+  return <StatusBadge meta={{ label, badgeClass }} />
 }
 
-function SectionState({
-  title,
-  detail,
-  tone = 'neutral',
-}: {
-  title: string
-  detail: string
-  tone?: 'neutral' | 'success' | 'warning' | 'critical'
-}) {
-  const styles = {
-    neutral: 'border-slate-200 bg-white text-slate-700',
-    success: 'border-green-200 bg-green-50 text-green-800',
-    warning: 'border-yellow-200 bg-yellow-50 text-yellow-800',
-    critical: 'border-red-200 bg-red-50 text-red-800',
-  }
-  return (
-    <div className={`rounded-lg border px-4 py-3 ${styles[tone]}`}>
-      <p className="text-sm font-semibold">{title}</p>
-      <p className="mt-1 text-xs opacity-80">{detail}</p>
-    </div>
-  )
+function badgeFor(map: Record<string, BadgeMeta>, status?: string | null, display?: string | null) {
+  return <StatusBadge meta={resolveBadgeMeta(map, status, display)} />
 }
 
 function Field({ label, value }: { label: string; value?: string | number | null }) {
@@ -672,7 +629,7 @@ export default function PatientDetailPage() {
 
   if (loading) {
     return (
-      <div className="space-y-5">
+      <PageShell variant="operational">
         <div className="h-40 animate-pulse rounded-lg bg-slate-100" />
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, index) => (
@@ -680,12 +637,13 @@ export default function PatientDetailPage() {
           ))}
         </div>
         <div className="h-80 animate-pulse rounded-lg bg-slate-100" />
-      </div>
+      </PageShell>
     )
   }
 
   if (error || !patient) {
     return (
+      <PageShell variant="operational">
       <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-red-800">
         <div className="flex items-start gap-3">
           <AlertTriangle size={20} className="mt-0.5" />
@@ -702,11 +660,12 @@ export default function PatientDetailPage() {
           </div>
         </div>
       </div>
+      </PageShell>
     )
   }
 
   return (
-    <div className="space-y-5">
+    <PageShell variant="operational">
       <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-100 p-4 lg:p-5">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -807,7 +766,7 @@ export default function PatientDetailPage() {
               <ShieldAlert size={14} />
               Risco clínico
             </div>
-            <p className={`mt-2 text-xl font-bold ${riskTone === 'critical' ? 'text-red-700' : riskTone === 'warning' ? 'text-yellow-700' : 'text-green-700'}`}>
+            <p className={`mt-2 text-xl font-semibold ${riskTone === 'critical' ? 'text-red-700' : riskTone === 'warning' ? 'text-yellow-700' : 'text-green-700'}`}>
               {riskTone === 'critical' ? 'Risco crítico' : riskTone === 'warning' ? 'Atenção ativa' : 'Sem alerta ativo'}
             </p>
             <p className="mt-1 text-xs text-slate-500">
@@ -819,7 +778,7 @@ export default function PatientDetailPage() {
               <WalletCards size={14} />
               Cobertura
             </div>
-            <p className="mt-2 truncate text-xl font-bold text-slate-900">
+            <p className="mt-2 truncate text-xl font-semibold text-slate-900">
               {activeCards[0]?.provider_name ?? 'Particular/sem convênio'}
             </p>
             <p className="mt-1 text-xs text-slate-500">
@@ -831,7 +790,7 @@ export default function PatientDetailPage() {
               <CalendarClock size={14} />
               Próxima agenda
             </div>
-            <p className="mt-2 text-xl font-bold text-slate-900">
+            <p className="mt-2 text-xl font-semibold text-slate-900">
               {nextAppointment ? formatShortDateTime(nextAppointment.start_time) : 'Sem agenda'}
             </p>
             <p className="mt-1 truncate text-xs text-slate-500">
@@ -843,7 +802,7 @@ export default function PatientDetailPage() {
               <ClipboardList size={14} />
               Pendências
             </div>
-            <p className="mt-2 text-xl font-bold text-slate-900">
+            <p className="mt-2 text-xl font-semibold text-slate-900">
               {openEncounters.length + pendingGuides.length + activePrescriptions.length}
             </p>
             <p className="mt-1 text-xs text-slate-500">
@@ -931,7 +890,7 @@ export default function PatientDetailPage() {
                                 </td>
                                 <td className="px-4 py-3">
                                   <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${meta.badgeClass}`}>
-                                    {appointment.status_display ?? meta.label}
+                                    {appointmentBadgeLabel(appointment.status, appointment.status_display)}
                                   </span>
                                 </td>
                                 <td className="px-4 py-3">
@@ -950,7 +909,7 @@ export default function PatientDetailPage() {
                                 <p>{encounter.professional_name || 'Profissional não informado'}</p>
                                 <p className="mt-1 text-xs text-slate-500">{formatDateTime(encounter.encounter_date)}</p>
                               </td>
-                              <td className="px-4 py-3">{statusBadge(ENCOUNTER_STATUS[encounter.status ?? ''], encounter.status_display)}</td>
+                              <td className="px-4 py-3">{badgeFor(ENCOUNTER_STATUS_META, encounter.status, encounter.status_display)}</td>
                               <td className="px-4 py-3">
                                 <button onClick={() => router.push(`/encounters/${encounter.id}`)} className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline">
                                   Abrir consulta
@@ -981,7 +940,7 @@ export default function PatientDetailPage() {
                                 <p className="mt-1 text-xs text-slate-500">{appointment.professional_name || 'Profissional não informado'}</p>
                               </div>
                               <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${meta.badgeClass}`}>
-                                {appointment.status_display ?? meta.label}
+                                {appointmentBadgeLabel(appointment.status, appointment.status_display)}
                               </span>
                             </div>
                             <p className="mt-3 text-sm text-slate-700">{formatDateTime(appointment.start_time)}</p>
@@ -999,7 +958,7 @@ export default function PatientDetailPage() {
                               <p className="text-sm font-semibold text-slate-900">Consulta</p>
                               <p className="mt-1 text-xs text-slate-500">{encounter.professional_name || 'Profissional não informado'}</p>
                             </div>
-                            {statusBadge(ENCOUNTER_STATUS[encounter.status ?? ''], encounter.status_display)}
+                            {badgeFor(ENCOUNTER_STATUS_META, encounter.status, encounter.status_display)}
                           </div>
                           <p className="mt-3 text-sm text-slate-700">{formatDateTime(encounter.encounter_date)}</p>
                           {encounter.chief_complaint && (
@@ -1039,7 +998,7 @@ export default function PatientDetailPage() {
                           </p>
                           <p className="mt-1 text-xs text-slate-500">{formatDateTime(event.date)}</p>
                         </div>
-                        {statusBadge(ENCOUNTER_STATUS[event.status ?? ''], event.status)}
+                        {badgeFor(ENCOUNTER_STATUS_META, event.status, event.status)}
                       </div>
                       {event.chief_complaint && <p className="mt-3 line-clamp-2 text-sm text-slate-600">{event.chief_complaint}</p>}
                     </button>
@@ -1055,13 +1014,13 @@ export default function PatientDetailPage() {
                       {(patient.allergies ?? []).length === 0 ? (
                         <SectionState title="Sem alergia registrada" detail="Registrar alergias melhora segurança da prescrição e dispensação." tone="success" />
                       ) : patient.allergies?.map((allergy) => (
-                        <div key={allergy.id} className={`rounded-lg border px-4 py-3 ${SEVERITY_COLORS[allergy.severity] ?? 'border-slate-200 bg-slate-50 text-slate-700'}`}>
+                        <div key={allergy.id} className={`rounded-lg border px-4 py-3 ${ALLERGY_SEVERITY_BLOCK[allergy.severity] ?? 'border-slate-200 bg-slate-50 text-slate-700'}`}>
                           <div className="flex items-start justify-between gap-3">
                             <div>
                               <p className="text-sm font-semibold">{allergy.substance}</p>
                               {allergy.reaction && <p className="mt-1 text-xs opacity-80">{allergy.reaction}</p>}
                             </div>
-                            <span className="text-xs font-semibold">{allergy.severity_display ?? allergy.severity}</span>
+                            <span className="text-xs font-semibold">{resolveBadgeMeta(ALLERGY_SEVERITY_META, allergy.severity, allergy.severity_display).label}</span>
                           </div>
                           <p className="mt-2 text-xs opacity-80">Status: {allergy.status_display ?? allergy.status}</p>
                         </div>
@@ -1168,7 +1127,7 @@ export default function PatientDetailPage() {
                     {activeAllergies.length ? activeAllergies.map((item) => item.substance).join(', ') : 'Sem alerta registrado'}
                   </p>
                 </div>
-                <span className="text-lg font-bold text-slate-900">{activeAllergies.length}</span>
+                <span className="text-lg font-semibold text-slate-900">{activeAllergies.length}</span>
               </div>
               <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
                 <div>
@@ -1177,7 +1136,7 @@ export default function PatientDetailPage() {
                     {activeConditions.length ? activeConditions.map((item) => item.condition).join(', ') : 'Sem condição ativa'}
                   </p>
                 </div>
-                <span className="text-lg font-bold text-slate-900">{activeConditions.length}</span>
+                <span className="text-lg font-semibold text-slate-900">{activeConditions.length}</span>
               </div>
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -1212,7 +1171,7 @@ export default function PatientDetailPage() {
                         {guide.provider_name || 'Operadora não informada'} | {formatMoney(guide.total_value)}
                       </p>
                     </div>
-                    {statusBadge(GUIDE_STATUS[guide.status ?? ''], guide.status_display)}
+                    {badgeFor(GUIDE_STATUS_META, guide.status, guide.status_display)}
                   </div>
                 </button>
               ))}
@@ -1243,7 +1202,7 @@ export default function PatientDetailPage() {
                         {rx.prescriber_name || 'Prescritor não informado'} | {formatDateTime(rx.signed_at ?? rx.created_at)}
                       </p>
                     </div>
-                    {statusBadge(PRESCRIPTION_STATUS[rx.status ?? ''], rx.status_display)}
+                    {badgeFor(PRESCRIPTION_STATUS_META, rx.status, rx.status_display)}
                   </div>
                 </div>
               ))}
@@ -1272,6 +1231,6 @@ export default function PatientDetailPage() {
           </div>
         </aside>
       </div>
-    </div>
+    </PageShell>
   )
 }

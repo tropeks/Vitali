@@ -21,7 +21,14 @@ import {
 import AppointmentModal from '@/components/appointments/AppointmentModal'
 import PIXModal from '@/components/appointments/PIXModal'
 import { apiFetch } from '@/lib/api'
-import { formatPtTime, getAppointmentStatusMeta, type OperationalTone } from '@/lib/operational-ui'
+import {
+  appointmentBadgeLabel,
+  formatPtTime,
+  getAppointmentStatusMeta,
+  TONE_CLASSES,
+  type OperationalTone,
+} from '@/lib/operational-ui'
+import { KpiTile, PageShell } from '@/components/shared'
 
 interface Appointment {
   id: string
@@ -59,14 +66,6 @@ const HOURS = Array.from({ length: 21 }, (_, i) => {
 
 const QUEUE_STATUSES = new Set(['scheduled', 'confirmed', 'waiting', 'in_progress'])
 const TERMINAL_STATUSES = new Set(['completed', 'cancelled', 'no_show'])
-
-const TONE_CLASSES: Record<OperationalTone, string> = {
-  neutral: 'border-slate-200 bg-white text-slate-700',
-  info: 'border-blue-200 bg-blue-50 text-blue-800',
-  attention: 'border-yellow-200 bg-yellow-50 text-yellow-800',
-  success: 'border-green-200 bg-green-50 text-green-800',
-  critical: 'border-red-200 bg-red-50 text-red-700',
-}
 
 function getWeekDates(base: Date): Date[] {
   const day = base.getDay()
@@ -369,7 +368,7 @@ export default function AppointmentsPage() {
         <td className="px-3 py-3 text-sm text-slate-500">{appt.type_display}</td>
         <td className="px-3 py-3">
           <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${meta.badgeClass}`}>
-            {appt.status_display || meta.label}
+            {appointmentBadgeLabel(appt.status, appt.status_display)}
           </span>
         </td>
         <td className="px-3 py-3">
@@ -418,7 +417,7 @@ export default function AppointmentsPage() {
   })
 
   return (
-    <div className="space-y-5">
+    <PageShell variant="operational">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Agenda Operacional</h1>
@@ -487,46 +486,40 @@ export default function AppointmentsPage() {
       )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-blue-700">
-            <CalendarDays size={14} />
-            Hoje
-          </div>
-          <p className="mt-2 text-2xl font-bold text-blue-950">{todayAppointments.length}</p>
-          <p className="mt-1 text-xs text-blue-700">{checkedInToday} com chegada registrada</p>
-        </div>
-        <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-yellow-700">
-            <ListChecks size={14} />
-            Fila ativa
-          </div>
-          <p className="mt-2 text-2xl font-bold text-yellow-800">{queueAppointments.length}</p>
-          <p className="mt-1 text-xs text-yellow-700">{delayedToday} exigem atenção</p>
-        </div>
-        <div className="rounded-lg border border-green-200 bg-green-50 p-4">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-green-700">
-            <PlayCircle size={14} />
-            Em atendimento
-          </div>
-          <p className="mt-2 text-2xl font-bold text-green-800">{inProgressToday}</p>
-          <p className="mt-1 text-xs text-green-700">consultas iniciadas</p>
-        </div>
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            <CheckCircle2 size={14} />
-            Concluídos
-          </div>
-          <p className="mt-2 text-2xl font-bold text-slate-800">{completedToday}</p>
-          <p className="mt-1 text-xs text-slate-500">atendimentos finalizados</p>
-        </div>
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-red-700">
-            <AlertTriangle size={14} />
-            Atritos
-          </div>
-          <p className="mt-2 text-2xl font-bold text-red-700">{terminalFriction}</p>
-          <p className="mt-1 text-xs text-red-700">faltas ou cancelamentos</p>
-        </div>
+        <KpiTile
+          tone="info"
+          icon={<CalendarDays size={14} />}
+          label="Hoje"
+          value={todayAppointments.length}
+          hint={`${checkedInToday} com chegada registrada`}
+        />
+        <KpiTile
+          tone="attention"
+          icon={<ListChecks size={14} />}
+          label="Fila ativa"
+          value={queueAppointments.length}
+          hint={`${delayedToday} exigem atenção`}
+        />
+        <KpiTile
+          tone="success"
+          icon={<PlayCircle size={14} />}
+          label="Em atendimento"
+          value={inProgressToday}
+          hint="consultas iniciadas"
+        />
+        <KpiTile
+          icon={<CheckCircle2 size={14} />}
+          label="Concluídos"
+          value={completedToday}
+          hint="atendimentos finalizados"
+        />
+        <KpiTile
+          tone="critical"
+          icon={<AlertTriangle size={14} />}
+          label="Atritos"
+          value={terminalFriction}
+          hint="faltas ou cancelamentos"
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.55fr)]">
@@ -606,7 +599,7 @@ export default function AppointmentsPage() {
                       <p className="mt-1 font-mono text-xs text-slate-500">{appt.patient_mrn}</p>
                     </div>
                     <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold ${meta.badgeClass}`}>
-                      {appt.status_display || meta.label}
+                      {appointmentBadgeLabel(appt.status, appt.status_display)}
                     </span>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs">
@@ -866,7 +859,7 @@ export default function AppointmentsPage() {
                         <p className="truncate text-sm font-semibold text-slate-900">{appt.patient_name}</p>
                         <p className="truncate text-xs text-slate-500">{appt.type_display} · {appt.professional_name}</p>
                         <span className={`mt-1 inline-block rounded-full border px-2 py-0.5 text-xs ${meta.badgeClass}`}>
-                          {appt.status_display || meta.label}
+                          {appointmentBadgeLabel(appt.status, appt.status_display)}
                         </span>
                       </div>
                       <button
@@ -920,7 +913,7 @@ export default function AppointmentsPage() {
 
               <div className="flex flex-wrap gap-2">
                 <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${getAppointmentStatusMeta(detailAppt.status).badgeClass}`}>
-                  {detailAppt.status_display || getAppointmentStatusMeta(detailAppt.status).label}
+                  {appointmentBadgeLabel(detailAppt.status, detailAppt.status_display)}
                 </span>
                 <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${TONE_CLASSES[getQueueTone(detailAppt, clientNow)]}`}>
                   {getQueueSignal(detailAppt, clientNow)}
@@ -1022,6 +1015,6 @@ export default function AppointmentsPage() {
           }}
         />
       )}
-    </div>
+    </PageShell>
   )
 }

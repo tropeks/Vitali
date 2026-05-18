@@ -11,11 +11,11 @@ import {
   FileText,
   Plus,
   Receipt,
-  Search,
   ShieldCheck,
   Trash2,
 } from 'lucide-react';
 import { getAccessToken } from '@/lib/auth';
+import { PageShell, ReadinessPanel } from '@/components/shared';
 import TUSSCodeSearch, { TUSSOption } from '@/components/billing/TUSSCodeSearch';
 import TUSSSuggestionInline, { TUSSSuggestion } from '@/components/billing/TUSSSuggestionInline';
 import GlosaRiskBadge from '@/components/billing/GlosaRiskBadge';
@@ -295,8 +295,7 @@ export default function NewGuidePage() {
   };
 
   return (
-    <div className="min-h-full bg-slate-50">
-      <div className="mx-auto max-w-[1500px] space-y-4">
+    <PageShell variant="workbench">
         <header className="flex flex-wrap items-center gap-3">
           <button
             type="button"
@@ -647,24 +646,10 @@ export default function NewGuidePage() {
                     <p className="mt-1 text-2xl font-bold text-blue-900">{fmtBRL(grandTotal)}</p>
                   </div>
 
-                  <div className="rounded-lg border border-slate-200 p-3">
-                    <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-900">
-                      <Search size={15} />
-                      Prontidão
-                    </div>
-                    {ready ? (
-                      <p className="text-sm text-green-700">Sem bloqueios. A guia pode ser criada.</p>
-                    ) : (
-                      <ul className="space-y-1 text-sm text-yellow-800">
-                        {blockers.map((blocker) => (
-                          <li key={blocker} className="flex gap-2">
-                            <span aria-hidden="true">-</span>
-                            <span>{blocker}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
+                  <ReadinessPanel
+                    blockers={blockers}
+                    readyText="Sem bloqueios. A guia pode ser criada."
+                  />
 
                   <button
                     type="submit"
@@ -685,7 +670,6 @@ export default function NewGuidePage() {
             </aside>
           </div>
         </form>
-      </div>
-    </div>
+    </PageShell>
   );
 }
