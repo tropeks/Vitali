@@ -6,6 +6,50 @@ All notable changes to Vitali Health are documented here.
 
 ### Added
 
+- **Phase 3 — Patient Portal Next.js frontend (2026-05-20):** closes the
+  "parallel project" follow-up for Portal do Paciente. The backend
+  primitive (`apps.patient_portal`) was shipped earlier today; this
+  adds the patient-facing Next.js app that consumes it. Lives under
+  `frontend/app/portal/*` to share the existing build / Tailwind /
+  shadcn / tests with the staff dashboard, but isolates auth and layout
+  in a `(protected)` route group.
+  - `frontend/lib/portal-api.ts` — typed fetch client with three error
+    classes (`PortalUnauthorizedError` → `/portal/login`,
+    `PortalNotActiveError` → `/portal/activate`, generic
+    `PortalApiError`). Carries types for the 5 self-data resources.
+  - `frontend/lib/portal-status.ts` — patient-friendly label maps over
+    the canonical operational palette. Examples: prescription `signed`
+    becomes "Pronta para retirar" instead of staff "Assinada";
+    encounter `signed` becomes "Assinada pelo médico"; appointment
+    `in_progress` becomes "Em andamento". The badge classes / tones are
+    the same as the staff dashboard so the shared `<StatusBadge>` works
+    unchanged.
+  - `frontend/components/portal/PortalShell.tsx` — top-nav layout (no
+    staff sidebar) with mobile menu, brand chip, logout. 6 nav items
+    (Início, Consultas, Prontuário, Receitas, Alergias, Perfil).
+  - `frontend/components/portal/PortalList.tsx` — generic list shell
+    that owns loading / unauthorized / not-active redirects so each
+    leaf page only declares the API call and the row template.
+  - Public pages: `frontend/app/portal/login/page.tsx` (e-mail+senha,
+    reuses the existing `/api/auth/login` route) and
+    `frontend/app/portal/activate/page.tsx` (invite-token redemption
+    against `POST /api/v1/portal/access/activate/`; pre-fills from
+    `?token=` URL param).
+  - Protected pages under `frontend/app/portal/(protected)/`:
+    `page.tsx` (home with próxima consulta + allergy banner + recent
+    receitas + quick links), `agendamentos/`, `prontuario/`,
+    `receitas/`, `alergias/`, `perfil/`. Each calls one
+    `/api/v1/portal/me/*` endpoint, surfaces empty/error states, and
+    uses the canonical badge primitives.
+  - `(protected)/layout.tsx` — server-side cookie check; falls through
+    to `/portal/login` if missing. Client-side, every page-level fetch
+    also handles 401/403 via `PortalUnauthorizedError` /
+    `PortalNotActiveError` and redirects appropriately.
+  - 15 new vitest tests: 10 `portal-status` (map labels, formatters,
+    fallbacks) + 5 `portal-api` (error class routing for 200/401/403/500
+    + URL/body assertions for `getMyAppointments` and `activateInvite`).
+  - Verified: `tsc --noEmit` clean · `eslint --max-warnings=0` clean ·
+    19/19 vitest files (89/89 tests).
 - **Phase 3 — Mobile backend primitive (`apps.mobile`, 2026-05-20):**
   the part of the documented "Mobile app (React Native)" item that is
   shippable as a complete backend primitive — device registration + push

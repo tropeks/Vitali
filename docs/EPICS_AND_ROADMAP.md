@@ -829,13 +829,25 @@ E-001 Foundation
   trail), FeatureFlag `telemedicine` (default OFF). Remaining: WebRTC
   signalling infra (Janus/Jitsi), TURN/STUN deployment, video recording
   pipeline with encryption-at-rest, frontend video UI.
-- Portal do Paciente — **backend primitive shipped 2026-05-20**
-  (`apps.patient_portal`): `PatientPortalAccess` model with invite-token
-  state machine, admin surface for clinic staff (mint / revoke), and
-  self-data surface (`/portal/me/profile/appointments/encounters/
-  prescriptions/allergies`) gated by `IsPortalSelfAccess`. Module key
-  `patient_portal` (default OFF). Remaining: Next.js patient app (parallel
-  frontend project) and invite-delivery integration (WhatsApp / email).
+- Portal do Paciente — **shipped end-to-end 2026-05-20**:
+  - **Backend** (`apps.patient_portal`): `PatientPortalAccess` model with
+    invite-token state machine, admin surface for clinic staff (mint /
+    revoke), and self-data surface
+    (`/portal/me/profile/appointments/encounters/prescriptions/allergies`)
+    gated by `IsPortalSelfAccess`. Module key `patient_portal` (default
+    OFF).
+  - **Frontend** (`frontend/app/portal/*`): Next.js patient app sharing
+    the staff build, but with isolated auth and layout. Public pages
+    `/portal/login` + `/portal/activate`; protected pages under
+    `(protected)/` for home dashboard, consultas, prontuário, receitas,
+    alergias, perfil. Patient-friendly status labels via
+    `frontend/lib/portal-status.ts` (e.g. prescription `signed` →
+    "Pronta para retirar") over the canonical operational palette.
+    Typed fetch client `frontend/lib/portal-api.ts` with error classes
+    routing 401 → login and 403 → activate.
+  - Remaining: invite-delivery integration (sending the invite_token
+    via WhatsApp / e-mail — the token is generated and stored, only the
+    notification channel is missing).
 - Smart Scheduling (AI-optimized) — **rule-based primitive shipped
   2026-05-20** (`apps.smart_scheduling`): slot ranker over
   `ScheduleConfig` + `Appointment` history with three explicit signals
