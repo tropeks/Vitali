@@ -1,24 +1,48 @@
 # TODOS — Deferred Scope (Sprint 16 autoplan)
 
 Generated: 2026-04-06 | Source: PLAN_SPRINT16.md autoplan phases 1-3
+Last reconciled with shipped state: 2026-05-20
 
 ## Pre-GA Blockers (must complete before public launch)
 
-- [ ] **DPA signing UI** (`/settings/dpa`): Tenant admins must sign DPA through product UI before activating `ai_scribe`. Currently bypassed via seed data. Requires: DPA acceptance form, signed document URL stored non-nullable, ANPD-compliant audit log of signing event. ~L effort.
-- [ ] **`raw_transcription` encryption**: `AIScribeSession.raw_transcription` stores PHI (clinical voice transcriptions). Use `EncryptedTextField` (same pattern as `cpf` on Patient model) or encrypt at service layer before persisting. LGPD Art. 11 compliance.
-- [ ] **`AIScribeSession` data retention policy**: Implement auto-delete job for non-accepted sessions after 90 days. PHI retention requirement under LGPD.
+- [x] **DPA signing UI** (`/configuracoes/ai`): shipped as part of the Sprint
+  15-17 catch-up — `AIDPAStatus` model + migration `core/0009_aidpastatus.py`,
+  `views_dpa.py`, `DPASignModal` and the operational `/configuracoes/ai` page
+  (now on the v2.0 design system) drive the signed/non-signed state through
+  the canonical `getDpaStatusMeta` adapter.
+- [x] **`raw_transcription` encryption**: `AIScribeSession.raw_transcription`
+  is an `EncryptedTextField` (`apps/ai/models.py:188`) backed by migration
+  `apps/ai/migrations/0007_encrypt_scribe_raw_transcription.py`.
+- [x] **`AIScribeSession` data retention policy**: `purge_old_scribe_sessions`
+  Celery task (`apps/ai/tasks.py:100`) deletes non-accepted sessions older
+  than `SCRIBE_SESSION_RETENTION_DAYS` (default 90). Beat schedule registered
+  via data migration `apps/ai/migrations/0008_scribe_purge_beat_schedule.py`.
 
 ## Sprint 17 Candidates
 
-- [ ] **`arrived_at`/`started_at` on Appointment**: Required for real `wait_time_avg` metric on dashboard. Build with digital check-in feature (doctor/receptionist marks patient as arrived). Enables wait time tracking across all clinic flows.
-- [ ] **Server-side transcription (Whisper API)**: Fallback for non-Chrome/Edge browsers. Brazilian clinics use Android + Firefox; Web Speech API covers ~60-70% of devices. Whisper-based server endpoint accepts audio blob, returns transcription text to same scribe flow.
-- [ ] **Fill rate metric rollout**: Once `Schedule` + `TimeSlot` is configured for pilot clinics, activate fill rate KPI on dashboard. Engineering work is small (query exists); operational work is configuring professional schedules.
+- [x] **`arrived_at`/`started_at` on Appointment**: shipped in Sprint 25 —
+  `apps/emr/models.py:254-255`. Powers the operational `wait_time_avg` and
+  the dedicated check-in / start cascades.
+- [x] **Server-side transcription (Whisper API)**: `WhisperGateway`
+  (`apps/emr/services/whisper.py`) wired into `views_scribe.py` behind the
+  `FEATURE_WHISPER_FALLBACK` flag.
+- [ ] **Fill rate metric rollout**: query path is live; flipping the dashboard
+  KPI on depends on operational `Schedule` + `TimeSlot` configuration in the
+  pilot tenants, not on engineering work.
 
 ## Process / Non-Code
 
-- [ ] **Definition of Done enforcement**: Enforce frontend delivery before story closes. Sprint 16 exists as 13pts of catch-up because Sprint 15 shipped backend-only. Add frontend checklist to sprint planning template for Sprint 17 onwards.
-- [ ] **`generate_mrn()` race condition**: Atomic increment using `SELECT ... FOR UPDATE` or PostgreSQL Sequence. Pre-existing issue in patient registration; low severity (unique constraint protects data integrity; retry at application layer).
+- [ ] **Definition of Done enforcement**: process change for sprint planning;
+  no code action.
+- [x] **`generate_mrn()` race condition**: fixed in commit `07cb3fa`
+  (`fix: serialize patient MRN generation`).
 
 ## Lower Priority
 
-- [ ] **ClaudeGateway client pooling**: Make `_client` a module-level singleton or use a cached instance to avoid creating new HTTP connection pools per scribe request. Medium priority — only matters at >10 concurrent scribe sessions.
+- [x] **ClaudeGateway client pooling** (2026-05-20): the underlying
+  `anthropic.Anthropic` client is cached at module level by
+  `(api_key, timeout)` so repeated `ClaudeGateway()` instantiations on the
+  hot path reuse the same HTTP connection pool. `reset_anthropic_client_cache()`
+  is exported for tests. Regression coverage:
+  `apps/ai/tests/test_gateway.py::test_reuses_anthropic_client_across_gateways_with_same_credentials`
+  and `::test_different_credentials_get_distinct_clients`.

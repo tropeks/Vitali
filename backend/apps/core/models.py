@@ -460,6 +460,16 @@ class User(AbstractBaseUser, PermissionsMixin):
     must_change_password = models.BooleanField(
         "Senha temporária — exige alteração no primeiro login", default=False
     )
+    # Phase 3 multi-country — populated when the user picks a UI language
+    # via /api/v1/users/me/language/. Empty string means "use platform
+    # default (pt-BR) / Accept-Language". Values come from settings.LANGUAGES.
+    preferred_language = models.CharField(
+        "Idioma preferido",
+        max_length=10,
+        blank=True,
+        default="",
+        help_text="Código do idioma (pt-br, pt-pt, es, en). Vazio = padrão da plataforma.",
+    )
     last_login = models.DateTimeField("Último acesso", null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

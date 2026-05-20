@@ -2,6 +2,560 @@
 
 All notable changes to Vitali Health are documented here.
 
+## [Unreleased]
+
+### Added
+
+- **Phase 3 — Mobile backend primitive (`apps.mobile`, 2026-05-20):**
+  the part of the documented "Mobile app (React Native)" item that is
+  shippable as a complete backend primitive — device registration + push
+  dispatch + audit trail. The React-Native client and the FCM/APNS
+  adapter wiring are deploy-time follow-ups; this layer is the swap-in
+  point.
+  - `apps/mobile/models.py:MobileDevice` — one row per `(user, device_id)`
+    install. Carries platform (ios / android / web), `push_token`,
+    `app_version`, `os_version`, `enrolled_at`, `last_seen_at`,
+    `is_active`. Unique constraint on `(user, device_id)` means re-register
+    from the same client is idempotent.
+  - `apps/mobile/models.py:PushDelivery` — append-only audit log of every
+    push attempt. Records device + user + title/body/data + status
+    (`sent` / `failed` / `no_provider`) + provider message id / error.
+    Even when no FCM/APNS adapter is wired, the row is still written
+    with `status=no_provider` so ops has full visibility.
+  - `apps/mobile/services/push.py:MobilePushService` — module-level
+    singleton dispatcher with a `PushAdapter` `Protocol` plugin point.
+    Default is `_NoProviderAdapter` (logs only). At app startup an
+    integrator calls `MobilePushService.set_adapter(FirebaseAdapter())`
+    and the REST surface starts delivering real pushes — no code change
+    in the views or tests.
+  - Self surface (authenticated, module-gated, no extra perm):
+    - `GET / POST /api/v1/mobile/devices/me/` — list / idempotent register.
+    - `DELETE /api/v1/mobile/devices/me/{id}/` — soft-disable (sets
+      `is_active=False`).
+    Cross-user device access on these endpoints returns 404.
+  - Admin surface (gated by `mobile.admin` permission):
+    - `GET /api/v1/mobile/devices/?user=…&platform=…&active=…`
+    - `POST /api/v1/mobile/push/` — fan a push out to every active
+      device a user has registered.
+    - `GET /api/v1/mobile/push/audit/?user=…&status=…` — recent
+      `PushDelivery` rows.
+  - Module key `mobile` added to `ALLOWED_MODULE_KEYS` (default OFF).
+    `mobile.admin` permission seeded into `ADMIN_PERMISSIONS`.
+  - 18 tests: 9 self-surface (register / idempotent / list isolation /
+    delete soft-disable / cross-user 404 / module gate / auth /
+    invalid platform 400) + 9 admin + push (admin list / filters / perm
+    gate / no-provider / success adapter / failing adapter / inactive
+    skipped / unknown user 404 / audit / admin-only).
+  - Verified: 848/848 backend tests pass · mypy clean · ruff clean ·
+    format clean.
+- **Phase 3 — Triagem Inteligente FSM primitive (`apps.triage`,
+  2026-05-20):** backend half of the documented "Triagem Inteligente
+  (WhatsApp)" item. Ships the FSM + clinical rules + audit trail; the
+  WhatsApp message-routing integration plugs into this primitive's
+  `answer()` calls at deploy time, same pattern as DICOM/Orthanc and
+  WebRTC above `TelemedicineSession`.
+  - `apps/triage/services/question_bank.py` — 6-question Manchester /
+    START-inspired red-flag bank (chest pain, breathing difficulty,
+    severe bleeding, altered consciousness, severe pain, recent trauma)
+    + chief-complaint keyword sets for emergency (infarto / AVC /
+    convulsão / etc.) and urgent (febre alta / vômito / dor abdominal /
+    etc.). The bank lives in code: clinical questions need versioning
+    and review, not a free-form admin UI.
+  - `apps/triage/services/evaluator.py:evaluate` — deterministic
+    `routine | urgent | emergency` classifier with explicit precedence:
+    emergency keywords → emergency; ≥2 red flags or critical single
+    (sangramento intenso / consciência alterada) → emergency; urgent
+    keyword or single red flag → urgent; otherwise routine. Returns a
+    `TriageDecision` carrying rationale + matched_keywords + counts so
+    every classification is auditable.
+  - `apps/triage/models.py:TriageSession` — state machine
+    `started → answering → evaluated → completed | escalated | cancelled`;
+    `evaluate_now()` auto-escalates emergencies (records `escalated_at`
+    so CFM Res. 2.314/2022 §6 escalation requirement is preserved).
+    Re-evaluation / answers from terminal states return 409.
+  - REST: 8 endpoints under `/api/v1/triage/` — `GET /questions/`
+    (bank), `GET/POST /sessions/`, `GET /sessions/{id}/`, `PATCH /
+    sessions/{id}/complaint/`, `POST /sessions/{id}/{answer,evaluate,
+    complete,cancel}/`.
+  - Module key `triage` (default OFF). Permissions `triage.read` +
+    `triage.respond` seeded into admin / médico-dentista / enfermeiro
+    (read only) / recepção default roles.
+  - 25 tests: 8 evaluator unit + 17 FSM/endpoint integration
+    (question bank / create / complaint PATCH / answer / unknown-key
+    400 / evaluate-before-all 409 / routine path / emergency
+    auto-escalation / double-evaluate 409 / complete-after-eval /
+    cancel-from-started / complete-before 409 / list filter by urgency
+    / role + module + auth gates / terminal-state-rejects-answer).
+  - Verified: 830/830 backend tests pass · mypy clean · ruff clean ·
+    format clean.
+- **Phase 3 — Smart Scheduling rule-based slot ranker
+  (`apps.smart_scheduling`, 2026-05-20):** explainable baseline before an
+  ML model. Closes the Phase 3 "Smart Scheduling (AI-optimized)" item at
+  the *primitive* layer — a future iteration can swap the scoring
+  function behind the same REST shape with a learned model when piloto
+  data is available.
+  - `apps/smart_scheduling/services/ranker.py:suggest_slots` enumerates
+    a professional's open slots in the [from_date, to_date] window from
+    `ScheduleConfig`, excludes slots already taken in `Appointment`, and
+    scores each candidate against three explicit signals:
+    - `clinical_time`: hour-of-day score (10am peak, lunch dip, 15-16
+      secondary peak) anchored on common Brazilian primary-care
+      attendance curves.
+    - `gap_fill`: rewards slots adjacent to an existing appointment on
+      the same day so the schedule clusters instead of fragmenting.
+    - `patient_history`: when a Patient is supplied, boosts hours-of-day
+      the patient has previously attended (computed in the platform's
+      local timezone — DB stores UTC, so an explicit `.astimezone()` is
+      required before reading `.hour`).
+    All three signals normalised to [0, 1] and combined via weighted sum
+    (`DEFAULT_WEIGHTS` tunable). Determinism is the invariant — same
+    `(patient, professional, slot)` → same score, no randomness.
+  - REST:
+    `GET /api/v1/scheduling/suggest/?professional=…&patient=…&from=…&to=…&limit=…`.
+    Window capped at 60 days so response time is predictable. Each
+    suggestion carries the raw score *and* per-signal components so the
+    UI can explain why a slot ranks where it does.
+  - Module key `smart_scheduling` (default OFF). Permission
+    `smart_scheduling.read` seeded into admin / médico/dentista /
+    enfermeiro / recepção default roles — receptionists are the primary
+    user of the suggestion flow.
+  - 16 tests: 7 service unit (zero-config / 16-slot enumeration / lunch
+    skip / 10am peak win / taken-slot excluded / patient-history boost /
+    invalid window + limit) + 9 endpoint integration (sorted ranking /
+    missing-prof 400 / unknown-prof 404 / inverted window 400 /
+    too-wide 400 / unknown-patient 404 / module + permission + auth
+    gates).
+  - Verified: 805/805 backend tests pass · mypy clean · ruff clean ·
+    format clean.
+- **Phase 3 — AI Farmácia demand-forecast primitive (`apps.pharmacy_ai`,
+  2026-05-20):** baseline rolling-window forecast over the existing
+  `StockMovement` ledger. No ML model yet (clinics need to accumulate
+  dispensation history first); the arithmetic baseline ships now so a
+  smarter implementation can swap in without breaking the REST contract.
+  - `apps/pharmacy_ai/services/forecast.py:forecast_for_drug` — for a
+    given Drug, sums `dispense`-type StockMovements over a configurable
+    window (`window_days`, default 30), computes `avg_daily_consumption`,
+    pulls `current_stock` from `StockItem`, and emits
+    `projected_days_of_supply` + `recommended_reorder_quantity`
+    (`max(0, target_days × avg_daily − current_stock)`).
+  - REST: `GET /api/v1/pharmacy/forecast/?drug=<id>&window_days=30&target_days=60`
+    returns a `DemandForecast` payload. 400 on missing / non-integer /
+    non-positive params; 404 on unknown drug.
+  - Module key `pharmacy_ai` added to `ALLOWED_MODULE_KEYS` (default OFF).
+    Permission `pharmacy_ai.read` seeded into `ADMIN_PERMISSIONS`,
+    `CLINICAL_PRESCRIBER_PERMISSIONS`, and `PHARMACY_PERMISSIONS`.
+  - 14 tests: 5 service unit (no-history zero / uniform consumption /
+    out-of-window ignored / over-target zero-reorder / invalid params)
+    + 9 endpoint integration (payload shape / custom window+target /
+    missing-drug 400 / non-integer 400 / non-positive 400 / unknown-drug
+    404 / module gate / permission gate / auth gate).
+  - Scope: rule-based baseline. A future iteration with seasonality-aware
+    ML model can swap the implementation behind the same REST shape
+    without breaking callers.
+  - Verified: 789/789 backend tests pass · mypy clean · ruff clean · format
+    clean.
+- **Phase 3 — Multi-country i18n infrastructure (2026-05-20):** Django
+  i18n turned on with a 4-language vocabulary (pt-BR / pt-PT / es / en),
+  per-user language preference, and an explicit `PreferredLanguageMiddleware`
+  that activates the user's choice on every authenticated request — the
+  groundwork for the documented multi-country compliance (start with
+  Portugal / Angola).
+  - `vitali/settings/base.py` — `LANGUAGES` advertises the 4 supported
+    locales, `LOCALE_PATHS = [BASE_DIR / "locale"]` points at the four
+    `locale/<code>/LC_MESSAGES/` stub directories (translations land here
+    iteratively).
+  - `django.middleware.locale.LocaleMiddleware` added to `MIDDLEWARE`
+    immediately after `AuthenticationMiddleware`, so URL prefix /
+    `Accept-Language` resolution happens before our custom layer.
+  - New `apps.core.middleware.PreferredLanguageMiddleware` —
+    authenticated requests get the user's saved `preferred_language`
+    activated for the duration of the request, then deactivated on
+    response (no global leak across requests).
+  - New `preferred_language` field on `core.User` (migration
+    `core/0014_user_preferred_language.py`). Empty string means "fall
+    back to platform default + `Accept-Language`".
+  - REST: `GET / PATCH /api/v1/users/me/language/` — returns the user's
+    current pick plus the platform's supported list / default. PATCH
+    validates against `LANGUAGES`; unknown codes return 400 with the
+    allowed set surfaced for clients.
+  - 11 tests: settings shape (3) + endpoint round-trip + 400 on unknown
+    code + empty-string resets + auth gate (5) + middleware unit tests
+    (activate / no-pref passthrough / anonymous passthrough — 3).
+  - Verified: 775/775 backend tests pass · mypy clean · ruff clean · format
+    clean.
+- **Phase 3 — Patient Portal backend primitive (`apps.patient_portal`,
+  2026-05-20):** the backend half of Portal do Paciente. The patient-facing
+  Next.js app is a separate parallel project; this layer is sufficient for
+  integrators building their own patient app today.
+  - `apps/patient_portal/models.py:PatientPortalAccess` — OneToOne link
+    between a `core.User` account and an EMR `Patient`. State machine
+    `invited → active | revoked`. `secrets.token_urlsafe(32)` invite
+    token, 7-day default expiry, `activate()` / `revoke()` / `touch()`
+    methods. Audit timestamps: `invited_at`, `activated_at`, `revoked_at`,
+    `last_seen_at`.
+  - **Admin surface** (gated by `users.read` / `users.write`):
+    - `GET/POST /api/v1/portal/access/` — mint + list invites.
+    - `POST /api/v1/portal/access/activate/` — patient consumes their
+      token (verifies the token belongs to the requesting user, refuses
+      cross-account use, refuses expired tokens).
+    - `GET /api/v1/portal/access/{id}/`
+    - `POST /api/v1/portal/access/{id}/revoke/`
+  - **Self-data surface** (`/api/v1/portal/me/...`, gated by the new
+    `IsPortalSelfAccess` permission — requires `portal.self_access`
+    permission AND an `active` PatientPortalAccess row):
+    - `GET /portal/me/`             — own Patient profile
+    - `GET /portal/me/appointments/` — own Appointments
+    - `GET /portal/me/encounters/`  — own Encounters (signed only)
+    - `GET /portal/me/prescriptions/` — own Prescriptions (signed +
+      partially_dispensed + dispensed)
+    - `GET /portal/me/allergies/`   — own Allergies
+    Every self-data request calls `access.touch()` so `last_seen_at`
+    stays current.
+  - Module key `patient_portal` (default OFF) in `ALLOWED_MODULE_KEYS`.
+  - 18 integration tests: admin create / list-filter / revoke / perm gate;
+    activate consume / cross-user 403 / expired 409 / invalid token 400;
+    self-data /me + /me/appointments (cross-tenant isolation) +
+    /me/encounters (only signed) + /me/allergies (cross-tenant isolation);
+    self-access blocked for invited / revoked / no-permission users;
+    module + auth gates.
+  - Verified: 764/764 backend tests pass · mypy clean · ruff clean ·
+    format clean.
+- **Phase 3 — Telemedicine session tracking primitive (`apps.telemedicine`,
+  2026-05-20):** the *session lifecycle* layer of the telemedicina epic.
+  WebRTC infra, video recording, and per-tenant SFU are deploy-time
+  concerns; the tracking primitive shipped here closes the CFM Res.
+  2.314/2022 §3 audit requirement (start / end of every telemedicine
+  session must be logged) and gives the eventual WebRTC layer a stable
+  `room_uid` to route by.
+  - `apps/telemedicine/models.py:TelemedicineSession` — state machine
+    `scheduled → in_progress → completed | cancelled` enforced by
+    `ALLOWED_TRANSITIONS` + `start() / complete() / cancel()` methods
+    (which compute `duration_seconds` automatically and refuse
+    transitions out of terminal states). Carries optional Appointment
+    FK, Patient + Professional FKs, an auto-minted unique `room_uid`,
+    `scheduled_for`/`started_at`/`ended_at`, `recording_url`, and notes.
+  - REST: `GET/POST /telemedicine/sessions/`,
+    `GET /telemedicine/sessions/{id}/`,
+    `POST /telemedicine/sessions/{id}/start/`,
+    `POST /telemedicine/sessions/{id}/complete/`,
+    `POST /telemedicine/sessions/{id}/cancel/`,
+    `PATCH /telemedicine/sessions/{id}/recording/`. State transitions
+    are explicit POSTs (not PATCH on status) so each lifecycle event
+    writes its own audit-attributable request.
+  - Module key `telemedicine` (default OFF). Permissions
+    `telemedicine.read` + `telemedicine.host` seeded into
+    `ADMIN_PERMISSIONS` and `CLINICAL_PRESCRIBER_PERMISSIONS`.
+  - 16 integration tests covering create / list-with-filters / detail
+    404 / start-from-scheduled / complete-with-duration / cancel from
+    scheduled or in-progress / terminal-state-rejection-409 /
+    recording-URL patch + invalid-URL 400 / host-permission gate /
+    reader-can-list / module + auth gates.
+  - Verified: 746/746 backend tests pass · mypy clean · ruff clean ·
+    format clean.
+- **Phase 2 — DICOM Study tracking primitive (`apps.imaging`, 2026-05-20):**
+  the tracking half of E-012 (DICOM/PACS). Clinics that already operate an
+  Orthanc / PACS gateway can now register studies through Vitali's REST,
+  and clinics without a PACS deployment can still keep a structured
+  reference to imaging studies cited in their referrals + reports.
+  - `apps/imaging/models.py:DicomStudy` — tenant-scoped, keyed by the
+    DICOM `study_instance_uid` (unique). Carries Patient FK, optional
+    Encounter FK, accession_number (DICOM tag 0008,0050), modality
+    (CR/CT/DX/MG/MR/NM/OT/PT/RF/US/XA), body_part_examined, description,
+    study_date, number_of_series, number_of_instances, and a nullable
+    `orthanc_study_id` populated once the PACS layer ingests the study.
+    `has_pixel_data` property returns True once that field is set.
+    Two indexes (`img_pat_date_idx`, `img_mod_date_idx`).
+  - REST: `GET /api/v1/imaging/studies/?patient=…&modality=…&encounter=…&_count=…`,
+    `POST /api/v1/imaging/studies/`, `GET /api/v1/imaging/studies/{id}/`,
+    `PATCH /api/v1/imaging/studies/{id}/orthanc/` (backfill the Orthanc UID
+    + series/instance counts once the PACS confirms ingestion).
+  - Module key `imaging` added to `ALLOWED_MODULE_KEYS` (default OFF).
+    Permissions `imaging.read` + `imaging.write` seeded into
+    `ADMIN_PERMISSIONS` and `CLINICAL_PRESCRIBER_PERMISSIONS`.
+  - 13 integration tests covering list / patient + modality + encounter
+    filtering, detail, create + duplicate-uid rejection, Orthanc backfill
+    + permission gate, module + auth gates.
+  - Scope: the *tracking* layer. The OHIF Viewer frontend integration and
+    the Orthanc HTTP client (webhook handler + REST poller) are deploy-time
+    concerns that plug into `orthanc_study_id`; documented as follow-up in
+    `EPICS_AND_ROADMAP.md` §6.
+  - Verified: 730/730 backend tests pass · mypy clean · ruff clean · format
+    clean.
+- **Phase 3 — FHIR R4 ServiceRequest resource (`apps.fhir`, 2026-05-20):**
+  completes the FHIR interop primitive — **8 of 8 documented resources**
+  (`EPICS_AND_ROADMAP.md` §6 Phase 3 FHIR scope closed).
+  - `apps/fhir/services/service_request_mapper.py` — maps
+    `apps.emr.ClinicalDocument` rows of types `referral` and `exam_request`
+    to FHIR ServiceRequest. Category uses SNOMED codes (306206005 / Referral
+    to service, 108252007 / Laboratory procedure). Status derives from the
+    signature: unsigned → `draft`, signed → `active`. Other ClinicalDocument
+    types (`certificate`, `prescription`, `report`) are deliberately NOT
+    exposed here — they belong to different FHIR resource types
+    (DocumentReference, DiagnosticReport, …) in a future expansion.
+  - Endpoints (2 new):
+    - `GET /api/v1/fhir/ServiceRequest/{id}/` (404 when underlying
+      ClinicalDocument is not a referral / exam_request)
+    - `GET /api/v1/fhir/ServiceRequest/?patient=…&status=…&category=…&_count=…`
+  - Capability Statement updated — now advertises **8 resources** end-to-end.
+  - 26 tests: 13 mapper unit + 13 view integration (capability listing,
+    read, certificate-not-found 404, search by patient / status / category,
+    unknown-status / unknown-category empty bundles, module gate).
+  - Verified: 717/717 backend tests pass · mypy clean · ruff clean · format
+    clean.
+- **Phase 3 — FHIR R4 Observation + Condition resources (`apps.fhir`,
+  2026-05-20):** two more resources, taking the FHIR primitive from 5 to 7
+  of 8 documented resources.
+  - `apps/fhir/services/observation_mapper.py` — splits one
+    `apps.emr.VitalSigns` row into N FHIR Observation resources (one per
+    vital), each with a stable LOINC code (29463-7 / weight, 8302-2 /
+    height, 8480-6 / systolic BP, 8462-4 / diastolic BP, 8867-4 / heart
+    rate, 8310-5 / body temp, 59408-5 / SpO₂, 39156-5 / BMI derived from
+    weight+height). UCUM unit codes carried in `valueQuantity`. Resource
+    id format is `<encounter-uuid>_<loinc>` (underscore separator —
+    UUIDs and LOINC codes both use `-`, so an underscore keeps the parser
+    unambiguous).
+  - `apps/fhir/services/condition_mapper.py` — maps `apps.emr.MedicalHistory`
+    to FHIR Condition with CID-10 / ICD-10 system URI on the coding,
+    clinicalStatus (active / resolved; "controlled" rolls into active with
+    a note carrying the original Vitali state), verificationStatus =
+    confirmed, category derived from the Vitali type (chronic/acute →
+    problem-list-item, surgical/family → encounter-diagnosis with a
+    "Family history" text discriminator).
+  - Endpoints (4 new):
+    - `GET /api/v1/fhir/Observation/<encounter-uuid>_<loinc>/`
+    - `GET /api/v1/fhir/Observation/?patient=…&encounter=…&code=…&_count=…`
+    - `GET /api/v1/fhir/Condition/{id}/`
+    - `GET /api/v1/fhir/Condition/?patient=…&clinical-status=…&category=…&_count=…`
+  - Capability Statement updated to advertise both (7 resources total).
+  - 36 tests: 11 observation mapper + 12 condition mapper + 13 view
+    integration (capability listing, read by composite LOINC id, search by
+    patient / encounter / code / clinical-status / category, module gate).
+  - Verified: 691/691 backend tests pass · mypy clean · ruff clean · format
+    clean.
+- **Phase 3 — FHIR R4 AllergyIntolerance + MedicationRequest resources
+  (`apps.fhir`, 2026-05-20):** two more resources on the interop layer,
+  taking the FHIR primitive from 3 to 5 of 8 documented resources.
+  - `apps/fhir/services/allergy_mapper.py:allergy_to_fhir` — maps
+    `apps.emr.Allergy` to FHIR AllergyIntolerance with criticality derived
+    from severity (`mild` → `low`; `moderate`/`severe`/`life_threatening`
+    → `high`), clinicalStatus (active/inactive/resolved), verificationStatus
+    (confirmed when `confirmed_by` present), substance in `code.text`,
+    patient reference, recordedDate, and a reaction sub-element when the
+    free-text `reaction` is populated.
+  - `apps/fhir/services/medication_request_mapper.py` — maps the Vitali
+    Prescription → N FHIR MedicationRequest resources (one per
+    `PrescriptionItem`, per FHIR spec). Carries `groupIdentifier`
+    (`urn:vitali:prescription`) so clients can group items by their parent
+    prescription. `status` translated to FHIR valueset (`signed` /
+    `partially_dispensed` → `active`; `dispensed` → `completed`; `draft` /
+    `cancelled` passthrough). Emits `medicationCodeableConcept` from the
+    item's `generic_name` (falls back to the catalogued Drug),
+    `dosageInstruction` with quantity + unit + free-text directions, and
+    references to Patient / Practitioner / Encounter.
+  - Endpoints (4 new):
+    - `GET /api/v1/fhir/AllergyIntolerance/{id}/`
+    - `GET /api/v1/fhir/AllergyIntolerance/?patient=…&clinical-status=…&_count=…`
+    - `GET /api/v1/fhir/MedicationRequest/{id}/`
+    - `GET /api/v1/fhir/MedicationRequest/?patient=…&status=…&_count=…`
+  - Capability Statement updated to advertise both resources (5 total now).
+  - 37 tests: 12 allergy mapper + 13 medication-request mapper + 12 view
+    integration (capability, read, search by patient / clinical-status /
+    status, unknown-status empty, group identifier carry-through, module
+    gate).
+  - Verified: 655/655 backend tests pass · mypy clean · ruff clean · format
+    clean.
+- **Phase 3 — FHIR R4 Practitioner resource (`apps.fhir`, 2026-05-20):**
+  third resource on the interoperability layer. Closes the dangling
+  `Practitioner/<id>` references the Encounter resource already emits — FHIR
+  clients can now follow those references to a real resource.
+  - `apps/fhir/services/practitioner_mapper.py:professional_to_fhir` —
+    emits Practitioner with one identifier per council registry
+    (`urn:vitali:council/{crm,cro,coren,…}` + state as assigner; CRM uses
+    the v2-0203 `MD` type code, other councils use `LN`), name split from
+    the linked User, email telecom, qualification entries for both the
+    council itself and CBO code (Brazilian Classificação Brasileira de
+    Ocupações system), and an `active` flag from `Professional.is_active`.
+  - Endpoints: `GET /api/v1/fhir/Practitioner/{id}/` (read),
+    `GET /api/v1/fhir/Practitioner/?identifier=…|…&name=…&active=…&_count=…`
+    (search returning a searchset Bundle).
+  - Capability Statement updated to advertise Practitioner (read +
+    search-type with `identifier`, `name`, and `active` search params).
+  - 20 tests: 10 mapper unit tests (council identifier system URI, name
+    split, CBO qualification, fallback to specialty free-text, missing
+    fields drop optional output) + 10 view integration tests (capability
+    listing, read, search by council token / bare council number / name /
+    active boolean, module + permission gates).
+  - Verified: 618/618 backend tests pass · mypy clean · ruff clean · format
+    clean.
+- **Phase 3 — FHIR R4 Encounter resource (`apps.fhir`, 2026-05-20):** second
+  resource on the interoperability layer, follows the Patient pattern (pure
+  stateless transform over `apps.emr.Encounter`).
+  - `apps/fhir/services/encounter_mapper.py:encounter_to_fhir` — emits
+    Encounter with status mapped to FHIR valueset (`open` → `in-progress`,
+    `signed` → `finished`, `cancelled` → `cancelled`), ambulatory `class`
+    code (AMB / v3-ActCode), `subject` → `Patient/<uuid>`,
+    `participant.individual` → `Practitioner/<uuid>` with PPRF
+    (primary-performer) participation, period (start = `encounter_date`,
+    end = `signed_at` when signed), and `reasonCode.text` populated from
+    the chief complaint.
+  - Endpoints: `GET /api/v1/fhir/Encounter/{id}/` (read),
+    `GET /api/v1/fhir/Encounter/?subject=Patient/{id}&status=…&_count=…`
+    (search returning a searchset Bundle). `patient` is supported as an
+    alias of `subject` per FHIR. `status` accepts the FHIR codes and is
+    translated back to the internal lifecycle.
+  - Capability Statement updated to advertise Encounter (read + search-type
+    with `subject` and `status` search params).
+  - 22 tests: 11 mapper unit tests (status mapping, class, subject &
+    participant refs, period, reason code, empty-state behaviour,
+    `base_url` prefix) + 11 view integration tests (capability listing,
+    read, search by `subject` / `patient` / `status`, unknown status,
+    permission / module / 404 gates).
+  - Verified: 598/598 backend tests pass · mypy clean · ruff clean · format
+    clean.
+- **Phase 3 — FHIR R4 Patient resource (`apps.fhir`, 2026-05-20):** first
+  bite of the interoperability layer from `EPICS_AND_ROADMAP.md` §6 Phase 3.
+  Stateless surface over existing tenant data — no new models — so the
+  module ships in one vertical slice and can grow resource-by-resource
+  without further migrations. Endpoints:
+  - `GET /api/v1/fhir/metadata` (public Capability Statement, FHIR R4 §3.2).
+  - `GET /api/v1/fhir/Patient/{id}/` — single-resource read.
+  - `GET /api/v1/fhir/Patient/?identifier=…|…&name=…&_count=…` — searchset
+    `Bundle`, supports the canonical `identifier` (MRN + CPF, BR-Core OID)
+    and `name` search params. `_count` capped at 100.
+  - `apps/fhir/services/patient_mapper.py:patient_to_fhir` — pure transform
+    that emits FHIR R4 Patient with identifiers (MRN + national CPF
+    coding), official + usual names, telecom (phone/mobile/email), gender,
+    birthDate, and structured address with `country: BR`.
+  - Gated by FeatureFlag `fhir` (default OFF) + per-user `fhir.read`
+    permission (seeded into `ADMIN_PERMISSIONS` and
+    `CLINICAL_PRESCRIBER_PERMISSIONS`).
+  - 22 tests: 10 mapper unit tests (gender mapping, identifier system URIs,
+    name splitting, social-name fallback, telecom, address, empty-address
+    omission) + 12 view integration tests (capability statement public,
+    read + search by MRN / CPF / name, module + permission + auth gates,
+    `_count` cap).
+  - Scope: Patient + Capability Statement only. Observation, Encounter,
+    MedicationRequest, Practitioner are follow-up resources that plug into
+    the same pattern.
+  - Verified: 576/576 backend tests pass · mypy clean · ruff clean · format
+    clean.
+- **Phase 2 — ICP-Brasil digital signature primitive (`apps.signatures`,
+  2026-05-20):** the first Phase 2 item from `EPICS_AND_ROADMAP.md` §6 lands
+  as a complete, tenant-scoped vertical. Implements the cryptographic core of
+  MP 2.200-2/2001 (ICP-Brasil) + CFM Res. 2.299/2021 (paperless clinical
+  records) — load A1 PKCS#12, SHA-256 + RSA-PKCS#1v15 sign (the AD-RB profile
+  in DOC-ICP-15.03), verify against the embedded cert. New module:
+  - `apps/signatures/models.py:DigitalSignature` — append-only record bound
+    to a `document_hash_hex` + cert metadata + signer; polymorphic
+    `document_type` × `document_id` reference (encounter, prescription,
+    custom). Two indexes (`sig_doc_idx`, `sig_signer_idx`).
+  - `apps/signatures/services/icp_brasil.py:ICPBrasilSigner` — stateless
+    primitive with `load_pkcs12 / compute_hash / sign / verify /
+    is_icp_brasil`. Returns a `SignatureResult` dataclass that maps 1-1 to
+    the storage layer.
+  - REST: `POST /api/v1/signatures/sign/` (write — gated by
+    `signatures.sign` + module `signatures`), `GET /api/v1/signatures/`
+    (read — filterable by `document_type` + `document_id`, gated by
+    `signatures.read`). Bundle accepted as base64 in the body so the key
+    payload never touches multipart or query-string logging surfaces.
+  - New module key `"signatures"` in `apps.core.constants:ALLOWED_MODULE_KEYS`
+    + default-OFF tenant FeatureFlag. `signatures.read` /
+    `signatures.sign` permissions seeded into `admin` and
+    `medico` / `dentista` default roles (`CLINICAL_PRESCRIBER_PERMISSIONS`).
+  - Admin: read-only `DigitalSignatureAdmin` (add/change/delete disabled —
+    signatures are produced by the API, not via admin).
+  - Tests: 8 unit tests for the cryptographic primitive (PKCS#12 parse, sign
+    + verify roundtrip, tampered-document detection, wrong-password
+    rejection, no-password bundle, ICP-Brasil issuer detection, well-known
+    SHA-256 baseline) + 9 integration tests for the REST surface
+    (module/permission/auth gates, validation, list filtering). Uses
+    ephemeral self-signed RSA-2048 PKCS#12 — no real ICP-Brasil cert needed
+    in CI.
+  - Scope deliberately at the primitive layer. Full chain-of-trust
+    validation against the ICP-Brasil DOC-ICP-04 trust store, A3 hardware
+    tokens (PKCS#11), and end-to-end integration into the encounter /
+    prescription sign flows are follow-up work — but the primitive is
+    complete: sign + verify + store are all wired and tested.
+  - Verified: 554/554 backend tests pass · mypy clean · ruff clean · format
+    clean.
+- **`docs/TODOS.md` Lower-Priority closed — ClaudeGateway client pooling
+  (2026-05-20):** the underlying `anthropic.Anthropic` client is now cached
+  at module level keyed by `(api_key, timeout)`. The hot path
+  (`predict_glosa`, `suggest_tuss_codes`, scribe transcription) used to
+  rebuild the HTTP connection pool on every gateway instantiation; concurrent
+  scribe sessions saw measurable overhead at >10 sessions. Now: one shared
+  client per credential pair. `reset_anthropic_client_cache()` exported for
+  tests. Backend regression coverage in `apps/ai/tests/test_gateway.py`.
+- **P3 closed — Batch Glosa Prediction Endpoint
+  (`POST /api/v1/ai/glosa-predict-batch/`, 2026-05-20):** wraps the per-row
+  predictor so a multi-item TISS guide is one round-trip instead of N
+  parallel fires. Accepts a shared `insurer_ans_code` + `insurer_name` +
+  `guide_type` and a list of `items` (each `{tuss_code, cid10_codes}`),
+  capped at 50 items per batch. Same fail-open contract as the per-row
+  endpoint: `degraded_overall=True` when any item degrades or when the
+  global `FEATURE_AI_GLOSA` / per-tenant `ai_glosa_prediction_enabled` gate
+  is off. Closes [TODOS.md](./TODOS.md) P3 — Batch Glosa Prediction Endpoint.
+  Backend regression tests in
+  `apps/ai/tests/test_views_glosa.py::GlosaPredictBatchViewTest`.
+
+### Changed
+
+- **`DESIGN.md` v2.0 contract enforced system-wide (2026-05-20):** R0–R5
+  reconciled the canonical surfaces; this sweep closes every remaining
+  absolute-rule violation on every other dashboard page and shared
+  component. After the pass, the audit counters are all zero across
+  `frontend/app/(dashboard)/` and `frontend/components/`:
+  - `rounded-xl` — retired everywhere (§7 + §12). 29 files swept to
+    `rounded-lg`.
+  - `shadow-sm` on static cards — retired (§7 "Static cards […] are flat";
+    §12 Don'ts). Surgically removed only where the same className already
+    carries `rounded-lg` + `border` (the card-chrome signature); kept on
+    legitimately floating surfaces (segmented-control active state, modals
+    use `shadow-2xl`). 8 files swept.
+  - `gray-*` palette — retired (§3 "Use `slate-*` for text, bg, and
+    borders"). Mechanical `gray-N` → `slate-N` substitution; 460+ class
+    occurrences across the dashboard. Tailwind's slate scale is the cooler
+    cousin of gray — visual impact is minimal but consistency is now
+    enforced.
+  - `<h1>`/`<h2>` titles on `font-bold` — retired (§6 + §12 "v1's
+    `font-bold` and the `<h2>` workbench titles are retired"). Targeted
+    `<h1>`/`<h2>` regex; 9 files swept. `font-bold` on non-title elements
+    (badges, etc.) untouched.
+  - `<h1 text-xl>` page titles — retired in favour of `text-2xl` (§6).
+    Last remaining instance is the clinical-workspace patient bar header
+    (`encounters/[id]`), which is a Tasy-idiom still pending codification
+    per `docs/PLAN_UI_UX_RECONCILIATION.md`.
+
+  Verified green after every sweep: `tsc --noEmit`, `eslint
+  --max-warnings=0`, 17/17 vitest files (74/74 tests).
+- **R5 UI reconciliation — Admin / AI / WhatsApp / HR / Platform / Profile (2026-05-20):**
+  Closes the last `planned` block in
+  [`docs/PLAN_UI_UX_RECONCILIATION.md`](./docs/PLAN_UI_UX_RECONCILIATION.md).
+  Seven settings/admin surfaces (`/configuracoes/ai`, `/configuracoes/assinatura`,
+  `/configuracoes/whatsapp`, `/configuracoes/profissionais`, `/rh/funcionarios`,
+  `/platform/monitor`, `/profile/security`) now run on the shared
+  `PageShell` / `StatusBadge` / `KpiTile` / `SectionState` primitives.
+  `<h1>` titles unified at `text-2xl font-semibold`, retired `rounded-xl` and
+  `shadow-sm`-on-static-cards, and removed every inline status→colour ternary.
+- **`lib/operational-ui.ts` extended with R5 vocabulary:** new
+  `SUBSCRIPTION_STATUS_META`, `EMPLOYMENT_STATUS_META`,
+  `WA_CONNECTION_STATUS_META` enum maps, plus derived-boolean adapters
+  `getActivenessMeta`, `getDpaStatusMeta`, `getMfaStatusMeta`, `getOptInMeta`.
+  The cadastro ativo/inativo pill (`ProfessionalRow`) now resolves through
+  the canonical adapter — colour and label live in one place.
+- **`/platform/monitor` KPIs** switched from a local `KpiCard` to the shared
+  `<KpiTile>`, retiring the unused sparkline scaffolding.
+- **`DESIGN.md` `v2.0` contract now covers every dashboard surface** — there
+  are no remaining screens that declare status colours, page shells, or KPI
+  tiles outside the shared primitives.
+
+### Verified
+
+- `tsc --noEmit` clean.
+- `eslint . --max-warnings=0` clean.
+- `vitest run` — 17/17 files, 74/74 tests (added two covering the new R5
+  vocabulary in `operational-ui.test.ts`).
+
 ## [1.0.0] — 2026-04-22
 
 ### Added

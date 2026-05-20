@@ -1,0 +1,98 @@
+"""
+Phase 2 DICOM Study tracking primitive (E-012 partial).
+
+This module is the storage + REST layer for DICOM studies — the *tracking*
+side of the PACS integration. It does NOT include the OHIF viewer (frontend
+component) or an Orthanc client (backend HTTP). Those are deploy-time
+concerns; the tracking primitive shipped here works without them.
+
+Once an Orthanc instance is deployed, an integration task can:
+1. Receive Orthanc webhooks (or poll its REST API) when a study lands.
+2. Look up the matching `DicomStudy` row by `accession_number` or
+   `study_instance_uid` and set `orthanc_study_id` so the OHIF viewer can
+   resolve the image URLs.
+
+The split is intentional: clinics that already have an Orthanc / DICOM
+gateway (most do) can register studies via this API and plug their viewer
+into the resource id; clinics without an Orthanc deployment can still keep
+a structured record of imaging studies referenced by their referrals /
+reports.
+"""
+
+import uuid
+
+from django.db import models
+
+from apps.core.models import User
+from apps.emr.models import Encounter, Patient
+
+
+class DicomStudy(models.Model):
+    """One row per DICOM study (StudyInstanceUID is the natural key)."""
+
+    # DICOM IOD Modality short codes (DICOM C.7.3.1.1.1, common subset).
+    MODALITY_CHOICES = [
+        ("CR", "Computed Radiography"),
+        ("CT", "Computed Tomography"),
+        ("DX", "Digital Radiography"),
+        ("MG", "Mammography"),
+        ("MR", "Magnetic Resonance"),
+        ("NM", "Nuclear Medicine"),
+        ("OT", "Other"),
+        ("PT", "Positron Emission Tomography (PET)"),
+        ("RF", "Radio Fluoroscopy"),
+        ("US", "Ultrasound"),
+        ("XA", "X-Ray Angiography"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    patient = models.ForeignKey(Patient, on_delete=models.PROTECT, related_name="dicom_studies")
+    encounter = models.ForeignKey(
+        Encounter,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="dicom_studies",
+        help_text="Optional — the encounter that requested the study, if known.",
+    )
+
+    # DICOM identity. StudyInstanceUID is mandatory and unique in DICOM; we
+    # mirror that uniqueness here. AccessionNumber is the per-clinic order
+    # number (DICOM tag 0008,0050) — usually unique but not guaranteed across
+    # external integrators, so we make it indexed but not unique.
+    study_instance_uid = models.CharField(max_length=128, unique=True, db_index=True)
+    accession_number = models.CharField(max_length=64, blank=True, db_index=True)
+
+    modality = models.CharField(max_length=4, choices=MODALITY_CHOICES, db_index=True)
+    body_part_examined = models.CharField(max_length=64, blank=True)
+    description = models.CharField(max_length=255, blank=True)
+    study_date = models.DateTimeField()
+    number_of_series = models.PositiveIntegerField(default=0)
+    number_of_instances = models.PositiveIntegerField(default=0)
+
+    # Populated once an Orthanc / PACS gateway has the actual pixel data. The
+    # OHIF viewer URL is `<ohif-base>/viewer?StudyInstanceUIDs=<study-uid>`
+    # when this field is set.
+    orthanc_study_id = models.CharField(max_length=128, blank=True, db_index=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="dicom_studies"
+    )
+
+    class Meta:
+        ordering = ["-study_date"]
+        indexes = [
+            models.Index(fields=["patient", "-study_date"], name="img_pat_date_idx"),
+            models.Index(fields=["modality", "-study_date"], name="img_mod_date_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return (
+            f"{self.modality} — {self.body_part_examined or self.description} ({self.patient_id})"
+        )
+
+    @property
+    def has_pixel_data(self) -> bool:
+        """True when the study has been ingested by the PACS (Orthanc) layer."""
+        return bool(self.orthanc_study_id)

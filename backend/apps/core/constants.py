@@ -12,5 +12,14 @@ ALLOWED_MODULE_KEYS: frozenset = frozenset(
         "whatsapp",
         "analytics",
         "rh",
+        "signatures",
+        "fhir",
+        "imaging",
+        "telemedicine",
+        "patient_portal",
+        "pharmacy_ai",
+        "smart_scheduling",
+        "triage",
+        "mobile",
     }
 )

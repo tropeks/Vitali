@@ -291,3 +291,37 @@ class PasswordChangeRequiredMiddleware:
                 status=403,
             )
         return self.get_response(request)
+
+
+# ─── Phase 3 i18n: per-user preferred language ────────────────────────────────
+
+
+class PreferredLanguageMiddleware:
+    """
+    Activate the authenticated user's `preferred_language` for the request,
+    overriding any earlier `LocaleMiddleware` choice.
+
+    Order matters: this MUST sit AFTER `django.middleware.locale.LocaleMiddleware`
+    (so that middleware's initial activation runs first) and AFTER
+    `AuthenticationMiddleware` (so `request.user` is populated). Both are
+    enforced by the MIDDLEWARE ordering in `vitali/settings/base.py`.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        from django.utils import translation
+
+        user = getattr(request, "user", None)
+        pref = ""
+        if user is not None and getattr(user, "is_authenticated", False):
+            pref = (getattr(user, "preferred_language", "") or "").strip()
+        if pref:
+            translation.activate(pref)
+            request.LANGUAGE_CODE = pref
+        try:
+            return self.get_response(request)
+        finally:
+            if pref:
+                translation.deactivate()

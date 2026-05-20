@@ -37,6 +37,15 @@ TENANT_APPS = [
     "apps.ai",
     "apps.whatsapp",
     "apps.hr",
+    "apps.signatures",
+    "apps.fhir",
+    "apps.imaging",
+    "apps.telemedicine",
+    "apps.patient_portal",
+    "apps.pharmacy_ai",
+    "apps.smart_scheduling",
+    "apps.triage",
+    "apps.mobile",
     "rest_framework",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
@@ -62,8 +71,10 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.middleware.locale.LocaleMiddleware",
     "apps.core.middleware.RequestIdMiddleware",
     "apps.core.middleware.CurrentUserMiddleware",
+    "apps.core.middleware.PreferredLanguageMiddleware",
     "apps.core.middleware.FeatureFlagMiddleware",
     "apps.core.middleware.MFARequiredMiddleware",  # S-062: blocks staff without mfa_verified JWT
     "apps.core.middleware.PasswordChangeRequiredMiddleware",  # S-076-NEW: blocks users with temp password
@@ -123,7 +134,22 @@ PASSWORD_HASHERS = [
 ]
 
 # ─── Internationalization ─────────────────────────────────────────────────────
+# Phase 3 multi-country compliance — Vitali starts in Brazil but the multi-
+# country epic (Portugal / Angola first) requires the i18n layer to be
+# enabled and translatable from day one. `LANGUAGE_CODE` is the fallback
+# when no other signal exists. `LANGUAGES` enumerates what the platform
+# *advertises* as supported — content translation packs (locale/<code>/LC_MESSAGES/django.po)
+# get filled in iteratively. The `LocaleMiddleware` (added below) picks a
+# language per request from the URL prefix / `Accept-Language` / the
+# authenticated user's `preferred_language` field.
 LANGUAGE_CODE = "pt-br"
+LANGUAGES = [
+    ("pt-br", "Português (Brasil)"),
+    ("pt-pt", "Português (Portugal)"),
+    ("es", "Español"),
+    ("en", "English"),
+]
+LOCALE_PATHS = [BASE_DIR / "locale"]
 TIME_ZONE = "America/Sao_Paulo"
 USE_I18N = True
 USE_TZ = True

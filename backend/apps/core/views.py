@@ -403,6 +403,47 @@ class MeView(APIView):
         return Response(serializer.data)
 
 
+class MeLanguageView(APIView):
+    """
+    GET / PATCH /api/v1/users/me/language/ — read and update the user's
+    preferred UI language. Accepts any code listed in `settings.LANGUAGES`.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _allowed_codes(self) -> set[str]:
+        from django.conf import settings
+
+        return {code for code, _label in settings.LANGUAGES}
+
+    def get(self, request):
+        from django.conf import settings
+
+        return Response(
+            {
+                "preferred_language": getattr(request.user, "preferred_language", "") or "",
+                "supported_languages": [
+                    {"code": c, "label": label} for c, label in settings.LANGUAGES
+                ],
+                "default": settings.LANGUAGE_CODE,
+            }
+        )
+
+    def patch(self, request):
+        code = (request.data.get("preferred_language") or "").strip()
+        if code and code not in self._allowed_codes():
+            return Response(
+                {
+                    "detail": "Unsupported language code.",
+                    "allowed": sorted(self._allowed_codes()),
+                },
+                status=400,
+            )
+        request.user.preferred_language = code
+        request.user.save(update_fields=["preferred_language"])
+        return Response({"preferred_language": code})
+
+
 # ─── Tenant Registration (public schema) ──────────────────────────────────────
 
 

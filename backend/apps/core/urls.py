@@ -38,6 +38,7 @@ urlpatterns = [
     path("auth/mfa/disable/", MFADisableView.as_view(), name="mfa-disable"),
     # Current user
     path("me", views.MeView.as_view(), name="me"),
+    path("users/me/language/", views.MeLanguageView.as_view(), name="me-language"),
     # Users
     path("users/", views.UserListCreateView.as_view(), name="user-list"),
     path("users/<uuid:id>/", views.UserDetailView.as_view(), name="user-detail"),

@@ -355,6 +355,491 @@ GET /api/v1/ai/usage/
       "acceptance_rate": 0.690
     }
   Auth: Bearer + users.read (admin only)
+
+POST /api/v1/ai/glosa-predict/
+  Request:
+    {
+      "tuss_code": "40302477",
+      "insurer_ans_code": "123456",
+      "insurer_name": "Unimed Nacional",
+      "cid10_codes": ["J18.9"],
+      "guide_type": "sadt"  (one of: sadt, sp_sadt, consulta, internacao, odonto)
+    }
+  Response 200:
+    {
+      "prediction_id": "uuid|null",
+      "risk_level": "low|medium|high",
+      "risk_reason": "Texto curto em PT-BR explicando o risco.",
+      "risk_code": "",
+      "degraded": false,
+      "cached": false
+    }
+  Auth: Bearer + ai_tuss module + ai.use
+  Note: Fail-open — returns risk_level=low + degraded=true when the global
+        kill-switch (FEATURE_AI_GLOSA) or the per-tenant
+        `ai_glosa_prediction_enabled` toggle is off.
+
+GET /api/v1/fhir/metadata
+  Response 200: <FHIR R4 CapabilityStatement>
+  Auth: public — clients negotiate capabilities before authenticating.
+
+GET /api/v1/fhir/Patient/{id}/
+  Response 200: <FHIR R4 Patient resource>
+  Auth: Bearer + fhir module + fhir.read
+  Note: id is the Vitali Patient UUID. 404 returns a FHIR OperationOutcome-style body.
+
+GET /api/v1/fhir/Patient/
+  Query:
+    identifier=<system>|<value>   — MRN system `urn:vitali:mrn` or CPF OID
+                                     `urn:oid:2.16.840.1.113883.13.236`
+    name=<substring>              — case-insensitive substring on full_name
+    _count=<n>                    — page size, default 20, capped at 100
+  Response 200:
+    {
+      "resourceType": "Bundle",
+      "type": "searchset",
+      "total": <int>,
+      "entry": [{ "fullUrl": "…/fhir/Patient/<id>/", "resource": { … } }, …]
+    }
+  Auth: Bearer + fhir module + fhir.read
+
+GET /api/v1/fhir/Encounter/{id}/
+  Response 200: <FHIR R4 Encounter resource>
+  Auth: Bearer + fhir module + fhir.read
+  Note: Vitali encounter status maps to FHIR codes —
+        `open` → `in-progress`, `signed` → `finished`,
+        `cancelled` → `cancelled`. `class` is always ambulatory (AMB).
+        `participant.individual` references the primary performer
+        (`Practitioner/<uuid>`); `subject` references `Patient/<uuid>`.
+
+GET /api/v1/fhir/Encounter/
+  Query:
+    subject=Patient/<uuid>        — filter by patient (also accepts bare uuid)
+    patient=<uuid>                — alias of subject
+    status=<fhir-code>            — `in-progress` | `finished` | `cancelled`
+    _count=<n>                    — page size, default 20, capped at 100
+  Response 200: <FHIR R4 searchset Bundle of Encounters>
+  Auth: Bearer + fhir module + fhir.read
+
+GET /api/v1/fhir/Practitioner/{id}/
+  Response 200: <FHIR R4 Practitioner resource>
+  Auth: Bearer + fhir module + fhir.read
+  Note: Identifier system per council — `urn:vitali:council/crm`,
+        `…/cro`, `…/coren`, `…/crf`, `…/crefito`, `…/crp`. CRM uses
+        v2-0203 `MD` type code; other councils use `LN`. Qualification
+        emitted both for the council itself and for CBO when present.
+
+GET /api/v1/fhir/Practitioner/
+  Query:
+    identifier=<system>|<value>   — council token; bare value matches any council
+    name=<substring>              — case-insensitive substring on linked user
+    active=true|false             — FHIR boolean literal
+    _count=<n>                    — page size, default 20, capped at 100
+  Response 200: <FHIR R4 searchset Bundle of Practitioners>
+  Auth: Bearer + fhir module + fhir.read
+
+GET /api/v1/fhir/AllergyIntolerance/{id}/
+  Response 200: <FHIR R4 AllergyIntolerance resource>
+  Auth: Bearer + fhir module + fhir.read
+  Note: criticality derived from Vitali severity — `mild` → `low`,
+        `moderate` / `severe` / `life_threatening` → `high`.
+
+GET /api/v1/fhir/AllergyIntolerance/
+  Query:
+    patient=Patient/<uuid>        — filter by patient (also bare uuid)
+    clinical-status=<code>        — `active` | `inactive` | `resolved`
+    _count=<n>                    — page size, default 20, capped at 100
+  Response 200: <FHIR R4 searchset Bundle of AllergyIntolerance>
+  Auth: Bearer + fhir module + fhir.read
+
+GET /api/v1/fhir/MedicationRequest/{id}/
+  Response 200: <FHIR R4 MedicationRequest resource>
+  Auth: Bearer + fhir module + fhir.read
+  Note: id is the Vitali PrescriptionItem uuid. `groupIdentifier`
+        (system `urn:vitali:prescription`) carries the parent Prescription
+        uuid so clients can group items by prescription.
+
+GET /api/v1/fhir/MedicationRequest/
+  Query:
+    patient=Patient/<uuid>        — filter by patient (also bare uuid)
+    status=<fhir-code>            — `draft` | `active` | `completed` | `cancelled`
+    _count=<n>                    — page size, default 20, capped at 100
+  Response 200: <FHIR R4 searchset Bundle of MedicationRequest>
+  Auth: Bearer + fhir module + fhir.read
+
+GET /api/v1/fhir/Observation/<encounter-uuid>_<loinc-code>/
+  Response 200: <FHIR R4 Observation resource>
+  Auth: Bearer + fhir module + fhir.read
+  Note: id is composed of the encounter uuid and the LOINC code joined by
+        an underscore (`_`). Supported LOINC codes: 29463-7 (weight),
+        8302-2 (height), 8480-6 (SBP), 8462-4 (DBP), 8867-4 (heart rate),
+        8310-5 (body temp), 59408-5 (SpO₂), 39156-5 (BMI, computed).
+
+GET /api/v1/fhir/Observation/
+  Query:
+    patient=<uuid>                — joins via encounter
+    encounter=<uuid>              — Encounter scope
+    code=<loinc>                  — LOINC code (returns the matching vital)
+    _count=<n>                    — page size, default 50, capped at 100
+  Response 200: <FHIR R4 searchset Bundle of Observations>
+  Auth: Bearer + fhir module + fhir.read
+
+GET /api/v1/fhir/Condition/{id}/
+  Response 200: <FHIR R4 Condition resource>
+  Auth: Bearer + fhir module + fhir.read
+  Note: code.coding uses the ICD-10 system URI
+        (`http://hl7.org/fhir/sid/icd-10`) when the Vitali row carries a
+        CID-10 code. controlled status rolls into FHIR `active` with the
+        original Vitali state preserved in `note`.
+
+GET /api/v1/fhir/Condition/
+  Query:
+    patient=<uuid>                — filter by patient
+    clinical-status=<code>        — `active` | `resolved`
+    category=<code>               — `problem-list-item` | `encounter-diagnosis`
+    _count=<n>                    — page size, default 20, capped at 100
+  Response 200: <FHIR R4 searchset Bundle of Conditions>
+  Auth: Bearer + fhir module + fhir.read
+
+GET /api/v1/fhir/ServiceRequest/{id}/
+  Response 200: <FHIR R4 ServiceRequest resource>
+  Auth: Bearer + fhir module + fhir.read
+  Note: id is the underlying ClinicalDocument uuid. Only ClinicalDocument
+        rows with doc_type in {referral, exam_request} are exposed here;
+        other document types return 404. status derives from signature
+        (unsigned → draft, signed → active).
+
+GET /api/v1/fhir/ServiceRequest/
+  Query:
+    patient=<uuid>                — joins via encounter
+    status=<fhir-code>            — `draft` | `active`
+    category=<code>               — `referral` | `exam_request`
+    _count=<n>                    — page size, default 20, capped at 100
+  Response 200: <FHIR R4 searchset Bundle of ServiceRequests>
+  Auth: Bearer + fhir module + fhir.read
+```
+
+---
+
+## 11. Imaging Endpoints (Phase 2 — E-012)
+
+```
+GET /api/v1/imaging/studies/
+  Query:
+    patient=<uuid>                — filter by patient
+    modality=<code>               — CR | CT | DX | MG | MR | NM | OT | PT | RF | US | XA
+    encounter=<uuid>              — filter by encounter
+    _count=<n>                    — page size, default 50, capped at 200
+  Response 200: [ <DicomStudy>, ... ]
+  Auth: Bearer + imaging module + imaging.read
+
+POST /api/v1/imaging/studies/
+  Request:
+    {
+      "patient": "<uuid>",
+      "encounter": "<uuid|null>",
+      "study_instance_uid": "<DICOM UID, unique>",
+      "accession_number": "<clinic order number>",
+      "modality": "CT|MR|...",
+      "body_part_examined": "...",
+      "description": "...",
+      "study_date": "2026-05-20T14:00:00Z",
+      "number_of_series": 0,
+      "number_of_instances": 0,
+      "orthanc_study_id": ""
+    }
+  Response 201: <DicomStudy>
+  Auth: Bearer + imaging module + imaging.write
+
+GET /api/v1/imaging/studies/{id}/
+  Response 200: <DicomStudy>
+  Auth: Bearer + imaging module + imaging.read
+
+PATCH /api/v1/imaging/studies/{id}/orthanc/
+  Request:
+    {
+      "orthanc_study_id": "<Orthanc study UUID>",
+      "number_of_series": 3,
+      "number_of_instances": 240
+    }
+  Response 200: <DicomStudy>
+  Auth: Bearer + imaging module + imaging.write
+  Note: Called by the Orthanc/PACS integration once the study is ingested.
+        Sets `has_pixel_data=true` so the OHIF viewer can resolve it.
+```
+
+---
+
+## 12. Telemedicine Endpoints (Phase 3)
+
+```
+GET  /api/v1/telemedicine/sessions/
+  Query:
+    patient=<uuid>                — filter by patient
+    professional=<uuid>           — filter by professional
+    status=<code>                 — scheduled | in_progress | completed | cancelled
+  Response 200: [ <TelemedicineSession>, ... ]
+  Auth: Bearer + telemedicine module + telemedicine.read
+
+POST /api/v1/telemedicine/sessions/
+  Request:
+    {
+      "appointment": "<uuid|null>",
+      "patient": "<uuid>",
+      "professional": "<uuid>",
+      "scheduled_for": "2026-05-20T15:00:00Z",
+      "notes": "..."
+    }
+  Response 201: <TelemedicineSession>  (mints a fresh `room_uid`)
+  Auth: Bearer + telemedicine module + telemedicine.host
+
+GET   /api/v1/telemedicine/sessions/{id}/                  — read
+POST  /api/v1/telemedicine/sessions/{id}/start/            — scheduled → in_progress
+POST  /api/v1/telemedicine/sessions/{id}/complete/         — in_progress → completed (sets duration_seconds)
+POST  /api/v1/telemedicine/sessions/{id}/cancel/           — terminal cancel
+PATCH /api/v1/telemedicine/sessions/{id}/recording/        — set recording_url
+
+  Auth: Bearer + telemedicine module + telemedicine.host (read uses telemedicine.read)
+  409: returned on invalid state transitions (e.g. complete from scheduled,
+       start from a terminal state).
+  Note: state transitions are explicit POSTs so each lifecycle event writes
+        its own audit log entry (CFM Res. 2.314/2022 §3).
+```
+
+---
+
+## 13. Patient Portal Endpoints (Phase 3)
+
+```
+# Admin surface — clinic staff mint and manage portal invites
+GET  /api/v1/portal/access/                       — list (filter ?status=)
+POST /api/v1/portal/access/                       — mint invite
+POST /api/v1/portal/access/activate/              — patient consumes invite
+                                                    body: {invite_token}
+GET  /api/v1/portal/access/{id}/                  — read
+POST /api/v1/portal/access/{id}/revoke/           — revoke
+
+  Auth: Bearer + patient_portal module + users.read (write paths use users.write)
+
+# Self-data surface — portal users see only their own patient
+GET  /api/v1/portal/me/                           — own Patient profile
+GET  /api/v1/portal/me/appointments/              — own Appointments
+GET  /api/v1/portal/me/encounters/                — own Encounters (signed only)
+GET  /api/v1/portal/me/prescriptions/             — own Prescriptions (signed+)
+GET  /api/v1/portal/me/allergies/                 — own Allergies
+
+  Auth: Bearer + patient_portal module + portal.self_access permission
+        AND an active `PatientPortalAccess` row.
+  Note: every self-data request updates `last_seen_at` on the access record.
+```
+
+---
+
+## 14. i18n / Multi-country Endpoint (Phase 3)
+
+```
+GET  /api/v1/users/me/language/
+  Response 200:
+    {
+      "preferred_language": "es" | "",
+      "supported_languages": [{"code": "pt-br", "label": "Português (Brasil)"}, ...],
+      "default": "pt-br"
+    }
+  Auth: Bearer
+
+PATCH /api/v1/users/me/language/
+  Request: { "preferred_language": "es" | "pt-pt" | "pt-br" | "en" | "" }
+  Response 200: { "preferred_language": "<code>" }
+  400: returned when the code is not in `LANGUAGES`; the response body
+       carries the allowed set so clients can self-correct.
+  Auth: Bearer
+  Note: empty string clears the preference; subsequent requests fall back
+        to the platform default (pt-BR) and `Accept-Language` negotiation.
+```
+
+---
+
+## 15. Mobile backend (Phase 3)
+
+```
+# Self-surface (every authenticated user)
+GET    /api/v1/mobile/devices/me/                — list own active devices
+POST   /api/v1/mobile/devices/me/                — register / idempotent update
+  Body: {platform, device_id, push_token, app_version?, os_version?}
+DELETE /api/v1/mobile/devices/me/{device_pk}/    — soft-disable
+
+# Admin surface (mobile.admin)
+GET  /api/v1/mobile/devices/?user=…&platform=…&active=…  — admin list
+POST /api/v1/mobile/push/                                 — fan-out push
+  Body: {user, title, body?, data?}
+GET  /api/v1/mobile/push/audit/?user=…&status=…           — recent deliveries
+
+  Auth: Bearer + mobile module. Self endpoints need no extra perm;
+        admin endpoints require `mobile.admin`.
+  Note: until an FCM/APNS adapter is wired into MobilePushService,
+        every dispatch records `status=no_provider` — the audit trail
+        starts from day one regardless of provider status.
+```
+
+---
+
+## 16. Triagem Inteligente (Phase 3)
+
+```
+GET  /api/v1/triage/questions/                     — return the question bank
+GET  /api/v1/triage/sessions/?status=…&urgency=…   — list sessions
+POST /api/v1/triage/sessions/                      — create session
+GET  /api/v1/triage/sessions/{id}/                 — read session
+PATCH /api/v1/triage/sessions/{id}/complaint/      — set chief complaint
+POST /api/v1/triage/sessions/{id}/answer/          — body: {key, value}
+POST /api/v1/triage/sessions/{id}/evaluate/        — run evaluator, may escalate
+POST /api/v1/triage/sessions/{id}/complete/        — close out
+POST /api/v1/triage/sessions/{id}/cancel/          — cancel session
+
+  Auth: Bearer + triage module + triage.read (read paths) or triage.respond
+        (write / transition paths).
+  409: invalid state transition (answer after evaluation, complete before
+       evaluation, double-evaluate, etc.).
+  Urgency vocabulary: routine | urgent | emergency. `emergency` evaluation
+  also flips session status to `escalated` and stamps `escalated_at` so
+  CFM Res. 2.314/2022 §6 escalation audit is preserved on the record.
+```
+
+---
+
+## 16. Smart Scheduling — slot ranker (Phase 3)
+
+```
+GET /api/v1/scheduling/suggest/
+  Query:
+    professional=<uuid>           — required
+    patient=<uuid>                — optional; sharpens patient_history signal
+    from=<YYYY-MM-DD>             — window start, defaults to today
+    to=<YYYY-MM-DD>               — window end, defaults to from+13 days
+    limit=<n>                     — page size, default 5, capped at 50
+  Response 200:
+    {
+      "professional_id": "<uuid>",
+      "patient_id": "<uuid|null>",
+      "from": "2026-05-20",
+      "to": "2026-06-02",
+      "suggestions": [
+        {
+          "start": "...",
+          "end": "...",
+          "professional_id": "<uuid>",
+          "score": 0.81,
+          "components": {
+            "clinical_time": 1.0,
+            "gap_fill": 0.5,
+            "patient_history": 0.5
+          }
+        },
+        ...
+      ]
+    }
+  400: missing professional / inverted window / window > 60 days / invalid limit.
+  404: professional or patient not found.
+  Auth: Bearer + smart_scheduling module + smart_scheduling.read
+```
+
+---
+
+## 16. AI Farmácia — demand forecast (Phase 3)
+
+```
+GET /api/v1/pharmacy/forecast/
+  Query:
+    drug=<uuid>                   — required, Drug uuid
+    window_days=<n>               — lookback, default 30, must be positive
+    target_days=<n>               — target supply, default 60, must be positive
+  Response 200:
+    {
+      "drug_id": "<uuid>",
+      "drug_name": "Amoxicilina",
+      "window_days": 30,
+      "target_days": 60,
+      "total_dispensed_in_window": 60.0,
+      "avg_daily_consumption": 2.0,
+      "current_stock": 40.0,
+      "projected_days_of_supply": 20.0,
+      "recommended_reorder_quantity": 80.0
+    }
+  400: missing/invalid params.
+  404: drug not found.
+  Auth: Bearer + pharmacy_ai module + pharmacy_ai.read
+  Note: rule-based baseline (rolling-window arithmetic). A future iteration
+        will swap in a seasonality-aware ML model behind the same shape.
+
+POST /api/v1/signatures/sign/
+  Request:
+    {
+      "document_type": "encounter|prescription|custom",
+      "document_id": "<id of the signed document>",
+      "document_b64": "<base64 of the bytes being signed>",
+      "pkcs12_b64": "<base64 of the A1 PKCS#12 bundle>",
+      "pkcs12_password": "<bundle password; \"\" if unencrypted>"
+    }
+  Response 201:
+    {
+      "id": "uuid",
+      "document_type": "encounter",
+      "document_id": "...",
+      "signer": "uuid",
+      "signer_name": "Dra Ana Silva",
+      "signature_b64": "<base64 RSA-PKCS#1v15 + SHA-256 signature>",
+      "signature_algorithm": "SHA256withRSA",
+      "document_hash_hex": "<sha256 hex>",
+      "cert_subject": "CN=...",
+      "cert_issuer": "CN=...",
+      "cert_serial_hex": "ABCD...",
+      "cert_not_valid_before": "2025-…",
+      "cert_not_valid_after": "2027-…",
+      "is_icp_brasil": true,
+      "signed_at": "2026-05-20T…"
+    }
+  Auth: Bearer + signatures module + signatures.sign
+  Note: Stateless cryptographic primitive — does NOT validate the full
+        ICP-Brasil chain of trust (DOC-ICP-04). PKCS#12 is consumed in-memory
+        and not persisted.
+
+GET /api/v1/signatures/
+  Query: ?document_type=<type>&document_id=<id>
+  Response 200: [ <DigitalSignature>, ... ] (capped at 200, newest first)
+  Auth: Bearer + signatures module + signatures.read
+
+POST /api/v1/ai/glosa-predict-batch/
+  Request:
+    {
+      "insurer_ans_code": "123456",
+      "insurer_name": "Unimed Nacional",
+      "guide_type": "sadt",
+      "items": [
+        {"tuss_code": "40302477", "cid10_codes": ["J18.9"]},
+        {"tuss_code": "40302485", "cid10_codes": ["J18.9", "B34.9"]}
+      ]
+    }
+  Response 200:
+    {
+      "predictions": [
+        {
+          "tuss_code": "40302477",
+          "prediction_id": "uuid|null",
+          "risk_level": "low|medium|high",
+          "risk_reason": "...",
+          "risk_code": "",
+          "degraded": false,
+          "cached": false
+        },
+        ...
+      ],
+      "degraded_overall": false
+    }
+  Auth: Bearer + ai_tuss module + ai.use
+  Limits: items capped at 50 per request; otherwise same as glosa-predict.
+  Note: Wraps the per-row endpoint so a multi-item TISS guide is one
+        round-trip instead of N parallel fires. `degraded_overall=true`
+        when any item degrades or when the global / per-tenant gate is off.
 ```
 
 ---

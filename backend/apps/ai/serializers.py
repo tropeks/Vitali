@@ -83,3 +83,50 @@ class GlosaPredictResponseSerializer(serializers.Serializer):
     risk_code = serializers.CharField(allow_blank=True)
     degraded = serializers.BooleanField()
     cached = serializers.BooleanField()
+
+
+# ─── Batch glosa prediction (P3, TODOS — Sprint 10+) ──────────────────────────
+
+# Soft cap on items per batch. A typical TISS guide has 1-8 procedures; 50 is
+# generous headroom while still bounding the per-tenant LLM cost of one POST.
+GLOSA_BATCH_MAX_ITEMS = 50
+
+
+class GlosaPredictBatchItemRequestSerializer(serializers.Serializer):
+    tuss_code = serializers.CharField(max_length=20)
+    cid10_codes = serializers.ListField(
+        child=serializers.CharField(max_length=10),
+        allow_empty=True,
+        max_length=20,
+        default=list,
+    )
+
+
+class GlosaPredictBatchRequestSerializer(serializers.Serializer):
+    insurer_ans_code = serializers.RegexField(
+        regex=r"^[0-9]{1,20}$",
+        max_length=20,
+        error_messages={"invalid": "insurer_ans_code must be 1-20 digits."},
+    )
+    insurer_name = serializers.CharField(max_length=200, allow_blank=True, default="")
+    guide_type = serializers.ChoiceField(choices=list(VALID_GLOSA_GUIDE_TYPES))
+    items = serializers.ListField(
+        child=GlosaPredictBatchItemRequestSerializer(),
+        allow_empty=False,
+        max_length=GLOSA_BATCH_MAX_ITEMS,
+    )
+
+
+class GlosaPredictBatchItemResponseSerializer(serializers.Serializer):
+    tuss_code = serializers.CharField()
+    prediction_id = serializers.UUIDField(allow_null=True)
+    risk_level = serializers.ChoiceField(choices=GlosaPrediction.RiskLevel.choices)
+    risk_reason = serializers.CharField()
+    risk_code = serializers.CharField(allow_blank=True)
+    degraded = serializers.BooleanField()
+    cached = serializers.BooleanField()
+
+
+class GlosaPredictBatchResponseSerializer(serializers.Serializer):
+    predictions = GlosaPredictBatchItemResponseSerializer(many=True)
+    degraded_overall = serializers.BooleanField()

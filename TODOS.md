@@ -238,18 +238,17 @@ Commit: `7f58cf3`.
 
 ---
 
-## P3 — Batch Glosa Prediction Endpoint (Sprint 10+)
+## ~~P3 — Batch Glosa Prediction Endpoint (Sprint 10+)~~ DONE
 
-The per-row `POST /api/v1/ai/glosa-predict/` approach fires one request per TISS item in
-the guide creation form. A 10-item guide with insurer change fires 10 simultaneous predictions.
-This is fine at pilot scale but becomes rate-limit pressure at multi-item guides.
-
-**Fix:** Add `POST /api/v1/ai/glosa-predict-batch/` that accepts all guide items in one call
-and returns all risk levels in one response. Reduces rate-limit pressure 10x for multi-item guides.
-Frontend `GlosaRiskBadge` would switch from per-row to per-guide batch on form load.
-
-**Priority:** P3 — deferred until rate limit exhaustion is observed in production.
-**Blocked by:** Sprint 9 per-row implementation (batch endpoint wraps same GlosaPredictor service).
+Shipped 2026-05-20. `POST /api/v1/ai/glosa-predict-batch/` accepts a shared
+`insurer_ans_code` + `insurer_name` + `guide_type` and an `items` list (one
+entry per TISS line with `tuss_code` + `cid10_codes`). The view wraps
+`services.predict_glosa` per item with the same fail-open contract as the
+per-row endpoint — `degraded_overall=True` is returned if any item degrades
+or if the global / per-tenant gate is off. Soft cap of 50 items per batch.
+Backend regression tests in `apps/ai/tests/test_views_glosa.py::GlosaPredictBatchViewTest`.
+Frontend `GlosaRiskBadge` migration to the batch endpoint remains optional
+optimisation work — the per-row path stays valid at pilot scale.
 
 ---
 

@@ -157,3 +157,114 @@ class GlosaPredictViewTest(TenantTestCase):
 
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.data["degraded"])
+
+
+GLOSA_BATCH_URL = "/api/v1/ai/glosa-predict-batch/"
+
+VALID_BATCH_PAYLOAD = {
+    "insurer_ans_code": "123456",
+    "insurer_name": "Unimed Nacional",
+    "guide_type": "sadt",
+    "items": [
+        {"tuss_code": "40302477", "cid10_codes": ["J18.9"]},
+        {"tuss_code": "40302485", "cid10_codes": ["J18.9", "B34.9"]},
+        {"tuss_code": "40302493", "cid10_codes": []},
+    ],
+}
+
+
+class GlosaPredictBatchViewTest(TenantTestCase):
+    def setUp(self):
+        cache.clear()
+        self._override = override_settings(
+            FEATURE_AI_GLOSA=True,
+            ANTHROPIC_API_KEY="test-key",
+            AI_RATE_LIMIT_PER_HOUR=1000,
+        )
+        self._override.enable()
+        self.client = APIClient()
+        self.client.defaults["SERVER_NAME"] = self.__class__.domain.domain
+        FeatureFlag.objects.update_or_create(
+            tenant=self.__class__.tenant, module_key="ai_tuss", defaults={"is_enabled": True}
+        )
+        self.user = _make_user("faturista_batch")
+        self.client.force_authenticate(user=self.user)
+
+    def tearDown(self):
+        self._override.disable()
+
+    @patch("apps.ai.views.services.get_tenant_ai_config")
+    @patch("apps.ai.views.services.predict_glosa")
+    def test_returns_one_prediction_per_item(self, mock_predict, mock_config):
+        mock_config.return_value = _make_glosa_config(enabled=True)
+        mock_predict.side_effect = [
+            _ok_result(risk_level="low", risk_reason="ok"),
+            _ok_result(risk_level="medium", risk_reason="Precisa de autorização."),
+            _ok_result(risk_level="high", risk_reason="Sem CID-10 vinculado.", degraded=False),
+        ]
+
+        resp = self.client.post(GLOSA_BATCH_URL, VALID_BATCH_PAYLOAD, format="json")
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.data["predictions"]), 3)
+        self.assertEqual(resp.data["predictions"][0]["tuss_code"], "40302477")
+        self.assertEqual(resp.data["predictions"][0]["risk_level"], "low")
+        self.assertEqual(resp.data["predictions"][1]["risk_level"], "medium")
+        self.assertEqual(resp.data["predictions"][2]["risk_level"], "high")
+        self.assertFalse(resp.data["degraded_overall"])
+        # Shared insurer + guide_type forwarded to every per-row call
+        self.assertEqual(mock_predict.call_count, 3)
+        for call in mock_predict.call_args_list:
+            self.assertEqual(call.kwargs["insurer_ans_code"], "123456")
+            self.assertEqual(call.kwargs["guide_type"], "sadt")
+
+    @patch("apps.ai.views.services.get_tenant_ai_config")
+    @patch("apps.ai.views.services.predict_glosa")
+    def test_degraded_overall_true_when_any_item_degraded(self, mock_predict, mock_config):
+        mock_config.return_value = _make_glosa_config(enabled=True)
+        mock_predict.side_effect = [
+            _ok_result(risk_level="low"),
+            _ok_result(risk_level="low", degraded=True),
+            _ok_result(risk_level="low"),
+        ]
+
+        resp = self.client.post(GLOSA_BATCH_URL, VALID_BATCH_PAYLOAD, format="json")
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.data["degraded_overall"])
+
+    @patch("apps.ai.views.services.get_tenant_ai_config")
+    def test_returns_200_degraded_when_tenant_disabled(self, mock_config):
+        mock_config.return_value = _make_glosa_config(enabled=False)
+
+        resp = self.client.post(GLOSA_BATCH_URL, VALID_BATCH_PAYLOAD, format="json")
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.data["degraded_overall"])
+        self.assertEqual(len(resp.data["predictions"]), 3)
+        for prediction in resp.data["predictions"]:
+            self.assertTrue(prediction["degraded"])
+            self.assertEqual(prediction["risk_level"], "low")
+
+    @override_settings(FEATURE_AI_GLOSA=False)
+    def test_returns_200_degraded_when_global_kill_switch_off(self):
+        resp = self.client.post(GLOSA_BATCH_URL, VALID_BATCH_PAYLOAD, format="json")
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.data["degraded_overall"])
+        self.assertEqual(len(resp.data["predictions"]), 3)
+
+    def test_empty_items_returns_400(self):
+        payload = {**VALID_BATCH_PAYLOAD, "items": []}
+        resp = self.client.post(GLOSA_BATCH_URL, payload, format="json")
+        self.assertEqual(resp.status_code, 400)
+
+    def test_invalid_guide_type_returns_400(self):
+        payload = {**VALID_BATCH_PAYLOAD, "guide_type": "unknown_type"}
+        resp = self.client.post(GLOSA_BATCH_URL, payload, format="json")
+        self.assertEqual(resp.status_code, 400)
+
+    def test_unauthenticated_returns_401(self):
+        self.client.logout()
+        resp = self.client.post(GLOSA_BATCH_URL, VALID_BATCH_PAYLOAD, format="json")
+        self.assertIn(resp.status_code, [401, 403])

@@ -4,11 +4,19 @@ from unittest.mock import MagicMock, patch
 
 from django.test import TestCase, override_settings
 
-from apps.ai.gateway import ClaudeGateway, LLMGatewayError
+from apps.ai.gateway import ClaudeGateway, LLMGatewayError, reset_anthropic_client_cache
 
 
 @override_settings(ANTHROPIC_API_KEY="test-key", AI_SUGGEST_TIMEOUT_S=5)
 class ClaudeGatewayTest(TestCase):
+    def setUp(self):
+        # Each test starts with a clean client cache so reuse assertions are
+        # decoupled from earlier tests.
+        reset_anthropic_client_cache()
+
+    def tearDown(self):
+        reset_anthropic_client_cache()
+
     def _mock_anthropic(self, text="test response"):
         mock_msg = MagicMock()
         mock_msg.content = [MagicMock(text=text)]
@@ -49,3 +57,30 @@ class ClaudeGatewayTest(TestCase):
             gw = ClaudeGateway()
             with self.assertRaises(LLMGatewayError):
                 gw.complete(system="sys", user="usr")
+
+    def test_reuses_anthropic_client_across_gateways_with_same_credentials(self):
+        """Same (api_key, timeout) → anthropic.Anthropic() built once and reused."""
+        with patch("anthropic.Anthropic") as MockClient:
+            MockClient.return_value.messages.create.return_value = self._mock_anthropic()
+            gw1 = ClaudeGateway()
+            gw2 = ClaudeGateway()
+            gw1.complete(system="sys", user="usr")
+            gw2.complete(system="sys", user="usr")
+            gw1.complete(system="sys", user="usr")
+
+        # Anthropic constructor called exactly once despite three calls across
+        # two gateway instances — proves the connection pool is reused.
+        self.assertEqual(MockClient.call_count, 1)
+        # All three calls still landed on the SDK.
+        self.assertEqual(MockClient.return_value.messages.create.call_count, 3)
+
+    def test_different_credentials_get_distinct_clients(self):
+        """Different api_key (e.g. different tenant overrides) → distinct clients."""
+        with patch("anthropic.Anthropic") as MockClient:
+            MockClient.return_value.messages.create.return_value = self._mock_anthropic()
+            ClaudeGateway(api_key="key-a").complete(system="sys", user="usr")
+            ClaudeGateway(api_key="key-b").complete(system="sys", user="usr")
+            ClaudeGateway(api_key="key-a").complete(system="sys", user="usr")
+
+        # Two distinct keys → two clients; the second 'key-a' reuses the first.
+        self.assertEqual(MockClient.call_count, 2)

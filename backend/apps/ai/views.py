@@ -18,6 +18,7 @@ from apps.core.permissions import HasPermission, ModuleRequiredPermission
 from . import services
 from .models import AIUsageLog, TUSSAISuggestion
 from .serializers import (
+    GlosaPredictBatchRequestSerializer,
     GlosaPredictRequestSerializer,
     TUSSSuggestFeedbackSerializer,
     TUSSSuggestRequestSerializer,
@@ -234,3 +235,91 @@ class GlosaPredictView(APIView):
             "cached": result.cached,
         }
         return Response(response_data)
+
+
+class GlosaPredictBatchView(APIView):
+    """
+    POST /api/v1/ai/glosa-predict-batch/
+
+    Wraps the per-row GlosaPredictView for multi-item TISS guides. The frontend
+    previously fired N parallel requests when an insurer change re-scored every
+    line — under rate-limit pressure that path saturates the per-tenant ceiling.
+    This endpoint accepts the shared insurer + guide_type once and an `items`
+    list so a 10-procedure guide is one round-trip.
+
+    Fail-open: when the global kill-switch or per-tenant gate is off, returns
+    `risk_level=low` + `degraded=True` for every item — same contract as the
+    per-row endpoint.
+    """
+
+    def get_permissions(self):
+        return [IsAuthenticated(), _AI_TUSS_MODULE, HasPermission("ai.use")]
+
+    @staticmethod
+    def _degraded_item(tuss_code: str) -> dict:
+        return {
+            "tuss_code": tuss_code,
+            "prediction_id": None,
+            "risk_level": "low",
+            "risk_reason": "",
+            "risk_code": "",
+            "degraded": True,
+            "cached": False,
+        }
+
+    def post(self, request):
+        serializer = GlosaPredictBatchRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        data = serializer.validated_data
+        items = data["items"]
+
+        if not getattr(settings, "FEATURE_AI_GLOSA", True):
+            return Response(
+                {
+                    "predictions": [self._degraded_item(item["tuss_code"]) for item in items],
+                    "degraded_overall": True,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        tenant_schema = request.tenant.schema_name
+        config = services.get_tenant_ai_config(tenant_schema)
+        if not config.ai_glosa_prediction_enabled:
+            return Response(
+                {
+                    "predictions": [self._degraded_item(item["tuss_code"]) for item in items],
+                    "degraded_overall": True,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        predictions = []
+        degraded_overall = False
+        for item in items:
+            result = services.predict_glosa(
+                tuss_code=item["tuss_code"],
+                insurer_ans_code=data["insurer_ans_code"],
+                insurer_name=data.get("insurer_name", ""),
+                cid10_codes=item.get("cid10_codes", []),
+                guide_type=data["guide_type"],
+                schema_name=tenant_schema,
+            )
+            if result.degraded:
+                degraded_overall = True
+            predictions.append(
+                {
+                    "tuss_code": item["tuss_code"],
+                    "prediction_id": getattr(result, "prediction_id", None),
+                    "risk_level": result.risk_level,
+                    "risk_reason": result.risk_reason,
+                    "risk_code": result.risk_code,
+                    "degraded": result.degraded,
+                    "cached": result.cached,
+                }
+            )
+
+        return Response(
+            {"predictions": predictions, "degraded_overall": degraded_overall},
+            status=status.HTTP_200_OK,
+        )

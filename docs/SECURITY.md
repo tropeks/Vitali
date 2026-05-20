@@ -189,7 +189,7 @@ add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style
 ### Resolução CFM 1.821/2007 + 2.218/2018
 - [x] Record integrity: signed clinical notes are immutable (append-only)
 - [x] Traceability: all access and modifications logged with timestamp and user
-- [ ] Digital signature: ICP-Brasil certificate integration (Phase 2)
+- [~] Digital signature: ICP-Brasil certificate integration (Phase 2) — **primitive shipped 2026-05-20** (`apps.signatures`): A1 PKCS#12 load + SHA-256/RSA-PKCS#1v15 sign + verify + tenant-scoped `DigitalSignature` storage, gated by FeatureFlag `signatures` (default OFF). REST: `POST /api/v1/signatures/sign/`, `GET /api/v1/signatures/`. Remaining: full ICP-Brasil DOC-ICP-04 chain-of-trust validation, A3 hardware-token (PKCS#11) support, and end-to-end integration into the encounter / prescription sign flows.
 - [x] Availability: minimum 20 years retention
 - [x] Backup: daily automated backups with tested restore
 - [x] Access control: role-based, medical records accessible only by authorized professionals

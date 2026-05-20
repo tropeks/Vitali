@@ -126,6 +126,18 @@ ADMIN_PERMISSIONS = [
     "reports.read",
     "ai.use",
     "ai.manage",
+    "signatures.read",
+    "signatures.sign",
+    "fhir.read",
+    "imaging.read",
+    "imaging.write",
+    "telemedicine.read",
+    "telemedicine.host",
+    "pharmacy_ai.read",
+    "smart_scheduling.read",
+    "triage.read",
+    "triage.respond",
+    "mobile.admin",
 ]
 
 CLINICAL_PRESCRIBER_PERMISSIONS = [
@@ -139,6 +151,15 @@ CLINICAL_PRESCRIBER_PERMISSIONS = [
     "schedule.write",
     "pharmacy.read",
     "ai.use",
+    "signatures.read",
+    "signatures.sign",
+    "fhir.read",
+    "imaging.read",
+    "imaging.write",
+    "telemedicine.read",
+    "telemedicine.host",
+    "smart_scheduling.read",
+    "triage.read",
 ]
 
 NURSING_PERMISSIONS = [
@@ -151,9 +172,12 @@ NURSING_PERMISSIONS = [
 
 RECEPTION_PERMISSIONS = [
     "patients.limited_read",
+    "smart_scheduling.read",
     "schedule.read",
     "schedule.write",
     "billing.read",
+    "triage.read",
+    "triage.respond",
 ]
 
 PHARMACY_PERMISSIONS = [
@@ -165,6 +189,7 @@ PHARMACY_PERMISSIONS = [
     "pharmacy.stock_manage",
     "pharmacy.dispense_controlled",
     "patients.limited_read",
+    "pharmacy_ai.read",
 ]
 
 BILLING_PERMISSIONS = [

@@ -797,22 +797,112 @@ E-001 Foundation
 ## 6. Post-MVP Phases
 
 ### Phase 2 (Months 8-12)
-- E-011: BI & Analytics (Apache Superset integration)
-- E-012: DICOM/PACS (Orthanc + OHIF Viewer)
-- AI Clinical Safety Net (prescription error detection)
-- AI Scribe (clinical documentation automation)
-- MFA for admin/medical roles
-- ICP-Brasil digital signature integration
+- E-011: BI & Analytics (Apache Superset integration) — Sprint 10 shipped the
+  Billing Intelligence Dashboard (`/billing/analytics`) which covers the
+  built-in BI surface; full Superset embedding is the optional infrastructure
+  layer.
+- E-012: DICOM/PACS (Orthanc + OHIF Viewer) — **tracking primitive shipped
+  2026-05-20** (`apps.imaging`): `DicomStudy` model keyed by DICOM
+  `study_instance_uid`, REST for CRUD + Orthanc-UID backfill, gated by
+  FeatureFlag `imaging` (default OFF). Remaining: Orthanc deployment +
+  webhook handler that auto-populates `orthanc_study_id`, OHIF Viewer
+  frontend embed.
+- AI Clinical Safety Net (prescription error detection) — **shipped** in
+  Sprint 15 as S-063 (PrescriptionSafetyChecker).
+- AI Scribe (clinical documentation automation) — **shipped** in the Sprint
+  15-17 catch-up (Whisper service + `views_scribe.py` + scribe UI).
+- MFA for admin/medical roles — **shipped** in Sprint 15 as S-062 (TOTP +
+  backup codes + `/profile/security`).
+- ICP-Brasil digital signature integration — **primitive shipped 2026-05-20**
+  (`apps.signatures`): A1 PKCS#12 load + SHA-256/RSA sign + verify +
+  tenant-scoped `DigitalSignature` storage, gated by FeatureFlag
+  `signatures`. Remaining: full DOC-ICP-04 chain-of-trust validation, A3
+  hardware-token support, and integration into encounter / prescription
+  sign flows.
 
 ### Phase 3 (Year 2)
-- Telemedicina module
-- Portal do Paciente
-- Smart Scheduling (AI-optimized)
-- Triagem Inteligente (WhatsApp)
-- AI Farmácia (demand prediction)
-- Multi-country compliance (start with Portugal/Angola)
-- FHIR API for interoperability
-- Mobile app (React Native, sharing codebase)
+- Telemedicina module — **session tracking primitive shipped 2026-05-20**
+  (`apps.telemedicine`): `TelemedicineSession` model with
+  `scheduled → in_progress → completed | cancelled` state machine,
+  `room_uid` for the eventual WebRTC routing layer, recording URL slot,
+  REST with explicit transition endpoints (CFM Res. 2.314/2022 §3 audit
+  trail), FeatureFlag `telemedicine` (default OFF). Remaining: WebRTC
+  signalling infra (Janus/Jitsi), TURN/STUN deployment, video recording
+  pipeline with encryption-at-rest, frontend video UI.
+- Portal do Paciente — **backend primitive shipped 2026-05-20**
+  (`apps.patient_portal`): `PatientPortalAccess` model with invite-token
+  state machine, admin surface for clinic staff (mint / revoke), and
+  self-data surface (`/portal/me/profile/appointments/encounters/
+  prescriptions/allergies`) gated by `IsPortalSelfAccess`. Module key
+  `patient_portal` (default OFF). Remaining: Next.js patient app (parallel
+  frontend project) and invite-delivery integration (WhatsApp / email).
+- Smart Scheduling (AI-optimized) — **rule-based primitive shipped
+  2026-05-20** (`apps.smart_scheduling`): slot ranker over
+  `ScheduleConfig` + `Appointment` history with three explicit signals
+  (clinical-time / gap-fill / patient-history); REST
+  `GET /api/v1/scheduling/suggest/`; module key `smart_scheduling`
+  (default OFF). Determinism + per-signal explanation keep the primitive
+  audit-friendly. Remaining: learned model trained on accumulated
+  no-show + attendance data.
+- Triagem Inteligente (WhatsApp) — **FSM primitive shipped 2026-05-20**
+  (`apps.triage`): TriageSession state machine + 6-question red-flag
+  bank + deterministic `routine / urgent / emergency` evaluator with
+  CFM Res. 2.314/2022 §6 auto-escalation on emergency; REST under
+  `/api/v1/triage/`; module key `triage` (default OFF). Remaining:
+  WhatsApp message-routing integration that turns each inbound message
+  into an `answer()` call and each `current_question` into an outbound
+  WhatsApp send.
+- AI Farmácia (demand prediction) — **baseline forecast primitive shipped
+  2026-05-20** (`apps.pharmacy_ai`): rolling-window arithmetic forecast
+  over `StockMovement` ledger; REST
+  `GET /api/v1/pharmacy/forecast/?drug=…&window_days=…&target_days=…`;
+  module key `pharmacy_ai` (default OFF). Remaining: seasonality-aware ML
+  model trained on accumulated dispensation history (clinical data first,
+  then model).
+- Multi-country compliance (start with Portugal/Angola) — **i18n
+  infrastructure shipped 2026-05-20**: Django `LANGUAGES` advertises
+  pt-BR / pt-PT / es / en; `LOCALE_PATHS` points at four
+  `locale/<code>/LC_MESSAGES/` stub directories; per-user
+  `preferred_language` field + `PreferredLanguageMiddleware` activates
+  the language per request; REST endpoint
+  `GET / PATCH /api/v1/users/me/language/`. Remaining: translate every
+  `gettext()`-wrapped string (content work, ongoing); locale-aware
+  date / number formatting in clinical screens; per-country regulatory
+  regimes (PT, AO).
+- FHIR API for interoperability — **8 of 8 resources shipped 2026-05-20**
+  (`apps.fhir`). The interop primitive is feature-complete at the
+  resource-coverage level documented here:
+  - Patient resource (read + identifier/name search) — DONE.
+  - Encounter resource (read + subject/status search, ambulatory class) —
+    DONE.
+  - Practitioner resource (read + identifier/name/active search; closes
+    the `Practitioner/<id>` references emitted by Encounter participants)
+    — DONE.
+  - AllergyIntolerance resource (criticality from severity, clinical +
+    verification status, reaction sub-element) — DONE.
+  - MedicationRequest resource (one per PrescriptionItem,
+    `groupIdentifier` carries parent prescription uuid) — DONE.
+  - Observation resource (one per vital sign per VitalSigns row, with
+    stable LOINC codes for weight/height/BP/HR/temp/SpO₂/BMI) — DONE.
+  - Condition resource (CID-10 / ICD-10 coding, category derived from
+    Vitali type, controlled-status rolled into active with a note) —
+    DONE.
+  - ServiceRequest resource (referrals + exam requests with SNOMED
+    category coding, status derived from signature) — DONE.
+  - Capability Statement advertises all eight resources.
+  Follow-up (out of the documented FHIR scope): full Bundle semantics with
+  paging links; SMART-on-FHIR auth profile; additional resource types
+  (DocumentReference, DiagnosticReport, Coverage, etc.) as new integration
+  partners require them.
+- Mobile app (React Native, sharing codebase) — **backend primitive
+  shipped 2026-05-20** (`apps.mobile`): `MobileDevice` registration +
+  `PushDelivery` audit log + `MobilePushService` with a pluggable
+  `PushAdapter` protocol (FCM/APNS adapter slots in without view or test
+  changes); module key `mobile` (default OFF); REST under
+  `/api/v1/mobile/`. Remaining: the React-Native client project itself
+  (setup, auth flow, screens, build pipeline) and the FCM/APNS adapter
+  implementation. The backend that mobile apps need is complete; the
+  app project is the parallel work.
 
 ---
 
