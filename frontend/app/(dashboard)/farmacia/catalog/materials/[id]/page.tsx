@@ -72,7 +72,7 @@ export default function MaterialDetailPage() {
     if (res.ok || res.status === 204) router.push('/farmacia/catalog')
   }
 
-  if (loading) return <p className="text-sm text-gray-500">Carregando...</p>
+  if (loading) return <p className="text-sm text-slate-500">Carregando...</p>
   if (!material) return <p className="text-sm text-red-600">Material não encontrado.</p>
 
   return (
@@ -81,13 +81,13 @@ export default function MaterialDetailPage() {
         <div>
           <button
             onClick={() => router.push('/farmacia/catalog')}
-            className="text-sm text-gray-500 hover:text-gray-700 mb-2 flex items-center gap-1"
+            className="text-sm text-slate-500 hover:text-slate-700 mb-2 flex items-center gap-1"
           >
             ← Catálogo
           </button>
-          <h1 className="text-xl font-semibold text-gray-900">{material.name}</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">{material.name}</h1>
           {!material.is_active && (
-            <span className="mt-1 inline-block px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-500">Inativo</span>
+            <span className="mt-1 inline-block px-2 py-0.5 text-xs font-medium rounded bg-slate-100 text-slate-500">Inativo</span>
           )}
         </div>
         <div className="flex gap-2">
@@ -119,7 +119,7 @@ export default function MaterialDetailPage() {
               </button>
               <button
                 onClick={() => { setEditing(false); setForm(material) }}
-                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900"
+                className="px-4 py-2 text-sm text-slate-600 hover:text-slate-900"
               >
                 Cancelar
               </button>
@@ -130,7 +130,7 @@ export default function MaterialDetailPage() {
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
-      <div className="bg-white border border-gray-200 rounded-xl p-6">
+      <div className="bg-white border border-slate-200 rounded-lg p-6">
         {!editing ? (
           <div className="grid grid-cols-2 gap-6">
             {[
@@ -141,13 +141,13 @@ export default function MaterialDetailPage() {
               ['Observações', material.notes],
             ].map(([label, value]) => (
               <div key={label}>
-                <p className="text-xs font-medium text-gray-500 mb-0.5">{label}</p>
-                <p className="text-sm text-gray-900">{value || '—'}</p>
+                <p className="text-xs font-medium text-slate-500 mb-0.5">{label}</p>
+                <p className="text-sm text-slate-900">{value || '—'}</p>
               </div>
             ))}
             <div>
-              <p className="text-xs font-medium text-gray-500 mb-0.5">Última atualização</p>
-              <p className="text-sm text-gray-500">{new Date(material.updated_at).toLocaleDateString('pt-BR')}</p>
+              <p className="text-xs font-medium text-slate-500 mb-0.5">Última atualização</p>
+              <p className="text-sm text-slate-500">{new Date(material.updated_at).toLocaleDateString('pt-BR')}</p>
             </div>
           </div>
         ) : (
@@ -159,18 +159,18 @@ export default function MaterialDetailPage() {
               { label: 'Código de barras', key: 'barcode' },
             ].map(({ label, key }) => (
               <div key={key}>
-                <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
                 <input
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                   value={(form as any)[key] ?? ''}
                   onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
                 />
               </div>
             ))}
             <div className="col-span-2">
-              <label className="block text-xs font-medium text-gray-600 mb-1">Observações</label>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Observações</label>
               <textarea
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                 rows={3}
                 value={form.notes ?? ''}
                 onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}

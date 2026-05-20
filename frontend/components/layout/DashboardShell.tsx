@@ -290,7 +290,7 @@ export default function DashboardShell({ user, children }: Props) {
                   className="fixed inset-0 z-10"
                   onClick={() => setUserMenuOpen(false)}
                 />
-                <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-xl shadow-lg border border-slate-200 z-20 py-1 text-sm">
+                <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border border-slate-200 z-20 py-1 text-sm">
                   <div className="px-3 py-2 border-b border-slate-100">
                     <p className="font-medium text-slate-900 truncate">{user.full_name}</p>
                     <p className="text-xs text-slate-500 truncate">{user.email}</p>

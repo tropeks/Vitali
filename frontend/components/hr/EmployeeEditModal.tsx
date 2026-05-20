@@ -132,7 +132,7 @@ export default function EmployeeEditModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50">
-      <div className="bg-white rounded-xl shadow-xl p-6 max-w-lg w-full max-h-[90vh] flex flex-col">
+      <div className="bg-white rounded-lg shadow-xl p-6 max-w-lg w-full max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between mb-5">
           <div>

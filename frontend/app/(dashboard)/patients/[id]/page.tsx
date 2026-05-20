@@ -666,7 +666,7 @@ export default function PatientDetailPage() {
 
   return (
     <PageShell variant="operational">
-      <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="rounded-lg border border-slate-200 bg-white">
         <div className="border-b border-slate-100 p-4 lg:p-5">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div className="flex min-w-0 items-start gap-4">
@@ -814,7 +814,7 @@ export default function PatientDetailPage() {
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.65fr)_minmax(340px,0.85fr)]">
         <main className="space-y-5">
-          <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div className="rounded-lg border border-slate-200 bg-white">
             <div className="border-b border-slate-100 px-4 py-3">
               <nav className="flex gap-5 overflow-x-auto">
                 {tabs.map((tab) => (
@@ -1114,7 +1114,7 @@ export default function PatientDetailPage() {
         </main>
 
         <aside className="space-y-5">
-          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
             <div className="flex items-center gap-2">
               <HeartPulse size={17} className="text-red-600" />
               <h2 className="text-base font-semibold text-slate-900">Contexto permanente</h2>
@@ -1148,7 +1148,7 @@ export default function PatientDetailPage() {
             </div>
           </div>
 
-          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
             <div className="flex items-center gap-2">
               <Receipt size={17} className="text-blue-600" />
               <h2 className="text-base font-semibold text-slate-900">Faturamento</h2>
@@ -1183,7 +1183,7 @@ export default function PatientDetailPage() {
             </div>
           </div>
 
-          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
             <div className="flex items-center gap-2">
               <Pill size={17} className="text-blue-600" />
               <h2 className="text-base font-semibold text-slate-900">Prescrições</h2>
@@ -1209,7 +1209,7 @@ export default function PatientDetailPage() {
             </div>
           </div>
 
-          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
             <div className="flex items-center gap-2">
               <FileText size={17} className="text-blue-600" />
               <h2 className="text-base font-semibold text-slate-900">Ações rápidas</h2>

@@ -138,7 +138,7 @@ export function CID10Suggest({
         placeholder={readOnly ? '' : placeholder}
         rows={rows}
         className={`w-full border rounded-lg px-3 py-2 text-sm resize-y focus:ring-2 focus:ring-blue-500 outline-none transition-colors ${
-          readOnly ? 'bg-gray-50 text-gray-600 cursor-default' : 'bg-white border-slate-200'
+          readOnly ? 'bg-slate-50 text-slate-600 cursor-default' : 'bg-white border-slate-200'
         }`}
       />
 

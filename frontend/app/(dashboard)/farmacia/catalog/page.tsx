@@ -141,7 +141,7 @@ export default function CatalogPage() {
               key={t}
               onClick={() => setTab(t)}
               className={`px-3 py-1.5 text-sm rounded-lg font-medium ${
-                tab === t ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100'
+                tab === t ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-100'
               }`}
             >
               {t === 'drugs' ? 'Medicamentos' : 'Materiais'}
@@ -161,22 +161,22 @@ export default function CatalogPage() {
         placeholder={tab === 'drugs' ? 'Buscar por nome ou nome genérico...' : 'Buscar por nome...'}
         value={search}
         onChange={e => handleSearch(e.target.value)}
-        className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
 
-      {loading && <p className="text-sm text-gray-500">Carregando...</p>}
+      {loading && <p className="text-sm text-slate-500">Carregando...</p>}
 
       {showForm && (
-        <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
-          <h3 className="font-medium text-gray-900">
+        <div className="bg-white border border-slate-200 rounded-lg p-6 space-y-4">
+          <h3 className="font-medium text-slate-900">
             {tab === 'drugs' ? 'Novo Medicamento' : 'Novo Material'}
           </h3>
           {error && <p className="text-sm text-red-600">{error}</p>}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Nome *</label>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Nome *</label>
               <input
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                 value={form.name ?? ''}
                 onChange={e => setForm((f: any) => ({ ...f, name: e.target.value }))}
               />
@@ -184,41 +184,41 @@ export default function CatalogPage() {
             {tab === 'drugs' && (
               <>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Nome genérico</label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Nome genérico</label>
                   <input
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                     value={form.generic_name ?? ''}
                     onChange={e => setForm((f: any) => ({ ...f, generic_name: e.target.value }))}
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Código ANVISA</label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Código ANVISA</label>
                   <input
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono"
                     value={form.anvisa_code ?? ''}
                     onChange={e => setForm((f: any) => ({ ...f, anvisa_code: e.target.value }))}
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Forma farmacêutica</label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Forma farmacêutica</label>
                   <input
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                     value={form.dosage_form ?? ''}
                     onChange={e => setForm((f: any) => ({ ...f, dosage_form: e.target.value }))}
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Concentração</label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Concentração</label>
                   <input
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                     value={form.concentration ?? ''}
                     onChange={e => setForm((f: any) => ({ ...f, concentration: e.target.value }))}
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Classe controlada</label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Classe controlada</label>
                   <select
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                     value={form.controlled_class ?? 'none'}
                     onChange={e => setForm((f: any) => ({ ...f, controlled_class: e.target.value }))}
                   >
@@ -232,18 +232,18 @@ export default function CatalogPage() {
             )}
             {tab === 'materials' && (
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Categoria</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Categoria</label>
                 <input
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                   value={form.category ?? ''}
                   onChange={e => setForm((f: any) => ({ ...f, category: e.target.value }))}
                 />
               </div>
             )}
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Unidade de medida</label>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Unidade de medida</label>
               <input
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                 value={form.unit_of_measure ?? 'un'}
                 onChange={e => setForm((f: any) => ({ ...f, unit_of_measure: e.target.value }))}
               />
@@ -259,7 +259,7 @@ export default function CatalogPage() {
             </button>
             <button
               onClick={() => { setShowForm(false); setForm({}) }}
-              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900"
+              className="px-4 py-2 text-sm text-slate-600 hover:text-slate-900"
             >
               Cancelar
             </button>
@@ -268,56 +268,56 @@ export default function CatalogPage() {
       )}
 
       {tab === 'drugs' ? (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+        <div className="bg-white rounded-lg border border-slate-200 overflow-x-auto">
           <table className="w-full text-sm min-w-[640px]">
             <thead>
-              <tr className="border-b border-gray-100 bg-gray-50">
+              <tr className="border-b border-slate-100 bg-slate-50">
                 {['Medicamento', 'Nome genérico', 'Forma / Concentração', 'Controlado', 'Código ANVISA'].map(h => (
-                  <th key={h} className="text-left px-4 py-3 font-medium text-gray-600">{h}</th>
+                  <th key={h} className="text-left px-4 py-3 font-medium text-slate-600">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {drugs.length === 0 && !loading && (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">Nenhum medicamento encontrado</td></tr>
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-400">Nenhum medicamento encontrado</td></tr>
               )}
               {drugs.map(d => (
-                <tr key={d.id} className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer" onClick={() => router.push(`/farmacia/catalog/drugs/${d.id}`)}>
-                  <td className="px-4 py-3 font-medium text-gray-900 hover:text-blue-600">{d.name}</td>
-                  <td className="px-4 py-3 text-gray-600">{d.generic_name || '—'}</td>
-                  <td className="px-4 py-3 text-gray-600">{[d.dosage_form, d.concentration].filter(Boolean).join(' ')|| '—'}</td>
+                <tr key={d.id} className="border-b border-slate-50 hover:bg-slate-50 cursor-pointer" onClick={() => router.push(`/farmacia/catalog/drugs/${d.id}`)}>
+                  <td className="px-4 py-3 font-medium text-slate-900 hover:text-blue-600">{d.name}</td>
+                  <td className="px-4 py-3 text-slate-600">{d.generic_name || '—'}</td>
+                  <td className="px-4 py-3 text-slate-600">{[d.dosage_form, d.concentration].filter(Boolean).join(' ')|| '—'}</td>
                   <td className="px-4 py-3">
                     {d.controlled_class !== 'none' ? (
-                      <span className={`px-2 py-0.5 text-xs font-mono font-semibold rounded ${CONTROLLED_BADGE[d.controlled_class] || 'bg-gray-100 text-gray-600'}`}>
+                      <span className={`px-2 py-0.5 text-xs font-mono font-semibold rounded ${CONTROLLED_BADGE[d.controlled_class] || 'bg-slate-100 text-slate-600'}`}>
                         {d.controlled_class}
                       </span>
-                    ) : <span className="text-gray-400">—</span>}
+                    ) : <span className="text-slate-400">—</span>}
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs text-gray-500">{d.anvisa_code || '—'}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-slate-500">{d.anvisa_code || '—'}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100 bg-gray-50">
+              <tr className="border-b border-slate-100 bg-slate-50">
                 {['Material', 'Categoria', 'Unidade'].map(h => (
-                  <th key={h} className="text-left px-4 py-3 font-medium text-gray-600">{h}</th>
+                  <th key={h} className="text-left px-4 py-3 font-medium text-slate-600">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {materials.length === 0 && !loading && (
-                <tr><td colSpan={3} className="px-4 py-8 text-center text-gray-400">Nenhum material encontrado</td></tr>
+                <tr><td colSpan={3} className="px-4 py-8 text-center text-slate-400">Nenhum material encontrado</td></tr>
               )}
               {materials.map(m => (
-                <tr key={m.id} className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer" onClick={() => router.push(`/farmacia/catalog/materials/${m.id}`)}>
-                  <td className="px-4 py-3 font-medium text-gray-900 hover:text-blue-600">{m.name}</td>
-                  <td className="px-4 py-3 text-gray-600">{m.category || '—'}</td>
-                  <td className="px-4 py-3 text-gray-600">{m.unit_of_measure}</td>
+                <tr key={m.id} className="border-b border-slate-50 hover:bg-slate-50 cursor-pointer" onClick={() => router.push(`/farmacia/catalog/materials/${m.id}`)}>
+                  <td className="px-4 py-3 font-medium text-slate-900 hover:text-blue-600">{m.name}</td>
+                  <td className="px-4 py-3 text-slate-600">{m.category || '—'}</td>
+                  <td className="px-4 py-3 text-slate-600">{m.unit_of_measure}</td>
                 </tr>
               ))}
             </tbody>

@@ -162,7 +162,7 @@ export default function PIXModal({ appointmentId, amount, patientName, onClose, 
 
           {/* Error */}
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
               <p>{error}</p>
               <button
                 onClick={createCharge}
@@ -175,7 +175,7 @@ export default function PIXModal({ appointmentId, amount, patientName, onClose, 
 
           {/* Paid state */}
           {isPaid && (
-            <div className="bg-green-50 border border-green-200 rounded-xl p-5 text-center space-y-2">
+            <div className="bg-green-50 border border-green-200 rounded-lg p-5 text-center space-y-2">
               <div className="text-4xl">✅</div>
               <p className="font-semibold text-green-800">Pagamento recebido!</p>
               <p className="text-sm text-green-700">A consulta foi confirmada automaticamente.</p>
@@ -184,7 +184,7 @@ export default function PIXModal({ appointmentId, amount, patientName, onClose, 
 
           {/* Expired state */}
           {isExpired && !isPaid && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 text-center space-y-3">
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-5 text-center space-y-3">
               <p className="font-semibold text-amber-800">PIX expirado</p>
               <p className="text-sm text-amber-700">O código PIX expirou. Gere um novo para continuar.</p>
               <button
@@ -251,7 +251,7 @@ export default function PIXModal({ appointmentId, amount, patientName, onClose, 
                     <img
                       src={`data:image/png;base64,${charge.pix_qr_code_base64}`}
                       alt="QR Code PIX"
-                      className="w-48 h-48 border border-slate-200 rounded-xl"
+                      className="w-48 h-48 border border-slate-200 rounded-lg"
                     />
                   </div>
                 )}

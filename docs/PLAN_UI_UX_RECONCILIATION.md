@@ -95,7 +95,7 @@ First slice:
 
 ### R5 - Admin, AI, WhatsApp, HR
 
-Status: planned
+Status: reconciled (2026-05-20)
 
 Target:
 
@@ -103,6 +103,29 @@ Target:
 - AI/DPA compliance blockers are explicit.
 - WhatsApp connection and automation states are clear and auditable.
 - HR onboarding/deactivation cascades show downstream effects.
+
+Shipped:
+
+- All seven R5 surfaces (`/configuracoes/ai`, `/configuracoes/assinatura`,
+  `/configuracoes/whatsapp`, `/configuracoes/profissionais`, `/rh/funcionarios`,
+  `/platform/monitor`, `/profile/security`) migrated to `<PageShell variant="operational">`
+  with `<h1 text-2xl font-semibold>`, flat `rounded-lg` cards on `border-slate-200`,
+  and canonical status pills via `<StatusBadge>`. Inline status→colour ternaries
+  retired everywhere.
+- `lib/operational-ui.ts` extended with the R5 vocabulary so screens never
+  re-declare a status map: `SUBSCRIPTION_STATUS_META`, `EMPLOYMENT_STATUS_META`,
+  `WA_CONNECTION_STATUS_META`, and derived-boolean adapters
+  (`getActivenessMeta`, `getDpaStatusMeta`, `getMfaStatusMeta`, `getOptInMeta`).
+  The boolean adapters cover cadastro ativo/inativo (profissionais), DPA
+  assinado/não assinado (AI), MFA ativo/inativo (security), and WhatsApp
+  opt-in/sem opt-in (conversations) — all routed through the canonical tone
+  vocabulary so colour and label live in one place.
+- `ProfessionalRow` now renders its activeness pill through `<StatusBadge>` +
+  `getActivenessMeta`, removing the last inline status pill in the R5 surfaces.
+- Platform monitor (`/platform/monitor`) tenant KPIs switched from a local
+  `KpiCard` to the shared `<KpiTile>`, retiring the unused sparkline scaffolding.
+- Empty / error / degraded blocks across R5 now use `<SectionState>` so the
+  pattern is consistent with the rest of the converged surfaces.
 
 ## Execution Order
 
@@ -130,7 +153,42 @@ Target:
   - `DESIGN.md` promoted to **v2.0** — retires the unused v1.0.0 `rounded-xl`/`gray-200` card spec and documents the reconciled language, the two named shells, the canonical status system, and the shared primitives as the contract.
   - Verified: `tsc --noEmit` clean · `next lint` clean · 20/20 vitest (6 screen suites + `operational-ui`).
 - 2026-05-17: Tasy-grade visual direction **approved**. Reference spec at `output/design/vitali-tasy.html` (six surfaces; gitignored local evidence, same convention as the playwright shots). Adds Philips-Tasy idioms on top of the v2.0 foundation — barra do paciente (context-scoped, slide+fade on context change), pasta tabs, grid toolbars, lupa lookup fields, semáforo status, bottom F-key status bar. Codifying these idioms into shared primitives + `DESIGN.md` is the scope of the next sprint (R5 onward), not this one.
+- 2026-05-20: System-wide `DESIGN.md` v2.0 absolute-rule compliance sweep.
+  After R5 landed, ran a system-wide audit + cleanup of every remaining
+  absolute violation in `frontend/app/(dashboard)/` and
+  `frontend/components/`:
+  - `rounded-xl` → `rounded-lg` everywhere (29 files; §7 + §12).
+  - `shadow-sm` removed from static card chrome (lines where the same
+    className carries `rounded-lg` + `border`); retained on legitimate
+    floating surfaces. 8 files (§7 + §12).
+  - `gray-*` → `slate-*` everywhere (460+ class occurrences; §3 + §12).
+  - `<h1>`/`<h2>` titles on `font-bold` → `font-semibold` (9 files;
+    §6 + §12).
+  - `<h1 text-xl>` → `<h1 text-2xl>` (page titles per §6) — last instance
+    is the clinical-workspace patient bar, which is a Tasy-idiom pending
+    formal codification.
+
+  After the sweep the audit counters are zero across both directories.
+  Verified green after every sub-sweep: `tsc --noEmit`,
+  `eslint --max-warnings=0`, 17/17 vitest files (74/74 tests).
+  Remaining v2.0 conformance work on secondary surfaces (full
+  `PageShell` adoption, `<KpiTile>` migration, etc.) is the scope of the
+  pending Tasy-idiom codification sprint.
+- 2026-05-20: R5 (Admin/AI/WhatsApp/HR) reconciled. The settings surfaces
+  (`/configuracoes/ai`, `/configuracoes/assinatura`, `/configuracoes/whatsapp`,
+  `/configuracoes/profissionais`, `/rh/funcionarios`, `/platform/monitor`,
+  `/profile/security`) all moved onto the shared `PageShell` /
+  `StatusBadge` / `KpiTile` / `SectionState` primitives. `lib/operational-ui`
+  picked up the missing enum and boolean-derived status vocabulary
+  (subscription, employment, WhatsApp connection state, plus
+  activeness/DPA/MFA/opt-in adapters) so no R5 screen declares status colours
+  inline anymore. Verified green: `tsc --noEmit`, `eslint --max-warnings=0`,
+  17/17 vitest files (74/74 tests — two new ones cover the R5 vocabulary in
+  `operational-ui.test.ts`).
 
 ## Status
 
-R0–R4 reconciled and **converged** (single design system, verified green). R5 (Admin/AI/WhatsApp/HR) and the approved Tasy-idiom codification remain as the next sprint.
+R0–R5 reconciled and **converged** (single design system, verified green). The
+approved Tasy-idiom codification (barra do paciente, pasta tabs, grid toolbars,
+lupa lookup fields, semáforo status, bottom F-key status bar) remains as the
+next sprint.

@@ -2,12 +2,19 @@ import { describe, expect, it } from 'vitest'
 import {
   appointmentBadgeLabel,
   buildDashboardActionQueue,
+  EMPLOYMENT_STATUS_META,
+  getActivenessMeta,
   getAppointmentStatusMeta,
+  getDpaStatusMeta,
+  getMfaStatusMeta,
+  getOptInMeta,
   getStockStatusMeta,
   GUIDE_STATUS_META,
   PRESCRIPTION_STATUS_META,
   resolveBadgeMeta,
+  SUBSCRIPTION_STATUS_META,
   summarizePatients,
+  WA_CONNECTION_STATUS_META,
 } from './operational-ui'
 
 describe('operational-ui', () => {
@@ -109,6 +116,44 @@ describe('operational-ui', () => {
     expect(PRESCRIPTION_STATUS_META.signed.tone).toBe('info')
     expect(PRESCRIPTION_STATUS_META.signed.badgeClass).toContain('blue')
     expect(PRESCRIPTION_STATUS_META.dispensed.badgeClass).toContain('green')
+  })
+
+  it('maps R5 enum statuses (subscription, employment, whatsapp) to canonical tones', () => {
+    expect(SUBSCRIPTION_STATUS_META.active).toMatchObject({ label: 'Ativo', tone: 'success' })
+    expect(SUBSCRIPTION_STATUS_META.past_due).toMatchObject({
+      label: 'Em atraso',
+      tone: 'critical',
+    })
+    expect(EMPLOYMENT_STATUS_META.on_leave).toMatchObject({
+      label: 'Afastado',
+      tone: 'attention',
+    })
+    expect(EMPLOYMENT_STATUS_META.terminated).toMatchObject({
+      label: 'Desligado',
+      tone: 'critical',
+    })
+    expect(WA_CONNECTION_STATUS_META.open).toMatchObject({
+      label: 'Conectado',
+      tone: 'success',
+    })
+    expect(WA_CONNECTION_STATUS_META.close).toMatchObject({
+      label: 'Desconectado',
+      tone: 'critical',
+    })
+  })
+
+  it('derives boolean-backed badges (activeness, DPA, MFA, opt-in) from canonical tones', () => {
+    expect(getActivenessMeta(true)).toMatchObject({ label: 'Ativo', tone: 'success' })
+    expect(getActivenessMeta(false)).toMatchObject({ label: 'Inativo', tone: 'critical' })
+    expect(getDpaStatusMeta(true)).toMatchObject({ label: 'DPA assinado', tone: 'success' })
+    expect(getDpaStatusMeta(false)).toMatchObject({
+      label: 'DPA não assinado',
+      tone: 'attention',
+    })
+    expect(getMfaStatusMeta(true)).toMatchObject({ label: 'Ativo', tone: 'success' })
+    expect(getMfaStatusMeta(false)).toMatchObject({ label: 'Inativo', tone: 'neutral' })
+    expect(getOptInMeta(true)).toMatchObject({ label: 'Opt-in', tone: 'success' })
+    expect(getOptInMeta(false)).toMatchObject({ label: 'Sem opt-in', tone: 'neutral' })
   })
 
   it('derives stock alert badges from expiry and low-stock signals', () => {

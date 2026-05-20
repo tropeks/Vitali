@@ -85,7 +85,7 @@ interface Encounter {
 const STATUS_STYLES: Record<string, string> = {
   open: 'bg-yellow-100 text-yellow-800 border-yellow-200',
   signed: 'bg-green-100 text-green-800 border-green-200',
-  cancelled: 'bg-gray-100 text-gray-500 border-gray-200',
+  cancelled: 'bg-slate-100 text-slate-500 border-slate-200',
 };
 
 type EncounterTab = 'summary' | 'soap' | 'cpoe' | 'vitals' | 'documents' | 'billing';
@@ -166,7 +166,7 @@ function VitalSignsForm({ vs, encounterId, readOnly }: { vs: VitalSigns | null; 
 
   const Field = ({ label, field, unit }: { label: string; field: keyof typeof vals; unit?: string }) => (
     <div>
-      <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
+      <label className="block text-xs font-medium text-slate-500 mb-1">{label}</label>
       <div className="flex items-center gap-1">
         <input
           data-testid={`vitals-${field}`}
@@ -174,10 +174,10 @@ function VitalSignsForm({ vs, encounterId, readOnly }: { vs: VitalSigns | null; 
           value={vals[field]}
           onChange={e => setVals(v => ({ ...v, [field]: e.target.value }))}
           readOnly={readOnly}
-          className={`w-full border rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none ${readOnly ? 'bg-gray-50' : ''}`}
+          className={`w-full border rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none ${readOnly ? 'bg-slate-50' : ''}`}
           step="any"
         />
-        {unit && <span className="text-xs text-gray-400 whitespace-nowrap">{unit}</span>}
+        {unit && <span className="text-xs text-slate-400 whitespace-nowrap">{unit}</span>}
       </div>
     </div>
   );
@@ -189,7 +189,7 @@ function VitalSignsForm({ vs, encounterId, readOnly }: { vs: VitalSigns | null; 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-700">Sinais Vitais</h3>
+        <h3 className="text-sm font-semibold text-slate-700">Sinais Vitais</h3>
         {!readOnly && (
           <button
             onClick={save}
@@ -209,8 +209,8 @@ function VitalSignsForm({ vs, encounterId, readOnly }: { vs: VitalSigns | null; 
         <Field label="Temperatura" field="temperature_celsius" unit="°C" />
         <Field label="SpO₂" field="oxygen_saturation" unit="%" />
         <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">IMC</label>
-          <div className="border rounded-lg px-2 py-1.5 text-sm bg-gray-50 text-gray-600">{bmi ?? '—'}</div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">IMC</label>
+          <div className="border rounded-lg px-2 py-1.5 text-sm bg-slate-50 text-slate-600">{bmi ?? '—'}</div>
         </div>
       </div>
     </div>
@@ -250,7 +250,7 @@ function DocumentsPanel({ documents, encounterId, readOnly, onRefresh }: {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-700">Documentos</h3>
+        <h3 className="text-sm font-semibold text-slate-700">Documentos</h3>
         {!readOnly && (
           <button
             onClick={() => setShowForm(s => !s)}
@@ -262,7 +262,7 @@ function DocumentsPanel({ documents, encounterId, readOnly, onRefresh }: {
       </div>
 
       {showForm && (
-        <div className="border rounded-lg p-3 space-y-2 bg-gray-50">
+        <div className="border rounded-lg p-3 space-y-2 bg-slate-50">
           <select
             value={docType}
             onChange={e => setDocType(e.target.value)}
@@ -282,7 +282,7 @@ function DocumentsPanel({ documents, encounterId, readOnly, onRefresh }: {
             className="w-full border rounded px-2 py-1.5 text-sm resize-y"
           />
           <div className="flex gap-2 justify-end">
-            <button onClick={() => setShowForm(false)} className="text-xs text-gray-500">Cancelar</button>
+            <button onClick={() => setShowForm(false)} className="text-xs text-slate-500">Cancelar</button>
             <button
               onClick={createDoc}
               disabled={!content || saving}
@@ -295,13 +295,13 @@ function DocumentsPanel({ documents, encounterId, readOnly, onRefresh }: {
       )}
 
       {documents.length === 0 ? (
-        <p className="text-xs text-gray-400 text-center py-4">Nenhum documento nesta consulta</p>
+        <p className="text-xs text-slate-400 text-center py-4">Nenhum documento nesta consulta</p>
       ) : (
         <div className="space-y-2">
           {documents.map(doc => (
             <div key={doc.id} className="border rounded-lg p-3 space-y-1">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-gray-800">{doc.doc_type_display}</span>
+                <span className="text-sm font-medium text-slate-800">{doc.doc_type_display}</span>
                 {doc.is_signed ? (
                   <span className="text-xs text-green-600 font-medium">✓ Assinado</span>
                 ) : (
@@ -315,9 +315,9 @@ function DocumentsPanel({ documents, encounterId, readOnly, onRefresh }: {
                   )
                 )}
               </div>
-              <p className="text-xs text-gray-500 line-clamp-2">{doc.content}</p>
+              <p className="text-xs text-slate-500 line-clamp-2">{doc.content}</p>
               {doc.is_signed && doc.signed_by_name && (
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-slate-400">
                   Assinado por {doc.signed_by_name} em {format(new Date(doc.signed_at!), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
                 </p>
               )}
@@ -330,7 +330,7 @@ function DocumentsPanel({ documents, encounterId, readOnly, onRefresh }: {
 }
 
 const GUIDE_STATUS_STYLES: Record<string, string> = {
-  draft:     'bg-gray-100 text-gray-600',
+  draft:     'bg-slate-100 text-slate-600',
   pending:   'bg-yellow-100 text-yellow-700',
   submitted: 'bg-blue-100 text-blue-700',
   paid:      'bg-green-100 text-green-700',
@@ -365,9 +365,9 @@ function FaturamentoCard({ encounterId }: { encounterId: string }) {
   if (hidden) return null;
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm space-y-3">
+    <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-700">Faturamento</h3>
+        <h3 className="text-sm font-semibold text-slate-700">Faturamento</h3>
         <Link
           href={`/billing/guides/new?encounter=${encounterId}`}
           className="text-xs text-blue-600 hover:text-blue-800 font-medium"
@@ -377,10 +377,10 @@ function FaturamentoCard({ encounterId }: { encounterId: string }) {
       </div>
 
       {loading ? (
-        <div className="h-8 bg-gray-100 rounded animate-pulse" />
+        <div className="h-8 bg-slate-100 rounded animate-pulse" />
       ) : guides.length === 0 ? (
         <div className="text-center py-4 space-y-3">
-          <p className="text-xs text-gray-400">Nenhuma guia TISS criada.</p>
+          <p className="text-xs text-slate-400">Nenhuma guia TISS criada.</p>
           <Link
             href={`/billing/guides/new?encounter=${encounterId}`}
             className="inline-block bg-blue-600 text-white text-xs px-4 py-2 rounded-lg font-medium hover:bg-blue-700"
@@ -394,12 +394,12 @@ function FaturamentoCard({ encounterId }: { encounterId: string }) {
             <Link
               key={g.id}
               href={`/billing/guides/${g.id}`}
-              className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 group"
+              className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 group"
             >
-              <span className="text-sm font-mono text-gray-800 group-hover:text-blue-600">
+              <span className="text-sm font-mono text-slate-800 group-hover:text-blue-600">
                 Guia #{g.guide_number}
               </span>
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${GUIDE_STATUS_STYLES[g.status] ?? 'bg-gray-100 text-gray-600'}`}>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${GUIDE_STATUS_STYLES[g.status] ?? 'bg-slate-100 text-slate-600'}`}>
                 {g.status_display}
               </span>
             </Link>
@@ -483,7 +483,7 @@ export default function EncounterDetailPage() {
     finally { setSigning(false); }
   };
 
-  if (loading) return <div className="p-6 text-gray-400 text-sm">Carregando...</div>;
+  if (loading) return <div className="p-6 text-slate-400 text-sm">Carregando...</div>;
   if (!encounter) return null;
 
   const patient = encounter.patient_detail;
@@ -496,7 +496,7 @@ export default function EncounterDetailPage() {
       case 'summary':
         return (
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
-            <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <section className="rounded-lg border border-slate-200 bg-white p-4">
               <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                 <ClipboardList size={16} className="text-blue-600" />
                 Sumário clínico
@@ -550,7 +550,7 @@ export default function EncounterDetailPage() {
               </div>
             </section>
 
-            <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <section className="rounded-lg border border-slate-200 bg-white p-4">
               <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                 <UserRound size={16} className="text-blue-600" />
                 Identificação e riscos
@@ -599,7 +599,7 @@ export default function EncounterDetailPage() {
         );
       case 'soap':
         return (
-          <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <section className="rounded-lg border border-slate-200 bg-white p-4">
             <SOAPEditor soapNote={encounter.soap_note} readOnly={isReadOnly} encounterId={id} />
             {!isReadOnly && (
               <div className="mt-4 border-t border-slate-100 pt-4">
@@ -614,7 +614,7 @@ export default function EncounterDetailPage() {
         );
       case 'cpoe':
         return (
-          <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+          <section className="rounded-lg border border-slate-200 bg-white">
             <div className="border-b border-slate-100 px-4 py-3">
               <h2 className="text-base font-semibold text-slate-900">CPOE - Prescrição e ordens</h2>
               <p className="mt-0.5 text-xs text-slate-500">
@@ -628,13 +628,13 @@ export default function EncounterDetailPage() {
         );
       case 'vitals':
         return (
-          <section className="max-w-3xl rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <section className="max-w-3xl rounded-lg border border-slate-200 bg-white p-4">
             <VitalSignsForm vs={encounter.vital_signs} encounterId={id} readOnly={isReadOnly} />
           </section>
         );
       case 'documents':
         return (
-          <section className="max-w-3xl rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <section className="max-w-3xl rounded-lg border border-slate-200 bg-white p-4">
             <DocumentsPanel documents={encounter.documents} encounterId={id} readOnly={isReadOnly} onRefresh={load} />
           </section>
         );
@@ -663,7 +663,7 @@ export default function EncounterDetailPage() {
                 return (
                   <div
                     key={tab.encounterId}
-                    className={`flex shrink-0 items-stretch overflow-hidden rounded-lg border text-xs shadow-sm ${
+                    className={`flex shrink-0 items-stretch overflow-hidden rounded-lg border text-xs ${
                       selected
                         ? 'border-blue-300 bg-white text-blue-900'
                         : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
@@ -706,7 +706,7 @@ export default function EncounterDetailPage() {
               </button>
               <div className="flex flex-wrap items-center gap-2">
                 <UserRound size={18} className="text-blue-600" />
-                <h1 className="truncate text-xl font-bold text-slate-950">{patient.full_name}</h1>
+                <h1 className="truncate text-xl font-semibold text-slate-950">{patient.full_name}</h1>
                 <span
                   data-testid="encounter-status"
                   className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${STATUS_STYLES[encounter.status]}`}

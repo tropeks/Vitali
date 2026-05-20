@@ -100,7 +100,7 @@ export default function NewPatientPage() {
       )}
 
       <form onSubmit={submit} className="space-y-5">
-        <div className="rounded-xl border border-slate-200 bg-white p-5">
+        <div className="rounded-lg border border-slate-200 bg-white p-5">
           <h2 className="text-sm font-semibold text-slate-800">Identificação</h2>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <label className="space-y-1 text-sm">
@@ -174,7 +174,7 @@ export default function NewPatientPage() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-5">
+        <div className="rounded-lg border border-slate-200 bg-white p-5">
           <h2 className="text-sm font-semibold text-slate-800">Contato</h2>
           <div className="mt-4 grid gap-4 md:grid-cols-3">
             <label className="space-y-1 text-sm">
@@ -208,7 +208,7 @@ export default function NewPatientPage() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-5">
+        <div className="rounded-lg border border-slate-200 bg-white p-5">
           <label className="space-y-1 text-sm">
             <span className="font-medium text-slate-700">Observações</span>
             <textarea

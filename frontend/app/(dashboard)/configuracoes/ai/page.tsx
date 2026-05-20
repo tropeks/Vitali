@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { CheckCircle, AlertCircle, Bot } from 'lucide-react';
+import { Bot } from 'lucide-react';
 import { getAccessToken } from '@/lib/auth';
 import { DPASignModal } from '@/components/settings/DPASignModal';
+import { PageShell, StatusBadge } from '@/components/shared';
+import { getDpaStatusMeta } from '@/lib/operational-ui';
 
 interface DPAStatus {
   is_signed: boolean;
@@ -75,114 +77,114 @@ export default function AISettingsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh] text-slate-400 text-sm">
-        Carregando...
-      </div>
+      <PageShell variant="operational">
+        <p className="text-sm text-slate-500">Carregando...</p>
+      </PageShell>
     );
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6 py-8 px-4">
-      <div>
-        <h1 className="text-xl font-semibold text-slate-900">Inteligência Artificial</h1>
-        <p className="text-sm text-slate-500 mt-1">
-          Gerencie o Acordo de Processamento de Dados e as configurações de IA da clínica.
-        </p>
-      </div>
-
-      {/* DPA Status Card */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <h2 className="text-sm font-semibold text-slate-800 uppercase tracking-wide">
-            Acordo de Processamento de Dados (DPA)
-          </h2>
-          {status?.is_signed ? (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
-              <CheckCircle size={13} />
-              DPA assinado
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-700">
-              <AlertCircle size={13} />
-              DPA não assinado
-            </span>
-          )}
-        </div>
-
-        {status?.is_signed ? (
-          <div className="space-y-1.5 text-sm text-slate-600">
-            <p>
-              <span className="font-medium text-slate-700">Data de assinatura:</span>{' '}
-              {formatDate(status.signed_at)}
-            </p>
-            <p>
-              <span className="font-medium text-slate-700">Assinado por:</span>{' '}
-              {status.signed_by_name ?? '—'}
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <p className="text-sm text-slate-600">
-              Para utilizar os recursos de Inteligência Artificial (incluindo IA Clínica / Scribe),
-              é necessário assinar o Acordo de Processamento de Dados em conformidade com a LGPD.
-            </p>
-            <div>
-              {canSign ? (
-                <button
-                  onClick={() => setShowModal(true)}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
-                >
-                  Assinar DPA
-                </button>
-              ) : (
-                <div className="inline-flex items-center gap-2">
-                  <button
-                    disabled
-                    title="Apenas administradores podem assinar o DPA"
-                    className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg opacity-40 cursor-not-allowed"
-                  >
-                    Assinar DPA
-                  </button>
-                  <span className="text-xs text-slate-500">
-                    Apenas administradores podem assinar.
-                  </span>
-                </div>
-              )}
-            </div>
-            {error && (
-              <p className="text-sm text-red-600">{error}</p>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* AI Scribe info — only shown after DPA is signed and scribe is enabled */}
-      {status?.is_signed && status?.ai_scribe_enabled && (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
-          <div className="flex items-center gap-2">
-            <Bot size={18} className="text-blue-600" />
-            <h2 className="text-sm font-semibold text-slate-800 uppercase tracking-wide">
-              IA Clínica (Scribe)
-            </h2>
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
-              Ativo
-            </span>
-          </div>
-          <p className="text-sm text-slate-600">
-            O módulo de IA Clínica está habilitado. As transcrições de consultas são processadas
-            automaticamente para geração de notas SOAP, com armazenamento criptografado em conformidade
-            com a LGPD.
+    <PageShell variant="operational">
+      <div className="max-w-3xl space-y-5">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900">Inteligência Artificial</h1>
+          <p className="text-sm text-slate-500 mt-1">
+            Gerencie o Acordo de Processamento de Dados e as configurações de IA da clínica.
           </p>
         </div>
-      )}
 
-      {showModal && (
-        <DPASignModal
-          onConfirm={handleSign}
-          onClose={() => { setShowModal(false); setError(null); }}
-          loading={signing}
-        />
-      )}
-    </div>
+        <section className="rounded-lg border border-slate-200 bg-white">
+          <div className="border-b border-slate-100 px-4 py-3 flex items-center justify-between flex-wrap gap-3">
+            <h2 className="text-base font-semibold text-slate-900">
+              Acordo de Processamento de Dados (DPA)
+            </h2>
+            <StatusBadge meta={getDpaStatusMeta(status?.is_signed)} />
+          </div>
+          <div className="p-4 space-y-4">
+            {status?.is_signed ? (
+              <div className="space-y-1.5 text-sm text-slate-700">
+                <p>
+                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Data de assinatura
+                  </span>{' '}
+                  <span className="ml-1">{formatDate(status.signed_at)}</span>
+                </p>
+                <p>
+                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Assinado por
+                  </span>{' '}
+                  <span className="ml-1">{status.signed_by_name ?? '—'}</span>
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-slate-700">
+                  Para utilizar os recursos de Inteligência Artificial (incluindo IA Clínica /
+                  Scribe), é necessário assinar o Acordo de Processamento de Dados em conformidade
+                  com a LGPD.
+                </p>
+                <div>
+                  {canSign ? (
+                    <button
+                      onClick={() => setShowModal(true)}
+                      className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                    >
+                      Assinar DPA
+                    </button>
+                  ) : (
+                    <div className="inline-flex items-center gap-2">
+                      <button
+                        disabled
+                        title="Apenas administradores podem assinar o DPA"
+                        className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg opacity-40 cursor-not-allowed"
+                      >
+                        Assinar DPA
+                      </button>
+                      <span className="text-xs text-slate-500">
+                        Apenas administradores podem assinar.
+                      </span>
+                    </div>
+                  )}
+                </div>
+                {error && <p className="text-sm text-red-700">{error}</p>}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {status?.is_signed && status?.ai_scribe_enabled && (
+          <section className="rounded-lg border border-slate-200 bg-white">
+            <div className="border-b border-slate-100 px-4 py-3 flex items-center gap-2 flex-wrap">
+              <Bot size={18} className="text-blue-600" />
+              <h2 className="text-base font-semibold text-slate-900">IA Clínica (Scribe)</h2>
+              <StatusBadge
+                meta={{
+                  label: 'Ativo',
+                  badgeClass: 'bg-green-100 text-green-800 border-green-200',
+                }}
+              />
+            </div>
+            <div className="p-4">
+              <p className="text-sm text-slate-700">
+                O módulo de IA Clínica está habilitado. As transcrições de consultas são
+                processadas automaticamente para geração de notas SOAP, com armazenamento
+                criptografado em conformidade com a LGPD.
+              </p>
+            </div>
+          </section>
+        )}
+
+        {showModal && (
+          <DPASignModal
+            onConfirm={handleSign}
+            onClose={() => {
+              setShowModal(false);
+              setError(null);
+            }}
+            loading={signing}
+          />
+        )}
+      </div>
+    </PageShell>
   );
 }

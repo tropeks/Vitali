@@ -106,8 +106,8 @@ export default function BatchesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Lotes TISS</h1>
-          <p className="text-sm text-gray-500 mt-1">{batches.length} lote{batches.length !== 1 ? 's' : ''}</p>
+          <h1 className="text-2xl font-semibold text-slate-900">Lotes TISS</h1>
+          <p className="text-sm text-slate-500 mt-1">{batches.length} lote{batches.length !== 1 ? 's' : ''}</p>
         </div>
         <button
           onClick={openCreateModal}
@@ -126,7 +126,7 @@ export default function BatchesPage() {
         <select
           value={statusFilter}
           onChange={e => setStatusFilter(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+          className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
         >
           <option value="">Todos os status</option>
           <option value="open">Aberto</option>
@@ -137,7 +137,7 @@ export default function BatchesPage() {
         {statusFilter && (
           <button
             onClick={() => setStatusFilter('')}
-            className="text-sm text-gray-500 hover:text-gray-700 underline"
+            className="text-sm text-slate-500 hover:text-slate-700 underline"
           >
             Limpar
           </button>
@@ -145,44 +145,44 @@ export default function BatchesPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-100">
+          <thead className="bg-slate-50 border-b border-slate-100">
             <tr>
               {['Nº Lote', 'Operadora', 'Guias', 'Valor Total', 'Status', 'Data Fechamento', ''].map(h => (
-                <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
+                <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-50">
+          <tbody className="divide-y divide-slate-50">
             {loading ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <tr key={i}>
                   {Array.from({ length: 7 }).map((_, j) => (
                     <td key={j} className="px-4 py-3">
-                      <div className="h-4 bg-gray-100 rounded animate-pulse" />
+                      <div className="h-4 bg-slate-100 rounded animate-pulse" />
                     </td>
                   ))}
                 </tr>
               ))
             ) : batches.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-12 text-center text-gray-400">
+                <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
                   Nenhum lote encontrado
                 </td>
               </tr>
             ) : batches.map(b => (
               <tr key={b.id} className="hover:bg-blue-50 transition-colors">
-                <td className="px-4 py-3 font-mono text-gray-700">{b.batch_number ?? b.id}</td>
-                <td className="px-4 py-3 text-gray-900">{b.provider_name ?? b.provider ?? '—'}</td>
-                <td className="px-4 py-3 text-gray-600">{b.guide_count ?? 0}</td>
-                <td className="px-4 py-3 text-gray-700">{fmtCurrency(b.total_value)}</td>
+                <td className="px-4 py-3 font-mono text-slate-700">{b.batch_number ?? b.id}</td>
+                <td className="px-4 py-3 text-slate-900">{b.provider_name ?? b.provider ?? '—'}</td>
+                <td className="px-4 py-3 text-slate-600">{b.guide_count ?? 0}</td>
+                <td className="px-4 py-3 text-slate-700">{fmtCurrency(b.total_value)}</td>
                 <td className="px-4 py-3">
-                  <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[b.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                  <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[b.status] ?? 'bg-slate-100 text-slate-600'}`}>
                     {STATUS_LABEL[b.status] ?? b.status}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-gray-600">
+                <td className="px-4 py-3 text-slate-600">
                   {b.closed_at ? new Date(b.closed_at).toLocaleDateString('pt-BR') : '—'}
                 </td>
                 <td className="px-4 py-3">
@@ -203,16 +203,16 @@ export default function BatchesPage() {
       {showModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
-            <h2 className="text-lg font-semibold text-gray-900">Novo Lote TISS</h2>
+            <h2 className="text-lg font-semibold text-slate-900">Novo Lote TISS</h2>
             {createError && (
               <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">{createError}</div>
             )}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Operadora *</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Operadora *</label>
               <select
                 value={newProviderId}
                 onChange={e => setNewProviderId(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
               >
                 <option value="">Selecione a operadora...</option>
                 {providers.map(p => (
@@ -223,7 +223,7 @@ export default function BatchesPage() {
             <div className="flex gap-2 justify-end pt-2">
               <button
                 onClick={() => { setShowModal(false); setNewProviderId(''); }}
-                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+                className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800"
               >
                 Cancelar
               </button>

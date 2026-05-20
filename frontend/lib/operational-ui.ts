@@ -292,6 +292,57 @@ export const ALLERGY_SEVERITY_BLOCK: Record<string, string> = {
   mild: 'border-green-200 bg-green-50 text-green-800',
 }
 
+/** Subscription lifecycle — `Subscription.status` on /configuracoes/assinatura. */
+export const SUBSCRIPTION_STATUS_META: Record<string, BadgeMeta> = {
+  active: badge('Ativo', 'bg-green-100 text-green-800 border-green-200', 'success'),
+  past_due: badge('Em atraso', 'bg-red-100 text-red-700 border-red-200', 'critical'),
+  cancelled: badge('Cancelado', 'bg-slate-100 text-slate-600 border-slate-200', 'neutral'),
+}
+
+/** Employee `employment_status` lifecycle on /rh/funcionarios. */
+export const EMPLOYMENT_STATUS_META: Record<string, BadgeMeta> = {
+  active: badge('Ativo', 'bg-green-100 text-green-800 border-green-200', 'success'),
+  on_leave: badge('Afastado', 'bg-yellow-100 text-yellow-800 border-yellow-200', 'attention'),
+  terminated: badge('Desligado', 'bg-red-100 text-red-700 border-red-200', 'critical'),
+}
+
+/** Evolution API connection state from /api/v1/whatsapp/health/ — open/connecting/close. */
+export const WA_CONNECTION_STATUS_META: Record<string, BadgeMeta> = {
+  open: badge('Conectado', 'bg-green-100 text-green-800 border-green-200', 'success'),
+  connecting: badge('Aguardando', 'bg-yellow-100 text-yellow-800 border-yellow-200', 'attention'),
+  close: badge('Desconectado', 'bg-red-100 text-red-700 border-red-200', 'critical'),
+}
+
+/**
+ * Derived-boolean adapters — small helpers for cases where the underlying
+ * field is a boolean rather than a status enum (cadastro ativo, DPA assinado,
+ * MFA habilitado, WhatsApp opt-in). They route through the canonical tone
+ * vocabulary so call sites never inline status colours.
+ */
+export function getActivenessMeta(isActive: boolean | null | undefined): BadgeMeta {
+  return isActive
+    ? badge('Ativo', 'bg-green-100 text-green-800 border-green-200', 'success')
+    : badge('Inativo', 'bg-red-100 text-red-700 border-red-200', 'critical')
+}
+
+export function getDpaStatusMeta(isSigned: boolean | null | undefined): BadgeMeta {
+  return isSigned
+    ? badge('DPA assinado', 'bg-green-100 text-green-800 border-green-200', 'success')
+    : badge('DPA não assinado', 'bg-yellow-100 text-yellow-800 border-yellow-200', 'attention')
+}
+
+export function getMfaStatusMeta(isActive: boolean | null | undefined): BadgeMeta {
+  return isActive
+    ? badge('Ativo', 'bg-green-100 text-green-800 border-green-200', 'success')
+    : badge('Inativo', 'bg-slate-100 text-slate-600 border-slate-200', 'neutral')
+}
+
+export function getOptInMeta(optedIn: boolean | null | undefined): BadgeMeta {
+  return optedIn
+    ? badge('Opt-in', 'bg-green-100 text-green-800 border-green-200', 'success')
+    : badge('Sem opt-in', 'bg-slate-100 text-slate-600 border-slate-200', 'neutral')
+}
+
 export interface StockStatusInput {
   is_expired?: boolean | null
   is_low_stock?: boolean | null

@@ -198,7 +198,7 @@ export default function NovaCompraPage() {
       {error && (
         <div
           role="alert"
-          className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm"
+          className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm"
         >
           {error}
         </div>
@@ -206,7 +206,7 @@ export default function NovaCompraPage() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Supplier search */}
-        <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
+        <div className="bg-white rounded-lg border border-slate-200 p-5 space-y-4">
           <h3 className="text-sm font-semibold text-slate-800">Dados Gerais</h3>
 
           <div className="space-y-1">
@@ -293,7 +293,7 @@ export default function NovaCompraPage() {
         </div>
 
         {/* Items */}
-        <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
+        <div className="bg-white rounded-lg border border-slate-200 p-5 space-y-4">
           <h3 className="text-sm font-semibold text-slate-800">Itens</h3>
 
           {/* Items table */}

@@ -91,13 +91,13 @@ export default function TUSSCodeSearch({ value, onChange, placeholder = 'Buscar 
           onFocus={() => { if (results.length > 0) setOpen(true); }}
           placeholder={placeholder}
           disabled={disabled}
-          className="w-full border border-gray-200 rounded-lg px-3 py-2 pr-8 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-50"
+          className="w-full border border-slate-200 rounded-lg px-3 py-2 pr-8 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-slate-50"
         />
         {(value || query) && !disabled && (
           <button
             type="button"
             onClick={clear}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg leading-none"
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-lg leading-none"
             tabIndex={-1}
           >
             ×
@@ -109,7 +109,7 @@ export default function TUSSCodeSearch({ value, onChange, placeholder = 'Buscar 
       </div>
 
       {open && results.length > 0 && (
-        <ul className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto text-sm">
+        <ul className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto text-sm">
           {results.map(opt => (
             <li key={opt.id}>
               <button
@@ -118,7 +118,7 @@ export default function TUSSCodeSearch({ value, onChange, placeholder = 'Buscar 
                 className="w-full text-left px-3 py-2 hover:bg-blue-50 focus:bg-blue-50 outline-none"
               >
                 <span className="font-mono text-blue-700 mr-2">{opt.code}</span>
-                <span className="text-gray-700">{opt.description.slice(0, 80)}</span>
+                <span className="text-slate-700">{opt.description.slice(0, 80)}</span>
               </button>
             </li>
           ))}

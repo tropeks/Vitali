@@ -118,10 +118,10 @@ function extractFieldErrors(body: any): Record<string, string> {
 // ─── Shared input / select classes ───────────────────────────────────────────
 
 const INPUT_CLASS =
-  'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder:text-gray-400'
+  'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder:text-slate-400'
 const SELECT_CLASS =
   'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white'
-const LABEL_CLASS = 'block text-xs font-medium text-gray-700 mb-1'
+const LABEL_CLASS = 'block text-xs font-medium text-slate-700 mb-1'
 const PRIMARY_BTN =
   'bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors'
 const SECONDARY_BTN =
@@ -324,7 +324,7 @@ export default function AddEmployeeModal({ open, onClose, onSuccess }: AddEmploy
 
       <div>
         <label htmlFor="phone" className={LABEL_CLASS}>
-          Telefone <span className="text-gray-400 font-normal">(opcional)</span>
+          Telefone <span className="text-slate-400 font-normal">(opcional)</span>
         </label>
         <input
           id="phone"
@@ -415,8 +415,8 @@ export default function AddEmployeeModal({ open, onClose, onSuccess }: AddEmploy
       </div>
 
       {isClinical && (
-        <div className="border border-blue-200 bg-blue-50 rounded-xl p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-gray-800">Conselho Profissional</h3>
+        <div className="border border-blue-200 bg-blue-50 rounded-lg p-4 space-y-3">
+          <h3 className="text-sm font-semibold text-slate-800">Conselho Profissional</h3>
 
           <div>
             <label htmlFor="council_type" className={LABEL_CLASS}>
@@ -471,7 +471,7 @@ export default function AddEmployeeModal({ open, onClose, onSuccess }: AddEmploy
 
           <div>
             <label htmlFor="specialty" className={LABEL_CLASS}>
-              Especialidade <span className="text-gray-400 font-normal">(opcional)</span>
+              Especialidade <span className="text-slate-400 font-normal">(opcional)</span>
             </label>
             <input
               id="specialty"
@@ -520,7 +520,7 @@ export default function AddEmployeeModal({ open, onClose, onSuccess }: AddEmploy
                     onChange={e => set('password', e.target.value)}
                     placeholder="Senha temporária"
                   />
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-slate-500 mt-1">
                     O funcionário deverá alterar a senha no primeiro login.
                   </p>
                 </div>
@@ -592,7 +592,7 @@ export default function AddEmployeeModal({ open, onClose, onSuccess }: AddEmploy
             <div className="flex-1">
               <span className="text-sm font-medium text-slate-800">Enviar convite por e-mail</span>
               {form.auth_mode === 'invite' && (
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-slate-500 mt-1">
                   O servidor enviará um link de convite para o e-mail cadastrado.
                 </p>
               )}
@@ -616,7 +616,7 @@ export default function AddEmployeeModal({ open, onClose, onSuccess }: AddEmploy
                 Configurar WhatsApp para comunicação interna
               </span>
               {phoneEmpty && (
-                <p className="text-xs text-gray-400 mt-0.5">
+                <p className="text-xs text-slate-400 mt-0.5">
                   Preencha o telefone na etapa 1 para habilitar.
                 </p>
               )}
@@ -635,7 +635,7 @@ export default function AddEmployeeModal({ open, onClose, onSuccess }: AddEmploy
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50">
-      <div className="bg-white rounded-xl shadow-xl p-6 max-w-lg w-full max-h-[90vh] flex flex-col">
+      <div className="bg-white rounded-lg shadow-xl p-6 max-w-lg w-full max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div>

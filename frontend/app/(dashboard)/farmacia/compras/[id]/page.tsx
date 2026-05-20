@@ -174,7 +174,7 @@ export default function PODetailPage() {
     return (
       <div className="space-y-4 animate-pulse">
         <div className="h-7 bg-slate-200 rounded w-64" />
-        <div className="h-48 bg-slate-200 rounded-xl" />
+        <div className="h-48 bg-slate-200 rounded-lg" />
       </div>
     );
   }
@@ -204,7 +204,7 @@ export default function PODetailPage() {
         <div
           role="status"
           aria-live="polite"
-          className="fixed top-4 right-4 z-50 flex items-center gap-2 bg-green-700 text-white text-sm font-medium px-4 py-3 rounded-xl shadow-lg"
+          className="fixed top-4 right-4 z-50 flex items-center gap-2 bg-green-700 text-white text-sm font-medium px-4 py-3 rounded-lg shadow-lg"
         >
           <CheckCircle size={16} />
           {toast}
@@ -221,7 +221,7 @@ export default function PODetailPage() {
         </button>
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
-            <h2 className="text-xl font-bold text-slate-900">{order.supplier_name}</h2>
+            <h2 className="text-xl font-semibold text-slate-900">{order.supplier_name}</h2>
             <p className="text-sm text-slate-500 mt-0.5">
               Previsto: {formatDate(order.expected_date)} · Atualizado:{' '}
               {formatDate(order.updated_at)}
@@ -243,7 +243,7 @@ export default function PODetailPage() {
         <div
           role="alert"
           aria-live="polite"
-          className="flex items-center gap-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-3 text-sm"
+          className="flex items-center gap-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-4 py-3 text-sm"
         >
           <AlertCircle size={18} className="shrink-0" />
           <p>
@@ -254,7 +254,7 @@ export default function PODetailPage() {
       )}
 
       {/* Items table */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-4 flex-wrap">
           <h3 className="font-semibold text-slate-900">Itens da Ordem</h3>
           <span className="text-xs text-slate-400">

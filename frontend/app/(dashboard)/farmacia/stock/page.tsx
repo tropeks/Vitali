@@ -168,7 +168,7 @@ export default function StockPage() {
           {expiringCount > 0 && (
             <button
               onClick={() => { setFilterExpiring(true); setFilterLow(false) }}
-              className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-left hover:bg-red-100 transition-colors"
+              className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-left hover:bg-red-100 transition-colors"
             >
               <p className="text-xs font-medium text-red-600 uppercase tracking-wide">Vencendo em 30d</p>
               <p className="text-2xl font-semibold text-red-700 mt-1">{expiringCount}</p>
@@ -178,7 +178,7 @@ export default function StockPage() {
           {lowStockCount > 0 && (
             <button
               onClick={() => { setFilterLow(true); setFilterExpiring(false) }}
-              className="bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3 text-left hover:bg-yellow-100 transition-colors"
+              className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3 text-left hover:bg-yellow-100 transition-colors"
             >
               <p className="text-xs font-medium text-yellow-700 uppercase tracking-wide">Estoque baixo</p>
               <p className="text-2xl font-semibold text-yellow-700 mt-1">{lowStockCount}</p>
@@ -196,7 +196,7 @@ export default function StockPage() {
               type="checkbox"
               checked={filterLow}
               onChange={e => setFilterLow(e.target.checked)}
-              className="rounded border-gray-300"
+              className="rounded border-slate-300"
             />
             Estoque baixo
           </label>
@@ -205,7 +205,7 @@ export default function StockPage() {
               type="checkbox"
               checked={filterExpiring}
               onChange={e => setFilterExpiring(e.target.checked)}
-              className="rounded border-gray-300"
+              className="rounded border-slate-300"
             />
             Vencendo em 30 dias
           </label>
@@ -220,7 +220,7 @@ export default function StockPage() {
 
       {/* Entry form */}
       {showEntryForm && (
-        <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+        <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-4">
           <h3 className="font-medium text-slate-900">Registrar Entrada de Estoque</h3>
           {error && (
             <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
@@ -248,11 +248,11 @@ export default function StockPage() {
                   placeholder="Buscar medicamento por nome..."
                   value={drugSearch}
                   onChange={e => { setDrugSearch(e.target.value); searchDrugs(e.target.value) }}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 {loadingDrugs && <p className="text-xs text-slate-400 mt-1">Buscando...</p>}
                 {drugResults.length > 0 && (
-                  <div className="mt-1 border border-gray-200 rounded-lg divide-y divide-gray-100 overflow-hidden">
+                  <div className="mt-1 border border-slate-200 rounded-lg divide-y divide-slate-100 overflow-hidden">
                     {drugResults.slice(0, 6).map(d => (
                       <button
                         key={d.id}
@@ -277,7 +277,7 @@ export default function StockPage() {
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Número do lote *</label>
               <input
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono"
                 placeholder="Ex: LOT2024-001"
                 value={lotNumber}
                 onChange={e => setLotNumber(e.target.value)}
@@ -288,7 +288,7 @@ export default function StockPage() {
               <input
                 type="date"
                 min={today}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                 value={expiryDate}
                 onChange={e => setExpiryDate(e.target.value)}
               />
@@ -299,7 +299,7 @@ export default function StockPage() {
                 type="number"
                 step="0.001"
                 min="0.001"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                 placeholder="Ex: 100"
                 value={entryQuantity}
                 onChange={e => setEntryQuantity(e.target.value)}
@@ -308,7 +308,7 @@ export default function StockPage() {
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Observações</label>
               <input
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                 placeholder="NF, fornecedor..."
                 value={entryNotes}
                 onChange={e => setEntryNotes(e.target.value)}
@@ -346,12 +346,12 @@ export default function StockPage() {
 
       {loading && <p className="text-sm text-slate-400">Carregando...</p>}
 
-      <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+      <div className="bg-white rounded-lg border border-slate-200 overflow-x-auto">
         <table className="w-full text-sm min-w-[700px]">
           <thead>
-            <tr className="border-b border-gray-100 bg-gray-50">
+            <tr className="border-b border-slate-100 bg-slate-50">
               {['Item', 'Lote', 'Vencimento', 'Quantidade', 'Estoque mín.', 'Local', 'Status'].map(h => (
-                <th key={h} className="text-left px-4 py-3 font-medium text-gray-600">{h}</th>
+                <th key={h} className="text-left px-4 py-3 font-medium text-slate-600">{h}</th>
               ))}
             </tr>
           </thead>
@@ -367,12 +367,12 @@ export default function StockPage() {
               </tr>
             )}
             {filtered.map(item => (
-              <tr key={item.id} className={`border-b border-gray-50 hover:bg-gray-50 cursor-pointer ${expiryRowClass(item)}`} onClick={() => router.push(`/farmacia/stock/${item.id}`)}>
-                <td className="px-4 py-3 font-medium text-gray-900">
+              <tr key={item.id} className={`border-b border-slate-50 hover:bg-slate-50 cursor-pointer ${expiryRowClass(item)}`} onClick={() => router.push(`/farmacia/stock/${item.id}`)}>
+                <td className="px-4 py-3 font-medium text-slate-900">
                   {item.drug_name ?? item.material_name ?? '—'}
                 </td>
-                <td className="px-4 py-3 font-mono text-xs text-gray-600">{item.lot_number || '—'}</td>
-                <td className="px-4 py-3 text-gray-600">
+                <td className="px-4 py-3 font-mono text-xs text-slate-600">{item.lot_number || '—'}</td>
+                <td className="px-4 py-3 text-slate-600">
                   {item.expiry_date
                     ? <span className={
                         item.is_expired ? 'text-red-600 font-medium' :
@@ -382,9 +382,9 @@ export default function StockPage() {
                       </span>
                     : '—'}
                 </td>
-                <td className="px-4 py-3 font-mono text-gray-900">{item.quantity}</td>
-                <td className="px-4 py-3 font-mono text-gray-500">{item.min_stock}</td>
-                <td className="px-4 py-3 text-gray-600">{item.location || '—'}</td>
+                <td className="px-4 py-3 font-mono text-slate-900">{item.quantity}</td>
+                <td className="px-4 py-3 font-mono text-slate-500">{item.min_stock}</td>
+                <td className="px-4 py-3 text-slate-600">{item.location || '—'}</td>
                 <td className="px-4 py-3">
                   {item.is_expired
                     ? <span className="px-2 py-0.5 text-xs bg-red-100 text-red-700 rounded">Vencido</span>

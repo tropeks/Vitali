@@ -179,7 +179,7 @@ export function ScribeButton({ encounterId, soapNoteId, onApplied }: ScribeButto
 
   // ── Shared container ─────────────────────────────────────────────────────
   return (
-    <div className="border border-purple-200 bg-purple-50 rounded-xl p-4 space-y-3">
+    <div className="border border-purple-200 bg-purple-50 rounded-lg p-4 space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Sparkles size={14} className="text-purple-600" />

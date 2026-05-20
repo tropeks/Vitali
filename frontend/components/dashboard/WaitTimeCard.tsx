@@ -12,7 +12,7 @@ export default function WaitTimeCard({ waitTimeAvgMin, loading }: WaitTimeCardPr
       : `${waitTimeAvgMin} min`;
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+    <div className="bg-white rounded-lg border border-slate-200 p-5">
       <p className="text-sm text-slate-500">Tempo de Espera</p>
       <p className="text-3xl font-bold mt-1 text-violet-600">{value}</p>
       <p className="text-xs text-slate-400 mt-1">Média chegada → atendimento</p>

@@ -39,30 +39,30 @@ export default function PriceTablesPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-gray-900">Tabelas de Preços</h1>
-        <p className="text-sm text-gray-500 mt-1">{tables.length} tabela{tables.length !== 1 ? 's' : ''}</p>
+        <h1 className="text-2xl font-semibold text-slate-900">Tabelas de Preços</h1>
+        <p className="text-sm text-slate-500 mt-1">{tables.length} tabela{tables.length !== 1 ? 's' : ''}</p>
       </div>
 
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">{error}</div>
       )}
 
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-100">
+          <thead className="bg-slate-50 border-b border-slate-100">
             <tr>
               {['Operadora', 'Nome', 'Válida De', 'Válida Até', 'Itens', 'Status'].map(h => (
-                <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
+                <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-50">
+          <tbody className="divide-y divide-slate-50">
             {loading ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <tr key={i}>
                   {Array.from({ length: 6 }).map((_, j) => (
                     <td key={j} className="px-4 py-3">
-                      <div className="h-4 bg-gray-100 rounded animate-pulse" />
+                      <div className="h-4 bg-slate-100 rounded animate-pulse" />
                     </td>
                   ))}
                 </tr>
@@ -71,22 +71,22 @@ export default function PriceTablesPage() {
               <tr>
                 <td colSpan={6} className="px-4 py-16 text-center">
                   <div className="space-y-2">
-                    <p className="text-gray-400 font-medium">Nenhuma tabela de preços cadastrada</p>
-                    <p className="text-xs text-gray-400">As tabelas de preços são configuradas pelo administrador do sistema.</p>
+                    <p className="text-slate-400 font-medium">Nenhuma tabela de preços cadastrada</p>
+                    <p className="text-xs text-slate-400">As tabelas de preços são configuradas pelo administrador do sistema.</p>
                   </div>
                 </td>
               </tr>
             ) : tables.map(t => {
               const active = isActive(t);
               return (
-                <tr key={t.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3 text-gray-900 font-medium">{t.provider_name ?? t.provider ?? '—'}</td>
-                  <td className="px-4 py-3 text-gray-800">{t.name ?? t.nome ?? '—'}</td>
-                  <td className="px-4 py-3 text-gray-600">{fmtDate(t.valid_from)}</td>
-                  <td className="px-4 py-3 text-gray-600">{fmtDate(t.valid_until)}</td>
-                  <td className="px-4 py-3 text-gray-600">{t.item_count ?? t.items_count ?? '—'}</td>
+                <tr key={t.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-4 py-3 text-slate-900 font-medium">{t.provider_name ?? t.provider ?? '—'}</td>
+                  <td className="px-4 py-3 text-slate-800">{t.name ?? t.nome ?? '—'}</td>
+                  <td className="px-4 py-3 text-slate-600">{fmtDate(t.valid_from)}</td>
+                  <td className="px-4 py-3 text-slate-600">{fmtDate(t.valid_until)}</td>
+                  <td className="px-4 py-3 text-slate-600">{t.item_count ?? t.items_count ?? '—'}</td>
                   <td className="px-4 py-3">
-                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
                       {active ? 'Ativa' : 'Inativa'}
                     </span>
                   </td>

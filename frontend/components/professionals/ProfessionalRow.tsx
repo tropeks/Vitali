@@ -1,7 +1,10 @@
-// ─── ProfessionalRow ─────────────────────────────────────────────────────────
+import { StatusBadge } from '@/components/shared'
+import { getActivenessMeta } from '@/lib/operational-ui'
+
 // Single table row for a Professional record.
 // Council display format: "<council_type> <council_number>/<council_state>"
-// e.g. "CRM 12345/SP"
+// e.g. "CRM 12345/SP". Status badge resolves through the canonical derived-
+// boolean adapter so the activeness pill is the same on every screen.
 
 export interface Professional {
   id: string
@@ -33,18 +36,10 @@ export default function ProfessionalRow({ professional }: Props) {
     <tr className="border-b border-slate-100 hover:bg-slate-50">
       <td className="px-4 py-3 font-medium text-slate-900">{professional.user_name || '—'}</td>
       <td className="px-4 py-3 text-slate-600">{professional.user_email || '—'}</td>
-      <td className="px-4 py-3 text-slate-600">{councilDisplay}</td>
+      <td className="px-4 py-3 font-mono text-xs text-slate-700">{councilDisplay}</td>
       <td className="px-4 py-3 text-slate-600">{professional.specialty || '—'}</td>
       <td className="px-4 py-3">
-        {professional.is_active ? (
-          <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs">
-            Ativo
-          </span>
-        ) : (
-          <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-xs">
-            Inativo
-          </span>
-        )}
+        <StatusBadge meta={getActivenessMeta(professional.is_active)} />
       </td>
     </tr>
   )

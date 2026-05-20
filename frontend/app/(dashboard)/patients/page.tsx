@@ -141,28 +141,28 @@ export default function PatientsPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
             <Users size={14} />
             Total
           </div>
           <p className="mt-2 text-2xl font-bold text-slate-900">{count}</p>
         </div>
-        <div className="rounded-lg border border-green-200 bg-green-50 p-4 shadow-sm">
+        <div className="rounded-lg border border-green-200 bg-green-50 p-4">
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-green-700">
             <UserRound size={14} />
             Ativos na lista
           </div>
           <p className="mt-2 text-2xl font-bold text-green-700">{summary.active}</p>
         </div>
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 shadow-sm">
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4">
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-red-700">
             <ShieldAlert size={14} />
             Com alergia
           </div>
           <p className="mt-2 text-2xl font-bold text-red-700">{summary.withAllergies}</p>
         </div>
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 shadow-sm">
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
             <FileText size={14} />
             Inativos
@@ -171,7 +171,7 @@ export default function PatientsPage() {
         </div>
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+      <div className="rounded-lg border border-slate-200 bg-white p-3">
         <label htmlFor="patient-search" className="sr-only">
           Buscar paciente
         </label>
@@ -198,7 +198,7 @@ export default function PatientsPage() {
         </div>
       )}
 
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
         <div className="hidden overflow-x-auto md:block">
           <table className="w-full min-w-[760px] text-sm">
             <thead>

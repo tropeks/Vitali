@@ -121,7 +121,7 @@ function KPICard({
   color: string;
 }) {
   return (
-    <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-sm">
+    <div className="bg-white rounded-lg border border-slate-200 p-4">
       <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
       <p className={`mt-1 text-2xl font-bold ${color}`}>{value}</p>
       {sub && <p className="mt-1 text-xs text-slate-500">{sub}</p>}
@@ -139,7 +139,7 @@ function Skeleton({ className }: { className?: string }) {
 
 function KPISkeleton() {
   return (
-    <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-sm space-y-3">
+    <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-3">
       <Skeleton className="h-4 w-32" />
       <Skeleton className="h-9 w-20" />
       <Skeleton className="h-3 w-40" />
@@ -252,7 +252,7 @@ export default function DashboardPage() {
       <div className="space-y-6">
         <OnboardingWidget />
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Centro operacional</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">Centro operacional</h1>
           <p className="text-slate-500 text-sm mt-1">{dateLabel}</p>
         </div>
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-5">
@@ -268,7 +268,7 @@ export default function DashboardPage() {
       {/* ── Header ── */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Centro operacional</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">Centro operacional</h1>
           <p className="text-sm text-slate-500 mt-1">
             {dateLabel} · status clínico, agenda e pendências em uma visão
           </p>
@@ -298,7 +298,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
         {overviewLoading
           ? Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+              <div key={i} className="rounded-lg border border-slate-200 bg-white p-4">
                 <Skeleton className="h-4 w-28" />
                 <Skeleton className="mt-3 h-8 w-12" />
                 <Skeleton className="mt-2 h-3 w-40" />
@@ -315,7 +315,7 @@ export default function DashboardPage() {
                 <Link
                   key={item.id}
                   href={item.href}
-                  className={`group rounded-lg border p-4 shadow-sm transition-colors hover:bg-white ${ACTION_TONE_CLASSES[item.tone]}`}
+                  className={`group rounded-lg border p-4 transition-colors hover:bg-white ${ACTION_TONE_CLASSES[item.tone]}`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -377,7 +377,7 @@ export default function DashboardPage() {
 
       {/* ── Charts Row 1: Line + Donut ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white rounded-lg border border-slate-200 p-5 shadow-sm">
+        <div className="lg:col-span-2 bg-white rounded-lg border border-slate-200 p-5">
           <h2 className="font-semibold text-slate-900 mb-4">
             Consultas por Dia{" "}
             <span className="text-xs text-slate-400 font-normal">(últimos 30 dias)</span>
@@ -419,7 +419,7 @@ export default function DashboardPage() {
           )}
         </div>
 
-        <div className="bg-white rounded-lg border border-slate-200 p-5 shadow-sm">
+        <div className="bg-white rounded-lg border border-slate-200 p-5">
           <h2 className="font-semibold text-slate-900 mb-4">
             Status das Consultas{" "}
             <span className="text-xs text-slate-400 font-normal">(mês atual)</span>
@@ -455,7 +455,7 @@ export default function DashboardPage() {
 
       {/* ── Charts Row 2: Bar + Table ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-lg border border-slate-200 p-5 shadow-sm">
+        <div className="bg-white rounded-lg border border-slate-200 p-5">
           <h2 className="font-semibold text-slate-900 mb-4">
             Novos Pacientes por Mês{" "}
             <span className="text-xs text-slate-400 font-normal">(últimos 6 meses)</span>
@@ -477,7 +477,7 @@ export default function DashboardPage() {
           )}
         </div>
 
-        <div className="bg-white rounded-lg border border-slate-200 p-5 shadow-sm">
+        <div className="bg-white rounded-lg border border-slate-200 p-5">
           <h2 className="font-semibold text-slate-900 mb-4">
             Top Profissionais{" "}
             <span className="text-xs text-slate-400 font-normal">(consultas concluídas este mês)</span>

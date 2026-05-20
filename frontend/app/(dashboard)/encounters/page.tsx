@@ -22,7 +22,7 @@ interface Encounter {
 const STATUS_STYLES: Record<string, string> = {
   open: 'bg-yellow-100 text-yellow-800',
   signed: 'bg-green-100 text-green-800',
-  cancelled: 'bg-gray-100 text-gray-500',
+  cancelled: 'bg-slate-100 text-slate-500',
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -105,7 +105,7 @@ export default function EncountersPage() {
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Consultas</h1>
+        <h1 className="text-2xl font-semibold text-slate-900">Consultas</h1>
         <button
           onClick={openModal}
           className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm font-medium"
@@ -135,7 +135,7 @@ export default function EncountersPage() {
         {(statusFilter || dateFilter) && (
           <button
             onClick={() => { setStatusFilter(''); setDateFilter(''); }}
-            className="text-sm text-gray-500 hover:text-gray-700 underline"
+            className="text-sm text-slate-500 hover:text-slate-700 underline"
           >
             Limpar filtros
           </button>
@@ -143,20 +143,20 @@ export default function EncountersPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
         <table className="w-full">
-          <thead className="bg-gray-50 border-b border-gray-200">
+          <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
               {['Paciente', 'Profissional', 'Data', 'Status', 'Queixa Principal'].map(h => (
-                <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
+                <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-slate-100">
             {loading ? (
-              <tr><td colSpan={5} className="text-center py-10 text-gray-400 text-sm">Carregando...</td></tr>
+              <tr><td colSpan={5} className="text-center py-10 text-slate-400 text-sm">Carregando...</td></tr>
             ) : encounters.length === 0 ? (
-              <tr><td colSpan={5} className="text-center py-10 text-gray-400 text-sm">Nenhuma consulta encontrada</td></tr>
+              <tr><td colSpan={5} className="text-center py-10 text-slate-400 text-sm">Nenhuma consulta encontrada</td></tr>
             ) : encounters.map(enc => (
               <tr
                 key={enc.id}
@@ -164,11 +164,11 @@ export default function EncountersPage() {
                 className="hover:bg-blue-50 cursor-pointer transition-colors"
               >
                 <td className="px-4 py-3">
-                  <div className="font-medium text-gray-900 text-sm">{enc.patient_name}</div>
-                  <div className="text-xs text-gray-400">{enc.patient_mrn}</div>
+                  <div className="font-medium text-slate-900 text-sm">{enc.patient_name}</div>
+                  <div className="text-xs text-slate-400">{enc.patient_mrn}</div>
                 </td>
-                <td className="px-4 py-3 text-sm text-gray-700">{enc.professional_name}</td>
-                <td className="px-4 py-3 text-sm text-gray-600">
+                <td className="px-4 py-3 text-sm text-slate-700">{enc.professional_name}</td>
+                <td className="px-4 py-3 text-sm text-slate-600">
                   {format(new Date(enc.encounter_date), "dd/MM/yyyy HH:mm", { locale: ptBR })}
                 </td>
                 <td className="px-4 py-3">
@@ -176,7 +176,7 @@ export default function EncountersPage() {
                     {enc.status_display || STATUS_LABELS[enc.status] || enc.status}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate">{enc.chief_complaint || '—'}</td>
+                <td className="px-4 py-3 text-sm text-slate-600 max-w-xs truncate">{enc.chief_complaint || '—'}</td>
               </tr>
             ))}
           </tbody>
@@ -187,10 +187,10 @@ export default function EncountersPage() {
       {showModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
-            <h2 className="text-lg font-semibold text-gray-900">Nova Consulta</h2>
+            <h2 className="text-lg font-semibold text-slate-900">Nova Consulta</h2>
             <div className="space-y-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Paciente *</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Paciente *</label>
                 <select
                   value={form.patient}
                   onChange={e => setForm(f => ({ ...f, patient: e.target.value }))}
@@ -203,7 +203,7 @@ export default function EncountersPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Profissional *</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Profissional *</label>
                 <select
                   value={form.professional}
                   onChange={e => setForm(f => ({ ...f, professional: e.target.value }))}
@@ -216,7 +216,7 @@ export default function EncountersPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Queixa principal</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Queixa principal</label>
                 <textarea
                   value={form.chief_complaint}
                   onChange={e => setForm(f => ({ ...f, chief_complaint: e.target.value }))}
@@ -229,7 +229,7 @@ export default function EncountersPage() {
             <div className="flex gap-2 justify-end pt-2">
               <button
                 onClick={() => setShowModal(false)}
-                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+                className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800"
               >
                 Cancelar
               </button>

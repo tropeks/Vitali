@@ -121,7 +121,7 @@ export default function ComprasPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-4 items-start bg-white border border-slate-200 rounded-xl p-4">
+      <div className="flex flex-wrap gap-4 items-start bg-white border border-slate-200 rounded-lg p-4">
         {/* Supplier dropdown */}
         <div className="flex flex-col gap-1">
           <label className="text-xs font-medium text-slate-500">Fornecedor</label>
@@ -152,7 +152,7 @@ export default function ComprasPage() {
                   type="checkbox"
                   checked={statusFilter.includes(opt.value)}
                   onChange={() => toggleStatus(opt.value)}
-                  className="rounded border-gray-300"
+                  className="rounded border-slate-300"
                 />
                 {opt.label}
               </label>
@@ -168,7 +168,7 @@ export default function ComprasPage() {
       {/* Desktop table */}
       {!loading && (
         <>
-          <div className="hidden sm:block bg-white rounded-xl border border-slate-200 overflow-x-auto">
+          <div className="hidden sm:block bg-white rounded-lg border border-slate-200 overflow-x-auto">
             <table className="w-full text-sm min-w-[600px]">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
@@ -220,7 +220,7 @@ export default function ComprasPage() {
               <button
                 key={o.id}
                 onClick={() => router.push(`/farmacia/compras/${o.id}`)}
-                className="w-full text-left bg-white rounded-xl border border-slate-200 p-4 space-y-2 hover:bg-slate-50 transition-colors"
+                className="w-full text-left bg-white rounded-lg border border-slate-200 p-4 space-y-2 hover:bg-slate-50 transition-colors"
               >
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-medium text-slate-900 truncate">{o.supplier_name}</p>

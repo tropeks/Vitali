@@ -53,7 +53,7 @@ export default function OnboardingWidget() {
   const progress = total > 0 ? Math.round((done / total) * 100) : 0;
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
+    <div className="bg-white rounded-lg border border-slate-200 p-5 space-y-4">
       {/* Header + progress bar */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
