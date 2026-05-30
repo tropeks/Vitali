@@ -4,6 +4,39 @@ All notable changes to Vitali Health are documented here.
 
 ## [Unreleased]
 
+### Security & Infra Hardening (2026-05-30)
+
+Production-readiness pass across security and infrastructure. What changed for you:
+
+- **Your patients' data is encrypted at rest.** Beyond CPF, sensitive PII (name,
+  contact, address, clinical diagnoses/notes) is now Fernet-encrypted in the
+  database (LGPD). Search/filter that relied on those columns moved to a safe
+  path. See `docs/LGPD_PATIENT_PII_ENCRYPTION.md`.
+- **Every record view is auditable.** Reads of patient/encounter records are now
+  logged as a `view_record` action (CFM Res. 1.821 access traceability), not just
+  writes.
+- **A misconfigured deploy fails loudly, not silently.** Production startup now
+  rejects empty/placeholder `SECRET_KEY`, `POSTGRES_PASSWORD`, `REDIS_PASSWORD`,
+  `WHATSAPP_EVOLUTION_API_KEY`, and the all-zero `FIELD_ENCRYPTION_KEY`. See
+  `docs/SECRETS.md`.
+- **Forged Host headers can't reach the wrong tenant.** A middleware validates
+  `X-Forwarded-Host` against `ALLOWED_HOSTS` before tenant routing.
+- **Platform-admin power is auditable.** The blanket `is_superuser` bypass now
+  routes through one `is_platform_admin()` helper; tenant admins must never be
+  superusers (documented policy).
+- **MFA enrolment grace shrank** from 30 days to 7 for staff.
+- **TUSS AI input is sanitized** before reaching the LLM prompt.
+- **HTTPS-ready & hardened infra:** nginx TLS server block (`docker/nginx/ssl.conf`,
+  see `docs/TLS.md`) + report-only Content-Security-Policy; backend container runs
+  non-root; service healthchecks + staging resource limits; automated PostgreSQL
+  backups (`docs/BACKUPS.md`); `init.sql` no longer errors on a stale DB name.
+
+### For contributors
+
+- GitHub Actions get Dependabot updates; third-party actions flagged for SHA-pinning.
+- New production secret validators live in `backend/vitali/settings/_security_checks.py`
+  with full test coverage in `apps/core/tests/test_settings_hardening.py`.
+
 ### Added
 
 - **Phase 3 — Patient Portal Next.js frontend (2026-05-20):** closes the
