@@ -59,6 +59,7 @@ def assert_secret_key(key: str) -> None:
         or key == _DEV_SECRET_KEY
         or normalized in _OBVIOUS_PLACEHOLDERS
         or normalized.startswith("django-insecure-")
+        or normalized == "build-time-placeholder-not-used-in-production"
     ):
         raise ImproperlyConfigured(
             "SECRET_KEY must be set to a unique, unpredictable value in production. "
@@ -66,6 +67,23 @@ def assert_secret_key(key: str) -> None:
             "which makes sessions, CSRF tokens, and password-reset links forgeable. "
             'Generate one: python -c "from django.core.management.utils import '
             'get_random_secret_key; print(get_random_secret_key())"'
+        )
+
+
+def assert_whatsapp_evolution_api_key(key: str) -> None:
+    """Raise ImproperlyConfigured if WHATSAPP_EVOLUTION_API_KEY is empty or a placeholder.
+
+    The Evolution API gateway authenticates inbound/outbound WhatsApp traffic with
+    this key. Left empty or at the compose default ('change-me'), any caller that
+    reaches the gateway can read or send patient messages.
+    """
+    from django.core.exceptions import ImproperlyConfigured
+
+    if not key or key.lower().strip() in _OBVIOUS_PLACEHOLDERS:
+        raise ImproperlyConfigured(
+            "WHATSAPP_EVOLUTION_API_KEY must be set to a real value in production. "
+            "The current value is empty or an obvious placeholder (e.g. 'change-me'). "
+            "Inject it via Docker secrets or your cloud secret manager."
         )
 
 
