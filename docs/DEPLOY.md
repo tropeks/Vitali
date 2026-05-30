@@ -90,6 +90,22 @@ All variables must be set in `.env.staging` (and GitHub Secrets for the CI pipel
 | `WHATSAPP_EVOLUTION_API_KEY` | ✅ | Strong random string | Set manually |
 | `WHATSAPP_WEBHOOK_SECRET` | ✅ | Strong random string | Set manually — must match Evolution API config |
 
+> **Fail-fast validation:** production startup now **rejects** empty or placeholder
+> values for `SECRET_KEY`, `POSTGRES_PASSWORD`, `REDIS_PASSWORD`,
+> `WHATSAPP_EVOLUTION_API_KEY`, and `FIELD_ENCRYPTION_KEY` (e.g. `change-me`, `vitali`,
+> the dev defaults, or the all-zero Fernet key). A deploy with any of these unset or
+> left at a placeholder will refuse to boot. See [SECRETS.md](./SECRETS.md). Generate
+> real values for every row above before first boot.
+
+### Backups & TLS
+
+- **Automated DB backups** run via the optional `db-backup` profile:
+  `docker compose -f docker-compose.staging.yml --profile backup up -d`. Daily pg_dump
+  to the `backups` volume, retention `BACKUP_KEEP_LAST` (default 7). See
+  [BACKUPS.md](./BACKUPS.md) — configure an offsite (S3) copy for production.
+- **TLS** is served by `docker/nginx/ssl.conf` (a `:443` server + HTTP→HTTPS redirect),
+  enabled once certs are mounted under `/etc/nginx/ssl/`. See [TLS.md](./TLS.md).
+
 ### GitHub Actions Secrets
 
 The `deploy-staging.yml` workflow requires these secrets set in repository settings:

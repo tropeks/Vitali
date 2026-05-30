@@ -229,4 +229,29 @@ add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style
 
 ---
 
-*Next: [EPICS.md](./EPICS.md) | [ROADMAP.md](./ROADMAP.md)*
+## 9. Implemented Hardening (2026-05-30)
+
+This section records what is actually shipped and enforced on `master`, as opposed
+to the intended controls above. Companion docs hold the operator details.
+
+| Control | Status | Where |
+|---------|--------|-------|
+| PII encrypted at rest (CPF + name, contact, address, clinical notes/diagnoses) | ✅ Shipped | `apps/core/fields.py`, migration `0016`; see [LGPD_PATIENT_PII_ENCRYPTION.md](./LGPD_PATIENT_PII_ENCRYPTION.md) |
+| Read-access audit (`view_record`) on patient/encounter | ✅ Shipped | `apps/core/mixins.py::AuditReadMixin` |
+| Fail-fast secret validation at prod startup | ✅ Shipped | `vitali/settings/_security_checks.py`; see [SECRETS.md](./SECRETS.md) |
+| `X-Forwarded-Host` validated before tenant routing | ✅ Shipped | `apps/core/middleware.py::XForwardedHostValidationMiddleware` |
+| Platform-admin via single `is_platform_admin()` (no blanket superuser bypass) | ✅ Shipped | `apps/core/permissions.py` |
+| MFA enrolment grace 30→7 days | ✅ Shipped | `MFA_GRACE_PERIOD_DAYS` in `settings/base.py` |
+| TUSS LLM-input sanitization | ✅ Shipped | `apps/ai/services.py` |
+| Backend container runs non-root | ✅ Shipped | `backend/Dockerfile` (`USER appuser`) |
+| TLS-ready nginx + report-only CSP | ✅ Shipped | `docker/nginx/ssl.conf`; see [TLS.md](./TLS.md) |
+| Automated PostgreSQL backups | ✅ Shipped | `scripts/backup.sh` + staging `db-backup` profile; see [BACKUPS.md](./BACKUPS.md) |
+| Service healthchecks + staging resource limits | ✅ Shipped | `docker-compose.yml`, `docker-compose.staging.yml` |
+
+**Operational follow-ups (provisioning, not code):** provision a real TLS cert
+(Let's Encrypt/Cloudflare), supply real secrets in the deploy environment (the
+validators now require them), and configure an offsite (S3) backup target.
+
+---
+
+*Next: [EPICS_AND_ROADMAP.md](./EPICS_AND_ROADMAP.md)*

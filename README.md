@@ -146,10 +146,30 @@ make create-tenant   # Criar nova clínica
 
 ## Compliance
 
-- **LGPD:** Schema-per-tenant + criptografia de campos sensíveis (CPF via Fernet)
+- **LGPD:** Schema-per-tenant + criptografia de PII sensível em repouso (CPF, nome,
+  contato, endereço, diagnósticos via Fernet) + audit de acesso a prontuário
 - **TISS/TUSS:** ANS RN 501/2022 — geração XML + codificação automática via AI
-- **CFM:** Res. 1.821/2007 — audit log imutável + assinatura digital de prontuários
+- **CFM:** Res. 1.821/2007 — audit log imutável (escrita + leitura) + assinatura digital
 - **ANVISA:** Rastreabilidade de medicamentos controlados
+
+---
+
+## Documentação
+
+Visão e arquitetura: [`docs/PROJECT_BRIEF.md`](docs/PROJECT_BRIEF.md) ·
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) ·
+[`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) ·
+[`docs/API_SPEC.md`](docs/API_SPEC.md)
+
+Operação e deploy: [`docs/DEPLOY.md`](docs/DEPLOY.md) ·
+[`docs/RUNBOOK.md`](docs/RUNBOOK.md) ·
+[`docs/TENANT_MIGRATIONS.md`](docs/TENANT_MIGRATIONS.md)
+
+Segurança e compliance: [`docs/SECURITY.md`](docs/SECURITY.md) ·
+[`docs/SECRETS.md`](docs/SECRETS.md) ·
+[`docs/TLS.md`](docs/TLS.md) ·
+[`docs/BACKUPS.md`](docs/BACKUPS.md) ·
+[`docs/LGPD_PATIENT_PII_ENCRYPTION.md`](docs/LGPD_PATIENT_PII_ENCRYPTION.md)
 
 ---
 
