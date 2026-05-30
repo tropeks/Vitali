@@ -12,8 +12,8 @@ import threading
 import uuid
 
 from django.conf import settings
-from django.db import connection
 from django.core.exceptions import DisallowedHost
+from django.db import connection
 from django.http import HttpResponseBadRequest, JsonResponse
 
 logger = logging.getLogger(__name__)

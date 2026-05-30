@@ -22,6 +22,6 @@ def assert_field_encryption_key(key: str) -> None:
             "FIELD_ENCRYPTION_KEY must be set to a real Fernet key in production. "
             "The current value is the all-zero dev placeholder from base.py, which "
             "makes encrypted LGPD fields (CPF, etc.) trivially reversible. "
-            "Generate a key: python -c \"from cryptography.fernet import Fernet; "
-            "print(Fernet.generate_key().decode())\""
+            'Generate a key: python -c "from cryptography.fernet import Fernet; '
+            'print(Fernet.generate_key().decode())"'
         )

@@ -4,8 +4,8 @@ Vitali — Production Settings
 
 import environ
 
-from .base import *  # noqa: F401, F403
 from ._security_checks import assert_field_encryption_key
+from .base import *  # noqa: F401, F403
 
 env = environ.Env()
 

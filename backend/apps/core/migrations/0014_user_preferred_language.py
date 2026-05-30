@@ -4,15 +4,20 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('core', '0013_add_user_invitation'),
+        ("core", "0013_add_user_invitation"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='user',
-            name='preferred_language',
-            field=models.CharField(blank=True, default='', help_text='Código do idioma (pt-br, pt-pt, es, en). Vazio = padrão da plataforma.', max_length=10, verbose_name='Idioma preferido'),
+            model_name="user",
+            name="preferred_language",
+            field=models.CharField(
+                blank=True,
+                default="",
+                help_text="Código do idioma (pt-br, pt-pt, es, en). Vazio = padrão da plataforma.",
+                max_length=10,
+                verbose_name="Idioma preferido",
+            ),
         ),
     ]
