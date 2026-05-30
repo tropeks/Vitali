@@ -69,6 +69,13 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     command: celery -A vitali worker -l info --concurrency 4
+    healthcheck:
+      # `inspect ping` confirms the worker is alive and can reach the broker.
+      test: ["CMD-SHELL", "celery -A vitali inspect ping -t 10 >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
     env_file: .env
     environment:
       DATABASE_URL: postgres://vitali:vitali@postgres:5432/${POSTGRES_DB:-vitali}
@@ -87,6 +94,14 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     command: celery -A vitali beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    healthcheck:
+      # Beat has no native ping; this is a broker-reachability proxy (a live
+      # worker answers). Adequate as a stack liveness signal — nothing gates on it.
+      test: ["CMD-SHELL", "celery -A vitali inspect ping -t 10 >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
     env_file: .env
     environment:
       DATABASE_URL: postgres://vitali:vitali@postgres:5432/${POSTGRES_DB:-vitali}
@@ -112,6 +127,13 @@ services:
       WEBHOOK_GLOBAL_ENABLED: "false"
     ports:
       - "8080:8080"
+    healthcheck:
+      # evolution-api is a Node app; use node itself (no curl/wget assumed in image).
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:8080/',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     depends_on:
       redis:
         condition: service_healthy
@@ -142,6 +164,13 @@ services:
     depends_on:
       - django
       - nextjs
+    healthcheck:
+      # busybox wget ships in nginx:alpine; /health/ proxies to Django.
+      test: ["CMD-SHELL", "wget -q --spider http://localhost/health/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
 volumes:
   postgres_data:
