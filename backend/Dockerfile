@@ -44,7 +44,10 @@ ENV SECRET_KEY=${SECRET_KEY}
 ENV ALLOWED_HOSTS=${ALLOWED_HOSTS}
 ENV DATABASE_URL=${DATABASE_URL}
 ENV REDIS_URL=${REDIS_URL}
-RUN python manage.py collectstatic --noinput
+# collectstatic loads production settings, which now require a real (non-placeholder)
+# FIELD_ENCRYPTION_KEY. Pass a throwaway key INLINE for this build step only — it is
+# never persisted as an ENV, so production still must supply the real key at runtime.
+RUN FIELD_ENCRYPTION_KEY="OrnFQUsB_Cffudfe79JCnCs8NkrE7t9sMr-x2oliags=" python manage.py collectstatic --noinput
 
 EXPOSE 8000
 

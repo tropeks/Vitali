@@ -91,6 +91,14 @@ PUBLIC_SCHEMA_URLCONF = "vitali.urls_public"
 # the Next.js proxy routes forward the original browser Host via X-Forwarded-Host.
 # Django's request.get_host() reads this header, which django-tenants uses to
 # resolve the tenant schema.
+#
+# TRUSTED PROXY REQUIREMENT: the upstream reverse proxy (nginx/Caddy/Traefik)
+# MUST strip any client-supplied X-Forwarded-Host header and re-set it from the
+# original browser Host. Without this, a malicious client can forge the header
+# to route requests to arbitrary tenant schemas.
+# XForwardedHostValidationMiddleware (apps/core/middleware.py) adds an explicit
+# application-layer guard that logs and rejects host mismatches before
+# TenantMainMiddleware performs schema routing.
 USE_X_FORWARDED_HOST = True
 
 TEMPLATES = [

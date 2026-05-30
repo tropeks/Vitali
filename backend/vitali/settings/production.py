@@ -4,6 +4,7 @@ Vitali — Production Settings
 
 import environ
 
+from ._security_checks import assert_field_encryption_key
 from .base import *  # noqa: F401, F403
 
 env = environ.Env()
@@ -11,6 +12,13 @@ env = environ.Env()
 DEBUG = False
 SECRET_KEY = env("SECRET_KEY")
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS")
+
+# ─── Field encryption — hard requirement ─────────────────────────────────────
+# LGPD-regulated PHI (CPF, etc.) is encrypted at rest with FIELD_ENCRYPTION_KEY.
+# Fail early if the all-zero dev placeholder from base.py is still in use.
+assert_field_encryption_key(FIELD_ENCRYPTION_KEY)  # noqa: F405
+del assert_field_encryption_key
+
 ENVIRONMENT = env("ENVIRONMENT", default="production")
 
 # ─── Security headers ─────────────────────────────────────────────────────────
@@ -66,6 +74,13 @@ SESSION_CACHE_ALIAS = "default"
 # ─── Static files — Whitenoise ────────────────────────────────────────────────
 MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")  # noqa: F405
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+
+# ─── X-Forwarded-Host validation ─────────────────────────────────────────────
+# Inserted at position 0 so invalid hosts are rejected before TenantMainMiddleware
+# (position 1 after this insert) can attempt schema routing on a forged header.
+# See XForwardedHostValidationMiddleware in apps/core/middleware.py for the
+# trusted-proxy documentation and host-matching logic.
+MIDDLEWARE.insert(0, "apps.core.middleware.XForwardedHostValidationMiddleware")  # noqa: F405
 
 # ─── Email ────────────────────────────────────────────────────────────────────
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"

@@ -12,8 +12,9 @@ import threading
 import uuid
 
 from django.conf import settings
+from django.core.exceptions import DisallowedHost
 from django.db import connection
-from django.http import JsonResponse
+from django.http import HttpResponseBadRequest, JsonResponse
 
 logger = logging.getLogger(__name__)
 
@@ -325,3 +326,48 @@ class PreferredLanguageMiddleware:
         finally:
             if pref:
                 translation.deactivate()
+
+
+# ─── S-HOST: X-Forwarded-Host validation ────────────────────────────────────
+
+
+class XForwardedHostValidationMiddleware:
+    """
+    Rejects requests whose X-Forwarded-Host does not appear in ALLOWED_HOSTS,
+    logging a security warning before TenantMainMiddleware can use the header
+    for schema routing.
+
+    TRUSTED PROXY REQUIREMENT: the reverse proxy (nginx/Caddy/Traefik) MUST
+    strip any client-supplied X-Forwarded-Host header and set it only from the
+    original browser Host. Without proxy-level stripping a malicious client can
+    forge this header to attempt tenant enumeration or cross-tenant routing.
+
+    Implementation reuses Django's own get_host() validation (which reads
+    USE_X_FORWARDED_HOST and validates against ALLOWED_HOSTS) so host-matching
+    semantics stay in sync with the rest of the framework. When validation fails
+    this middleware logs the attempt explicitly — Django's own DisallowedHost
+    path returns 400 silently — before returning 400 itself.
+
+    The check is skipped when ALLOWED_HOSTS contains '*' (dev/test environments
+    where strict host validation is intentionally relaxed).
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        if getattr(settings, "USE_X_FORWARDED_HOST", False) and request.META.get(
+            "HTTP_X_FORWARDED_HOST"
+        ):
+            allowed = getattr(settings, "ALLOWED_HOSTS", [])
+            if "*" not in allowed:
+                try:
+                    request.get_host()
+                except DisallowedHost:
+                    logger.warning(
+                        "S-HOST: X-Forwarded-Host %r not in ALLOWED_HOSTS — "
+                        "possible host-header injection; returning 400.",
+                        request.META.get("HTTP_X_FORWARDED_HOST", ""),
+                    )
+                    return HttpResponseBadRequest()
+        return self.get_response(request)
