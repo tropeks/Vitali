@@ -63,6 +63,16 @@ DATABASE_ROUTERS = ["django_tenants.routers.TenantSyncRouter"]
 AUTH_USER_MODEL = "core.User"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+# Explicit, deploy-controlled allowlist of Vitali platform-operator emails.
+# Used by apps.core.permissions.is_platform_admin to gate the is_superuser
+# bypass: a superuser only counts as a platform operator if listed here, so a
+# compromised/escalated tenant superuser cannot bypass module gating or reach
+# /api/v1/platform/* endpoints. Lives in env/deploy config — never in the
+# tenant-writable database. Empty in production = fail closed (no platform
+# operators until configured); under DEBUG an empty list keeps the legacy
+# is_superuser behaviour for local/dev/test convenience.
+PLATFORM_ADMIN_EMAILS = env.list("PLATFORM_ADMIN_EMAILS", default=[])
+
 # ─── Middleware ───────────────────────────────────────────────────────────────
 MIDDLEWARE = [
     "django_tenants.middleware.main.TenantMainMiddleware",  # must be first
@@ -273,7 +283,7 @@ ASAAS_ENVIRONMENT = env("ASAAS_ENVIRONMENT", default="sandbox")
 PIX_CHARGE_EXPIRY_MINUTES = env.int("PIX_CHARGE_EXPIRY_MINUTES", default=30)
 
 # ─── MFA — TOTP (S-062) ──────────────────────────────────────────────────────
-MFA_GRACE_PERIOD_DAYS = env.int("MFA_GRACE_PERIOD_DAYS", default=30)
+MFA_GRACE_PERIOD_DAYS = env.int("MFA_GRACE_PERIOD_DAYS", default=7)
 
 # ─── Prescription PDF (S-065) ────────────────────────────────────────────────
 PRESCRIPTION_PDF_CACHE_TTL = env.int("PRESCRIPTION_PDF_CACHE_TTL", default=3600)

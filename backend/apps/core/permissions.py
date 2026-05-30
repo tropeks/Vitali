@@ -2,32 +2,70 @@
 RBAC Permission classes for Vitali.
 """
 
+from django.conf import settings
 from rest_framework.permissions import BasePermission
 
 from apps.core.utils import tenant_has_feature
 
 
+def is_platform_admin(user) -> bool:
+    """
+    True only for genuine Vitali platform operators.
+
+    A platform operator is a Django superuser whose email is listed in the
+    explicit, deploy-controlled ``PLATFORM_ADMIN_EMAILS`` allowlist. That
+    allowlist lives in environment/deploy configuration — NOT in the
+    (tenant-writable) database — so a tenant user who is somehow escalated to
+    ``is_superuser`` cannot also grant themselves platform powers: their email
+    would still have to appear in the deploy config.
+
+    Backwards-compat fallback: when no allowlist is configured we honour the
+    legacy ``is_superuser`` bypass ONLY under DEBUG (local dev / test). In
+    production (DEBUG=False) an empty allowlist fails closed — no user is
+    treated as a platform operator until ``PLATFORM_ADMIN_EMAILS`` is set.
+
+    ``is_superuser`` remains a precondition so Django admin semantics are
+    untouched (admin access keys off ``is_staff`` + model perms, not this
+    helper) and a stray allowlist entry alone can never escalate a non-superuser.
+    """
+    if not (
+        user
+        and getattr(user, "is_authenticated", False)
+        and getattr(user, "is_superuser", False)
+    ):
+        return False
+    allowlist = getattr(settings, "PLATFORM_ADMIN_EMAILS", None) or []
+    if allowlist:
+        email = (getattr(user, "email", "") or "").strip().lower()
+        return email in {entry.strip().lower() for entry in allowlist if entry}
+    # No allowlist configured: legacy superuser bypass only outside production.
+    return bool(getattr(settings, "DEBUG", False))
+
+
 class IsPlatformAdmin(BasePermission):
     """
-    Grants access only to Vitali platform operators (Django superusers).
+    Grants access only to Vitali platform operators.
 
     Used for /api/v1/platform/* endpoints — plan management, subscriptions,
-    module activation. Clinic owners (even with is_staff) are never superusers.
+    module activation. Clinic owners (even with is_staff) are never superusers,
+    and a compromised tenant superuser is rejected unless their email is in the
+    deploy-controlled ``PLATFORM_ADMIN_EMAILS`` allowlist (see is_platform_admin).
 
     Usage:
         permission_classes = [IsAuthenticated, IsPlatformAdmin]
     """
 
     def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated and request.user.is_superuser
+        return is_platform_admin(request.user)
 
 
 class ModuleRequiredPermission(BasePermission):
     """
     Checks that the current tenant has a specific module enabled via FeatureFlag.
 
-    Superusers bypass module gating (platform operators must always have access).
-    Returns 403 with a clear message if the module is inactive.
+    Vitali platform operators (see is_platform_admin) bypass module gating; a
+    plain tenant superuser does not. Returns 403 with a clear message if the
+    module is inactive.
 
     Usage:
         _BILLING = ModuleRequiredPermission('billing')
@@ -46,7 +84,7 @@ class ModuleRequiredPermission(BasePermission):
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
             return False
-        if request.user.is_superuser:
+        if is_platform_admin(request.user):
             return True
         tenant = getattr(request, "tenant", None)
         if tenant is None:
@@ -79,7 +117,7 @@ class HasPermission(BasePermission):
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
             return False
-        if request.user.is_superuser:
+        if is_platform_admin(request.user):
             return True
         role = getattr(request.user, "role", None)
         if not role:
