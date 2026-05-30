@@ -7,12 +7,15 @@ Covers:
   - XForwardedHostValidationMiddleware: rejects/logs X-Forwarded-Host values
     that are not in ALLOWED_HOSTS; passes valid hosts and skips the check when
     ALLOWED_HOSTS='*' (development/test mode).
+  - MFA_GRACE_PERIOD_DAYS: the default grace period before MFA enrolment is
+    enforced is the hardened value (7 days, down from 30).
 """
 
 from __future__ import annotations
 
 import logging
 
+from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.http import HttpResponse
 from django.test import RequestFactory, TestCase, override_settings
@@ -62,6 +65,21 @@ class FieldEncryptionKeyCheckTests(TestCase):
 # ─────────────────────────────────────────────────────────────────────────────
 # XForwardedHostValidationMiddleware
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MFA grace period default
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class MFAGracePeriodDefaultTests(TestCase):
+    def test_default_grace_period_is_seven_days(self):
+        """The hardened default MFA grace period is 7 days (reduced from 30)."""
+        self.assertEqual(settings.MFA_GRACE_PERIOD_DAYS, 7)
+
+    def test_grace_period_does_not_exceed_legacy_default(self):
+        """Guard against regressing back to the looser 30-day window."""
+        self.assertLessEqual(settings.MFA_GRACE_PERIOD_DAYS, 7)
 
 
 def _make_middleware():

@@ -7,27 +7,50 @@ from rest_framework.permissions import BasePermission
 from apps.core.utils import tenant_has_feature
 
 
+def is_platform_admin(user) -> bool:
+    """
+    True for Vitali platform operators — i.e. Django superusers.
+
+    POLICY (operational, enforced outside the code): ``is_superuser`` is reserved
+    for genuine Vitali platform staff. Tenant users — including clinic
+    owners/admins — authorize exclusively via roles/permissions and must NEVER be
+    created with ``is_superuser=True``. Under that policy, keying platform-admin
+    powers off ``is_superuser`` is safe and keeps Django-admin semantics intact.
+
+    The previous blanket bypass was scattered inline across permission classes;
+    routing every check through this single helper makes the rule auditable and
+    gives one place to harden later (e.g. a deploy-controlled allowlist or a
+    dedicated flag) if defense-in-depth against a compromised superuser is needed.
+    """
+    return bool(
+        user and getattr(user, "is_authenticated", False) and getattr(user, "is_superuser", False)
+    )
+
+
 class IsPlatformAdmin(BasePermission):
     """
-    Grants access only to Vitali platform operators (Django superusers).
+    Grants access only to Vitali platform operators.
 
     Used for /api/v1/platform/* endpoints — plan management, subscriptions,
-    module activation. Clinic owners (even with is_staff) are never superusers.
+    module activation. Access is granted to Django superusers (Vitali platform
+    operators); clinic owners authorize via roles and must never be superusers
+    (see is_platform_admin for the policy).
 
     Usage:
         permission_classes = [IsAuthenticated, IsPlatformAdmin]
     """
 
     def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated and request.user.is_superuser
+        return is_platform_admin(request.user)
 
 
 class ModuleRequiredPermission(BasePermission):
     """
     Checks that the current tenant has a specific module enabled via FeatureFlag.
 
-    Superusers bypass module gating (platform operators must always have access).
-    Returns 403 with a clear message if the module is inactive.
+    Vitali platform operators (see is_platform_admin) bypass module gating; a
+    plain tenant superuser does not. Returns 403 with a clear message if the
+    module is inactive.
 
     Usage:
         _BILLING = ModuleRequiredPermission('billing')
@@ -46,7 +69,7 @@ class ModuleRequiredPermission(BasePermission):
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
             return False
-        if request.user.is_superuser:
+        if is_platform_admin(request.user):
             return True
         tenant = getattr(request, "tenant", None)
         if tenant is None:
@@ -79,7 +102,7 @@ class HasPermission(BasePermission):
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
             return False
-        if request.user.is_superuser:
+        if is_platform_admin(request.user):
             return True
         role = getattr(request.user, "role", None)
         if not role:

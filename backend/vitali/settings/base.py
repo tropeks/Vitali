@@ -273,7 +273,7 @@ ASAAS_ENVIRONMENT = env("ASAAS_ENVIRONMENT", default="sandbox")
 PIX_CHARGE_EXPIRY_MINUTES = env.int("PIX_CHARGE_EXPIRY_MINUTES", default=30)
 
 # ─── MFA — TOTP (S-062) ──────────────────────────────────────────────────────
-MFA_GRACE_PERIOD_DAYS = env.int("MFA_GRACE_PERIOD_DAYS", default=30)
+MFA_GRACE_PERIOD_DAYS = env.int("MFA_GRACE_PERIOD_DAYS", default=7)
 
 # ─── Prescription PDF (S-065) ────────────────────────────────────────────────
 PRESCRIPTION_PDF_CACHE_TTL = env.int("PRESCRIPTION_PDF_CACHE_TTL", default=3600)
