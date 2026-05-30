@@ -8,6 +8,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.mixins import AuditReadMixin
 from apps.core.models import AuditLog
 from apps.core.permissions import HasPermission
 
@@ -57,7 +58,8 @@ def log_audit(request, action, resource_type, resource_id, old_data=None, new_da
     )
 
 
-class PatientViewSet(viewsets.ModelViewSet):
+class PatientViewSet(AuditReadMixin, viewsets.ModelViewSet):
+    audit_resource_type = "Patient"
     permission_classes = [IsAuthenticated, HasPermission("emr.read")]  # type: ignore[list-item]
     # full_name / social_name are encrypted at rest (LGPD): they cannot be
     # searched or ordered in SQL. Name search is handled in Python by
@@ -476,9 +478,10 @@ class WaitingRoomView(APIView):
 # ─── Sprint 4: EMR Core views ─────────────────────────────────────────────────
 
 
-class EncounterViewSet(viewsets.ModelViewSet):
+class EncounterViewSet(AuditReadMixin, viewsets.ModelViewSet):
     """Consultas clínicas — ponto central do EMR"""
 
+    audit_resource_type = "Encounter"
     permission_classes = [IsAuthenticated, HasPermission("emr.read")]  # type: ignore[list-item]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     ordering = ["-encounter_date"]
