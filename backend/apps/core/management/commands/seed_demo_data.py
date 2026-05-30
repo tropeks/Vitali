@@ -50,8 +50,10 @@ class Command(BaseCommand):
     def _seed(self, tenant, schema, force):
         from apps.emr.models import Patient
 
-        # Idempotency sentinel — never corrupt real data
-        if Patient.objects.filter(full_name__startswith="[DEMO]").exists():
+        # Idempotency sentinel — never corrupt real data. full_name is encrypted
+        # at rest, so the "[DEMO]" prefix is matched in Python, not via SQL.
+        demo_pks = [p.pk for p in Patient.objects.all() if (p.full_name or "").startswith("[DEMO]")]
+        if demo_pks:
             if not force:
                 self.stdout.write(
                     self.style.WARNING(
@@ -60,7 +62,7 @@ class Command(BaseCommand):
                 )
                 return
             self.stdout.write("--force specified: removing existing [DEMO] records...")
-            Patient.objects.filter(full_name__startswith="[DEMO]").delete()
+            Patient.objects.filter(pk__in=demo_pks).delete()
 
         self.stdout.write(f"Seeding demo data into tenant '{schema}'...")
 

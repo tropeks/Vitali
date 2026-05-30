@@ -26,7 +26,9 @@ class PatientAdmin(admin.ModelAdmin):
         "is_active",
     ]
     list_filter = ["gender", "blood_type", "is_active"]
-    search_fields = ["full_name", "medical_record_number", "whatsapp"]
+    # full_name is encrypted at rest (LGPD) and cannot be matched by the admin's
+    # SQL search; only the plaintext routing keys remain searchable here.
+    search_fields = ["medical_record_number", "whatsapp"]
     readonly_fields = ["id", "medical_record_number", "created_at", "updated_at"]
     inlines = [AllergyInline, MedicalHistoryInline]
 

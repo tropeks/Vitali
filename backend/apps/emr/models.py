@@ -4,7 +4,13 @@ from decimal import Decimal
 from django.core.validators import MinValueValidator
 from django.db import connection, models, transaction
 from django.utils import timezone
-from encrypted_model_fields.fields import EncryptedCharField
+from encrypted_model_fields.fields import (
+    EncryptedCharField,
+    EncryptedEmailField,
+    EncryptedTextField,
+)
+
+from apps.core.fields import EncryptedJSONField
 
 
 def lock_mrn_generation(year):
@@ -56,20 +62,25 @@ class Patient(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     medical_record_number = models.CharField(max_length=20, unique=True, blank=True)
-    full_name = models.CharField(max_length=200, db_index=True)
-    social_name = models.CharField(max_length=200, blank=True)
+    # PII encrypted at rest (LGPD). Encrypted fields are stored as opaque
+    # ciphertext, so they cannot be DB-indexed, ordered or filtered with
+    # SQL — name search/ordering is handled in Python (see filters.py / views.py).
+    full_name = EncryptedCharField(max_length=200)
+    social_name = EncryptedCharField(max_length=200, blank=True)
     cpf = EncryptedCharField(max_length=14)
     birth_date = models.DateField()
     gender = models.CharField(max_length=20, choices=GENDER_CHOICES)
     blood_type = models.CharField(max_length=5, choices=BLOOD_TYPE_CHOICES, blank=True)
-    phone = models.CharField(max_length=20, blank=True)
+    phone = EncryptedCharField(max_length=20, blank=True)
+    # whatsapp stays plaintext on purpose: it is the indexed routing/dedup key
+    # for the WhatsApp messaging subsystem (has_whatsapp filter, contact mapping).
     whatsapp = models.CharField(max_length=20, blank=True, db_index=True)
-    email = models.EmailField(blank=True)
-    address = models.JSONField(default=dict, blank=True)
+    email = EncryptedEmailField(blank=True)
+    address = EncryptedJSONField(default=dict, blank=True)
     insurance_data = models.JSONField(default=dict, blank=True)
     emergency_contact = models.JSONField(default=dict, blank=True)
     photo_url = models.URLField(blank=True)
-    notes = models.TextField(blank=True)
+    notes = EncryptedTextField(blank=True)
     is_active = models.BooleanField(default=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -82,12 +93,13 @@ class Patient(models.Model):
     )
 
     class Meta:
-        ordering = ["full_name"]
+        # full_name is encrypted and cannot be ordered/indexed at the DB level;
+        # the medical record number is sequential and gives a stable default order.
+        ordering = ["medical_record_number"]
         indexes = [
-            models.Index(fields=["full_name"]),
             models.Index(fields=["medical_record_number"]),
             models.Index(fields=["whatsapp"]),
-            models.Index(fields=["is_active", "full_name"]),
+            models.Index(fields=["is_active", "medical_record_number"]),
         ]
 
     def save(self, *args, **kwargs):
@@ -158,7 +170,7 @@ class MedicalHistory(models.Model):
     type = models.CharField(max_length=20, choices=TYPE_CHOICES)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="active")
     onset_date = models.DateField(null=True, blank=True)
-    notes = models.TextField(blank=True)
+    notes = EncryptedTextField(blank=True)  # free-text clinical notes (LGPD)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -330,7 +342,7 @@ class Encounter(models.Model):
     )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="open")
     encounter_date = models.DateTimeField(default=timezone.now)
-    chief_complaint = models.TextField(blank=True)
+    chief_complaint = EncryptedTextField(blank=True)  # free-text clinical (LGPD)
     signed_at = models.DateTimeField(null=True, blank=True)
     signed_by = models.ForeignKey(
         "core.User",
@@ -358,10 +370,11 @@ class SOAPNote(models.Model):
     """Nota SOAP vinculada a uma consulta"""
 
     encounter = models.OneToOneField(Encounter, on_delete=models.CASCADE, related_name="soap_note")
-    subjective = models.TextField(blank=True, help_text="Queixa do paciente, história atual")
-    objective = models.TextField(blank=True, help_text="Exame físico, sinais vitais, achados")
-    assessment = models.TextField(blank=True, help_text="Diagnóstico, CID-10, impressão clínica")
-    plan = models.TextField(blank=True, help_text="Conduta, prescrição, retorno")
+    # SOAP narrative — sensitive clinical free-text, encrypted at rest (LGPD).
+    subjective = EncryptedTextField(blank=True, help_text="Queixa do paciente, história atual")
+    objective = EncryptedTextField(blank=True, help_text="Exame físico, sinais vitais, achados")
+    assessment = EncryptedTextField(blank=True, help_text="Diagnóstico, CID-10, impressão clínica")
+    plan = EncryptedTextField(blank=True, help_text="Conduta, prescrição, retorno")
     cid10_codes = models.JSONField(default=list, help_text="Lista de códigos CID-10")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -410,7 +423,7 @@ class ClinicalDocument(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     encounter = models.ForeignKey(Encounter, on_delete=models.CASCADE, related_name="documents")
     doc_type = models.CharField(max_length=20, choices=DOC_TYPES)
-    content = models.TextField()
+    content = EncryptedTextField()  # signed clinical document body (LGPD)
     signed_at = models.DateTimeField(null=True, blank=True)
     signed_by = models.ForeignKey(
         "core.User",

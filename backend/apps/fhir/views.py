@@ -223,10 +223,17 @@ class PatientSearchView(APIView):
         if identifier:
             qs = _filter_by_identifier(qs, identifier)
         if name:
-            qs = qs.filter(full_name__icontains=name)
+            # full_name is encrypted at rest — SQL icontains cannot match the
+            # ciphertext, so scan and match in Python (same pattern as the CPF
+            # identifier lookup above). Interop endpoint, small table.
+            needle = name.lower()
+            matches = [p.pk for p in qs.iterator() if needle in (p.full_name or "").lower()]
+            qs = qs.filter(pk__in=matches)
 
         total = qs.count()
-        page = list(qs.order_by("full_name")[:count])
+        # full_name is encrypted → a SQL ORDER BY would sort ciphertext; sort the
+        # decrypted values in Python to keep results in alphabetical name order.
+        page = sorted(qs, key=lambda p: (p.full_name or "").lower())[:count]
         entries = [
             {"fullUrl": _self_link(request, p), "resource": patient_to_fhir(p)} for p in page
         ]
