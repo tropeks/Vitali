@@ -163,6 +163,47 @@ services:
     mem_limit: 512m
     cpus: 0.5
 
+  # ─── DB Backup ────────────────────────────────────────────────────────────
+  # Optional service — activate with: --profile backup
+  # Runs scripts/backup.sh daily at 02:00 UTC via busybox crond.
+  # Backups land in the `backups` named volume (see docs/BACKUPS.md).
+  # Tune retention: BACKUP_KEEP_LAST=7 (default) in .env.staging.
+  db-backup:
+    image: postgres:16-alpine
+    restart: always
+    profiles:
+      - backup
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-vitali}
+      POSTGRES_USER: ${POSTGRES_USER:-vitali}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      BACKUP_DIR: /backups
+      KEEP_LAST: ${BACKUP_KEEP_LAST:-7}
+    volumes:
+      - ./scripts/backup.sh:/usr/local/bin/backup.sh:ro
+      - backups:/backups
+    # Runs backup.sh at 02:00 UTC daily via busybox crond (built into alpine).
+    # crond resets the process environment, so we snapshot the container env into
+    # /etc/backup.env at startup; the cron job sources it before calling backup.sh.
+    command: >
+      sh -c '
+        chmod +x /usr/local/bin/backup.sh &&
+        printenv | grep -E "^(POSTGRES_HOST|POSTGRES_PORT|POSTGRES_DB|POSTGRES_USER|POSTGRES_PASSWORD|BACKUP_DIR|KEEP_LAST)=" \
+          > /etc/backup.env &&
+        chmod 600 /etc/backup.env &&
+        mkdir -p /var/spool/cron/crontabs &&
+        printf "0 2 * * *\t. /etc/backup.env && /usr/local/bin/backup.sh >> /proc/1/fd/1 2>&1\n" \
+          > /var/spool/cron/crontabs/root &&
+        crond -f -d 8
+      '
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 128m
+    cpus: 0.1
+
   # ─── Nginx Reverse Proxy ──────────────────────────────────────────────────
   nginx:
     image: nginx:alpine
@@ -189,3 +230,4 @@ volumes:
   redis_data:
   static_files:
   media_files:
+  backups:
