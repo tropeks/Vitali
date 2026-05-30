@@ -111,7 +111,7 @@ jobs:
         run: pytest --cov=apps --cov-report=xml -v
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v4 # TODO: pin to SHA (managed by Dependabot)
         if: always()
         with:
           files: ./coverage.xml
