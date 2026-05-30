@@ -27,10 +27,10 @@ jobs:
       image_tag: ${{ steps.meta.outputs.version }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3 # TODO: pin to SHA (managed by Dependabot)
+        uses: docker/login-action@v4 # TODO: pin to SHA (managed by Dependabot)
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -38,7 +38,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5 # TODO: pin to SHA (managed by Dependabot)
+        uses: docker/metadata-action@v6 # TODO: pin to SHA (managed by Dependabot)
         with:
           images: ${{ env.BACKEND_IMAGE }}
           tags: |
@@ -46,7 +46,7 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push backend image
-        uses: docker/build-push-action@v5 # TODO: pin to SHA (managed by Dependabot)
+        uses: docker/build-push-action@v7 # TODO: pin to SHA (managed by Dependabot)
         with:
           context: ./backend
           push: true
@@ -58,7 +58,7 @@ jobs:
           cache-to: type=inline
 
       - name: Build and push frontend image
-        uses: docker/build-push-action@v5 # TODO: pin to SHA (managed by Dependabot)
+        uses: docker/build-push-action@v7 # TODO: pin to SHA (managed by Dependabot)
         with:
           context: ./frontend
           push: true
@@ -78,7 +78,7 @@ jobs:
     if: vars.STAGING_ENABLED == 'true'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1 # TODO: pin to SHA (managed by Dependabot)
