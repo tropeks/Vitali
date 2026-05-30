@@ -28,6 +28,7 @@ from vitali.settings._security_checks import (
     assert_postgres_password,
     assert_redis_password,
     assert_secret_key,
+    assert_whatsapp_evolution_api_key,
 )
 
 _REAL_KEY = "dGVzdGtleXRlc3RrZXl0ZXN0a2V5dGVzdGtleXRlc3Q="  # 32-byte base64, not the zero key
@@ -205,6 +206,11 @@ class SecretKeyCheckTests(TestCase):
         with self.assertRaises(ImproperlyConfigured):
             assert_secret_key("django-insecure-abc123xyz-should-not-reach-production")
 
+    def test_raises_on_build_time_placeholder(self):
+        """The Dockerfile build placeholder must never reach a running container."""
+        with self.assertRaises(ImproperlyConfigured):
+            assert_secret_key("build-time-placeholder-not-used-in-production")
+
     def test_passes_on_strong_key(self):
         assert_secret_key(_STRONG_SECRET_KEY)  # must not raise
 
@@ -275,3 +281,22 @@ class RedisPasswordCheckTests(TestCase):
         with self.assertRaises(ImproperlyConfigured) as ctx:
             assert_redis_password("change-me")
         self.assertIn("secret manager", str(ctx.exception))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# WHATSAPP_EVOLUTION_API_KEY startup guard
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class WhatsappEvolutionKeyCheckTests(TestCase):
+    def test_raises_on_empty_string(self):
+        with self.assertRaises(ImproperlyConfigured):
+            assert_whatsapp_evolution_api_key("")
+
+    def test_raises_on_change_me_placeholder(self):
+        """'change-me' is the docker-compose.yml default — must be rejected."""
+        with self.assertRaises(ImproperlyConfigured):
+            assert_whatsapp_evolution_api_key("change-me")
+
+    def test_passes_on_real_key(self):
+        assert_whatsapp_evolution_api_key("evo_live_8f3c2a1b9d7e6f5a4c3b2a1d")  # must not raise
