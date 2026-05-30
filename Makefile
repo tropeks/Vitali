@@ -1,4 +1,4 @@
-.PHONY: help up down build migrate migrate-tenant shell test lint fmt create-tenant logs ps seed-demo
+.PHONY: help up down build migrate migrate-tenant shell test lint fmt create-tenant logs ps seed-demo backup restore
 
 # Default target
 help:
@@ -19,6 +19,10 @@ help:
 	@echo "  make seed-demo       Seed demo data (patients, appointments, PIX charges)"
 	@echo "  make logs            Follow all service logs"
 	@echo "  make ps              Show running containers"
+	@echo ""
+	@echo "  Backups:"
+	@echo "  make backup          Dump dev postgres → ./backups/ (custom format)"
+	@echo "  make restore file=<path>  Restore a dump file into dev postgres"
 	@echo ""
 
 # ─── Docker ──────────────────────────────────────────────────────────────────
@@ -78,6 +82,25 @@ fmt:
 
 typecheck:
 	docker compose exec django mypy apps/ vitali/ --ignore-missing-imports
+
+# ─── Backups ─────────────────────────────────────────────────────────────────
+
+backup:
+	@mkdir -p backups
+	@TMP="backups/vitali_$$(date -u +%Y%m%dT%H%M%SZ).dump.tmp"; \
+	  FILE="$${TMP%.tmp}"; \
+	  docker compose exec -T postgres \
+	    sh -c 'PGPASSWORD=$$POSTGRES_PASSWORD pg_dump -U $$POSTGRES_USER -Fc $$POSTGRES_DB' \
+	    > "$$TMP" && mv "$$TMP" "$$FILE" && echo "Backup written to $$FILE" \
+	    || { rm -f "$$TMP"; exit 1; }
+
+restore:
+	@test -n "$(file)" || { echo "Usage: make restore file=backups/vitali_TIMESTAMP.dump"; exit 1; }
+	@echo "Restoring $(file) into dev postgres..."
+	docker compose exec -T postgres \
+	  sh -c 'PGPASSWORD=$$POSTGRES_PASSWORD pg_restore -Fc -U $$POSTGRES_USER -d $$POSTGRES_DB --clean --if-exists' \
+	  < "$(file)"
+	@echo "Restore complete from $(file)"
 
 # ─── Tenant Management ───────────────────────────────────────────────────────
 
