@@ -4,7 +4,12 @@ Vitali — Production Settings
 
 import environ
 
-from ._security_checks import assert_field_encryption_key
+from ._security_checks import (
+    assert_field_encryption_key,
+    assert_postgres_password,
+    assert_redis_password,
+    assert_secret_key,
+)
 from .base import *  # noqa: F401, F403
 
 env = environ.Env()
@@ -13,11 +18,19 @@ DEBUG = False
 SECRET_KEY = env("SECRET_KEY")
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS")
 
+# ─── Secret validation — fail fast before any request is served ──────────────
+# Unset or placeholder secrets let attackers forge sessions, access all patient
+# databases, and read Celery task payloads. Raise immediately at startup so a
+# misconfigured deploy fails loudly rather than silently accepting weak secrets.
+assert_secret_key(SECRET_KEY)
+assert_postgres_password(env("POSTGRES_PASSWORD", default=""))
+assert_redis_password(env("REDIS_PASSWORD", default=""))
+
 # ─── Field encryption — hard requirement ─────────────────────────────────────
 # LGPD-regulated PHI (CPF, etc.) is encrypted at rest with FIELD_ENCRYPTION_KEY.
 # Fail early if the all-zero dev placeholder from base.py is still in use.
 assert_field_encryption_key(FIELD_ENCRYPTION_KEY)  # noqa: F405
-del assert_field_encryption_key
+del assert_field_encryption_key, assert_secret_key, assert_postgres_password, assert_redis_password
 
 ENVIRONMENT = env("ENVIRONMENT", default="production")
 
