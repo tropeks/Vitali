@@ -11,7 +11,7 @@ from rest_framework.views import APIView
 from apps.core.models import AuditLog
 from apps.core.permissions import HasPermission
 
-from .filters import PatientFilter
+from .filters import PatientFilter, PatientSearchFilter
 from .models import (
     Appointment,
     ClinicalDocument,
@@ -59,11 +59,14 @@ def log_audit(request, action, resource_type, resource_id, old_data=None, new_da
 
 class PatientViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasPermission("emr.read")]  # type: ignore[list-item]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    # full_name / social_name are encrypted at rest (LGPD): they cannot be
+    # searched or ordered in SQL. Name search is handled in Python by
+    # PatientSearchFilter; full_name is dropped from ordering_fields and the
+    # default order falls back to the (sequential) medical record number.
+    filter_backends = [DjangoFilterBackend, PatientSearchFilter, filters.OrderingFilter]
     filterset_class = PatientFilter
-    search_fields = ["full_name", "social_name", "medical_record_number", "whatsapp"]
-    ordering_fields = ["full_name", "birth_date", "created_at", "medical_record_number"]
-    ordering = ["full_name"]
+    ordering_fields = ["birth_date", "created_at", "medical_record_number"]
+    ordering = ["medical_record_number"]
 
     def get_queryset(self):
         return (
