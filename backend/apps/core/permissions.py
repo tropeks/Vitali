@@ -2,7 +2,6 @@
 RBAC Permission classes for Vitali.
 """
 
-from django.conf import settings
 from rest_framework.permissions import BasePermission
 
 from apps.core.utils import tenant_has_feature
@@ -10,36 +9,22 @@ from apps.core.utils import tenant_has_feature
 
 def is_platform_admin(user) -> bool:
     """
-    True only for genuine Vitali platform operators.
+    True for Vitali platform operators — i.e. Django superusers.
 
-    A platform operator is a Django superuser whose email is listed in the
-    explicit, deploy-controlled ``PLATFORM_ADMIN_EMAILS`` allowlist. That
-    allowlist lives in environment/deploy configuration — NOT in the
-    (tenant-writable) database — so a tenant user who is somehow escalated to
-    ``is_superuser`` cannot also grant themselves platform powers: their email
-    would still have to appear in the deploy config.
+    POLICY (operational, enforced outside the code): ``is_superuser`` is reserved
+    for genuine Vitali platform staff. Tenant users — including clinic
+    owners/admins — authorize exclusively via roles/permissions and must NEVER be
+    created with ``is_superuser=True``. Under that policy, keying platform-admin
+    powers off ``is_superuser`` is safe and keeps Django-admin semantics intact.
 
-    Backwards-compat fallback: when no allowlist is configured we honour the
-    legacy ``is_superuser`` bypass ONLY under DEBUG (local dev / test). In
-    production (DEBUG=False) an empty allowlist fails closed — no user is
-    treated as a platform operator until ``PLATFORM_ADMIN_EMAILS`` is set.
-
-    ``is_superuser`` remains a precondition so Django admin semantics are
-    untouched (admin access keys off ``is_staff`` + model perms, not this
-    helper) and a stray allowlist entry alone can never escalate a non-superuser.
+    The previous blanket bypass was scattered inline across permission classes;
+    routing every check through this single helper makes the rule auditable and
+    gives one place to harden later (e.g. a deploy-controlled allowlist or a
+    dedicated flag) if defense-in-depth against a compromised superuser is needed.
     """
-    if not (
-        user
-        and getattr(user, "is_authenticated", False)
-        and getattr(user, "is_superuser", False)
-    ):
-        return False
-    allowlist = getattr(settings, "PLATFORM_ADMIN_EMAILS", None) or []
-    if allowlist:
-        email = (getattr(user, "email", "") or "").strip().lower()
-        return email in {entry.strip().lower() for entry in allowlist if entry}
-    # No allowlist configured: legacy superuser bypass only outside production.
-    return bool(getattr(settings, "DEBUG", False))
+    return bool(
+        user and getattr(user, "is_authenticated", False) and getattr(user, "is_superuser", False)
+    )
 
 
 class IsPlatformAdmin(BasePermission):
@@ -47,9 +32,9 @@ class IsPlatformAdmin(BasePermission):
     Grants access only to Vitali platform operators.
 
     Used for /api/v1/platform/* endpoints — plan management, subscriptions,
-    module activation. Clinic owners (even with is_staff) are never superusers,
-    and a compromised tenant superuser is rejected unless their email is in the
-    deploy-controlled ``PLATFORM_ADMIN_EMAILS`` allowlist (see is_platform_admin).
+    module activation. Access is granted to Django superusers (Vitali platform
+    operators); clinic owners authorize via roles and must never be superusers
+    (see is_platform_admin for the policy).
 
     Usage:
         permission_classes = [IsAuthenticated, IsPlatformAdmin]

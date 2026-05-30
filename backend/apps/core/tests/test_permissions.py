@@ -3,7 +3,6 @@ S-039: ModuleRequiredPermission + IsPlatformAdmin tests.
 Run: python manage.py test apps.core.tests.test_permissions
 """
 
-from django.test import override_settings
 from rest_framework.test import APIClient, APIRequestFactory
 
 from apps.core.models import FeatureFlag, Role, User
@@ -130,35 +129,28 @@ class IsPlatformAdminTestCase(TenantTestCase):
 class PlatformAdminCheckTestCase(TenantTestCase):
     """
     is_platform_admin() — the explicit, auditable replacement for the blanket
-    is_superuser bypass.
+    is_superuser bypass that used to be scattered inline across permission classes.
 
-    A platform operator is a superuser whose email is in the deploy-controlled
-    PLATFORM_ADMIN_EMAILS allowlist. A compromised/escalated tenant superuser
-    that is NOT on the allowlist must be rejected in production. With no
-    allowlist configured the legacy is_superuser bypass survives only under
-    DEBUG (local/dev/test convenience) and fails closed in production.
+    POLICY (operational): is_superuser is reserved for genuine Vitali platform
+    operators; tenant users (clinic owners/admins) authorize via roles and must
+    never be created with is_superuser=True. So is_platform_admin() == is_superuser,
+    routed through one helper for auditability and easy future hardening.
     """
 
     def setUp(self):
         self.factory = APIRequestFactory()
         self.role = Role.objects.create(name="admin", permissions=["users.read"])
-        # A tenant superuser — e.g. a clinic admin escalated by an attacker.
-        self.tenant_superuser = User.objects.create_superuser(
-            email="escalated@clinic.com",
-            password="Escalated123!",
-            full_name="Escalated Tenant Superuser",
-        )
-        # A genuine Vitali platform operator.
+        # A genuine Vitali platform operator (Django superuser).
         self.platform_operator = User.objects.create_superuser(
             email="ops@vitali.com",
             password="PlatformOps123!",
             full_name="Vitali Platform Operator",
         )
-        # A non-superuser that happens to be in the allowlist — must NOT escalate.
+        # A tenant user — authorizes via role only, never a superuser.
         self.regular_user = User.objects.create_user(
-            email="ops@vitali.com.regular",
+            email="clinic@test.com",
             password="Regular123!",
-            full_name="Regular User",
+            full_name="Clinic User",
             role=self.role,
         )
 
@@ -167,38 +159,12 @@ class PlatformAdminCheckTestCase(TenantTestCase):
         request.user = user
         return request
 
-    @override_settings(PLATFORM_ADMIN_EMAILS=["ops@vitali.com"], DEBUG=False)
-    def test_allowlisted_superuser_is_platform_admin(self):
+    def test_superuser_is_platform_admin(self):
         self.assertTrue(is_platform_admin(self.platform_operator))
 
-    @override_settings(PLATFORM_ADMIN_EMAILS=["ops@vitali.com"], DEBUG=False)
-    def test_email_match_is_case_insensitive(self):
-        self.platform_operator.email = "OPS@Vitali.com"
-        self.assertTrue(is_platform_admin(self.platform_operator))
-
-    @override_settings(PLATFORM_ADMIN_EMAILS=["ops@vitali.com"], DEBUG=False)
-    def test_tenant_superuser_not_in_allowlist_rejected(self):
-        """Compromised tenant superuser not on the allowlist is NOT a platform admin."""
-        self.assertFalse(is_platform_admin(self.tenant_superuser))
-
-    @override_settings(PLATFORM_ADMIN_EMAILS=["ops@vitali.com.regular"], DEBUG=False)
-    def test_non_superuser_in_allowlist_rejected(self):
-        """Allowlist membership alone (without is_superuser) must not escalate."""
-        self.assertFalse(self.regular_user.is_superuser)
+    def test_regular_user_is_not_platform_admin(self):
         self.assertFalse(is_platform_admin(self.regular_user))
 
-    @override_settings(PLATFORM_ADMIN_EMAILS=[], DEBUG=False)
-    def test_empty_allowlist_fails_closed_in_production(self):
-        """No allowlist + production (DEBUG=False) → no platform operators at all."""
-        self.assertFalse(is_platform_admin(self.platform_operator))
-        self.assertFalse(is_platform_admin(self.tenant_superuser))
-
-    @override_settings(PLATFORM_ADMIN_EMAILS=[], DEBUG=True)
-    def test_empty_allowlist_legacy_bypass_under_debug(self):
-        """No allowlist + DEBUG → legacy is_superuser bypass preserved for dev/test."""
-        self.assertTrue(is_platform_admin(self.platform_operator))
-
-    @override_settings(PLATFORM_ADMIN_EMAILS=["ops@vitali.com"], DEBUG=True)
     def test_anonymous_rejected(self):
         from django.contrib.auth.models import AnonymousUser
 
@@ -206,47 +172,37 @@ class PlatformAdminCheckTestCase(TenantTestCase):
 
     # ─── Enforcement through the permission classes ──────────────────────────
 
-    @override_settings(PLATFORM_ADMIN_EMAILS=["ops@vitali.com"], DEBUG=False)
-    def test_module_gate_not_bypassed_by_tenant_superuser(self):
-        """ModuleRequiredPermission: an escalated tenant superuser does NOT bypass gating."""
-        perm = ModuleRequiredPermission("billing")
-        FeatureFlag.objects.filter(
-            tenant=self.__class__.tenant, module_key="billing"
-        ).delete()
-        request = self._request(self.tenant_superuser)
-        request.tenant = self.__class__.tenant
-        self.assertFalse(perm.has_permission(request, None))
-
-    @override_settings(PLATFORM_ADMIN_EMAILS=["ops@vitali.com"], DEBUG=False)
     def test_module_gate_bypassed_by_platform_operator(self):
-        """ModuleRequiredPermission: a genuine platform operator still bypasses gating."""
+        """ModuleRequiredPermission: a platform operator bypasses module gating."""
         perm = ModuleRequiredPermission("billing")
-        FeatureFlag.objects.filter(
-            tenant=self.__class__.tenant, module_key="billing"
-        ).delete()
+        FeatureFlag.objects.filter(tenant=self.__class__.tenant, module_key="billing").delete()
         request = self._request(self.platform_operator)
         request.tenant = self.__class__.tenant
         self.assertTrue(perm.has_permission(request, None))
 
-    @override_settings(PLATFORM_ADMIN_EMAILS=["ops@vitali.com"], DEBUG=False)
-    def test_role_gate_not_bypassed_by_tenant_superuser(self):
-        """HasPermission: an escalated tenant superuser falls back to role checks only."""
-        perm = HasPermission("emr.read")
-        # tenant_superuser has no role granting emr.read.
-        self.assertFalse(perm.has_permission(self._request(self.tenant_superuser), None))
+    def test_module_gate_not_bypassed_by_regular_user(self):
+        """ModuleRequiredPermission: a non-operator is still gated by the flag."""
+        perm = ModuleRequiredPermission("billing")
+        FeatureFlag.objects.filter(tenant=self.__class__.tenant, module_key="billing").delete()
+        request = self._request(self.regular_user)
+        request.tenant = self.__class__.tenant
+        self.assertFalse(perm.has_permission(request, None))
 
-    @override_settings(PLATFORM_ADMIN_EMAILS=["ops@vitali.com"], DEBUG=False)
     def test_role_gate_bypassed_by_platform_operator(self):
-        """HasPermission: a genuine platform operator still bypasses role checks."""
+        """HasPermission: a platform operator bypasses role checks."""
         perm = HasPermission("emr.read")
         self.assertTrue(perm.has_permission(self._request(self.platform_operator), None))
 
-    @override_settings(PLATFORM_ADMIN_EMAILS=["ops@vitali.com"], DEBUG=False)
-    def test_is_platform_admin_perm_rejects_tenant_superuser(self):
-        """IsPlatformAdmin: platform endpoints reject an escalated tenant superuser."""
+    def test_role_gate_not_bypassed_by_regular_user(self):
+        """HasPermission: a non-operator falls back to role checks (lacks emr.read)."""
+        perm = HasPermission("emr.read")
+        self.assertFalse(perm.has_permission(self._request(self.regular_user), None))
+
+    def test_is_platform_admin_perm(self):
+        """IsPlatformAdmin: accepts platform operators, rejects regular users."""
         perm = IsPlatformAdmin()
-        self.assertFalse(perm.has_permission(self._request(self.tenant_superuser), None))
         self.assertTrue(perm.has_permission(self._request(self.platform_operator), None))
+        self.assertFalse(perm.has_permission(self._request(self.regular_user), None))
 
 
 class ModuleGatePharmacyTestCase(TenantTestCase):

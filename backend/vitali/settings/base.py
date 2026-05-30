@@ -63,16 +63,6 @@ DATABASE_ROUTERS = ["django_tenants.routers.TenantSyncRouter"]
 AUTH_USER_MODEL = "core.User"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# Explicit, deploy-controlled allowlist of Vitali platform-operator emails.
-# Used by apps.core.permissions.is_platform_admin to gate the is_superuser
-# bypass: a superuser only counts as a platform operator if listed here, so a
-# compromised/escalated tenant superuser cannot bypass module gating or reach
-# /api/v1/platform/* endpoints. Lives in env/deploy config — never in the
-# tenant-writable database. Empty in production = fail closed (no platform
-# operators until configured); under DEBUG an empty list keeps the legacy
-# is_superuser behaviour for local/dev/test convenience.
-PLATFORM_ADMIN_EMAILS = env.list("PLATFORM_ADMIN_EMAILS", default=[])
-
 # ─── Middleware ───────────────────────────────────────────────────────────────
 MIDDLEWARE = [
     "django_tenants.middleware.main.TenantMainMiddleware",  # must be first
