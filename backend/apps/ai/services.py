@@ -197,6 +197,13 @@ def _retrieve_candidates(description: str) -> list:
         return []
 
 
+def _sanitize_tuss_description(desc: str) -> str:
+    """Strip newlines, remove curly braces, truncate to 500 chars."""
+    desc = re.sub(r"[\r\n]", " ", desc)
+    desc = desc.replace("{", "").replace("}", "")
+    return desc[:500]
+
+
 def _call_llm(
     template: AIPromptTemplate,
     description: str,
@@ -210,9 +217,9 @@ def _call_llm(
     Raises LLMGatewayError on failure.
     """
     candidate_lines = "\n".join(f"{c.code}: {c.description}" for c in candidates)
-    # Strip curly braces from user-controlled inputs before .format() to prevent
-    # prompt injection via {placeholder} patterns in description or guide_type.
-    safe_description = description.replace("{", "").replace("}", "")
+    # Strip newlines, curly braces, and truncate user-controlled inputs before .format()
+    # to prevent prompt injection via embedded newlines or {placeholder} patterns.
+    safe_description = _sanitize_tuss_description(description)
     safe_guide_type = (guide_type or "não especificado").replace("{", "").replace("}", "")
     user_prompt = template.user_prompt_template.format(
         guide_type=safe_guide_type,
