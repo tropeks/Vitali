@@ -280,15 +280,11 @@ class TISSBatchViewSet(viewsets.ModelViewSet):
                     # batch holding the same guide is fine — whichever closes
                     # first wins, and the second close will then be rejected here.
                     # Cancelled batches never conflict.
-                    batch.check_guide_not_double_submitted(
-                        guide, statuses=["closed", "submitted"]
-                    )
+                    batch.check_guide_not_double_submitted(guide, statuses=["closed", "submitted"])
             except DjangoValidationError as exc:
                 # Surface model-layer ValidationError as an HTTP 400 (DRF) with a
                 # clear PT-BR message instead of an uncaught 500.
-                raise serializers.ValidationError(
-                    {"guides": list(exc.messages)}
-                ) from exc
+                raise serializers.ValidationError({"guides": list(exc.messages)}) from exc
 
             total = batch.guides.aggregate(total=Sum("total_value"))["total"] or Decimal("0")
             batch.status = "closed"

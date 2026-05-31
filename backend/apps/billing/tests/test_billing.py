@@ -8,6 +8,7 @@ import datetime
 
 from django.core.cache import cache
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -426,7 +427,11 @@ class BillingTestCase(TenantTestCase):
 
         b2 = TISSBatch.objects.create(provider=self.provider, status="open")
         # Reverse add — must raise (not crash with a wrong-model lookup).
-        with self.assertRaises(DjangoValidationError):
+        # Wrap in a savepoint: the signal raises mid-`.add()`, which marks the
+        # transaction for rollback; without an inner atomic() the outer test
+        # transaction would be poisoned and the assertion query below would fail
+        # with TransactionManagementError.
+        with self.assertRaises(DjangoValidationError), transaction.atomic():
             guide.batches.add(b2)
         self.assertNotIn(b2, guide.batches.all())
 
@@ -448,9 +453,7 @@ class BillingTestCase(TenantTestCase):
 
         # A cancelled batch holding the guide must not block re-batching.
         cancelled = TISSBatch.objects.create(provider=self.provider, status="cancelled")
-        TISSBatch.guides.through.objects.create(
-            tissbatch_id=cancelled.pk, tissguide_id=guide.pk
-        )
+        TISSBatch.guides.through.objects.create(tissbatch_id=cancelled.pk, tissguide_id=guide.pk)
 
         b2 = client.post(
             "/api/v1/billing/batches/",
