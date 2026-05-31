@@ -81,7 +81,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1 # TODO: pin to SHA (managed by Dependabot)
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5 (SHA-pinned; Dependabot bumps)
         with:
           host: ${{ secrets.STAGING_HOST }}
           username: ${{ secrets.STAGING_USER }}
@@ -120,7 +120,7 @@ jobs:
               python manage.py collectstatic --noinput
 
       - name: Run smoke tests
-        uses: appleboy/ssh-action@v1 # TODO: pin to SHA (managed by Dependabot)
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5 (SHA-pinned; Dependabot bumps)
         with:
           host: ${{ secrets.STAGING_HOST }}
           username: ${{ secrets.STAGING_USER }}
@@ -135,7 +135,7 @@ jobs:
 
       - name: Rollback on failure
         if: failure()
-        uses: appleboy/ssh-action@v1 # TODO: pin to SHA (managed by Dependabot)
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5 (SHA-pinned; Dependabot bumps)
         with:
           host: ${{ secrets.STAGING_HOST }}
           username: ${{ secrets.STAGING_USER }}
