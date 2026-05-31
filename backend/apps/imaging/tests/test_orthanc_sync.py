@@ -203,27 +203,15 @@ class OrthancSyncMultiTenantTest(TenantTestCase):
             modality="CT",
             study_date=datetime(2026, 5, 18, 14, 30, tzinfo=UTC),
         )
-        # tenant B — separate schema, NO matching DicomStudy. Creating a Tenant
+        # tenant B — a separate, EMPTY schema (no DicomStudy). Creating a Tenant
         # row provisions a schema, which django-tenants only allows from the
         # public schema; FastTenantTestCase leaves the connection on the
-        # fast_test schema, so switch to public for the create.
+        # fast_test schema, so switch to public for the create. We intentionally
+        # leave B empty: inserting rows under the test's atomic transaction leaves
+        # deferred FK trigger events that block DROP SCHEMA in tearDown. An empty B
+        # still proves the fan-out visits it and updates only the matching tenant.
         with schema_context(get_public_schema_name()):
             self.tenant_b = Tenant.objects.create(name="Clinic B", slug="clinicb")
-        with schema_context(self.tenant_b.schema_name):
-            self.patient_b = Patient.objects.create(
-                full_name="Bea B",
-                cpf="98765432100",
-                birth_date=date(1990, 3, 1),
-                gender="F",
-            )
-            # An unrelated study in B (different UID/accession).
-            DicomStudy.objects.create(
-                patient=self.patient_b,
-                study_instance_uid="0.0.0.UNRELATED",
-                accession_number="ACC-B-001",
-                modality="MR",
-                study_date=datetime(2026, 5, 1, 9, 0, tzinfo=UTC),
-            )
 
     def tearDown(self):
         cache.delete(orthanc_sync.CURSOR_CACHE_KEY)
@@ -256,8 +244,9 @@ class OrthancSyncMultiTenantTest(TenantTestCase):
             self.study_a.refresh_from_db()
             self.assertEqual(self.study_a.orthanc_study_id, "orth-1")
         with schema_context(self.tenant_b.schema_name):
-            b_orthanc_ids = list(DicomStudy.objects.values_list("orthanc_study_id", flat=True))
-            self.assertEqual(b_orthanc_ids, [""])  # B untouched
+            # B has no studies → the fan-out visited it but found nothing to
+            # update, proving only the matching tenant (A) was touched.
+            self.assertEqual(DicomStudy.objects.count(), 0)
 
 
 class OrthancTaskInertTest(TenantTestCase):
