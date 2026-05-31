@@ -27,4 +27,10 @@ app.conf.beat_schedule = {
         "task": "apps.emr.tasks_waitlist.expire_waitlist_notifications",
         "schedule": crontab(minute="*/5"),
     },
+    # E-012: Poll Orthanc PACS and backfill DicomStudy.orthanc_study_id.
+    # No-ops when ORTHANC_URL is empty (feature inert).
+    "sync-orthanc-studies": {
+        "task": "imaging.sync_orthanc_studies",
+        "schedule": crontab(minute="*/3"),
+    },
 }

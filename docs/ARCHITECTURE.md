@@ -519,7 +519,7 @@ GitHub Actions Pipeline:
 | WhatsApp | Evolution API → Official | Free MVP, migration path built-in |
 | AI Engine | Claude API (+ OpenAI fallback) | Best structured output, pay-per-use |
 | BI (Phase 2) | Apache Superset | Embeddable, PostgreSQL native |
-| PACS (Phase 2) | Orthanc + OHIF Viewer | Industry standard open-source |
+| PACS (Phase 2) | Orthanc + OHIF Viewer | Industry standard open-source — ingestion glue in [IMAGING.md](./IMAGING.md) |
 | Object Storage | MinIO → S3 | S3-compatible, zero migration effort |
 | Containerization | Docker Compose → ECS | Portable, VPS to AWS without rewrite |
 | Monitoring | Grafana + Prometheus | Industry standard, free |
