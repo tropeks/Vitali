@@ -39,6 +39,14 @@ Last reconciled with shipped state: 2026-05-20
 
 ## Lower Priority
 
+- [ ] **i18n: internationalize the codebase** (currently pt-BR only despite 4
+  advertised languages) — Phase 3, **not blocking pilot**. The i18n
+  *scaffolding* is wired (settings, `LANGUAGES`, `LocaleMiddleware`,
+  `PreferredLanguageMiddleware`, `preferred_language`, `/users/me/language/`),
+  but `backend/locale/` has zero `.po`/`.mo` catalogs and source strings are
+  not `gettext`-marked (one lone import in `apps/core/admin.py`), and the
+  Next.js frontend has no i18n library — so the platform effectively serves
+  pt-BR only. Full phased plan in `docs/I18N.md`.
 - [x] **ClaudeGateway client pooling** (2026-05-20): the underlying
   `anthropic.Anthropic` client is cached at module level by
   `(api_key, timeout)` so repeated `ClaudeGateway()` instantiations on the

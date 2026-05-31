@@ -117,7 +117,7 @@ AI é o diferencial competitivo central — não um add-on. Estratégia técnica
 | Budget ~R$150-500/mês infra | VPS Hetzner/Contabo, serviços self-hosted |
 | Multi-tenant robusto | Schema-per-tenant no PostgreSQL (LGPD exige isolamento) |
 | Pricing modular | Feature flags system + billing engine desde a fundação |
-| Alcance global futuro | i18n desde o início, FHIR como padrão de interoperabilidade |
+| Alcance global futuro | scaffolding de i18n desde o início (catálogos de tradução populados na Fase 3 — hoje só pt-BR é servido; ver `docs/I18N.md`), FHIR como padrão de interoperabilidade |
 
 ---
 

@@ -637,6 +637,14 @@ GET  /api/v1/portal/me/allergies/                 — own Allergies
 
 ## 14. i18n / Multi-country Endpoint (Phase 3)
 
+> **Reality note (current state):** `preferred_language` is *stored* per
+> user today and the endpoint below works, but the platform currently
+> returns **pt-BR content regardless** of the selected language — the
+> translation catalogs under `backend/locale/` are empty and source
+> strings are not yet `gettext`-marked. Selecting another language has
+> **no visible effect** until the Phase 3 i18n work lands. See
+> `docs/I18N.md` for the phased plan.
+
 ```
 GET  /api/v1/users/me/language/
   Response 200:
