@@ -174,16 +174,26 @@ Clique em **Exportar** em qualquer tabela para baixar em CSV ou PDF.
 
 ---
 
-## 10. AI em breve
+## 10. Inteligência Artificial
 
-O Vitali está desenvolvendo funcionalidades de Inteligência Artificial para auxiliar os profissionais de saúde:
+O Vitali oferece um conjunto de funcionalidades de Inteligência Artificial para auxiliar os profissionais de saúde. Todas atuam como **sugestões de apoio à decisão**: o profissional sempre revisa e tem a palavra final.
 
-- **Sugestão de CID-10**: preenchimento automático de diagnósticos baseado na anamnese
-- **Revisão de prescrições**: alertas de interação medicamentosa e contraindicações
-- **Resumo de prontuário**: síntese automática do histórico clínico do paciente
-- **Transcrição de consulta**: conversão de áudio em nota clínica estruturada (SOAP)
+### Funcionalidades disponíveis
 
-Estas funcionalidades estarão disponíveis nas próximas versões. Entre em contato com suporte@vitali.app para acesso antecipado.
+- **Codificação TUSS assistida**: ao registrar procedimentos, a IA sugere o código TUSS mais provável a partir da descrição. O profissional aceita ou ajusta a sugestão.
+- **Previsão de risco de glosa**: antes do envio de guias, a IA estima o risco de glosa e aponta fatores associados, ajudando a corrigir a guia antes da submissão à operadora.
+- **Escriba clínico (transcrição → SOAP)**: grava o áudio da consulta, transcreve com o motor de voz (Whisper) e gera um rascunho de nota clínica estruturada em SOAP para o profissional revisar e assinar.
+- **Rede de segurança de prescrição**: ao prescrever, a IA verifica interações medicamentosas, alergias do paciente e doses fora do intervalo, exibindo alertas que o profissional pode reconhecer ou justificar (override).
+- **Sugestão de CID-10**: a partir da nota clínica, a IA sugere códigos CID-10 candidatos para o diagnóstico, que o profissional aceita ou descarta.
+
+### Ativação — requisitos importantes
+
+Estas funcionalidades **vêm desligadas por padrão** e só funcionam quando:
+
+1. **Flags de funcionalidade ativadas** — cada módulo é controlado por um *feature flag* (`FEATURE_AI_*` global e o equivalente por clínica). Sem a flag ligada, o recurso permanece indisponível.
+2. **DPA assinado** — antes de qualquer processamento de dados de saúde por IA, a clínica precisa ter um **Acordo de Tratamento de Dados (DPA)** assinado com o processador externo (Anthropic). Essa é uma exigência legal sob a LGPD (Art. 11) para dados sensíveis. Sem o DPA assinado, as funcionalidades de IA permanecem bloqueadas mesmo com as flags ligadas.
+
+Para habilitar a IA na sua clínica ou assinar o DPA, entre em contato com suporte@vitali.app.
 
 ---
 

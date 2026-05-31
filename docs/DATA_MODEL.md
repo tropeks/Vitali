@@ -193,7 +193,7 @@ Entity: Encounter
   - professional_id: UUID (FK → Professional) NOT NULL
   - appointment_id: UUID (FK → Appointment) NULLABLE
   - type: ENUM('outpatient','inpatient','emergency','day_hospital') NOT NULL
-  - status: ENUM('open','in_progress','completed','cancelled') DEFAULT 'open'
+  - status: ENUM('open','signed','cancelled') DEFAULT 'open'
   - start_time: TIMESTAMP NOT NULL
   - end_time: TIMESTAMP
   - chief_complaint: TEXT
@@ -223,7 +223,7 @@ Entity: Prescription
   - prescriber_id: UUID (FK → Professional) NOT NULL
   - patient_id: UUID (FK → Patient) NOT NULL
   - type: ENUM('medication','exam','procedure','diet','nursing') NOT NULL
-  - status: ENUM('draft','active','dispensed','cancelled','expired') DEFAULT 'draft'
+  - status: ENUM('draft','signed','partially_dispensed','dispensed','cancelled') DEFAULT 'draft'
   - valid_until: DATE
   - notes: TEXT
   - signed: BOOLEAN DEFAULT false
