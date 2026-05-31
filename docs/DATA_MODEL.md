@@ -264,7 +264,7 @@ Entity: MedicalHistory
   - condition: VARCHAR(255) NOT NULL
   - cid10_code: VARCHAR(10)
   - type: ENUM('personal','family','surgical','obstetric','social')
-  - status: ENUM('active','resolved','chronic')
+  - status: ENUM('active','controlled','resolved')
   - onset_date: DATE
   - notes: TEXT
   - created_at: TIMESTAMP
