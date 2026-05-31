@@ -227,10 +227,13 @@ class OrthancSyncMultiTenantTest(TenantTestCase):
 
     def tearDown(self):
         cache.delete(orthanc_sync.CURSOR_CACHE_KEY)
-        try:
-            self.tenant_b.delete(force_drop=True)
-        except Exception:
-            self.tenant_b.delete()
+        # Dropping a tenant schema, like creating it, must run from the public
+        # schema; FastTenantTestCase leaves the connection on fast_test.
+        with schema_context(get_public_schema_name()):
+            try:
+                self.tenant_b.delete(force_drop=True)
+            except Exception:
+                self.tenant_b.delete()
 
     def test_only_matching_tenant_updated(self):
         client = FakeOrthancClient(
