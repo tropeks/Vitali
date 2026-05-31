@@ -2,11 +2,17 @@
 Tests for ICP-Brasil chain-of-trust validation (`ICPBrasilChainValidator`) and
 its enforcement in the sign flow.
 
-A fake ICP-Brasil-like hierarchy is generated in-memory:
-    root CA  →  intermediate CA  →  leaf (policy OID under 2.16.76.1.*,
-                                         KeyUsage digital_signature + CA=False)
+A fake ICP-Brasil-like hierarchy is generated in-memory, made RFC 5280-valid so
+it passes pyhanko-certvalidator for the trusted case:
+    root CA  →  intermediate CA (BasicConstraints CA=True + KeyUsage keyCertSign)
+              →  leaf (policy OID under 2.16.76.1.*, KeyUsage digital_signature +
+                       non_repudiation, CA=False)
 Anchors (the root, and optionally the intermediate) are written to a tmp dir
 that `ICP_BRASIL_TRUSTSTORE_DIR` is pointed at via `override_settings`.
+
+The adversarial cases below exercise the RFC 5280 obligations a cross-model
+review (Gemini) found the old hand-rolled validator skipped: expired
+intermediate, intermediate missing keyCertSign, and pathLenConstraint violation.
 """
 
 from __future__ import annotations
@@ -48,6 +54,8 @@ def _ca_cert(
     issuer_key: rsa.RSAPrivateKey,
     not_before: datetime | None = None,
     not_after: datetime | None = None,
+    path_length: int | None = None,
+    key_cert_sign: bool = True,
 ) -> x509.Certificate:
     now = datetime.now(UTC)
     builder = (
@@ -58,7 +66,23 @@ def _ca_cert(
         .serial_number(x509.random_serial_number())
         .not_valid_before(not_before or now - timedelta(days=1))
         .not_valid_after(not_after or now + timedelta(days=3650))
-        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+        .add_extension(x509.BasicConstraints(ca=True, path_length=path_length), critical=True)
+        .add_extension(
+            x509.KeyUsage(
+                digital_signature=False,
+                content_commitment=False,
+                key_encipherment=False,
+                data_encipherment=False,
+                key_agreement=False,
+                # keyCertSign is what RFC 5280 requires for a cert that signs
+                # other certs; without it pyhanko rejects the path.
+                key_cert_sign=key_cert_sign,
+                crl_sign=True,
+                encipher_only=False,
+                decipher_only=False,
+            ),
+            critical=True,
+        )
     )
     return builder.sign(private_key=issuer_key, algorithm=hashes.SHA256())
 
@@ -71,6 +95,7 @@ def _leaf_cert(
     issuer_key: rsa.RSAPrivateKey,
     policy_oid: str | None = LEAF_POLICY_OID,
     digital_signature: bool = True,
+    content_commitment: bool = True,
     not_before: datetime | None = None,
     not_after: datetime | None = None,
 ) -> x509.Certificate:
@@ -87,7 +112,9 @@ def _leaf_cert(
         .add_extension(
             x509.KeyUsage(
                 digital_signature=digital_signature,
-                content_commitment=False,
+                # non_repudiation (content_commitment) — required alongside
+                # digital_signature by the validator's validate_usage set.
+                content_commitment=content_commitment,
                 key_encipherment=False,
                 data_encipherment=False,
                 key_agreement=False,
@@ -236,6 +263,7 @@ class TestICPBrasilChainValidator:
             issuer_cn="AC Intermediaria Teste",
             issuer_key=hierarchy["inter_key"],
             digital_signature=False,
+            content_commitment=False,
         )
         ctx = activate(hierarchy["root"])
         try:
@@ -247,7 +275,8 @@ class TestICPBrasilChainValidator:
             ICPBrasilChainValidator.clear_cache()
 
         assert result.trusted is False
-        assert "KeyUsage" in result.reason
+        # pyhanko reports the missing key-usage purpose(s).
+        assert "digital signature" in result.reason.lower()
 
     def test_empty_truststore_reports_disabled(self, hierarchy, tmp_path):
         empty = tmp_path / "empty-store"
@@ -260,6 +289,102 @@ class TestICPBrasilChainValidator:
         assert result.trusted is False
         assert result.is_truststore_empty is True
         assert result.reason == "trust store not populated"
+
+    # ─── adversarial cases (Gemini findings the hand-rolled validator missed) ──
+
+    def test_expired_intermediate_in_path_is_not_trusted(self, hierarchy, truststore):
+        # Gemini finding #1: validity-window checks on INTERMEDIATES. The leaf is
+        # within its own window, but the intermediate that signed it is expired.
+        store, activate = truststore
+        now = datetime.now(UTC)
+        inter_key = _key()
+        expired_inter = _ca_cert(
+            subject_cn="AC Intermediaria Expirada",
+            key=inter_key,
+            issuer_cn="AC Raiz Brasileira Teste",
+            issuer_key=hierarchy["root_key"],
+            not_before=now - timedelta(days=800),
+            not_after=now - timedelta(days=30),
+        )
+        leaf = _leaf_cert(
+            subject_cn="Dra Sob Inter Expirada CPF 10101010101",
+            key=_key(),
+            issuer_cn="AC Intermediaria Expirada",
+            issuer_key=inter_key,
+        )
+        ctx = activate(hierarchy["root"])
+        try:
+            result = ICPBrasilChainValidator().validate(leaf, extra_intermediates=[expired_inter])
+        finally:
+            ctx.disable()
+            ICPBrasilChainValidator.clear_cache()
+
+        assert result.trusted is False
+
+    def test_intermediate_without_key_cert_sign_is_not_trusted(self, hierarchy, truststore):
+        # Gemini finding #3: keyCertSign KeyUsage on CA certs. The intermediate is
+        # a CA (BasicConstraints CA=True) but lacks keyCertSign, so it must not be
+        # accepted as a certificate issuer.
+        store, activate = truststore
+        inter_key = _key()
+        no_kcs_inter = _ca_cert(
+            subject_cn="AC Intermediaria Sem keyCertSign",
+            key=inter_key,
+            issuer_cn="AC Raiz Brasileira Teste",
+            issuer_key=hierarchy["root_key"],
+            key_cert_sign=False,
+        )
+        leaf = _leaf_cert(
+            subject_cn="Dra Sob Inter Sem KCS CPF 20202020202",
+            key=_key(),
+            issuer_cn="AC Intermediaria Sem keyCertSign",
+            issuer_key=inter_key,
+        )
+        ctx = activate(hierarchy["root"])
+        try:
+            result = ICPBrasilChainValidator().validate(leaf, extra_intermediates=[no_kcs_inter])
+        finally:
+            ctx.disable()
+            ICPBrasilChainValidator.clear_cache()
+
+        assert result.trusted is False
+
+    def test_path_length_constraint_violation_is_not_trusted(self, hierarchy, truststore):
+        # Gemini finding #2: BasicConstraints pathLenConstraint. An intermediate
+        # with pathlen=0 may issue end-entity certs but NOT another CA below it.
+        # Here a second intermediate sits below the pathlen=0 one → must reject.
+        store, activate = truststore
+        inter_a_key = _key()
+        inter_a = _ca_cert(
+            subject_cn="AC Intermediaria Pathlen0",
+            key=inter_a_key,
+            issuer_cn="AC Raiz Brasileira Teste",
+            issuer_key=hierarchy["root_key"],
+            path_length=0,
+        )
+        inter_b_key = _key()
+        inter_b = _ca_cert(
+            subject_cn="AC Intermediaria Abaixo Pathlen0",
+            key=inter_b_key,
+            issuer_cn="AC Intermediaria Pathlen0",
+            issuer_key=inter_a_key,
+        )
+        leaf = _leaf_cert(
+            subject_cn="Dra Sob Pathlen Violado CPF 30303030303",
+            key=_key(),
+            issuer_cn="AC Intermediaria Abaixo Pathlen0",
+            issuer_key=inter_b_key,
+        )
+        ctx = activate(hierarchy["root"])
+        try:
+            result = ICPBrasilChainValidator().validate(
+                leaf, extra_intermediates=[inter_a, inter_b]
+            )
+        finally:
+            ctx.disable()
+            ICPBrasilChainValidator.clear_cache()
+
+        assert result.trusted is False
 
 
 # ─── sign-flow enforcement ────────────────────────────────────────────────────

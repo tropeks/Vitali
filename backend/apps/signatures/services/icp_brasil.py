@@ -14,12 +14,15 @@ clinical records):
 
 In addition to the cryptographic primitive, the sign flow now performs real
 ICP-Brasil chain-of-trust validation via `ICPBrasilChainValidator`
-(`services/chain.py`): it builds a path from the end-entity certificate up to a
-configured ICP-Brasil anchor (AC Raiz Brasileira → intermediate AC →
-end-entity), checks the leaf validity window, enforces CA / KeyUsage
-constraints, and extracts the ICP-Brasil policy OIDs (arc 2.16.76.1). The result
-of THAT validation — not the old issuer-DN string heuristic — is what sets
-`SignatureResult.is_icp_brasil`.
+(`services/chain.py`), which delegates to `pyhanko-certvalidator` for full
+RFC 5280 path validation: it builds and validates a path from the end-entity
+certificate up to a configured ICP-Brasil anchor (AC Raiz Brasileira →
+intermediate AC → end-entity), enforcing the validity window of EVERY cert in
+the path, BasicConstraints (CA=True + pathLenConstraint), keyCertSign KeyUsage on
+CA certs, NameConstraints, weak-algorithm rejection, and the leaf's
+digital_signature / non_repudiation usage. It also extracts the ICP-Brasil
+policy OIDs (arc 2.16.76.1). The result of THAT validation — not the old
+issuer-DN string heuristic — is what sets `SignatureResult.is_icp_brasil`.
 
 Revocation (CRL / OCSP) is the explicit PR2 follow-up and is NOT checked here.
 The trust store is shipped/refreshed out-of-band (`refresh_icp_truststore`);

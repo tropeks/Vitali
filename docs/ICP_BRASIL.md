@@ -14,31 +14,37 @@ validation** layered on top of that primitive.
 ## What is validated now (PR1)
 
 `ICPBrasilChainValidator` (`apps/signatures/services/chain.py`) runs during every
-sign request, after the PKCS#12 bundle is loaded. It performs **offline** (no
-network) validation:
+sign request, after the PKCS#12 bundle is loaded. It delegates path validation to
+**[`pyhanko-certvalidator`](https://pypi.org/project/pyhanko-certvalidator/)**, a
+vetted **RFC 5280** path-validation implementation, and runs fully **offline**
+(`allow_fetching=False` — no network in PR1).
 
-1. **Certification path** — it builds a path from the end-entity ("leaf")
-   certificate upward. At each step it finds an issuer among the PKCS#12's bundled
-   intermediates ∪ the configured trust anchors, where the candidate's *subject*
-   equals the current cert's *issuer* **and** the candidate's key actually signed
-   the current cert (`Certificate.verify_directly_issued_by`, which validates the
-   signature, the name match, and the issuer's validity window). The path must
-   terminate at a **configured anchor**. Loops, dead ends, and paths longer than
-   8 certificates are rejected.
+> **Why a library, not the hand-rolled builder?** The original validator was a
+> hand-rolled X.509 path builder. A **cross-model adversarial review (Gemini)**
+> found it silently skipped five RFC 5280 obligations — validity-window checks on
+> intermediates/anchors, BasicConstraints `pathLenConstraint`, `keyCertSign`
+> KeyUsage on CA certs, NameConstraints, and weak signature-algorithm rejection.
+> A real RFC 5280 validator handles all of these, so the builder was replaced.
 
-2. **Validity window** — the leaf's own `not_before` / `not_after` are checked
-   explicitly against the validation time (default: now, UTC).
+The validator now enforces, against a `ValidationContext` whose `trust_roots`
+are the configured ICP-Brasil anchors:
 
-3. **CA constraints** — every non-leaf certificate in the path must carry a
-   BasicConstraints extension asserting `CA=True`.
+1. **Full RFC 5280 path validation** — a path is built and validated from the
+   end-entity ("leaf") certificate up to a **configured anchor**, using the
+   PKCS#12's bundled intermediates as path-building hints. For **every** cert in
+   the path this checks: signature, name chaining, the **validity window**
+   (leaf **and** intermediates **and** anchor), BasicConstraints (`CA=True` plus
+   **`pathLenConstraint`**), **`keyCertSign`** KeyUsage on CA certs,
+   **NameConstraints**, and rejection of **weak signature algorithms**.
 
-4. **Key usage** — when the leaf carries a KeyUsage extension, it must assert
-   `digital_signature` **or** `content_commitment` (non-repudiation) — the usages
-   an ICP-Brasil signing certificate is expected to have.
+2. **Leaf key usage** — `validate_usage({'digital_signature', 'non_repudiation'})`
+   requires the leaf to assert both signing usages an ICP-Brasil signing
+   certificate carries.
 
-5. **Policy OIDs** — certificate policy OIDs under the ICP-Brasil arc
+3. **Policy OIDs** — certificate policy OIDs under the ICP-Brasil arc
    `2.16.76.1` are extracted from the leaf's CertificatePolicies extension and
-   logged (e.g. an e-CPF A1 lives under `2.16.76.1.2.x`).
+   logged (e.g. an e-CPF A1 lives under `2.16.76.1.2.x`). This is independent of
+   the library's path check.
 
 The result of this validation — **not** the old, spoofable "issuer DN contains
 ICP-Brasil" string heuristic — is what sets `DigitalSignature.is_icp_brasil`. The
@@ -46,10 +52,13 @@ heuristic (`_issuer_mentions_icp_brasil`) is retained only for diagnostics.
 
 ### NOT validated yet — revocation (PR2)
 
-Revocation status (**CRL** / **OCSP**) is **not** checked in this PR. A
-certificate that has been revoked but is otherwise within its validity window and
-chains to a trusted anchor will currently validate as trusted. CRL/OCSP checking
-(with caching and a soft/hard-fail policy) is the explicit follow-up, **PR2**.
+Revocation status (**CRL** / **OCSP**) is **not** checked in this PR: the
+`ValidationContext` is built with `allow_fetching=False` and
+`revocation_mode='soft-fail'`, so no network calls are made and a certificate
+that has been revoked but is otherwise within its validity window and chains to a
+trusted anchor will currently validate as trusted. **PR2** enables revocation
+simply by flipping `allow_fetching=True` and `revocation_mode='require'` on the
+`ValidationContext` (pyhanko-certvalidator then fetches and checks CRL/OCSP).
 
 A3 hardware tokens (PKCS#11) remain out of scope; the flow expects an A1 PKCS#12
 bundle.
@@ -124,7 +133,7 @@ runs `refresh_icp_truststore`.
 
 | File | Role |
 |------|------|
-| `apps/signatures/services/chain.py` | `ICPBrasilChainValidator`, `ChainValidationResult` |
+| `apps/signatures/services/chain.py` | `ICPBrasilChainValidator`, `ChainValidationResult` — RFC 5280 path validation via `pyhanko-certvalidator` |
 | `apps/signatures/services/icp_brasil.py` | signing primitive + chain wiring + enforcement |
 | `apps/signatures/management/commands/refresh_icp_truststore.py` | populate the trust store from ITI |
 | `apps/signatures/truststore/` | trust anchors (operational data; git-ignored) |
