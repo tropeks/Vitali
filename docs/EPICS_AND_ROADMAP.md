@@ -872,15 +872,22 @@ E-001 Foundation
   model trained on accumulated dispensation history (clinical data first,
   then model).
 - Multi-country compliance (start with Portugal/Angola) — **i18n
-  infrastructure shipped 2026-05-20**: Django `LANGUAGES` advertises
-  pt-BR / pt-PT / es / en; `LOCALE_PATHS` points at four
-  `locale/<code>/LC_MESSAGES/` stub directories; per-user
-  `preferred_language` field + `PreferredLanguageMiddleware` activates
-  the language per request; REST endpoint
-  `GET / PATCH /api/v1/users/me/language/`. Remaining: translate every
-  `gettext()`-wrapped string (content work, ongoing); locale-aware
-  date / number formatting in clinical screens; per-country regulatory
-  regimes (PT, AO).
+  *scaffolding* shipped 2026-05-20, but no translation is actually served
+  yet**: Django `LANGUAGES` advertises pt-BR / pt-PT / es / en,
+  `LOCALE_PATHS` points at four `locale/<code>/LC_MESSAGES/` stub
+  directories (currently empty — only `.gitkeep`, zero `.po`/`.mo`
+  catalogs), and the request plumbing is real (per-user
+  `preferred_language` field, `PreferredLanguageMiddleware`,
+  `GET / PATCH /api/v1/users/me/language/`). However, source strings are
+  **not** yet `gettext`-marked (one lone `gettext_lazy` import in
+  `apps/core/admin.py`) and the catalogs are empty, so the platform
+  effectively serves **pt-BR only** regardless of the selected language.
+  Real multi-language is a Phase 3 epic — see `docs/I18N.md` for the
+  phased plan. Remaining: mark every user-facing string with
+  `gettext`/`gettext_lazy`; generate, translate and compile the catalogs;
+  add a frontend i18n library (the Next.js UI has none today) and extract
+  hardcoded JSX strings; locale-aware date / number formatting in clinical
+  screens; per-country regulatory regimes (PT, AO).
 - FHIR API for interoperability — **8 of 8 resources shipped 2026-05-20**
   (`apps.fhir`). The interop primitive is feature-complete at the
   resource-coverage level documented here:
