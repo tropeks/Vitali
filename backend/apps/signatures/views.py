@@ -49,6 +49,8 @@ class SignatureCreateView(APIView):
                 password=data.get("pkcs12_password") or None,
             )
         except ICPBrasilSignerError as exc:
+            # Includes ICP-Brasil chain-of-trust rejection when the trust store
+            # is populated and ICP_BRASIL_ENFORCE_CHAIN is on (default).
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         record = DigitalSignature.objects.create(

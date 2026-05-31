@@ -216,7 +216,7 @@ See §9 for the shipped-control summary.
 ### Resolução CFM 1.821/2007 + 2.218/2018
 - [x] Record integrity: signed clinical notes are immutable (append-only)
 - [x] Traceability: all access and modifications logged with timestamp and user
-- [~] Digital signature: ICP-Brasil certificate integration (Phase 2) — **primitive shipped 2026-05-20** (`apps.signatures`): A1 PKCS#12 load + SHA-256/RSA-PKCS#1v15 sign + verify + tenant-scoped `DigitalSignature` storage, gated by FeatureFlag `signatures` (default OFF). REST: `POST /api/v1/signatures/sign/`, `GET /api/v1/signatures/`. Remaining: full ICP-Brasil DOC-ICP-04 chain-of-trust validation, A3 hardware-token (PKCS#11) support, and end-to-end integration into the encounter / prescription sign flows.
+- [~] Digital signature: ICP-Brasil certificate integration (Phase 2) — **primitive shipped 2026-05-20**, **chain-of-trust validation shipped 2026-05-31** (`apps.signatures`): A1 PKCS#12 load + SHA-256/RSA-PKCS#1v15 sign + verify + tenant-scoped `DigitalSignature` storage, gated by FeatureFlag `signatures` (default OFF). REST: `POST /api/v1/signatures/sign/`, `GET /api/v1/signatures/`. Real chain-of-trust validation (path to a configured ICP-Brasil anchor + validity window + CA/KeyUsage constraints + policy OIDs) now sets `is_icp_brasil`, enforced via `ICP_BRASIL_ENFORCE_CHAIN` with a graceful empty-trust-store fallback — see **[ICP_BRASIL.md](./ICP_BRASIL.md)**. Remaining: revocation (CRL/OCSP, PR2), A3 hardware-token (PKCS#11) support, and end-to-end integration into the encounter / prescription sign flows.
 - [x] Availability: minimum 20 years retention
 - [x] Backup: daily automated backups with tested restore
 - [x] Access control: role-based, medical records accessible only by authorized professionals
