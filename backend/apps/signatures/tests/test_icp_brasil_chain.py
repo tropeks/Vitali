@@ -585,6 +585,64 @@ class TestICPBrasilRevocation:
         assert result.trusted is True
         assert result.revocation_checked is False
 
+    def test_revocation_on_with_empty_crl_list_fails_closed_offline(self, hierarchy, truststore):
+        # Fix 1 (gating bug): passing crls=[] explicitly means "offline, no
+        # revinfo available". Under require mode this must FAIL CLOSED with a
+        # revinfo-unavailable reason — it must NOT fall through to the production
+        # branch and attempt a network fetch. Everything here is offline; the
+        # leaf is otherwise trusted, so a trusted=True result would prove a
+        # wrongful network fetch (or fall-through). It returns promptly because
+        # allow_fetching stays False (no network is ever touched).
+        store, activate = truststore
+        ctx = activate(hierarchy["root"])
+        try:
+            result = ICPBrasilChainValidator().validate(
+                hierarchy["leaf"],
+                extra_intermediates=[hierarchy["inter"]],
+                check_revocation=True,
+                crls=[],
+            )
+        finally:
+            ctx.disable()
+            ICPBrasilChainValidator.clear_cache()
+
+        assert result.trusted is False
+        # revinfo could not be obtained under require → fail closed, and since
+        # the revocation step WAS reached, revocation_checked is True.
+        assert "revocation information unavailable" in result.reason.lower()
+        assert result.revocation_checked is True
+
+    def test_revocation_on_expired_leaf_reports_revocation_not_checked(self, hierarchy, truststore):
+        # Fix 2 (over-reporting): an expired leaf fails the validity-window check
+        # BEFORE pyhanko reaches revocation, even with revocation ON. The result
+        # must be trusted=False AND revocation_checked=False — revocation was
+        # never evaluated, so claiming it was would pollute the audit trail.
+        store, activate = truststore
+        now = datetime.now(UTC)
+        expired = _leaf_cert(
+            subject_cn="Dr Expirado Revoc CPF 44455566677",
+            key=_key(),
+            issuer_cn="AC Intermediaria Teste",
+            issuer_key=hierarchy["inter_key"],
+            not_before=now - timedelta(days=400),
+            not_after=now - timedelta(days=10),
+        )
+        ctx = activate(hierarchy["root"])
+        try:
+            result = ICPBrasilChainValidator().validate(
+                expired,
+                extra_intermediates=[hierarchy["inter"]],
+                check_revocation=True,
+                crls=self._path_crls(hierarchy, revoke_leaf=False),
+            )
+        finally:
+            ctx.disable()
+            ICPBrasilChainValidator.clear_cache()
+
+        assert result.trusted is False
+        assert "expired" in result.reason
+        assert result.revocation_checked is False
+
     @override_settings(ICP_BRASIL_ENFORCE_CHAIN=True)
     def test_sign_enforced_with_revocation_on_and_revoked_cert_raises(
         self, hierarchy, truststore, monkeypatch
