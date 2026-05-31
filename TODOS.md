@@ -135,9 +135,20 @@ enforce uniqueness that way — cleaner than M2M for this constraint.
 
 **Priority:** P2 — not needed for pilot demo but must be fixed before multiple clinics use billing.
 **Update (2026-03-30 eng review):** Serializer-layer protection is already in place
-(`serializers.py:184` calls `check_guide_not_double_submitted()`). What remains: direct
-`.guides.add(guide)` calls bypass the serializer check. The TODOS item stands for adding
-an M2M signal or FK constraint to close this gap.
+(`serializers.py` calls `check_guide_not_double_submitted()`). What remains: direct
+`.guides.add(guide)` calls bypass the serializer check.
+**Update (2026-05-31 — RESOLVED, PR #57, CI-verified):** Fully closed.
+- The `.guides.add()` bypass flagged on 2026-03-30 was in fact *already* covered by an
+  `m2m_changed`/`pre_add` signal (`_tissbatch_m2m_changed`) — that part of the note was stale.
+- The *real* remaining gap was a time-of-check window the add-time check never covered: a
+  guide could sit in two **open** batches simultaneously (the check only conflicted on
+  `closed`/`submitted`), and `TISSBatchViewSet.close` did no re-check — so both batches could
+  be closed and the guide got billed twice to the convênio.
+- Fix: (1) re-validate at close time inside the atomic block with `select_for_update`;
+  (2) tighten `check_guide_not_double_submitted` to conflict on `open`/`closed`/`submitted`
+  (new `ACTIVE_BATCH_STATUSES`); (3) fix the reverse-M2M signal direction bug
+  (`guide.batches.add(batch)`); (4) add a `cancelled` BATCH_STATUS so cancelled batches never
+  block re-batching. Five regression tests in `apps/billing/tests/test_billing.py`.
 
 ---
 
