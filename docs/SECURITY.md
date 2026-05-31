@@ -128,10 +128,16 @@ add_header X-Content-Type-Options "nosniff" always;
 add_header X-Frame-Options "DENY" always;
 add_header X-XSS-Protection "1; mode=block" always;
 add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+add_header Permissions-Policy "camera=(self), microphone=(self), geolocation=()" always;
 
 # HTTPS block only (ssl.conf)
 add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 ```
+
+Camera and microphone are restricted to same-origin (`self`) rather than fully
+disabled, specifically so the AI Clinical Scribe (browser audio capture via
+getUserMedia/Web Speech) and telemedicine keep working; cross-origin and
+third-party access is still blocked. Geolocation is unused and is disabled.
 
 **Content-Security-Policy is report-only (non-enforcing).** Both nginx server
 blocks ship `Content-Security-Policy-Report-Only` with the identical policy
