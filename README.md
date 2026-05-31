@@ -1,6 +1,6 @@
 # Vitali
 
-> Plataforma Hospitalar SaaS — ERP + EMR + AI
+> Plataforma Hospitalar SaaS — ERP + EMR + AI · **v1.0.0**
 > Django 5 · Next.js 14 · PostgreSQL 16 (schema-per-tenant) · Celery · Redis
 
 ---
@@ -75,14 +75,19 @@ vitali/
 
 ## Variáveis de Ambiente — AI
 
-Para habilitar o módulo de AI TUSS, configure as seguintes variáveis no `.env`:
+Os módulos de IA vêm **desligados por padrão**. Cada um é controlado por um *feature flag* global `FEATURE_AI_*` (e o flag equivalente por-tenant) e, para processar dados de saúde, exige um **DPA assinado** (`AIDPAStatus`) — verificado em runtime (`_check_dpa_signed`).
 
 | Variável | Padrão | Descrição |
 |----------|--------|-----------|
-| `ANTHROPIC_API_KEY` | `""` | Chave da API Anthropic (obrigatória para AI TUSS) |
-| `FEATURE_AI_TUSS` | `False` | Feature flag — habilita o endpoint de sugestão TUSS |
+| `ANTHROPIC_API_KEY` | `""` | Chave da API Anthropic (obrigatória para TUSS, Safety Net, CID-10) |
+| `OPENAI_API_KEY` | `""` | Chave OpenAI — necessária para o escriba (Whisper) quando `FEATURE_AI_SCRIBE=True` |
+| `FEATURE_AI_TUSS` | `False` | Habilita codificação TUSS assistida |
+| `FEATURE_AI_GLOSA` | `True` | Kill-switch global da previsão de risco de glosa |
+| `FEATURE_AI_SCRIBE` | `False` | Habilita o escriba clínico (transcrição → SOAP) |
 | `AI_RATE_LIMIT_PER_HOUR` | `100` | Limite de chamadas LLM por tenant por hora |
 | `AI_SUGGEST_TIMEOUT_S` | `5` | Timeout em segundos para chamadas ao Claude |
+
+Os módulos `ai_prescription_safety` e `ai_cid10_suggest` são habilitados por-tenant (via `FeatureFlag` / `TenantAIConfig`) e ativados em cascata quando o DPA é assinado. Veja `docs/USER_GUIDE.md` §10.
 
 ---
 
@@ -127,20 +132,40 @@ make create-tenant   # Criar nova clínica
 
 ## Roadmap
 
-| Sprint | Semanas | Épico |
-|--------|---------|-------|
-| Sprint 0 | 1-2 | Foundation & Infrastructure ✅ |
-| Sprint 1 | 3-4 | Auth + Core completo |
-| Sprint 2 | 5-6 | Cadastro de Pacientes |
-| Sprint 3 | 7-8 | Agendamento |
-| Sprint 4-5 | 9-13 | EMR (Prontuário) |
-| Sprint 6 | 14-16 | Farmácia |
-| Sprint 7-8 | 17-21 | Faturamento TISS/TUSS |
-| Sprint 8 | 20-21 | AI TUSS Auto-Coding ✅ |
-| Sprint 9 | 22-23 | AI Features (expansão) |
-| Sprint 10 | 24-26 | Billing Intelligence Dashboard ✅ v0.5.0 |
-| Sprint 11 | 27-28 | Commercialization — module gating, subscriptions, POs ✅ v0.6.0 |
-| Sprint 12 | 29-31 | WhatsApp Patient Engagement ✅ v0.7.0 |
+Versão atual: **v1.0.0** (primeiro release production-grade). Estado conforme `CHANGELOG.md`.
+
+### Entregue (shipped)
+
+| Sprint | Épico | Versão |
+|--------|-------|--------|
+| Sprint 0 | Foundation & Infrastructure | — |
+| Sprint 1 | Auth + Core | — |
+| Sprint 2 | Cadastro de Pacientes | — |
+| Sprint 3 | Agendamento | — |
+| Sprint 4-5 | EMR (Prontuário) | — |
+| Sprint 6 | Farmácia | — |
+| Sprint 7-8 | Faturamento TISS/TUSS | — |
+| Sprint 8 | AI TUSS Auto-Coding | — |
+| Sprint 9 | AI Features (expansão) | — |
+| Sprint 10 | Billing Intelligence Dashboard | v0.5.0 |
+| Sprint 11 | Commercialization — module gating, subscriptions, POs | v0.6.0 |
+| Sprint 12 | WhatsApp Patient Engagement | v0.7.0 |
+| Sprint 13 | Pre-Production Hardening (settings, Redis, logging, Sentry, rate limit, CI/CD) | v0.8.0 |
+| Sprint 14 | First Pilot Readiness (onboarding wizard, PIX/Asaas, e-mail, seed, índices, mobile) | v0.9.0 |
+| Sprint 15 | Clinical AI Layer + MFA (TOTP) — Safety Net, sugestão CID-10, escriba SOAP, PDF de receita, fila de espera | v1.0.0 |
+| Pós-1.0.0 | Endurecimento de segurança e infra (PII criptografada em repouso, audit de leitura, TLS, backups automáticos) | Unreleased |
+
+As funcionalidades de IA da camada clínica (Sprint 15) vêm **desligadas por padrão**: dependem de *feature flags* `FEATURE_AI_*`/por-tenant e exigem um **DPA assinado** (LGPD Art. 11) antes de processar dados de saúde — veja `docs/USER_GUIDE.md` §10.
+
+### Planejado (planned)
+
+| Sprint | Épico | Alvo |
+|--------|-------|------|
+| Sprint 16 | Clinical UI Layer + Phase 2 AI | v1.1.0 |
+| Sprint 17 | Pre-GA Compliance + Scribe Hardening | v1.2.0 |
+| Sprints 23/25/26 | Quality gates — HR E2E + role contracts, Clinical Journey, Production Readiness | — |
+
+Datas/escopo detalhados em `docs/EPICS_AND_ROADMAP.md` e nos planos `docs/PLAN_SPRINT*.md`.
 
 ---
 
