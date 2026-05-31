@@ -33,7 +33,16 @@ BATCH_STATUS = [
     ("closed", "Fechado"),
     ("submitted", "Enviado"),
     ("processed", "Processado"),
+    ("cancelled", "Cancelado"),
 ]
+
+# Statuses that make a batch "active" for double-submit purposes: a guide that
+# already belongs to a batch in any of these statuses must not be added to a
+# different batch (it would be billed twice). "cancelled" is intentionally
+# excluded — a cancelled batch never reaches the insurer, so its guides are free
+# to be re-batched. "processed" is also excluded for backward compatibility with
+# the retorno flow (a processed batch is already settled, not pending billing).
+ACTIVE_BATCH_STATUSES = ["open", "closed", "submitted"]
 
 GLOSA_REASON_CODES = [
     ("00", "Não informado"),
@@ -330,12 +339,30 @@ class TISSBatch(models.Model):
         else:
             super().save(*args, **kwargs)
 
-    def check_guide_not_double_submitted(self, guide: TISSGuide) -> None:
-        """Raise ValidationError if the guide is already in a closed/submitted batch."""
+    def check_guide_not_double_submitted(self, guide: TISSGuide, statuses=None) -> None:
+        """
+        Raise ValidationError if the guide already belongs to ANOTHER batch in a
+        conflicting status.
+
+        By default the conflicting set is ACTIVE_BATCH_STATUSES (open/closed/
+        submitted) — i.e. a guide already in any non-cancelled, billable batch
+        cannot be added to a different one. This closes the add-time window where
+        the same guide could sit in two open batches simultaneously and then be
+        closed twice.
+
+        The current batch is always excluded (``.exclude(pk=self.pk)``) so that
+        re-saving/editing a batch does not flag its own guides. Cancelled batches
+        never conflict, since they are excluded from the status set.
+
+        ``statuses`` can be overridden (e.g. at close time, to check only against
+        already-finalised batches) — see TISSBatchViewSet.close.
+        """
+        if statuses is None:
+            statuses = ACTIVE_BATCH_STATUSES
         conflict = (
             TISSBatch.objects.filter(
                 guides=guide,
-                status__in=["closed", "submitted"],
+                status__in=statuses,
             )
             .exclude(pk=self.pk)
             .first()
@@ -355,15 +382,28 @@ def _tissbatch_m2m_changed(sender, instance, action, pk_set, **kwargs):
     Enforce double-submit protection when guides are added via M2M directly
     (bypasses the serializer layer). Runs on m2m_changed signal for
     TISSBatch.guides through-table.
+
+    The handler fires for BOTH directions of the relation:
+      • forward  — ``batch.guides.add(guide)``   → instance is a TISSBatch,
+                    pk_set holds GUIDE pks.
+      • reverse  — ``guide.batches.add(batch)``   → instance is a TISSGuide,
+                    pk_set holds BATCH pks.
+    We detect which side ``instance`` is and run the check for each
+    (batch, guide) pair accordingly. Previously this assumed ``instance`` was
+    always a TISSBatch, so the reverse path looked up batch pks as guide pks and
+    crashed / silently skipped the check.
     """
     if action != "pre_add" or not pk_set:
         return
-    for guide_pk in pk_set:
-        try:
-            guide = TISSGuide.objects.get(pk=guide_pk)
-        except TISSGuide.DoesNotExist:
-            continue
-        instance.check_guide_not_double_submitted(guide)
+
+    if isinstance(instance, TISSBatch):
+        batch = instance
+        for guide in TISSGuide.objects.filter(pk__in=pk_set):
+            batch.check_guide_not_double_submitted(guide)
+    elif isinstance(instance, TISSGuide):
+        guide = instance
+        for batch in TISSBatch.objects.filter(pk__in=pk_set):
+            batch.check_guide_not_double_submitted(guide)
 
 
 from django.db.models.signals import m2m_changed  # noqa: E402
