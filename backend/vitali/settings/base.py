@@ -304,6 +304,20 @@ ICP_BRASIL_TRUSTSTORE_DIR = env.str(
 # proceeds but the signature is recorded as non-ICP-Brasil.
 ICP_BRASIL_ENFORCE_CHAIN = env.bool("ICP_BRASIL_ENFORCE_CHAIN", default=True)
 
+# Certificate revocation checking (CRL / OCSP) during chain validation.
+# OPT-IN and OFF by default: when False, validation behaves like PR1 (no
+# revocation evaluated). When True, the validator runs in fail-closed
+# `revocation_mode='require'` and, in production, fetches CRL/OCSP over the
+# network (allow_fetching=True) — so sign() makes OUTBOUND calls to ITI
+# endpoints. Only enable after confirming those endpoints are reachable from
+# the signing host; otherwise legitimate signatures fail closed. See
+# docs/ICP_BRASIL.md.
+ICP_BRASIL_CHECK_REVOCATION = env.bool("ICP_BRASIL_CHECK_REVOCATION", default=False)
+
+# Per-request network timeout (seconds) for CRL/OCSP fetches when revocation
+# checking is enabled. Bounds how long sign() can block on a single fetch.
+ICP_BRASIL_REVOCATION_TIMEOUT = env.int("ICP_BRASIL_REVOCATION_TIMEOUT", default=10)
+
 # ─── E2E Mode (S-084) ─────────────────────────────────────────────────────────
 # When True, exposes test-only endpoints (apps/core/views_test_helpers.py).
 # MUST NEVER be True in staging or production. apps/core/checks.py enforces this

@@ -24,10 +24,15 @@ digital_signature / non_repudiation usage. It also extracts the ICP-Brasil
 policy OIDs (arc 2.16.76.1). The result of THAT validation — not the old
 issuer-DN string heuristic — is what sets `SignatureResult.is_icp_brasil`.
 
-Revocation (CRL / OCSP) is the explicit PR2 follow-up and is NOT checked here.
-The trust store is shipped/refreshed out-of-band (`refresh_icp_truststore`);
-when it is empty, validation degrades gracefully (see `views.py` and
-`docs/ICP_BRASIL.md`).
+Revocation (CRL / OCSP) is implemented (PR2) but OPT-IN via
+`settings.ICP_BRASIL_CHECK_REVOCATION` (default off). When enabled, chain
+validation runs in fail-closed `require` mode and — in production — makes
+outbound CRL/OCSP calls to ITI endpoints during sign(); a revoked cert simply
+makes `chain.trusted=False`, which the existing `ICP_BRASIL_ENFORCE_CHAIN` path
+already rejects (HTTP 400). `SignatureResult.revocation_checked` records whether
+revocation was actually evaluated. The trust store is shipped/refreshed
+out-of-band (`refresh_icp_truststore`); when it is empty, validation degrades
+gracefully (see `views.py` and `docs/ICP_BRASIL.md`).
 
 A3 hardware tokens (PKCS#11) are out of scope here; the primitive expects an
 A1 PKCS#12 bundle which is what software signing flows use today.
@@ -75,6 +80,9 @@ class SignatureResult:
     chain_reason: str = ""
     # True when the trust store has no anchors → chain validation was skipped.
     chain_truststore_empty: bool = False
+    # True when CRL/OCSP revocation was actually evaluated during chain
+    # validation (opt-in via ICP_BRASIL_CHECK_REVOCATION). False = not checked.
+    revocation_checked: bool = False
 
 
 class ICPBrasilSigner:
@@ -146,6 +154,12 @@ class ICPBrasilSigner:
         if chain.policy_oids:
             logger.info("ICP-Brasil policy OIDs on signing cert: %s", ", ".join(chain.policy_oids))
 
+        logger.info(
+            "ICP-Brasil chain validation: trusted=%s revocation_checked=%s",
+            chain.trusted,
+            chain.revocation_checked,
+        )
+
         doc_hash = cls.compute_hash(document)
         signature = private_key.sign(document, padding.PKCS1v15(), hashes.SHA256())
 
@@ -161,6 +175,7 @@ class ICPBrasilSigner:
             policy_oids=list(chain.policy_oids),
             chain_reason=chain.reason,
             chain_truststore_empty=chain.is_truststore_empty,
+            revocation_checked=chain.revocation_checked,
         )
 
     @staticmethod

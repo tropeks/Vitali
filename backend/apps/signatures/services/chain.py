@@ -21,11 +21,30 @@ What is validated here (PR1) — all performed offline (`allow_fetching=False`):
   the leaf's CertificatePolicies extension for audit/logging. This is
   independent of the library's path check.
 
-What is NOT validated here (explicit follow-up, PR2): revocation status via
-CRL / OCSP. In PR1 the `ValidationContext` is built with
-`allow_fetching=False` and `revocation_mode='soft-fail'` so no network calls are
-made. PR2 enables revocation by flipping `allow_fetching=True` and
-`revocation_mode='require'`.
+Revocation (PR2, opt-in): certificate revocation status via CRL / OCSP is now
+supported, gated by ``settings.ICP_BRASIL_CHECK_REVOCATION`` (default ``False``).
+
+- OFF (default): exactly the PR1 behaviour — ``allow_fetching=False`` and
+  ``revocation_mode='soft-fail'`` so no revocation is enforced and no network
+  calls are made. ``ChainValidationResult.revocation_checked`` is ``False``.
+- ON: ``revocation_mode='require'`` (fail-closed — every cert in the path must
+  have valid revocation info, else the path is rejected). In production
+  ``allow_fetching=True`` so CRL/OCSP are fetched over the network, bounded by
+  ``settings.ICP_BRASIL_REVOCATION_TIMEOUT`` (wired via a requests-based
+  ``RequestsFetcherBackend(per_request_timeout=...)``). Tests inject CRL/OCSP
+  info via the ``crls=`` / ``ocsps=`` params with ``allow_fetching=False`` so no
+  network is touched. A revoked cert surfaces as ``trusted=False`` with a
+  ``"certificate revoked: ..."`` reason; missing revocation info under
+  ``require`` surfaces as ``trusted=False`` too. ``revocation_checked`` is
+  ``True`` only when revocation was actually evaluated — the success path with
+  revocation ON, or a ``RevokedError`` / ``InsufficientRevinfoError`` (both
+  reached only after the revocation step). A failure BEFORE revocation (expired
+  cert, bad constraints, path-building) reports ``revocation_checked=False``
+  even with revocation ON, since the status is unknown. The whole validation is
+  additionally bounded by ``asyncio.wait_for(...,
+  timeout=ICP_BRASIL_REVOCATION_TIMEOUT)`` as a total wall-clock budget on top
+  of the per-request fetch timeout; exceeding it fails closed with
+  ``revocation_checked=False``.
 
 The trust store is shipped/refreshed out-of-band (see the
 `refresh_icp_truststore` management command); when it is empty the validator
@@ -51,11 +70,13 @@ from cryptography.x509.oid import ExtensionOID
 from django.conf import settings
 from pyhanko_certvalidator import CertificateValidator, ValidationContext
 from pyhanko_certvalidator.errors import (
+    InsufficientRevinfoError,
     InvalidCertificateError,
     PathBuildingError,
     PathValidationError,
     RevokedError,
 )
+from pyhanko_certvalidator.fetchers.requests_fetchers import RequestsFetcherBackend
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +97,10 @@ class ChainValidationResult:
     chain_subjects: list[str] = field(default_factory=list)
     policy_oids: list[str] = field(default_factory=list)
     is_truststore_empty: bool = False
+    # True only when revocation checking was ON and actually evaluated. Lets
+    # callers / audit distinguish "trusted, revocation confirmed" from
+    # "trusted, revocation not checked" (the PR1 default).
+    revocation_checked: bool = False
 
 
 def _load_anchors(truststore_dir: str) -> tuple[Certificate, ...]:
@@ -155,7 +180,15 @@ class ICPBrasilChainValidator:
         leaf_cert: Certificate,
         extra_intermediates: list[Certificate] | None = None,
         at_time: datetime | None = None,
+        check_revocation: bool | None = None,
+        crls=None,
+        ocsps=None,
     ) -> ChainValidationResult:
+        # Revocation is opt-in. When the caller doesn't specify, fall back to
+        # the deployment-wide setting (default False = PR1 behaviour).
+        if check_revocation is None:
+            check_revocation = bool(getattr(settings, "ICP_BRASIL_CHECK_REVOCATION", False))
+
         anchors = self.anchors
         if not anchors:
             return ChainValidationResult(
@@ -180,36 +213,117 @@ class ICPBrasilChainValidator:
                 policy_oids=policy_oids,
             )
 
-        # PR1: no network, no revocation. PR2 flips these to
-        # allow_fetching=True + revocation_mode='require'.
-        ctx = ValidationContext(
-            trust_roots=trust_roots,
-            moment=when,
-            allow_fetching=False,
-            revocation_mode="soft-fail",
-        )
+        if not check_revocation:
+            # PR1 behaviour: no network, no revocation enforced.
+            ctx = ValidationContext(
+                trust_roots=trust_roots,
+                moment=when,
+                allow_fetching=False,
+                revocation_mode="soft-fail",
+            )
+        elif crls is not None or ocsps is not None:
+            # Tests / callers that supply revocation info directly: validate
+            # against it offline (no network), still fail-closed under require.
+            # Gate on whether the params were PROVIDED, not their truthiness — an
+            # explicit empty list (e.g. crls=[]) means "offline, no revinfo
+            # available" and must fail closed under require, NOT fall through to
+            # the production branch and go fetch over the network.
+            ctx = ValidationContext(
+                trust_roots=trust_roots,
+                moment=when,
+                crls=crls,
+                ocsps=ocsps,
+                allow_fetching=False,
+                revocation_mode="require",
+            )
+        else:
+            # Production: fetch CRL/OCSP over the network, fail-closed. The
+            # per-request fetch timeout is the clean knob exposed by
+            # pyhanko-certvalidator 0.31's requests-based fetcher backend
+            # (RequestsFetcherBackend(per_request_timeout=...)); it bounds each
+            # individual CRL/OCSP HTTP request so sign() can't block forever.
+            timeout = int(getattr(settings, "ICP_BRASIL_REVOCATION_TIMEOUT", 10))
+            ctx = ValidationContext(
+                trust_roots=trust_roots,
+                moment=when,
+                allow_fetching=True,
+                revocation_mode="require",
+                fetcher_backend=RequestsFetcherBackend(per_request_timeout=timeout),
+            )
         validator = CertificateValidator(
             end_entity_cert=end_entity,
             intermediate_certs=intermediates,
             validation_context=ctx,
         )
 
+        # `per_request_timeout` bounds each individual CRL/OCSP HTTP request, but
+        # a cert with many CDP/OCSP URLs could still take N × timeout in total.
+        # Wrap the whole validation in an overall wall-clock budget so it can't
+        # exceed ICP_BRASIL_REVOCATION_TIMEOUT regardless of how many endpoints
+        # are tried. Harmless when offline (validation is fast).
+        total_budget = int(getattr(settings, "ICP_BRASIL_REVOCATION_TIMEOUT", 10))
+
+        async def _validate_within_budget():
+            return await asyncio.wait_for(
+                validator.async_validate_usage(set(REQUIRED_LEAF_KEY_USAGE)),
+                timeout=total_budget,
+            )
+
         try:
             # Full RFC 5280 path validation (validity of EVERY cert, pathlen,
             # basic constraints, CA keyCertSign, name constraints, algorithm
-            # policy) AND the leaf key-usage check.
-            path = asyncio.run(validator.async_validate_usage(set(REQUIRED_LEAF_KEY_USAGE)))
+            # policy), the leaf key-usage check, AND — when check_revocation is
+            # on — CRL/OCSP revocation status under fail-closed `require`.
+            path = asyncio.run(_validate_within_budget())
+        except TimeoutError:
+            # Total wall-clock budget exceeded (e.g. many slow CDP/OCSP fetches).
+            # Fail closed; revocation status is unknown, so revocation_checked is
+            # False. asyncio.wait_for raises asyncio.TimeoutError, which is an
+            # alias of the builtin TimeoutError on Python 3.11+.
+            return ChainValidationResult(
+                trusted=False,
+                reason="revocation/path validation exceeded time budget",
+                policy_oids=policy_oids,
+                revocation_checked=False,
+            )
+        except RevokedError as exc:
+            # A cert in the path is revoked. Surfaced explicitly so callers /
+            # audit get an unambiguous reason. RevokedError is only reachable
+            # when revocation was actually evaluated.
+            return ChainValidationResult(
+                trusted=False,
+                reason=f"certificate revoked: {str(exc).strip()}",
+                policy_oids=policy_oids,
+                revocation_checked=True,
+            )
+        except InsufficientRevinfoError as exc:
+            # Under `require`, revocation info for some cert in the path could
+            # not be obtained (e.g. no CRL/OCSP injected or fetch failed). Fail
+            # closed with a clear reason rather than silently trusting.
+            # InsufficientRevinfoError is only raised once pyhanko has reached the
+            # revocation step, so revocation WAS evaluated → report True.
+            return ChainValidationResult(
+                trusted=False,
+                reason=f"revocation information unavailable (require mode): {str(exc).strip()}",
+                policy_oids=policy_oids,
+                revocation_checked=True,
+            )
         except (
             PathValidationError,
             PathBuildingError,
             InvalidCertificateError,
-            RevokedError,
             ValueError,
         ) as exc:
+            # pyhanko checks path build, validity window, basic constraints and
+            # key usage BEFORE it reaches revocation. A failure here (e.g. an
+            # expired cert) means revocation was never evaluated even when it was
+            # ON, so revocation_checked must be False — reporting True would
+            # pollute the audit trail with an unverified revocation status.
             return ChainValidationResult(
                 trusted=False,
                 reason=str(exc).strip(),
                 policy_oids=policy_oids,
+                revocation_checked=False,
             )
 
         chain_subjects = [c.subject.human_friendly for c in path]
@@ -218,6 +332,7 @@ class ICPBrasilChainValidator:
             reason="chain validates to a trusted ICP-Brasil anchor (RFC 5280, pyhanko-certvalidator)",
             chain_subjects=chain_subjects,
             policy_oids=policy_oids,
+            revocation_checked=check_revocation,
         )
 
     # ─── helpers ──────────────────────────────────────────────────────────────
