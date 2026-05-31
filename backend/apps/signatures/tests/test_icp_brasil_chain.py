@@ -20,6 +20,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from asn1crypto import crl as asn1_crl
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -136,6 +137,35 @@ def _leaf_cert(
 
 def _write_pem(cert: x509.Certificate, path) -> None:
     path.write_bytes(cert.public_bytes(Encoding.PEM))
+
+
+def _crl(
+    *,
+    issuer_cn: str,
+    issuer_key: rsa.RSAPrivateKey,
+    revoked_serials: list[int] | None = None,
+) -> asn1_crl.CertificateList:
+    """
+    Build a CRL signed by ``issuer_key`` revoking ``revoked_serials`` (empty =
+    a valid CRL that lists nothing), converted to asn1crypto for injection via
+    ``validate(..., crls=[...])``. Fully offline — no network.
+    """
+    now = datetime.now(UTC)
+    builder = (
+        x509.CertificateRevocationListBuilder()
+        .issuer_name(_name(issuer_cn))
+        .last_update(now - timedelta(hours=1))
+        .next_update(now + timedelta(days=1))
+    )
+    for serial in revoked_serials or []:
+        builder = builder.add_revoked_certificate(
+            x509.RevokedCertificateBuilder()
+            .serial_number(serial)
+            .revocation_date(now - timedelta(hours=2))
+            .build()
+        )
+    crl = builder.sign(private_key=issuer_key, algorithm=hashes.SHA256())
+    return asn1_crl.CertificateList.load(crl.public_bytes(Encoding.DER))
 
 
 def _self_signed_leaf() -> x509.Certificate:
@@ -470,3 +500,121 @@ class TestSignFlowChainEnforcement:
         assert result.signature
         assert result.is_icp_brasil is False
         assert result.chain_truststore_empty is False
+
+
+# ─── revocation (PR2, opt-in, OFFLINE CRL injection) ──────────────────────────
+
+
+class TestICPBrasilRevocation:
+    """
+    Revocation checking via injected CRLs — no network. Under fail-closed
+    `require` mode pyhanko-certvalidator demands revocation info for EVERY cert
+    in the path, so each case injects an intermediate CRL (signed by the root)
+    plus a leaf CRL (signed by the intermediate).
+    """
+
+    def _path_crls(self, hierarchy, *, revoke_leaf: bool) -> list[asn1_crl.CertificateList]:
+        inter_crl = _crl(
+            issuer_cn="AC Raiz Brasileira Teste",
+            issuer_key=hierarchy["root_key"],
+            revoked_serials=[],
+        )
+        leaf_crl = _crl(
+            issuer_cn="AC Intermediaria Teste",
+            issuer_key=hierarchy["inter_key"],
+            revoked_serials=[hierarchy["leaf"].serial_number] if revoke_leaf else [],
+        )
+        return [inter_crl, leaf_crl]
+
+    def test_revocation_on_with_revoking_crl_is_not_trusted(self, hierarchy, truststore):
+        # (a) revocation ON + CRL revoking the leaf ⇒ trusted=False, reason
+        # mentions revoked, revocation_checked=True.
+        store, activate = truststore
+        ctx = activate(hierarchy["root"])
+        try:
+            result = ICPBrasilChainValidator().validate(
+                hierarchy["leaf"],
+                extra_intermediates=[hierarchy["inter"]],
+                check_revocation=True,
+                crls=self._path_crls(hierarchy, revoke_leaf=True),
+            )
+        finally:
+            ctx.disable()
+            ICPBrasilChainValidator.clear_cache()
+
+        assert result.trusted is False
+        assert "revoked" in result.reason.lower()
+        assert result.revocation_checked is True
+
+    def test_revocation_on_with_valid_crl_is_trusted(self, hierarchy, truststore):
+        # (b) revocation ON + CRL NOT listing the leaf ⇒ trusted=True,
+        # revocation_checked=True.
+        store, activate = truststore
+        ctx = activate(hierarchy["root"])
+        try:
+            result = ICPBrasilChainValidator().validate(
+                hierarchy["leaf"],
+                extra_intermediates=[hierarchy["inter"]],
+                check_revocation=True,
+                crls=self._path_crls(hierarchy, revoke_leaf=False),
+            )
+        finally:
+            ctx.disable()
+            ICPBrasilChainValidator.clear_cache()
+
+        assert result.trusted is True
+        assert result.revocation_checked is True
+
+    def test_revocation_off_ignores_revoking_crl(self, hierarchy, truststore):
+        # (c) revocation OFF (default) ⇒ PR1 behaviour: leaf trusted even with a
+        # revoking CRL present-but-unused, revocation_checked=False.
+        store, activate = truststore
+        ctx = activate(hierarchy["root"])
+        try:
+            result = ICPBrasilChainValidator().validate(
+                hierarchy["leaf"],
+                extra_intermediates=[hierarchy["inter"]],
+                # check_revocation defaults to settings.ICP_BRASIL_CHECK_REVOCATION
+                # (False) — pass the revoking CRL to prove it is ignored.
+                crls=self._path_crls(hierarchy, revoke_leaf=True),
+            )
+        finally:
+            ctx.disable()
+            ICPBrasilChainValidator.clear_cache()
+
+        assert result.trusted is True
+        assert result.revocation_checked is False
+
+    @override_settings(ICP_BRASIL_ENFORCE_CHAIN=True)
+    def test_sign_enforced_with_revocation_on_and_revoked_cert_raises(
+        self, hierarchy, truststore, monkeypatch
+    ):
+        # (d) sign() with enforce + revocation ON + revoked cert ⇒ raises. The
+        # revoking CRLs are injected by patching the validator's validate() to
+        # supply them (sign() doesn't expose a CRL param — production fetches
+        # them; tests inject offline).
+        store, activate = truststore
+        pfx = _pkcs12(hierarchy["leaf"], hierarchy["leaf_key"], cas=[hierarchy["inter"]])
+        crls = self._path_crls(hierarchy, revoke_leaf=True)
+
+        original_validate = ICPBrasilChainValidator.validate
+
+        def _patched(self, leaf_cert, extra_intermediates=None, at_time=None, **kwargs):
+            return original_validate(
+                self,
+                leaf_cert,
+                extra_intermediates=extra_intermediates,
+                at_time=at_time,
+                check_revocation=True,
+                crls=crls,
+            )
+
+        monkeypatch.setattr(ICPBrasilChainValidator, "validate", _patched)
+
+        ctx = activate(hierarchy["root"])
+        try:
+            with pytest.raises(ICPBrasilSignerError):
+                ICPBrasilSigner.sign(b"doc", pfx, "pw")
+        finally:
+            ctx.disable()
+            ICPBrasilChainValidator.clear_cache()

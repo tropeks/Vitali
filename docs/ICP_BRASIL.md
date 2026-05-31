@@ -50,15 +50,44 @@ The result of this validation — **not** the old, spoofable "issuer DN contains
 ICP-Brasil" string heuristic — is what sets `DigitalSignature.is_icp_brasil`. The
 heuristic (`_issuer_mentions_icp_brasil`) is retained only for diagnostics.
 
-### NOT validated yet — revocation (PR2)
+### Revocation (CRL / OCSP) — implemented, opt-in (PR2)
 
-Revocation status (**CRL** / **OCSP**) is **not** checked in this PR: the
-`ValidationContext` is built with `allow_fetching=False` and
-`revocation_mode='soft-fail'`, so no network calls are made and a certificate
-that has been revoked but is otherwise within its validity window and chains to a
-trusted anchor will currently validate as trusted. **PR2** enables revocation
-simply by flipping `allow_fetching=True` and `revocation_mode='require'` on the
-`ValidationContext` (pyhanko-certvalidator then fetches and checks CRL/OCSP).
+Revocation status (**CRL** / **OCSP**) is now checked, but it is **opt-in and
+OFF by default**, gated by `ICP_BRASIL_CHECK_REVOCATION`:
+
+```python
+ICP_BRASIL_CHECK_REVOCATION  = env.bool("ICP_BRASIL_CHECK_REVOCATION", default=False)
+ICP_BRASIL_REVOCATION_TIMEOUT = env.int("ICP_BRASIL_REVOCATION_TIMEOUT", default=10)  # seconds
+```
+
+- **OFF (default):** unchanged PR1 behaviour — the `ValidationContext` uses
+  `allow_fetching=False` + `revocation_mode='soft-fail'`, so no network calls are
+  made and revocation is not enforced. A revoked-but-otherwise-valid certificate
+  still validates as trusted. `ChainValidationResult.revocation_checked` is
+  `False`.
+
+- **ON:** `revocation_mode='require'` — **fail-closed**. Every certificate in the
+  path must have valid revocation information or the path is rejected
+  (`trusted=False`). A revoked cert yields `trusted=False` with a
+  `"certificate revoked: …"` reason; missing/unfetchable revocation info yields
+  `trusted=False` with a `"revocation information unavailable (require mode): …"`
+  reason. `revocation_checked` is `True`.
+
+  **Outbound-network implication:** in production (ON, no injected revinfo) the
+  context uses `allow_fetching=True`, so **`sign()` makes outbound CRL/OCSP HTTP
+  calls to ITI endpoints during the request**. Each fetch is bounded by
+  `ICP_BRASIL_REVOCATION_TIMEOUT` via pyhanko-certvalidator's
+  `RequestsFetcherBackend(per_request_timeout=…)`. Because `require` is
+  fail-closed, **enable this only after confirming the ITI CRL/OCSP endpoints
+  are reachable from the signing host** — otherwise legitimate signatures will be
+  rejected when revocation info can't be fetched.
+
+Tests exercise revocation **offline**: a CRL is built with
+`cryptography.x509.CertificateRevocationListBuilder`, converted to asn1crypto,
+and injected via `validate(check_revocation=True, crls=[…])` with
+`allow_fetching=False` — no network is touched in CI. (Under `require`, revinfo
+is required for *every* path cert, so tests inject both an intermediate CRL
+signed by the root and a leaf CRL signed by the intermediate.)
 
 A3 hardware tokens (PKCS#11) remain out of scope; the flow expects an A1 PKCS#12
 bundle.
@@ -109,9 +138,15 @@ restart the workers so the in-process anchor cache is rebuilt
 Setting (`vitali/settings/base.py`, overridable via env):
 
 ```python
-ICP_BRASIL_ENFORCE_CHAIN = env.bool("ICP_BRASIL_ENFORCE_CHAIN", default=True)
-ICP_BRASIL_TRUSTSTORE_DIR = env.str("ICP_BRASIL_TRUSTSTORE_DIR", default=<truststore dir>)
+ICP_BRASIL_ENFORCE_CHAIN      = env.bool("ICP_BRASIL_ENFORCE_CHAIN", default=True)
+ICP_BRASIL_TRUSTSTORE_DIR     = env.str("ICP_BRASIL_TRUSTSTORE_DIR", default=<truststore dir>)
+ICP_BRASIL_CHECK_REVOCATION   = env.bool("ICP_BRASIL_CHECK_REVOCATION", default=False)  # opt-in, fail-closed
+ICP_BRASIL_REVOCATION_TIMEOUT = env.int("ICP_BRASIL_REVOCATION_TIMEOUT", default=10)     # seconds per fetch
 ```
+
+A **revoked** certificate (when `ICP_BRASIL_CHECK_REVOCATION=True`) simply makes
+the chain result `trusted=False`, so the table below already covers it: with
+`ICP_BRASIL_ENFORCE_CHAIN=True` it maps to **HTTP 400**.
 
 Behaviour during a sign request:
 
@@ -137,4 +172,4 @@ runs `refresh_icp_truststore`.
 | `apps/signatures/services/icp_brasil.py` | signing primitive + chain wiring + enforcement |
 | `apps/signatures/management/commands/refresh_icp_truststore.py` | populate the trust store from ITI |
 | `apps/signatures/truststore/` | trust anchors (operational data; git-ignored) |
-| `vitali/settings/base.py` | `ICP_BRASIL_TRUSTSTORE_DIR`, `ICP_BRASIL_ENFORCE_CHAIN` |
+| `vitali/settings/base.py` | `ICP_BRASIL_TRUSTSTORE_DIR`, `ICP_BRASIL_ENFORCE_CHAIN`, `ICP_BRASIL_CHECK_REVOCATION`, `ICP_BRASIL_REVOCATION_TIMEOUT` |
