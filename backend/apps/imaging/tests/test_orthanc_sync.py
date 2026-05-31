@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 from django.core.cache import cache
 from django.test import override_settings
-from django_tenants.utils import schema_context
+from django_tenants.utils import get_public_schema_name, schema_context
 
 from apps.core.models import Tenant
 from apps.emr.models import Patient
@@ -203,8 +203,12 @@ class OrthancSyncMultiTenantTest(TenantTestCase):
             modality="CT",
             study_date=datetime(2026, 5, 18, 14, 30, tzinfo=UTC),
         )
-        # tenant B — separate schema, NO matching DicomStudy.
-        self.tenant_b = Tenant.objects.create(name="Clinic B", slug="clinicb")
+        # tenant B — separate schema, NO matching DicomStudy. Creating a Tenant
+        # row provisions a schema, which django-tenants only allows from the
+        # public schema; FastTenantTestCase leaves the connection on the
+        # fast_test schema, so switch to public for the create.
+        with schema_context(get_public_schema_name()):
+            self.tenant_b = Tenant.objects.create(name="Clinic B", slug="clinicb")
         with schema_context(self.tenant_b.schema_name):
             self.patient_b = Patient.objects.create(
                 full_name="Bea B",
