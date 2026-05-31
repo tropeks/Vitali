@@ -112,6 +112,44 @@ make run-worker
 make run-beat
 ```
 
+## Dependency lockfile
+
+Production dependencies are installed from a **pinned, hashed lockfile** so image
+builds are reproducible and tamper-resistant.
+
+- **Sources (human-edited, pip-tools `.in`-style):** `backend/requirements/base.txt`
+  and `backend/requirements/production.txt`. These hold the direct deps and may use
+  ranges (`>=`, `<`). Edit these to add/remove/bump a dependency.
+- **Lock (generated, do not hand-edit):** `backend/requirements/production.lock`.
+  It pins every direct **and transitive** dependency to an exact `==` version with
+  `--hash=sha256:...` lines. The `Dockerfile` installs production deps with
+  `pip install --require-hashes -r requirements/production.lock`.
+
+### Regenerating the lock
+
+After editing `base.txt` or `production.txt`, regenerate the lock **inside the same
+base image as the Dockerfile** (`python:3.12-slim`) so wheels, environment markers,
+and hashes match exactly what CI builds:
+
+```bash
+cd backend
+docker run --rm -v "$PWD":/w -w /w python:3.12-slim sh -c \
+  "pip install --no-cache-dir pip-tools && \
+   pip-compile --quiet --generate-hashes \
+     --output-file requirements/production.lock requirements/production.txt"
+```
+
+(`production.txt` already includes `-r base.txt`, so the lock covers the full
+production closure.) Commit both the changed source file(s) and the regenerated
+`production.lock`. The CI **Docker — Validate Build** job builds the image from the
+lock with `--require-hashes` and fails loudly if the lock is stale or a hash is wrong.
+
+`pip-tools` is available locally via `requirements/development.txt`, but the
+`docker run` route above is preferred for an exact image match.
+
+> Dependabot continues to bump the **source pins** in `base.txt`/`production.txt`;
+> regenerate the lock as part of reviewing each bump.
+
 ## Environment variables reference
 
 See `.env.example` for all available variables with descriptions.
