@@ -116,16 +116,37 @@ Default roles and permissions:
 - Format: structured JSON, shipped to centralized logging
 
 ### 3.7 HTTP Security Headers
+
+Enforced on both nginx server blocks — the plain-HTTP `:80` block
+(`docker/nginx/nginx.conf`) and the operator-enabled HTTPS `:443` block
+(`docker/nginx/ssl.conf`). `Strict-Transport-Security` is only served on the
+HTTPS block.
+
 ```nginx
-# nginx.conf
+# served on both :80 (nginx.conf) and :443 (ssl.conf)
 add_header X-Content-Type-Options "nosniff" always;
 add_header X-Frame-Options "DENY" always;
 add_header X-XSS-Protection "1; mode=block" always;
 add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+
+# HTTPS block only (ssl.conf)
 add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://api.anthropic.com https://api.openai.com;" always;
 ```
+
+**Content-Security-Policy is report-only (non-enforcing).** Both nginx server
+blocks ship `Content-Security-Policy-Report-Only` with the identical policy
+below; neither serves an enforcing `Content-Security-Policy` header. The
+documented plan is to observe violations first, then promote to enforcing once
+the policy is confirmed clean. Note that no report-collection endpoint
+(`report-to`/`report-uri`) is wired up yet, so violations currently surface only
+in the browser console.
+
+```nginx
+# report-only, served on both :80 (nginx.conf) and :443 (ssl.conf)
+add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none';" always;
+```
+
+See §9 for the shipped-control summary.
 
 ---
 
