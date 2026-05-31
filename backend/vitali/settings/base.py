@@ -288,6 +288,22 @@ MIGRATION_MODULES = {
 # Set DEMO_MODE=true in .env for investor demos. Never enable in production.
 DEMO_MODE = env.bool("DEMO_MODE", default=False)
 
+# ─── ICP-Brasil chain-of-trust (signatures) ──────────────────────────────────
+# Directory holding trusted ICP-Brasil CA anchors (roots + intermediates), one
+# or more *.pem / *.crt files (PEM or DER). Populate it with:
+#     python manage.py refresh_icp_truststore
+# When the directory is empty, chain validation is reported as "disabled" and
+# signing is NOT blocked (see ICP_BRASIL_ENFORCE_CHAIN). See docs/ICP_BRASIL.md.
+ICP_BRASIL_TRUSTSTORE_DIR = env.str(
+    "ICP_BRASIL_TRUSTSTORE_DIR",
+    default=str(BASE_DIR / "apps" / "signatures" / "truststore"),
+)
+
+# When True, a signing request whose certificate fails chain validation is
+# rejected (HTTP 400) — UNLESS the trust store is empty, in which case signing
+# proceeds but the signature is recorded as non-ICP-Brasil.
+ICP_BRASIL_ENFORCE_CHAIN = env.bool("ICP_BRASIL_ENFORCE_CHAIN", default=True)
+
 # ─── E2E Mode (S-084) ─────────────────────────────────────────────────────────
 # When True, exposes test-only endpoints (apps/core/views_test_helpers.py).
 # MUST NEVER be True in staging or production. apps/core/checks.py enforces this

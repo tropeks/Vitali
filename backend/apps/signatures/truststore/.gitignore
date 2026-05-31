@@ -1,0 +1,6 @@
+# Anchors are operational data, refreshed via `manage.py refresh_icp_truststore`.
+# Track only the README; never commit downloaded CA certificates.
+*.pem
+*.crt
+*.p7b
+*.p7c

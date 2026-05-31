@@ -100,14 +100,20 @@ class TestICPBrasilSigner:
         result = ICPBrasilSigner.sign(b"doc", pfx, None)
         assert ICPBrasilSigner.verify(b"doc", result.signature, cert)
 
-    def test_is_icp_brasil_flag_set_from_issuer(self):
+    def test_is_icp_brasil_no_longer_set_from_issuer_string(self):
+        # The issuer-DN string heuristic is NO LONGER the source of truth: even
+        # an issuer DN that mentions "AC Raiz Brasileira" is not trusted unless
+        # the cert chains to a configured anchor. With the (shipped) empty trust
+        # store, the chain validator reports the store as empty and the flag is
+        # False — proving the spoofable heuristic was retired.
         pfx, _, _ = _make_self_signed_pkcs12(
             subject_cn="Dr Bruno Lima CPF 98765432100",
             issuer_cn="AC Raiz Brasileira v10",
             password="pw",
         )
         result = ICPBrasilSigner.sign(b"doc", pfx, "pw")
-        assert result.is_icp_brasil is True
+        assert result.is_icp_brasil is False
+        assert result.chain_truststore_empty is True
 
     def test_compute_hash_is_sha256(self):
         # SHA-256 of empty string is well-known.

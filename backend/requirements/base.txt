@@ -22,3 +22,7 @@ pyotp>=2.9
 qrcode[pil]>=7.4
 # S-065: Prescription PDF
 weasyprint>=62.0
+# ICP-Brasil chain-of-trust validation (apps.signatures). Previously transitive;
+# pinned directly because the validator relies on
+# Certificate.verify_directly_issued_by + the *_utc accessors (>=42).
+cryptography>=42
