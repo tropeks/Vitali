@@ -256,6 +256,7 @@ class TISSBatchViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="close")
     def close(self, request, pk=None):
         """Close a batch (open → closed). Recalculates total_value atomically."""
+        from django.core.exceptions import ValidationError as DjangoValidationError
         from django.db import transaction as db_transaction
 
         batch = self.get_object()
@@ -265,6 +266,26 @@ class TISSBatchViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         with db_transaction.atomic():
+            # Re-validate double-submit at close time. Two batches can both be
+            # left "open" with the same guide (the serializer/signal checks ran
+            # while both were open and saw no *finalised* conflict); without this
+            # re-check, closing both would export the guide in two XMLs → billed
+            # twice (financial + ANS violation). Lock the candidate guides so a
+            # concurrent close of a sibling batch cannot race past this check.
+            locked_guides = list(batch.guides.select_for_update())
+            try:
+                for guide in locked_guides:
+                    # Only finalised batches (closed/submitted) constitute a real
+                    # double-billing conflict at this point; another still-open
+                    # batch holding the same guide is fine — whichever closes
+                    # first wins, and the second close will then be rejected here.
+                    # Cancelled batches never conflict.
+                    batch.check_guide_not_double_submitted(guide, statuses=["closed", "submitted"])
+            except DjangoValidationError as exc:
+                # Surface model-layer ValidationError as an HTTP 400 (DRF) with a
+                # clear PT-BR message instead of an uncaught 500.
+                raise serializers.ValidationError({"guides": list(exc.messages)}) from exc
+
             total = batch.guides.aggregate(total=Sum("total_value"))["total"] or Decimal("0")
             batch.status = "closed"
             batch.closed_at = timezone.now()

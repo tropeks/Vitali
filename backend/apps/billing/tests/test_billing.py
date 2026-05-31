@@ -7,6 +7,8 @@ Run: python manage.py test apps.billing.tests.test_billing
 import datetime
 
 from django.core.cache import cache
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -337,6 +339,158 @@ class BillingTestCase(TenantTestCase):
             format="json",
         )
         self.assertEqual(add_resp.status_code, 400)
+
+    def test_closing_second_open_batch_with_same_guide_fails(self):
+        """
+        Core gap: a guide can sit in two OPEN batches (add-time check used to pass
+        for both). Closing the first must succeed; closing the second must fail at
+        close time, otherwise the guide is exported in two XMLs → billed twice.
+
+        We attach the guide to both batches at the model layer (bypassing the now
+        tightened add-time check) to reproduce the pre-existing data shape, then
+        verify the close endpoint catches it.
+        """
+        guide_resp = self._create_guide()
+        guide_id = guide_resp.json()["id"]
+        guide = TISSGuide.objects.get(id=guide_id)
+        client = self._auth(self.fat_token)
+
+        b1 = client.post(
+            "/api/v1/billing/batches/",
+            {"provider": self.provider.id},
+            format="json",
+        ).json()["id"]
+        b2 = client.post(
+            "/api/v1/billing/batches/",
+            {"provider": self.provider.id},
+            format="json",
+        ).json()["id"]
+
+        # Force both open batches to hold the same guide (simulates the window
+        # before the add-time tightening, using the through table directly so the
+        # pre_add signal does not block us setting up the scenario).
+        TISSBatch.guides.through.objects.create(tissbatch_id=b1, tissguide_id=guide.pk)
+        TISSBatch.guides.through.objects.create(tissbatch_id=b2, tissguide_id=guide.pk)
+
+        # First close wins.
+        close1 = client.post(f"/api/v1/billing/batches/{b1}/close/")
+        self.assertEqual(close1.status_code, 200)
+        self.assertEqual(close1.json()["status"], "closed")
+
+        # Second close must be rejected — guide already in a closed batch.
+        close2 = client.post(f"/api/v1/billing/batches/{b2}/close/")
+        self.assertEqual(close2.status_code, 400)
+        self.assertEqual(TISSBatch.objects.get(id=b2).status, "open")
+
+    def test_guide_cannot_be_added_to_second_open_batch(self):
+        """Add-time tightening: a guide already in an open batch cannot be added
+        to a different open batch."""
+        guide_resp = self._create_guide()
+        guide_id = guide_resp.json()["id"]
+        client = self._auth(self.fat_token)
+
+        b1 = client.post(
+            "/api/v1/billing/batches/",
+            {"provider": self.provider.id},
+            format="json",
+        ).json()["id"]
+        add1 = client.patch(
+            f"/api/v1/billing/batches/{b1}/",
+            {"guide_ids": [guide_id]},
+            format="json",
+        )
+        self.assertEqual(add1.status_code, 200)
+
+        b2 = client.post(
+            "/api/v1/billing/batches/",
+            {"provider": self.provider.id},
+            format="json",
+        ).json()["id"]
+        add2 = client.patch(
+            f"/api/v1/billing/batches/{b2}/",
+            {"guide_ids": [guide_id]},
+            format="json",
+        )
+        self.assertEqual(add2.status_code, 400)
+
+    def test_reverse_m2m_add_enforces_double_submit(self):
+        """
+        Reverse-M2M path (guide.batches.add(batch)) must not crash and must
+        enforce the double-submit rule. Previously the signal treated batch pks as
+        guide pks and broke.
+        """
+        guide_resp = self._create_guide()
+        guide = TISSGuide.objects.get(id=guide_resp.json()["id"])
+
+        b1 = TISSBatch.objects.create(provider=self.provider, status="closed")
+        b1.guides.add(guide)  # guide now in a closed batch
+
+        b2 = TISSBatch.objects.create(provider=self.provider, status="open")
+        # Reverse add — must raise (not crash with a wrong-model lookup).
+        # Wrap in a savepoint: the signal raises mid-`.add()`, which marks the
+        # transaction for rollback; without an inner atomic() the outer test
+        # transaction would be poisoned and the assertion query below would fail
+        # with TransactionManagementError.
+        with self.assertRaises(DjangoValidationError), transaction.atomic():
+            guide.batches.add(b2)
+        self.assertNotIn(b2, guide.batches.all())
+
+    def test_reverse_m2m_add_succeeds_when_no_conflict(self):
+        """Reverse-M2M add of a guide with no other batch works (regression)."""
+        guide_resp = self._create_guide()
+        guide = TISSGuide.objects.get(id=guide_resp.json()["id"])
+        batch = TISSBatch.objects.create(provider=self.provider, status="open")
+        guide.batches.add(batch)
+        self.assertIn(batch, guide.batches.all())
+
+    def test_guide_in_cancelled_batch_can_be_rebatched_and_closed(self):
+        """No false positive: a guide whose only other batch is cancelled can be
+        added to a new batch and that batch can be closed."""
+        guide_resp = self._create_guide()
+        guide_id = guide_resp.json()["id"]
+        guide = TISSGuide.objects.get(id=guide_id)
+        client = self._auth(self.fat_token)
+
+        # A cancelled batch holding the guide must not block re-batching.
+        cancelled = TISSBatch.objects.create(provider=self.provider, status="cancelled")
+        TISSBatch.guides.through.objects.create(tissbatch_id=cancelled.pk, tissguide_id=guide.pk)
+
+        b2 = client.post(
+            "/api/v1/billing/batches/",
+            {"provider": self.provider.id},
+            format="json",
+        ).json()["id"]
+        add = client.patch(
+            f"/api/v1/billing/batches/{b2}/",
+            {"guide_ids": [guide_id]},
+            format="json",
+        )
+        self.assertEqual(add.status_code, 200)
+
+        close = client.post(f"/api/v1/billing/batches/{b2}/close/")
+        self.assertEqual(close.status_code, 200)
+        self.assertEqual(close.json()["status"], "closed")
+
+    def test_single_batch_close_still_works(self):
+        """Regression guard: a guide in exactly one batch closes normally."""
+        guide_resp = self._create_guide()
+        guide_id = guide_resp.json()["id"]
+        client = self._auth(self.fat_token)
+
+        b = client.post(
+            "/api/v1/billing/batches/",
+            {"provider": self.provider.id},
+            format="json",
+        ).json()["id"]
+        add = client.patch(
+            f"/api/v1/billing/batches/{b}/",
+            {"guide_ids": [guide_id]},
+            format="json",
+        )
+        self.assertEqual(add.status_code, 200)
+        close = client.post(f"/api/v1/billing/batches/{b}/close/")
+        self.assertEqual(close.status_code, 200)
+        self.assertEqual(close.json()["status"], "closed")
 
 
 class RetornoParserTestCase(TenantTestCase):
