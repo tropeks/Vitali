@@ -7,6 +7,7 @@ from .models import (
     Appointment,
     ClinicalDocument,
     Encounter,
+    EncounterProcedure,
     MedicalHistory,
     Patient,
     PatientInsurance,
@@ -357,7 +358,20 @@ class EncounterSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "signed_at", "signed_by", "created_at", "updated_at"]
+        # status / signed_at / signed_by are sign-managed: they may ONLY change
+        # through the dedicated `sign` action (EncounterSigningService), never via
+        # a generic PATCH. Leaving `status` writable would let an emr.write client
+        # flip a signed encounter back to "open", mutate its procedures, and re-sign
+        # it — defeating the CFM signature-integrity write-gate the whole F-03
+        # feature relies on.
+        read_only_fields = [
+            "id",
+            "status",
+            "signed_at",
+            "signed_by",
+            "created_at",
+            "updated_at",
+        ]
 
 
 class PatientInsuranceSerializer(serializers.ModelSerializer):
@@ -377,6 +391,63 @@ class PatientInsuranceSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             "patient": {"read_only": True},  # set from URL, not body
         }
+
+
+class EncounterProcedureSerializer(serializers.ModelSerializer):
+    """
+    Procedimento (TUSS) de uma consulta. tuss_code é gravável por id;
+    detalhe (code/description) é somente leitura. unit_value é somente leitura
+    (dica de UX em cache — preço real resolvido em F-03 PR2, em apps.billing).
+    """
+
+    tuss_code_detail = serializers.SerializerMethodField()
+    performed_by_name = serializers.CharField(
+        source="performed_by.user.full_name", read_only=True, default=None
+    )
+
+    class Meta:
+        model = EncounterProcedure
+        fields = [
+            "id",
+            "encounter",
+            "tuss_code",
+            "tuss_code_detail",
+            "quantity",
+            "performed_by",
+            "performed_by_name",
+            "unit_value",
+            "notes",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "encounter",
+            "unit_value",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_tuss_code_detail(self, obj):
+        tc = obj.tuss_code
+        return {"id": tc.id, "code": tc.code, "description": tc.description}
+
+    def validate_quantity(self, value):
+        if value is None or value <= 0:
+            raise serializers.ValidationError("Quantidade deve ser maior que zero.")
+        return value
+
+    def validate(self, data):
+        # Object-level so the rule holds on PATCH too: a field-level
+        # validate_tuss_code() is skipped when tuss_code is absent from the
+        # payload, but it must still run whenever tuss_code IS supplied (create
+        # or update). PATCH of only quantity/notes (no tuss_code) is unaffected.
+        tuss_code = data.get("tuss_code")
+        if tuss_code is not None and not tuss_code.active:
+            raise serializers.ValidationError(
+                {"tuss_code": "Código TUSS inativo não pode ser usado em procedimento."}
+            )
+        return data
 
 
 class PrescriptionItemSerializer(serializers.ModelSerializer):

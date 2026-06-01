@@ -668,6 +668,70 @@ class AICIDSuggestion(models.Model):
         return f"CID10Suggest({self.encounter_id}, accepted={self.accepted_code or 'none'})"
 
 
+# ─── F-03: Encounter Procedures (auto-TISS PR1) ──────────────────────────────
+
+
+class EncounterProcedure(models.Model):
+    """
+    Procedimento (TUSS) capturado durante uma consulta clínica. Per-tenant.
+
+    Esta é a captura clínica do procedimento — NÃO a verdade de faturamento.
+    O preço é resolvido no momento de construção da guia (apps.billing, F-03 PR2),
+    por isso apps.emr nunca importa apps.billing. unit_value aqui é apenas uma
+    dica de UX em cache e fica nulo no PR1.
+
+    tuss_code aponta para core.TUSSCode (schema público/compartilhado): o
+    PostgreSQL não garante integridade referencial entre schemas, então a
+    proteção é apenas de camada de aplicação — o signal pre_delete
+    protect_tuss_code_deletion (ver apps/core/signals.py) bloqueia a exclusão.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    encounter = models.ForeignKey(Encounter, on_delete=models.CASCADE, related_name="procedures")
+    # FK to PUBLIC-schema TUSSCode from a TENANT-schema model. PROTECT is unusable
+    # here: Django's deletion Collector runs in the public schema and would query
+    # public.emr_encounterprocedure (which does not exist) → ProgrammingError 500
+    # BEFORE the pre_delete signal can raise a graceful ProtectedError. We use
+    # DO_NOTHING and rely on the protect_tuss_code_deletion pre_delete signal
+    # (apps/core/signals.py), which iterates tenant schemas and blocks deletion.
+    # NOTE: billing's TISSGuideItem.tuss_code / PriceTableItem.tuss_code still use
+    # native PROTECT and likely share this latent cross-schema crash — tracked as a
+    # separate pre-existing follow-up (see docs/plans/F03-AUTO-TISS.md), NOT in this PR.
+    tuss_code = models.ForeignKey(
+        "core.TUSSCode", on_delete=models.DO_NOTHING, related_name="encounter_procedures"
+    )
+    quantity = models.DecimalField(
+        "Quantidade",
+        max_digits=8,
+        decimal_places=2,
+        default=1,
+        validators=[MinValueValidator(Decimal("0.01"))],
+    )
+    performed_by = models.ForeignKey(
+        Professional,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    # CACHED UX HINT ONLY; NOT billing truth. Resolved at guide-build time in PR2
+    # (apps.billing). Left null in PR1.
+    unit_value = models.DecimalField(
+        "Valor unitário (R$)", max_digits=10, decimal_places=2, null=True, blank=True
+    )
+    notes = models.TextField("Observações", blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        verbose_name = "Procedimento da Consulta"
+        verbose_name_plural = "Procedimentos da Consulta"
+
+    def __str__(self):
+        return f"{self.tuss_code_id} × {self.quantity} — {self.encounter_id}"
+
+
 # ─── S-066: Appointment Cancellation Waitlist ─────────────────────────────────
 
 

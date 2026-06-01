@@ -17,6 +17,7 @@ from .models import (
     Appointment,
     ClinicalDocument,
     Encounter,
+    EncounterProcedure,
     Patient,
     PatientInsurance,
     Prescription,
@@ -31,6 +32,7 @@ from .serializers import (
     AppointmentSerializer,
     ClinicalDocumentSerializer,
     EncounterListSerializer,
+    EncounterProcedureSerializer,
     EncounterSerializer,
     MedicalHistorySerializer,
     PatientCreateSerializer,
@@ -525,6 +527,12 @@ class EncounterViewSet(AuditReadMixin, viewsets.ModelViewSet):
             return [IsAuthenticated(), HasPermission("emr.write")]
         if self.action == "destroy":
             return [IsAuthenticated(), HasPermission("admin")]
+        # Nested procedures: writes require emr.write, reads emr.read. Clinical
+        # capture is NOT gated behind the billing module by design.
+        if self.action in ("procedures", "procedure_detail"):
+            if self.request.method in ("POST", "PATCH", "PUT", "DELETE"):
+                return [IsAuthenticated(), HasPermission("emr.write")]
+            return [IsAuthenticated(), HasPermission("emr.read")]
         return super().get_permissions()
 
     def perform_create(self, serializer):
@@ -567,6 +575,87 @@ class EncounterViewSet(AuditReadMixin, viewsets.ModelViewSet):
         service = EncounterSigningService(requesting_user=request.user)
         service.sign(encounter)
         return Response(EncounterSerializer(encounter).data)
+
+    @staticmethod
+    def _encounter_not_open_response():
+        return Response(
+            {
+                "error": {
+                    "code": "ENCOUNTER_NOT_OPEN",
+                    "message": "Procedimentos só podem ser alterados em consultas abertas.",
+                }
+            },
+            status=status.HTTP_409_CONFLICT,
+        )
+
+    @action(detail=True, methods=["get", "post"], url_path="procedures")
+    def procedures(self, request, pk=None):
+        """
+        GET  /api/v1/encounters/{id}/procedures/  — list procedures (any status)
+        POST /api/v1/encounters/{id}/procedures/  — add a procedure (open only)
+        """
+        encounter = self.get_object()
+        if request.method == "GET":
+            qs = encounter.procedures.select_related("tuss_code", "performed_by__user")
+            return Response(EncounterProcedureSerializer(qs, many=True).data)
+        # POST — capture is allowed only while the encounter is open.
+        if encounter.status != "open":
+            return self._encounter_not_open_response()
+        serializer = EncounterProcedureSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        procedure = serializer.save(encounter=encounter)
+        log_audit(
+            request,
+            "encounter_procedure_create",
+            "EncounterProcedure",
+            procedure.id,
+            new_data={
+                "encounter": str(encounter.id),
+                "tuss_code": str(procedure.tuss_code_id),
+                "quantity": str(procedure.quantity),
+            },
+        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(
+        detail=True,
+        methods=["patch", "delete"],
+        url_path=r"procedures/(?P<proc_pk>[0-9a-f-]+)",
+    )
+    def procedure_detail(self, request, pk=None, proc_pk=None):
+        """
+        PATCH  /api/v1/encounters/{id}/procedures/{proc_id}/  — update (open only)
+        DELETE /api/v1/encounters/{id}/procedures/{proc_id}/  — remove (open only)
+        """
+        encounter = self.get_object()
+        try:
+            procedure = encounter.procedures.select_related("tuss_code").get(pk=proc_pk)
+        except EncounterProcedure.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        if encounter.status != "open":
+            return self._encounter_not_open_response()
+        if request.method == "DELETE":
+            proc_id = procedure.id
+            procedure.delete()
+            log_audit(
+                request,
+                "encounter_procedure_delete",
+                "EncounterProcedure",
+                proc_id,
+                old_data={"encounter": str(encounter.id)},
+            )
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        serializer = EncounterProcedureSerializer(procedure, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        log_audit(
+            request,
+            "encounter_procedure_update",
+            "EncounterProcedure",
+            procedure.id,
+            new_data={"quantity": str(procedure.quantity)},
+        )
+        return Response(serializer.data)
 
 
 class SOAPNoteViewSet(viewsets.ModelViewSet):
