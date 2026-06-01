@@ -1,6 +1,15 @@
 from django.contrib import admin
 
-from .models import Dispensation, DispensationLot, Drug, Material, StockItem, StockMovement
+from .models import (
+    Dispensation,
+    DispensationLot,
+    DoseRule,
+    Drug,
+    Material,
+    MedicationFormulary,
+    StockItem,
+    StockMovement,
+)
 
 
 @admin.register(Drug)
@@ -60,3 +69,63 @@ class DispensationAdmin(admin.ModelAdmin):
 
     def has_change_permission(self, request, obj=None):
         return False
+
+
+class DoseRuleInline(admin.TabularInline):
+    model = DoseRule
+    extra = 0
+    fields = [
+        "basis",
+        "age_min_days",
+        "age_max_days",
+        "weight_min_kg",
+        "weight_max_kg",
+        "dose_unit",
+        "min_per_kg",
+        "max_per_kg",
+        "min_per_dose",
+        "max_per_dose",
+        "absolute_max_dose",
+        "max_per_day",
+        "route",
+        "active",
+    ]
+
+
+@admin.register(MedicationFormulary)
+class MedicationFormularyAdmin(admin.ModelAdmin):
+    list_display = [
+        "drug",
+        "strength_value",
+        "strength_unit",
+        "route",
+        "is_injectable",
+        "is_high_alert",
+        "active",
+    ]
+    list_filter = ["route", "is_injectable", "is_high_alert", "active"]
+    search_fields = ["drug__name", "drug__generic_name"]
+    readonly_fields = ["id", "created_at", "updated_at"]
+    autocomplete_fields = ["drug"]
+    inlines = [DoseRuleInline]
+
+
+@admin.register(DoseRule)
+class DoseRuleAdmin(admin.ModelAdmin):
+    list_display = [
+        "formulary",
+        "basis",
+        "age_min_days",
+        "age_max_days",
+        "min_per_kg",
+        "max_per_kg",
+        "min_per_dose",
+        "max_per_dose",
+        "absolute_max_dose",
+        "max_per_day",
+        "dose_unit",
+        "active",
+    ]
+    list_filter = ["basis", "active"]
+    search_fields = ["formulary__drug__name", "notes"]
+    readonly_fields = ["id", "created_at", "updated_at"]

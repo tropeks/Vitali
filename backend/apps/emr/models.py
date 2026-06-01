@@ -10,6 +10,7 @@ from encrypted_model_fields.fields import (
     EncryptedTextField,
 )
 
+from apps.core.constants import DOSE_UNIT_CHOICES
 from apps.core.fields import EncryptedJSONField
 
 
@@ -526,6 +527,37 @@ class PrescriptionItem(models.Model):
     dosage_instructions = models.TextField(blank=True)
     notes = models.TextField(blank=True)
 
+    # ─── Dose-safety wedge PR A: structured dose fields ───────────────────────
+    # All nullable/blank: existing rows and non-formulary drugs are unaffected.
+    # These feed the deterministic dose engine in PR B; we do NOT parse free
+    # text (dosage_instructions stays untouched).
+    # dose_unit uses the shared apps.core.constants.DOSE_UNIT_CHOICES (mass units
+    # only) so it can never silently mismatch the formulary/rule units.
+    ROUTE_CHOICES = [
+        ("IV", "Intravenosa"),
+        ("IM", "Intramuscular"),
+        ("SC", "Subcutânea"),
+        ("PO", "Oral"),
+    ]
+
+    dose_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text=(
+            "Structured dose per single administration (for dose engine, PR B). "
+            "4 decimal places so sub-milligram/mcg microdoses don't truncate to 0."
+        ),
+    )
+    dose_unit = models.CharField(max_length=10, blank=True, choices=DOSE_UNIT_CHOICES)
+    route = models.CharField(max_length=4, blank=True, choices=ROUTE_CHOICES)
+    frequency_per_day = models.SmallIntegerField(
+        null=True,
+        blank=True,
+        help_text="Number of doses per day (for max-daily checks in PR B).",
+    )
+
     class Meta:
         ordering = ["id"]
 
@@ -580,8 +612,16 @@ class AISafetyAlert(models.Model):
     Tracks AI-generated drug safety alerts per prescription item.
     Created by the check_prescription_safety Celery task after LLM analysis.
 
-    unique_together on (prescription_item, alert_type) prevents duplicate alerts
-    if the task retries (idempotency).
+    unique_together on (prescription_item, alert_type, source) prevents duplicate
+    alerts if a check retries (idempotency).
+
+    The `source` field decouples the deterministic engine's verdict row from the
+    LLM explainer row. PR B's deterministic DoseChecker writes alert_type="dose"
+    with source="engine"; the existing LLM checker writes source="llm". Without
+    this split, a re-check via update_or_create() keyed on
+    (prescription_item, alert_type) would CLOBBER a previously acknowledged /
+    overridden alert (wiping override_reason / acknowledged_at). source="llm" is
+    the default for backward-compatibility with existing rows.
     """
 
     ALERT_TYPE_CHOICES = [
@@ -590,6 +630,11 @@ class AISafetyAlert(models.Model):
         ("dose", "Dose fora do intervalo"),
         ("contraindication", "Contraindicação"),
     ]
+
+    class Source(models.TextChoices):
+        LLM = "llm", "LLM (explicação)"
+        ENGINE = "engine", "Motor determinístico"
+
     SEVERITY_CHOICES = [
         ("caution", "Cautela"),
         ("contraindication", "Contraindicação"),
@@ -607,6 +652,12 @@ class AISafetyAlert(models.Model):
         PrescriptionItem, on_delete=models.CASCADE, related_name="safety_alerts"
     )
     alert_type = models.CharField(max_length=30, choices=ALERT_TYPE_CHOICES)
+    source = models.CharField(
+        max_length=10,
+        choices=Source.choices,
+        default=Source.LLM,
+        help_text="Which checker produced this row: 'llm' explainer or 'engine' verdict.",
+    )
     severity = models.CharField(max_length=20, choices=SEVERITY_CHOICES)
     message = models.TextField()
     recommendation = models.TextField(blank=True)
@@ -624,7 +675,7 @@ class AISafetyAlert(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
-        unique_together = [("prescription_item", "alert_type")]
+        unique_together = [("prescription_item", "alert_type", "source")]
         verbose_name = "AI Safety Alert"
         verbose_name_plural = "AI Safety Alerts"
 
