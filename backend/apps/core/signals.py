@@ -120,13 +120,18 @@ def register_audit_signals():
 
 @receiver(pre_delete, sender="core.TUSSCode")
 def protect_tuss_code_deletion(sender, instance, **kwargs):
-    """Block deletion of a TUSSCode that is referenced by billing data in any tenant."""
+    """Block deletion of a TUSSCode that is referenced by tenant data in any tenant.
+
+    Covers billing references (TISSGuideItem, PriceTableItem) and clinical capture
+    (emr.EncounterProcedure) — a TUSS code used by any of them cannot be hard-deleted.
+    """
     from django_tenants.utils import get_tenant_model, schema_context
 
     TenantModel = get_tenant_model()
     for tenant in TenantModel.objects.exclude(schema_name="public"):
         with schema_context(tenant.schema_name):
             from apps.billing.models import PriceTableItem, TISSGuideItem
+            from apps.emr.models import EncounterProcedure
 
             if TISSGuideItem.objects.filter(tuss_code=instance).exists():
                 raise ProtectedError(
@@ -137,6 +142,12 @@ def protect_tuss_code_deletion(sender, instance, **kwargs):
             if PriceTableItem.objects.filter(tuss_code=instance).exists():
                 raise ProtectedError(
                     f"TUSSCode {instance.code} is referenced by PriceTableItem in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+            if EncounterProcedure.objects.filter(tuss_code=instance).exists():
+                raise ProtectedError(
+                    f"TUSSCode {instance.code} is referenced by EncounterProcedure in "
                     f"schema '{tenant.schema_name}' and cannot be deleted.",
                     {instance},
                 )

@@ -7,6 +7,7 @@ from .models import (
     Appointment,
     ClinicalDocument,
     Encounter,
+    EncounterProcedure,
     MedicalHistory,
     Patient,
     PatientInsurance,
@@ -377,6 +378,58 @@ class PatientInsuranceSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             "patient": {"read_only": True},  # set from URL, not body
         }
+
+
+class EncounterProcedureSerializer(serializers.ModelSerializer):
+    """
+    Procedimento (TUSS) de uma consulta. tuss_code é gravável por id;
+    detalhe (code/description) é somente leitura. unit_value é somente leitura
+    (dica de UX em cache — preço real resolvido em F-03 PR2, em apps.billing).
+    """
+
+    tuss_code_detail = serializers.SerializerMethodField()
+    performed_by_name = serializers.CharField(
+        source="performed_by.user.full_name", read_only=True, default=None
+    )
+
+    class Meta:
+        model = EncounterProcedure
+        fields = [
+            "id",
+            "encounter",
+            "tuss_code",
+            "tuss_code_detail",
+            "quantity",
+            "performed_by",
+            "performed_by_name",
+            "unit_value",
+            "notes",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "encounter",
+            "unit_value",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_tuss_code_detail(self, obj):
+        tc = obj.tuss_code
+        return {"id": tc.id, "code": tc.code, "description": tc.description}
+
+    def validate_quantity(self, value):
+        if value is None or value <= 0:
+            raise serializers.ValidationError("Quantidade deve ser maior que zero.")
+        return value
+
+    def validate_tuss_code(self, value):
+        if value is not None and not value.active:
+            raise serializers.ValidationError(
+                "Código TUSS inativo não pode ser usado em procedimento."
+            )
+        return value
 
 
 class PrescriptionItemSerializer(serializers.ModelSerializer):
