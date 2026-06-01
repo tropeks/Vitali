@@ -73,17 +73,48 @@ class TestPrescriptionItemDoseFields(TenantTestCase):
             prescription=self.rx,
             drug=self.drug,
             quantity=Decimal("1"),
-            dose_amount=Decimal("10.500"),
+            dose_amount=Decimal("10.5000"),
             dose_unit="mg",
             route="IV",
             frequency_per_day=3,
         )
         item.refresh_from_db()
-        self.assertEqual(item.dose_amount, Decimal("10.500"))
+        self.assertEqual(item.dose_amount, Decimal("10.5000"))
         self.assertIsInstance(item.dose_amount, Decimal)
         self.assertEqual(item.dose_unit, "mg")
         self.assertEqual(item.route, "IV")
         self.assertEqual(item.frequency_per_day, 3)
+
+    def test_dose_amount_stores_four_decimals_without_truncation(self):
+        """
+        A sub-milligram microdose (e.g. 0.0625 mg) must round-trip at 4 decimal
+        places — at decimal_places=3 it would truncate toward 0 and lose safety
+        signal. dose_amount matches the rule-field precision (12,4).
+        """
+        item = PrescriptionItem.objects.create(
+            prescription=self.rx,
+            drug=self.drug,
+            quantity=Decimal("1"),
+            dose_amount=Decimal("0.0625"),
+            dose_unit="mcg",
+        )
+        item.refresh_from_db()
+        self.assertEqual(item.dose_amount, Decimal("0.0625"))
+        self.assertIsInstance(item.dose_amount, Decimal)
+
+    def test_dose_unit_rejects_non_choice(self):
+        """dose_unit shares the mass-only DOSE_UNIT_CHOICES; free text is rejected."""
+        from django.core.exceptions import ValidationError
+
+        item = PrescriptionItem(
+            prescription=self.rx,
+            drug=self.drug,
+            quantity=Decimal("1"),
+            dose_amount=Decimal("10.0000"),
+            dose_unit="milligrams",  # not a valid choice — only "mg"
+        )
+        with self.assertRaises(ValidationError):
+            item.full_clean()
 
 
 class TestAISafetyAlertSourceIdempotency(TenantTestCase):
@@ -217,3 +248,41 @@ class TestAISafetyAlertSourceMigrationRoundTrip(TenantTestCase):
             ("prescription_item", "alert_type", "source"),
             AISafetyAlert._meta.unique_together,
         )
+
+    def test_reverse_is_data_safe_with_engine_duplicates(self):
+        """
+        Fix 3: with both an llm and an engine dose row for the same
+        (prescription_item, alert_type), reversing emr 0018 must NOT crash on the
+        2-field unique restore — the reverse RunPython drops engine rows first.
+        """
+        rx = _make_prescription()
+        drug = Drug.objects.create(name="Reverse Drug", generic_name="revdrug")
+        item = PrescriptionItem.objects.create(prescription=rx, drug=drug, quantity=Decimal("1"))
+        AISafetyAlert.objects.create(
+            prescription_item=item,
+            alert_type="dose",
+            source=AISafetyAlert.Source.LLM,
+            severity="caution",
+            message="llm",
+        )
+        AISafetyAlert.objects.create(
+            prescription_item=item,
+            alert_type="dose",
+            source=AISafetyAlert.Source.ENGINE,
+            severity="contraindication",
+            message="engine",
+        )
+
+        # Reverse — must succeed (no duplicate-key IntegrityError).
+        executor = MigrationExecutor(connection)
+        executor.migrate([self.migrate_from])
+        executor.loader.build_graph()
+
+        # The engine row is gone; the llm row survives as the single row.
+        remaining = AISafetyAlert.objects.filter(prescription_item_id=item.pk, alert_type="dose")
+        self.assertEqual(remaining.count(), 1)
+
+        # Re-apply forward so the schema is restored for the rest of the session.
+        executor = MigrationExecutor(connection)
+        executor.migrate([self.migrate_to])
+        executor.loader.build_graph()

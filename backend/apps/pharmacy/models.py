@@ -9,8 +9,11 @@ S-028: Dispensation with FEFO lot selection
 import uuid
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.db.models import F
+
+from apps.core.constants import DOSE_UNIT_CHOICES, VOLUME_UNIT_CHOICES
 
 # ─── S-026: Catalog ───────────────────────────────────────────────────────────
 
@@ -312,7 +315,8 @@ class MedicationFormulary(models.Model):
     )
     strength_unit = models.CharField(
         max_length=10,
-        help_text="Strength unit, e.g. 'mg', 'mcg', 'mEq', 'unit', 'g'.",
+        choices=DOSE_UNIT_CHOICES,
+        help_text="Canonical mass unit (shared DOSE_UNIT_CHOICES): 'mg', 'mcg', 'mEq', 'unit', 'g'.",
     )
     volume_value = models.DecimalField(
         max_digits=10,
@@ -324,6 +328,7 @@ class MedicationFormulary(models.Model):
     volume_unit = models.CharField(
         max_length=10,
         blank=True,
+        choices=VOLUME_UNIT_CHOICES,
         help_text="Volume unit for injectables, e.g. 'mL' (strength is per this volume).",
     )
     route = models.CharField(
@@ -353,18 +358,30 @@ class DoseRule(models.Model):
     """
     A single dose-band rule for a formulary entry.
 
-    ONE shape handles BOTH pediatric weight-based (mg/kg) bands AND adult
-    fixed-range + absolute-max rules:
-      - basis="per_kg": dose computed per kilogram of body weight. The band may
-        be scoped by age and/or weight. max_per_dose remains an ABSOLUTE ceiling
-        in dose_unit (NOT per-kg) — it catches weight-entry typos that would
-        otherwise blow a per-kg calc past a safe absolute dose.
-      - basis="fixed": a fixed dose range independent of weight.
+    ONE shape handles BOTH pediatric weight-based bands AND adult fixed-range
+    rules, but the per-kg band and the absolute amounts are kept in SEPARATE,
+    unambiguous fields (no unit paradox):
 
-    PR A is pure schema: no clinical numbers are seeded. The deterministic
-    DoseChecker engine that consumes these rules is PR B (pending pharmacist
-    dose numbers). max_per_dose is the only NOT-NULL numeric field — the
-    mandatory absolute safety ceiling.
+      - ``dose_unit`` is an ABSOLUTE MASS unit ONLY (mg/mcg/mEq/unit/g) — NEVER
+        "mg/kg". A per-kg figure is expressed by ``basis="per_kg"`` + the per-kg
+        fields, whose unit is implicitly ``dose_unit`` *per kg*.
+
+      - basis="per_kg": the clinical band lives in ``min_per_kg`` / ``max_per_kg``
+        (the per-kg lower AND upper bounds). ``max_per_kg`` is the per-kg overdose
+        ceiling that was previously missing — a per-kg overdose under the absolute
+        cap used to pass silently.
+
+      - basis="fixed": the absolute band lives in ``min_per_dose`` /
+        ``max_per_dose`` (a weight-independent single-dose range).
+
+      - ``absolute_max_dose`` (NOT NULL) is the universal hard ceiling in
+        ``dose_unit``, ALWAYS enforced regardless of basis. For per_kg rules it
+        catches weight-entry typos (e.g. 70 kg typed 700 kg) that would otherwise
+        sail past the per-kg math; for fixed rules it is the cap.
+
+    Model-layer ``clean()`` enforces the per-basis invariants below; PR B's
+    deterministic DoseChecker relies on them. PR A is pure schema — no clinical
+    numbers are seeded.
     """
 
     class Basis(models.TextChoices):
@@ -382,11 +399,18 @@ class DoseRule(models.Model):
         choices=Basis.choices,
         help_text="per_kg = dose scales with body weight; fixed = weight-independent.",
     )
-    age_min_years = models.SmallIntegerField(
-        null=True, blank=True, help_text="Lower age bound (years), inclusive. Null = unbounded."
+    age_min_days = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Lower age bound in DAYS, inclusive. Null = unbounded. Days (not years) "
+            "so neonatal/infant bands don't all collapse to 0y (18y ≈ 6570 days)."
+        ),
     )
-    age_max_years = models.SmallIntegerField(
-        null=True, blank=True, help_text="Upper age bound (years), inclusive. Null = unbounded."
+    age_max_days = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Upper age bound in DAYS, inclusive. Null = unbounded. (18y ≈ 6570 days.)",
     )
     weight_min_kg = models.DecimalField(
         max_digits=6,
@@ -403,23 +427,56 @@ class DoseRule(models.Model):
         help_text="Upper weight bound (kg) for this band. Null = unbounded.",
     )
     dose_unit = models.CharField(
-        max_length=20,
-        help_text="Unit the dose figures are expressed in (e.g. 'mg', 'mg/kg').",
+        max_length=10,
+        choices=DOSE_UNIT_CHOICES,
+        help_text=(
+            "ABSOLUTE MASS unit for every numeric field here (shared DOSE_UNIT_CHOICES): "
+            "mg/mcg/mEq/unit/g. NEVER 'mg/kg' — per-kg fields are implicitly this unit per kg."
+        ),
     )
+    # ─── per_kg band (basis="per_kg") — unit is dose_unit PER KG ──────────────
+    min_per_kg = models.DecimalField(
+        max_digits=12,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text="Per-kg lower bound (in dose_unit per kg). Required when basis='per_kg'.",
+    )
+    max_per_kg = models.DecimalField(
+        max_digits=12,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text=(
+            "Per-kg UPPER bound (in dose_unit per kg). Required when basis='per_kg'. "
+            "This is the per-kg overdose ceiling — without it a per-kg overdose that "
+            "stays under absolute_max_dose would pass silently."
+        ),
+    )
+    # ─── fixed band (basis="fixed") — absolute amounts in dose_unit ───────────
     min_per_dose = models.DecimalField(
         max_digits=12,
         decimal_places=4,
         null=True,
         blank=True,
-        help_text="Minimum recommended single dose. Null = no lower bound.",
+        help_text="Absolute minimum single dose (dose_unit). Required when basis='fixed'.",
     )
     max_per_dose = models.DecimalField(
         max_digits=12,
         decimal_places=4,
+        null=True,
+        blank=True,
+        help_text="Absolute maximum single dose (dose_unit). Required when basis='fixed'.",
+    )
+    # ─── universal hard ceiling — ALWAYS enforced ─────────────────────────────
+    absolute_max_dose = models.DecimalField(
+        max_digits=12,
+        decimal_places=4,
         help_text=(
-            "MANDATORY absolute ceiling for a single administration, in dose_unit. "
-            "For basis='per_kg' this is still an ABSOLUTE cap (not per-kg) that catches "
-            "weight-entry typos which would otherwise push a per-kg calc past a safe dose."
+            "MANDATORY universal hard ceiling for a single administration, in dose_unit. "
+            "ALWAYS enforced regardless of basis. For basis='per_kg' it catches weight-entry "
+            "typos that would otherwise push the per-kg math past a safe absolute dose; for "
+            "basis='fixed' it is the absolute cap."
         ),
     )
     max_per_day = models.DecimalField(
@@ -427,7 +484,10 @@ class DoseRule(models.Model):
         decimal_places=4,
         null=True,
         blank=True,
-        help_text="Maximum cumulative dose per day (for max-daily checks in PR B). Null = none.",
+        help_text=(
+            "Absolute maximum cumulative dose per day, in dose_unit (for max-daily checks in "
+            "PR B). Null = none."
+        ),
     )
     route = models.CharField(
         max_length=4,
@@ -442,12 +502,58 @@ class DoseRule(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["formulary__drug__name", "age_min_years"]
+        ordering = ["formulary__drug__name", "age_min_days"]
         verbose_name = "Dose Rule"
         verbose_name_plural = "Dose Rules"
 
+    def clean(self):
+        """
+        Enforce the per-basis invariants PR B's engine depends on:
+
+          - absolute_max_dose is always required and must be > 0.
+          - basis="per_kg" requires both min_per_kg and max_per_kg, with
+            max_per_kg >= min_per_kg.
+          - basis="fixed" requires both min_per_dose and max_per_dose, with
+            max_per_dose >= min_per_dose.
+        """
+        errors = {}
+
+        if self.absolute_max_dose is None:
+            errors["absolute_max_dose"] = "absolute_max_dose is mandatory (the universal ceiling)."
+        elif self.absolute_max_dose <= 0:
+            errors["absolute_max_dose"] = "absolute_max_dose must be greater than 0."
+
+        if self.basis == self.Basis.PER_KG:
+            if self.min_per_kg is None:
+                errors["min_per_kg"] = "min_per_kg is required when basis='per_kg'."
+            if self.max_per_kg is None:
+                errors["max_per_kg"] = "max_per_kg is required when basis='per_kg'."
+            if (
+                self.min_per_kg is not None
+                and self.max_per_kg is not None
+                and self.max_per_kg < self.min_per_kg
+            ):
+                errors["max_per_kg"] = "max_per_kg must be >= min_per_kg."
+        elif self.basis == self.Basis.FIXED:
+            if self.min_per_dose is None:
+                errors["min_per_dose"] = "min_per_dose is required when basis='fixed'."
+            if self.max_per_dose is None:
+                errors["max_per_dose"] = "max_per_dose is required when basis='fixed'."
+            if (
+                self.min_per_dose is not None
+                and self.max_per_dose is not None
+                and self.max_per_dose < self.min_per_dose
+            ):
+                errors["max_per_dose"] = "max_per_dose must be >= min_per_dose."
+
+        if errors:
+            raise ValidationError(errors)
+
     def __str__(self):
-        return f"{self.formulary.drug} — {self.get_basis_display()} (≤ {self.max_per_dose} {self.dose_unit})"
+        return (
+            f"{self.formulary.drug} — {self.get_basis_display()} "
+            f"(≤ {self.absolute_max_dose} {self.dose_unit})"
+        )
 
 
 # ─── S-042: Purchase Orders ───────────────────────────────────────────────────

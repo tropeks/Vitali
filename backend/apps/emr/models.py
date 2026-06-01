@@ -10,6 +10,7 @@ from encrypted_model_fields.fields import (
     EncryptedTextField,
 )
 
+from apps.core.constants import DOSE_UNIT_CHOICES
 from apps.core.fields import EncryptedJSONField
 
 
@@ -530,14 +531,8 @@ class PrescriptionItem(models.Model):
     # All nullable/blank: existing rows and non-formulary drugs are unaffected.
     # These feed the deterministic dose engine in PR B; we do NOT parse free
     # text (dosage_instructions stays untouched).
-    DOSE_UNIT_CHOICES = [
-        ("mg", "mg"),
-        ("mcg", "mcg"),
-        ("mEq", "mEq"),
-        ("unit", "unit"),
-        ("mL", "mL"),
-        ("g", "g"),
-    ]
+    # dose_unit uses the shared apps.core.constants.DOSE_UNIT_CHOICES (mass units
+    # only) so it can never silently mismatch the formulary/rule units.
     ROUTE_CHOICES = [
         ("IV", "Intravenosa"),
         ("IM", "Intramuscular"),
@@ -546,11 +541,14 @@ class PrescriptionItem(models.Model):
     ]
 
     dose_amount = models.DecimalField(
-        max_digits=10,
-        decimal_places=3,
+        max_digits=12,
+        decimal_places=4,
         null=True,
         blank=True,
-        help_text="Structured dose per single administration (for dose engine, PR B).",
+        help_text=(
+            "Structured dose per single administration (for dose engine, PR B). "
+            "4 decimal places so sub-milligram/mcg microdoses don't truncate to 0."
+        ),
     )
     dose_unit = models.CharField(max_length=10, blank=True, choices=DOSE_UNIT_CHOICES)
     route = models.CharField(max_length=4, blank=True, choices=ROUTE_CHOICES)

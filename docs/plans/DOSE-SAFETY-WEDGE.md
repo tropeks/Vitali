@@ -26,12 +26,32 @@ critical gaps, and the open product/clinical decisions.
   Holds canonical strength (value+unit), optional volume (per-mL injectables),
   route, `is_injectable`, `is_high_alert`.
 - **`pharmacy.DoseRule`** (FK→`MedicationFormulary`): one shape for BOTH pediatric
-  `per_kg` bands AND adult `fixed` range+max. `max_per_dose` is the only mandatory
-  numeric field — the absolute ceiling (see §3).
+  `per_kg` bands AND adult `fixed` range, but the per-kg band and the absolute
+  amounts live in SEPARATE, unambiguous fields (no unit paradox):
+  - `dose_unit` = an ABSOLUTE MASS unit ONLY (mg/mcg/mEq/unit/g) — NEVER "mg/kg".
+    A per-kg figure is `basis="per_kg"` + the per-kg fields, whose unit is
+    implicitly `dose_unit` per kg.
+  - `basis="per_kg"`: `min_per_kg` / `max_per_kg` (Decimal(12,4), nullable) — the
+    clinical per-kg band. `max_per_kg` is the per-kg overdose ceiling that was
+    previously missing.
+  - `basis="fixed"`: `min_per_dose` / `max_per_dose` (Decimal(12,4), nullable) —
+    the absolute single-dose band.
+  - `absolute_max_dose` (Decimal(12,4), **NOT NULL**) — the universal hard
+    ceiling in `dose_unit`, ALWAYS enforced regardless of basis (see §3).
+  - `max_per_day` (Decimal(12,4), nullable, absolute in `dose_unit`).
+  - Age bands are `age_min_days` / `age_max_days` (IntegerField, in **DAYS** not
+    years, so neonatal/infant bands don't collapse to 0y; 18y ≈ 6570 days).
+  - A model `clean()` enforces: `basis="per_kg"` requires both `min_per_kg` and
+    `max_per_kg` (with `max_per_kg ≥ min_per_kg`); `basis="fixed"` requires both
+    `min_per_dose` and `max_per_dose` (with `max_per_dose ≥ min_per_dose`);
+    `absolute_max_dose` is always required and `> 0`. PR B's engine relies on
+    these invariants.
 - **`emr.PrescriptionItem`** gains structured dose fields (`dose_amount`,
   `dose_unit`, `route`, `frequency_per_day`) — all nullable/blank; existing rows
   and non-formulary drugs are unaffected. **No free-text parsing** of
-  `dosage_instructions`.
+  `dosage_instructions`. `dose_amount` is `Decimal(12,4)` (matches the rule
+  precision so sub-mg/mcg microdoses don't truncate to 0); `dose_unit` uses the
+  shared `DOSE_UNIT_CHOICES` (lock #7).
 - **`emr.AISafetyAlert`** gains a `source` field and `unique_together` becomes
   `(prescription_item, alert_type, source)` — the critical idempotency fix (§4,
   gap #1). **Fixed in PR A.**
@@ -68,7 +88,13 @@ critical gaps, and the open product/clinical decisions.
    `dose_amount`/`dose_unit`/`route`/`frequency_per_day`. We never parse
    `dosage_instructions` free text to derive a dose.
 3. **Single `DoseRule` basis schema** handling `per_kg` and `fixed` in one shape,
-   with a **mandatory absolute `max_per_dose`** (§3).
+   with separate per-kg / fixed bands and a **mandatory universal
+   `absolute_max_dose`** ceiling (§3).
+7. **One canonical `DOSE_UNIT_CHOICES`** (mass units only — mg/mcg/mEq/unit/g, no
+   "mg/kg") lives in `apps/core/constants.py` (public/shared schema, imported by
+   both emr & pharmacy). `PrescriptionItem.dose_unit`,
+   `MedicationFormulary.strength_unit`, and `DoseRule.dose_unit` all point at it,
+   so "milligrams" vs "mg" can't silently mismatch at the DB level.
 4. **Deterministic engine authoritative; LLM explains only.** The `DoseChecker`
    verdict (`source="engine"`) is the gate decision. The LLM (`source="llm"`)
    only produces a human-readable explanation; it never decides the gate.
@@ -92,17 +118,23 @@ critical gaps, and the open product/clinical decisions.
 
 ---
 
-## 3. The mandatory absolute `max_per_dose`
+## 3. The mandatory universal `absolute_max_dose`
 
-`DoseRule.max_per_dose` is **NOT NULL** — the only required numeric field on the
-rule. It is the absolute single-dose ceiling expressed in `dose_unit`.
+`DoseRule.absolute_max_dose` is **NOT NULL** — the only required numeric field on
+the rule. It is the universal hard single-dose ceiling expressed in `dose_unit`
+(an absolute mass unit), **always enforced regardless of basis**.
 
-For `basis="per_kg"` rules it is **still an absolute cap, not a per-kg figure.**
-This is deliberate: a per-kg calculation multiplies by patient weight, so a
-**weight-entry typo** (e.g. 70 kg typed as 700 kg, or a kg/lb mixup) would
-otherwise sail past a purely per-kg check and produce a lethal dose. The
-absolute ceiling catches that class of error regardless of the per-kg math.
-(See gap #4.)
+The clinical bands are separate and per-basis: `per_kg` rules carry the per-kg
+band in `min_per_kg` / `max_per_kg`; `fixed` rules carry the absolute band in
+`min_per_dose` / `max_per_dose`. `max_per_kg` is the per-kg overdose ceiling —
+without it, a per-kg overdose that still sits under the absolute cap would pass
+silently (the original FATAL hole).
+
+For `basis="per_kg"` rules `absolute_max_dose` is **an absolute cap, not a per-kg
+figure.** This is deliberate: a per-kg calculation multiplies by patient weight,
+so a **weight-entry typo** (e.g. 70 kg typed as 700 kg, or a kg/lb mixup) would
+otherwise sail past the per-kg band and produce a lethal dose. The absolute
+ceiling catches that class of error regardless of the per-kg math. (See gap #4.)
 
 ---
 
@@ -122,9 +154,9 @@ absolute ceiling catches that class of error regardless of the per-kg math.
    (advisory), never a silent wrong comparison.
 3. **Max-daily — PR B.** `frequency_per_day × dose_amount` vs
    `DoseRule.max_per_day`. Captured in the schema (PR A) but enforced in PR B.
-4. **Weight-typo absolute floor — PR B.** The absolute `max_per_dose` ceiling on
-   `per_kg` rules (see §3) is what catches weight-entry typos. The field exists in
-   PR A; the engine that enforces it is PR B.
+4. **Weight-typo absolute floor — PR B.** The universal `absolute_max_dose`
+   ceiling on `per_kg` rules (see §3) is what catches weight-entry typos. The
+   field exists in PR A; the engine that enforces it is PR B.
 
 ---
 

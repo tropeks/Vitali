@@ -32,7 +32,14 @@ class Migration(migrations.Migration):
                 (
                     "strength_unit",
                     models.CharField(
-                        help_text="Strength unit, e.g. 'mg', 'mcg', 'mEq', 'unit', 'g'.",
+                        choices=[
+                            ("mg", "mg"),
+                            ("mcg", "mcg"),
+                            ("mEq", "mEq"),
+                            ("unit", "unit"),
+                            ("g", "g"),
+                        ],
+                        help_text="Canonical mass unit (shared DOSE_UNIT_CHOICES): 'mg', 'mcg', 'mEq', 'unit', 'g'.",
                         max_length=10,
                     ),
                 ),
@@ -50,6 +57,7 @@ class Migration(migrations.Migration):
                     "volume_unit",
                     models.CharField(
                         blank=True,
+                        choices=[("mL", "mL")],
                         help_text="Volume unit for injectables, e.g. 'mL' (strength is per this volume).",
                         max_length=10,
                     ),
@@ -112,18 +120,18 @@ class Migration(migrations.Migration):
                     ),
                 ),
                 (
-                    "age_min_years",
-                    models.SmallIntegerField(
+                    "age_min_days",
+                    models.IntegerField(
                         blank=True,
-                        help_text="Lower age bound (years), inclusive. Null = unbounded.",
+                        help_text="Lower age bound in DAYS, inclusive. Null = unbounded. Days (not years) so neonatal/infant bands don't all collapse to 0y (18y ≈ 6570 days).",
                         null=True,
                     ),
                 ),
                 (
-                    "age_max_years",
-                    models.SmallIntegerField(
+                    "age_max_days",
+                    models.IntegerField(
                         blank=True,
-                        help_text="Upper age bound (years), inclusive. Null = unbounded.",
+                        help_text="Upper age bound in DAYS, inclusive. Null = unbounded. (18y ≈ 6570 days.)",
                         null=True,
                     ),
                 ),
@@ -150,8 +158,35 @@ class Migration(migrations.Migration):
                 (
                     "dose_unit",
                     models.CharField(
-                        help_text="Unit the dose figures are expressed in (e.g. 'mg', 'mg/kg').",
-                        max_length=20,
+                        choices=[
+                            ("mg", "mg"),
+                            ("mcg", "mcg"),
+                            ("mEq", "mEq"),
+                            ("unit", "unit"),
+                            ("g", "g"),
+                        ],
+                        help_text="ABSOLUTE MASS unit for every numeric field here (shared DOSE_UNIT_CHOICES): mg/mcg/mEq/unit/g. NEVER 'mg/kg' — per-kg fields are implicitly this unit per kg.",
+                        max_length=10,
+                    ),
+                ),
+                (
+                    "min_per_kg",
+                    models.DecimalField(
+                        blank=True,
+                        decimal_places=4,
+                        help_text="Per-kg lower bound (in dose_unit per kg). Required when basis='per_kg'.",
+                        max_digits=12,
+                        null=True,
+                    ),
+                ),
+                (
+                    "max_per_kg",
+                    models.DecimalField(
+                        blank=True,
+                        decimal_places=4,
+                        help_text="Per-kg UPPER bound (in dose_unit per kg). Required when basis='per_kg'. This is the per-kg overdose ceiling — without it a per-kg overdose that stays under absolute_max_dose would pass silently.",
+                        max_digits=12,
+                        null=True,
                     ),
                 ),
                 (
@@ -159,7 +194,7 @@ class Migration(migrations.Migration):
                     models.DecimalField(
                         blank=True,
                         decimal_places=4,
-                        help_text="Minimum recommended single dose. Null = no lower bound.",
+                        help_text="Absolute minimum single dose (dose_unit). Required when basis='fixed'.",
                         max_digits=12,
                         null=True,
                     ),
@@ -167,8 +202,18 @@ class Migration(migrations.Migration):
                 (
                     "max_per_dose",
                     models.DecimalField(
+                        blank=True,
                         decimal_places=4,
-                        help_text="MANDATORY absolute ceiling for a single administration, in dose_unit. For basis='per_kg' this is still an ABSOLUTE cap (not per-kg) that catches weight-entry typos which would otherwise push a per-kg calc past a safe dose.",
+                        help_text="Absolute maximum single dose (dose_unit). Required when basis='fixed'.",
+                        max_digits=12,
+                        null=True,
+                    ),
+                ),
+                (
+                    "absolute_max_dose",
+                    models.DecimalField(
+                        decimal_places=4,
+                        help_text="MANDATORY universal hard ceiling for a single administration, in dose_unit. ALWAYS enforced regardless of basis. For basis='per_kg' it catches weight-entry typos that would otherwise push the per-kg math past a safe absolute dose; for basis='fixed' it is the absolute cap.",
                         max_digits=12,
                     ),
                 ),
@@ -177,7 +222,7 @@ class Migration(migrations.Migration):
                     models.DecimalField(
                         blank=True,
                         decimal_places=4,
-                        help_text="Maximum cumulative dose per day (for max-daily checks in PR B). Null = none.",
+                        help_text="Absolute maximum cumulative dose per day, in dose_unit (for max-daily checks in PR B). Null = none.",
                         max_digits=12,
                         null=True,
                     ),
@@ -212,7 +257,7 @@ class Migration(migrations.Migration):
             options={
                 "verbose_name": "Dose Rule",
                 "verbose_name_plural": "Dose Rules",
-                "ordering": ["formulary__drug__name", "age_min_years"],
+                "ordering": ["formulary__drug__name", "age_min_days"],
             },
         ),
     ]

@@ -3,6 +3,27 @@
 from django.db import migrations, models
 
 
+def _noop(apps, schema_editor):
+    """Forward: nothing — the AddField default backfills source='llm'."""
+
+
+def _drop_engine_rows_on_reverse(apps, schema_editor):
+    """
+    REVERSE-only data safety.
+
+    Forward is a no-op. On REVERSE (downgrade), this runs BEFORE the `source`
+    column is dropped and BEFORE unique_together is restored to
+    (prescription_item, alert_type). Once PR B's deterministic engine has written
+    source="engine" rows, a (prescription_item, alert_type) pair can hold TWO rows
+    (one source="llm", one source="engine"). Dropping `source` + restoring the
+    2-field unique_together would then crash with an IntegrityError on those
+    duplicates. We delete the source="engine" rows first so the legacy LLM row
+    survives as the single row per (prescription_item, alert_type).
+    """
+    AISafetyAlert = apps.get_model("emr", "AISafetyAlert")
+    AISafetyAlert.objects.filter(source="engine").delete()
+
+
 class Migration(migrations.Migration):
     dependencies = [
         ("emr", "0017_encounterprocedure"),
@@ -23,14 +44,18 @@ class Migration(migrations.Migration):
                 max_length=10,
             ),
         ),
+        # Reverse-only cleanup: on downgrade, drop engine-sourced rows BEFORE the
+        # source column is dropped / 2-field unique_together is restored, so the
+        # reverse can't hit a duplicate-key IntegrityError. Forward = no-op.
+        migrations.RunPython(_noop, _drop_engine_rows_on_reverse),
         migrations.AddField(
             model_name="prescriptionitem",
             name="dose_amount",
             field=models.DecimalField(
                 blank=True,
-                decimal_places=3,
-                help_text="Structured dose per single administration (for dose engine, PR B).",
-                max_digits=10,
+                decimal_places=4,
+                help_text="Structured dose per single administration (for dose engine, PR B). 4 decimal places so sub-milligram/mcg microdoses don't truncate to 0.",
+                max_digits=12,
                 null=True,
             ),
         ),
@@ -44,7 +69,6 @@ class Migration(migrations.Migration):
                     ("mcg", "mcg"),
                     ("mEq", "mEq"),
                     ("unit", "unit"),
-                    ("mL", "mL"),
                     ("g", "g"),
                 ],
                 max_length=10,
