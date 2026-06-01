@@ -27,9 +27,18 @@ def sync_orthanc_studies_task():
     No-ops when ORTHANC_URL is unset. Transient Orthanc errors are logged and
     swallowed (retried on the next scheduled tick).
     """
+    base = {
+        "scanned": 0,
+        "matched": 0,
+        "skipped": 0,
+        "ambiguous_skipped": 0,
+        "error_skipped": 0,
+        "lock_skipped": False,
+    }
+
     if not getattr(settings, "ORTHANC_URL", ""):
         logger.debug("imaging.sync_orthanc_studies: ORTHANC_URL empty — feature inert")
-        return {"scanned": 0, "matched": 0, "skipped": 0, "inert": True}
+        return {**base, "inert": True}
 
     try:
         summary = sync_orthanc_studies()
@@ -38,7 +47,7 @@ def sync_orthanc_studies_task():
             "imaging.sync_orthanc_studies: Orthanc unreachable this tick — will retry",
             exc_info=True,
         )
-        return {"scanned": 0, "matched": 0, "skipped": 0, "error": "orthanc_unreachable"}
+        return {**base, "error": "orthanc_unreachable"}
 
     logger.info("imaging.sync_orthanc_studies: %s", summary)
     return summary

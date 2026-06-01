@@ -20,11 +20,23 @@ from apps.core.models import Tenant
 from apps.emr.models import Patient
 from apps.imaging.models import DicomStudy
 from apps.imaging.services import orthanc_sync
-from apps.imaging.services.orthanc_client import OrthancClient
+from apps.imaging.services.orthanc_client import OrthancClient, OrthancError
 from apps.test_utils import TenantTestCase
 
 UID_CT = "1.2.840.113619.2.55.3.604688119.1234567890.001"
 ACC_CT = "ACC-2026-001"
+
+
+def _summary(*, scanned=0, matched=0, skipped=0, ambiguous=0, errored=0, locked=False):
+    """Build the full per-run summary dict for exact-equality assertions."""
+    return {
+        "scanned": scanned,
+        "matched": matched,
+        "skipped": skipped,
+        "ambiguous_skipped": ambiguous,
+        "error_skipped": errored,
+        "lock_skipped": locked,
+    }
 
 
 def _study_payload(uid, accession, n_series=3, n_instances=240):
@@ -40,10 +52,12 @@ def _study_payload(uid, accession, n_series=3, n_instances=240):
 class FakeOrthancClient(OrthancClient):
     """In-memory stand-in: serves canned changes pages + study payloads."""
 
-    def __init__(self, *, changes, studies):
+    def __init__(self, *, changes, studies, raises=None):
         # Deliberately skip super().__init__ — no settings/network needed.
         self._changes = changes  # list of pages: {"Changes":[...],"Last":int,"Done":bool}
         self._studies = studies  # {orthanc_id: {"study":..., "statistics":...}}
+        # orthanc_ids whose get_study should raise OrthancError (poison pill).
+        self._raises = set(raises or ())
         self.get_changes_calls = 0
 
     def get_changes(self, since, limit=100):
@@ -56,9 +70,13 @@ class FakeOrthancClient(OrthancClient):
         return {"Changes": [], "Last": since, "Done": True}
 
     def get_study(self, orthanc_id):
+        if orthanc_id in self._raises:
+            raise OrthancError(f"simulated 404 for {orthanc_id}")
         return self._studies[orthanc_id]["study"]
 
     def get_study_statistics(self, orthanc_id):
+        if orthanc_id in self._raises:
+            raise OrthancError(f"simulated 404 for {orthanc_id}")
         return self._studies[orthanc_id]["statistics"]
 
 
@@ -98,7 +116,7 @@ class OrthancSyncTest(TenantTestCase):
         )
         summary = orthanc_sync.sync_orthanc_studies(client=client)
 
-        self.assertEqual(summary, {"scanned": 1, "matched": 1, "skipped": 0})
+        self.assertEqual(summary, _summary(scanned=1, matched=1))
         self.ct_study.refresh_from_db()
         self.assertEqual(self.ct_study.orthanc_study_id, "orth-1")
         self.assertEqual(self.ct_study.number_of_series, 4)
@@ -137,7 +155,7 @@ class OrthancSyncTest(TenantTestCase):
         )
         summary = orthanc_sync.sync_orthanc_studies(client=client)
 
-        self.assertEqual(summary, {"scanned": 1, "matched": 0, "skipped": 1})
+        self.assertEqual(summary, _summary(scanned=1, skipped=1))
         self.assertEqual(DicomStudy.objects.count(), before)
         self.ct_study.refresh_from_db()
         self.assertEqual(self.ct_study.orthanc_study_id, "")
@@ -159,7 +177,7 @@ class OrthancSyncTest(TenantTestCase):
             studies={"orth-1": _study_payload(UID_CT, "")},
         )
         summary = orthanc_sync.sync_orthanc_studies(client=client)
-        self.assertEqual(summary, {"scanned": 0, "matched": 0, "skipped": 0})
+        self.assertEqual(summary, _summary())
         self.ct_study.refresh_from_db()
         self.assertEqual(self.ct_study.orthanc_study_id, "")
 
@@ -179,8 +197,85 @@ class OrthancSyncTest(TenantTestCase):
 
         # Second run resumes from cursor=1; FakeClient returns no new changes.
         second = orthanc_sync.sync_orthanc_studies(client=client)
-        self.assertEqual(second, {"scanned": 0, "matched": 0, "skipped": 0})
+        self.assertEqual(second, _summary())
         self.assertEqual(cache.get(orthanc_sync.CURSOR_CACHE_KEY), 1)
+
+    def test_poison_pill_study_skipped_run_continues_cursor_advances(self):
+        """A deleted/unfetchable study (OrthancError on get_study) must not abort
+        the run: it is counted as error_skipped, the cursor advances past it, and
+        later changes in the same feed are still processed."""
+        client = self._client(
+            changes=[
+                {
+                    "Changes": [
+                        # Seq 1: study was deleted after the change was emitted.
+                        {"Seq": 1, "ChangeType": "StableStudy", "ID": "orth-gone"},
+                        # Seq 2: a healthy study that matches our UID row.
+                        {"Seq": 2, "ChangeType": "StableStudy", "ID": "orth-1"},
+                    ],
+                    "Last": 2,
+                    "Done": True,
+                }
+            ],
+            studies={"orth-1": _study_payload(UID_CT, "", n_series=2, n_instances=50)},
+        )
+        client._raises = {"orth-gone"}
+
+        summary = orthanc_sync.sync_orthanc_studies(client=client)
+
+        # Both scanned; one errored, one matched; run did not abort.
+        self.assertEqual(summary, _summary(scanned=2, matched=1, errored=1))
+        self.ct_study.refresh_from_db()
+        self.assertEqual(self.ct_study.orthanc_study_id, "orth-1")
+        # Cursor advanced past BOTH changes (including the poison pill at Seq 1).
+        self.assertEqual(cache.get(orthanc_sync.CURSOR_CACHE_KEY), 2)
+
+    def test_lock_held_returns_lock_skipped_without_touching_cursor(self):
+        """When another run holds the lock, the call returns lock_skipped and
+        never reads/advances the cursor or calls the client."""
+        cache.set(orthanc_sync.CURSOR_CACHE_KEY, 7)
+        # Simulate a concurrent run already holding the single-flight lock.
+        cache.add(orthanc_sync.SYNC_LOCK_KEY, "1", orthanc_sync.SYNC_LOCK_TTL)
+        try:
+            client = self._client(
+                changes=[
+                    {
+                        "Changes": [{"Seq": 8, "ChangeType": "StableStudy", "ID": "orth-1"}],
+                        "Last": 8,
+                        "Done": True,
+                    }
+                ],
+                studies={"orth-1": _study_payload(UID_CT, "")},
+            )
+            summary = orthanc_sync.sync_orthanc_studies(client=client)
+
+            self.assertEqual(summary, _summary(locked=True))
+            # Client was never consulted and cursor is untouched.
+            self.assertEqual(client.get_changes_calls, 0)
+            self.assertEqual(cache.get(orthanc_sync.CURSOR_CACHE_KEY), 7)
+            self.ct_study.refresh_from_db()
+            self.assertEqual(self.ct_study.orthanc_study_id, "")
+        finally:
+            cache.delete(orthanc_sync.SYNC_LOCK_KEY)
+
+    def test_lock_released_after_run_allows_next_run(self):
+        """The lock is released in a finally, so a subsequent run proceeds."""
+        client = self._client(
+            changes=[
+                {
+                    "Changes": [{"Seq": 1, "ChangeType": "StableStudy", "ID": "orth-1"}],
+                    "Last": 1,
+                    "Done": True,
+                }
+            ],
+            studies={"orth-1": _study_payload(UID_CT, "")},
+        )
+        orthanc_sync.sync_orthanc_studies(client=client)
+        # Lock must be free again.
+        self.assertIsNone(cache.get(orthanc_sync.SYNC_LOCK_KEY))
+        # A second run is not lock-skipped (it just finds no new changes).
+        second = orthanc_sync.sync_orthanc_studies(client=client)
+        self.assertFalse(second["lock_skipped"])
 
 
 class OrthancSyncMultiTenantTest(TenantTestCase):
@@ -247,6 +342,83 @@ class OrthancSyncMultiTenantTest(TenantTestCase):
             # B has no studies → the fan-out visited it but found nothing to
             # update, proving only the matching tenant (A) was touched.
             self.assertEqual(DicomStudy.objects.count(), 0)
+
+    def test_uid_match_short_circuits_to_single_tenant(self):
+        """UID is globally unique: the first matching tenant is updated and the
+        scan stops. Only tenant A (which holds the UID row) is linked; empty B
+        is untouched, and the matched count is exactly 1."""
+        client = FakeOrthancClient(
+            changes=[
+                {
+                    "Changes": [{"Seq": 1, "ChangeType": "StableStudy", "ID": "orth-1"}],
+                    "Last": 1,
+                    "Done": True,
+                }
+            ],
+            studies={"orth-1": _study_payload(UID_CT, "")},  # UID only, no accession
+        )
+        with patch("apps.core.tenancy.connection") as conn:
+            conn.schema_name = "public"
+            summary = orthanc_sync.sync_orthanc_studies(client=client)
+
+        self.assertEqual(summary["matched"], 1)
+        self.assertEqual(summary["ambiguous_skipped"], 0)
+        with schema_context(self.schema_a):
+            self.study_a.refresh_from_db()
+            self.assertEqual(self.study_a.orthanc_study_id, "orth-1")
+        with schema_context(self.tenant_b.schema_name):
+            self.assertEqual(DicomStudy.objects.count(), 0)
+
+
+class OrthancSyncAccessionAmbiguityTest(TenantTestCase):
+    """Cross-tenant PHI-leak guard: an accession that collides across two
+    clinics (with NO UID match anywhere) must update NEITHER tenant.
+
+    The tenant fan-out is mocked rather than backed by two real schemas with
+    rows: FastTenantTestCase leaves deferred FK trigger events on a populated
+    2nd schema that block DROP SCHEMA in tearDown. Mocking the iteration tests
+    the ambiguity decision directly and avoids the trigger problem.
+    """
+
+    def setUp(self):
+        cache.delete(orthanc_sync.CURSOR_CACHE_KEY)
+
+    def tearDown(self):
+        cache.delete(orthanc_sync.CURSOR_CACHE_KEY)
+
+    def test_ambiguous_accession_across_tenants_updates_neither(self):
+        client = FakeOrthancClient(
+            changes=[
+                {
+                    "Changes": [{"Seq": 3, "ChangeType": "StableStudy", "ID": "orth-amb"}],
+                    "Last": 3,
+                    "Done": True,
+                }
+            ],
+            # No UID match anywhere; both tenants carry the SAME accession.
+            studies={"orth-amb": _study_payload("9.9.9.NO.SUCH.UID", ACC_CT)},
+        )
+
+        def fake_fan_out(callback, *, logger, operation):
+            # UID scan finds nothing in any tenant; accession scan finds the
+            # colliding accession in BOTH tenant schemas → 2 matches → ambiguous.
+            if "uid" in operation:
+                return [None, None]
+            if "accession scan" in operation:
+                return ["clinic_a", "clinic_b"]
+            # An apply pass must never run for an ambiguous accession.
+            raise AssertionError(f"unexpected fan-out pass: {operation}")
+
+        with patch(
+            "apps.imaging.services.orthanc_sync.for_each_tenant_schema",
+            side_effect=fake_fan_out,
+        ):
+            summary = orthanc_sync.sync_orthanc_studies(client=client)
+
+        # Ambiguous: nothing matched, nothing written, counted as ambiguous.
+        self.assertEqual(summary, _summary(scanned=1, ambiguous=1))
+        # Cursor still advances past the ambiguous (processed) change.
+        self.assertEqual(cache.get(orthanc_sync.CURSOR_CACHE_KEY), 3)
 
 
 class OrthancTaskInertTest(TenantTestCase):
