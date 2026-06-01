@@ -42,6 +42,15 @@ logger = logging.getLogger(__name__)
 # boundary comparison. Boundary (== max / == min) is ALLOWED (see check()).
 _QUANT = Decimal("0.0001")
 
+# Units grouped by physical dimension. A mismatch WITHIN one family is a
+# same-dimension off-by-1000 confusion (mg↔mcg↔g, mL↔L) and MUST hard-block.
+# A cross-family mismatch (e.g. mL vs mg) is incomparable, cannot be a 1000x
+# typo, and degrades to an advisory rather than flooding the gate.
+_UNIT_FAMILIES = (
+    frozenset({"mg", "mcg", "g"}),  # mass
+    frozenset({"mL", "L"}),  # volume (not in DOSE_UNIT_CHOICES today; defensive)
+)
+
 
 def _q(value: Decimal) -> Decimal:
     """Quantize a Decimal to the canonical 4-place dose scale (half-up)."""
@@ -55,6 +64,8 @@ class Verdict(str, Enum):
     OUT_OF_RANGE = "OUT_OF_RANGE"
     NOT_APPLICABLE = "NOT_APPLICABLE"
     DATA_MISSING = "DATA_MISSING"
+    UNIT_MISMATCH = "UNIT_MISMATCH"
+    NO_RULE_MATCH = "NO_RULE_MATCH"
     WEIGHT_GATE = "WEIGHT_GATE"
     ENGINE_ERROR = "ENGINE_ERROR"
 
@@ -152,7 +163,11 @@ class DoseChecker:
 
         # 2. Band selection: active rules matching age + weight band. Null bound =
         #    unbounded. Rule absent ≠ unsafe → NOT_APPLICABLE (but logged).
+        #    Materialize the active rules ONCE: _select_rule iterates this list and
+        #    the unmatched-path logic below reuses it — a single query total.
+        active_rules = list(formulary.dose_rules.filter(active=True))
         rule = DoseChecker._select_rule(
+            active_rules=active_rules,
             formulary=formulary,
             patient_age_days=patient_age_days,
             weight_kg=weight_kg,
@@ -167,9 +182,46 @@ class DoseChecker:
                 weight_kg,
                 route,
             )
+            # Distinguish a GAP (rules exist, none cover this patient) from a
+            # not-yet-authored formulary (no active rules at all). A gap is a
+            # checkable drug we couldn't check → advisory, NEVER a silent pass.
+            if not active_rules:
+                return DoseVerdict(
+                    verdict=Verdict.NOT_APPLICABLE,
+                    reason="Nenhuma regra de dose aplicável à faixa etária/peso deste paciente.",
+                )
+            # FAIL-SAFE: if the weight is unknown and there is an active rule that
+            # matches age + route but was EXCLUDED only because it needs the weight
+            # (per_kg basis, or a weight band), we can't even pick the right band —
+            # asking for the weight is the fail-safe, NOT a silent advisory gap.
+            if weight_kg is None and any(
+                DoseChecker._age_matches(r, patient_age_days)
+                and DoseChecker._route_matches(r, route)
+                and (
+                    r.basis == "per_kg"
+                    or r.weight_min_kg is not None
+                    or r.weight_max_kg is not None
+                )
+                for r in active_rules
+            ):
+                dose_label = DoseChecker._dose_label(dose_amount, dose_unit)
+                return DoseVerdict(
+                    verdict=Verdict.WEIGHT_GATE,
+                    reason=(
+                        f"A dose {dose_label} depende do peso do paciente "
+                        "(regra por peso/por kg), que não está registrado. Registre o peso "
+                        "para liberar a verificação."
+                    ),
+                    rule_id=None,
+                )
+            dose_label = DoseChecker._dose_label(dose_amount, dose_unit)
             return DoseVerdict(
-                verdict=Verdict.NOT_APPLICABLE,
-                reason="Nenhuma regra de dose aplicável à faixa etária/peso deste paciente.",
+                verdict=Verdict.NO_RULE_MATCH,
+                reason=(
+                    f"A dose {dose_label} não é coberta por nenhuma regra deste medicamento "
+                    "para a faixa etária/peso/via deste paciente; verificação de dose "
+                    "indisponível."
+                ),
             )
 
         # 3. Unit coherence — NEVER coerce mg↔mL↔mcg. Mismatch or missing dose →
@@ -180,13 +232,36 @@ class DoseChecker:
                 reason="Dose não informada de forma estruturada; verificação de dose indisponível.",
                 rule_id=rule.id,
             )
-        if not dose_unit or dose_unit != rule.dose_unit:
+        if not dose_unit:
             return DoseVerdict(
                 verdict=Verdict.DATA_MISSING,
                 reason=(
-                    f"Unidade da dose ({dose_unit or 'não informada'}) não confere com a "
-                    f"unidade da regra ({rule.dose_unit}); não é seguro converter "
-                    "automaticamente. Verificação de dose indisponível."
+                    f"Dose {dose_amount} informada sem unidade; não é possível comparar com a "
+                    f"regra ({rule.dose_unit}). Verificação indisponível."
+                ),
+                rule_id=rule.id,
+            )
+        elif dose_unit != rule.dose_unit:
+            # A same-dimension mismatch is the dangerous off-by-1000 confusion
+            # (mg↔mcg↔g, mL↔L) → BLOCK. A cross-dimension mismatch (e.g. mL vs
+            # mg) is incomparable, cannot be a 1000x typo, and can't be safely
+            # converted → advisory, NOT a hard block that floods legitimate orders.
+            if DoseChecker._same_dimension(dose_unit, rule.dose_unit):
+                return DoseVerdict(
+                    verdict=Verdict.UNIT_MISMATCH,
+                    reason=(
+                        f"Dose {dose_amount} {dose_unit} tem unidade diferente "
+                        f"da regra ({rule.dose_unit}); não é seguro converter automaticamente. "
+                        "Confirme a unidade da dose."
+                    ),
+                    rule_id=rule.id,
+                )
+            return DoseVerdict(
+                verdict=Verdict.DATA_MISSING,
+                reason=(
+                    f"Dose {dose_amount} {dose_unit} não é comparável à unidade da regra "
+                    f"({rule.dose_unit}); não é seguro converter automaticamente. "
+                    "Verificação de dose indisponível."
                 ),
                 rule_id=rule.id,
             )
@@ -201,8 +276,9 @@ class DoseChecker:
                 return DoseVerdict(
                     verdict=Verdict.WEIGHT_GATE,
                     reason=(
-                        "Dose por kg exige o peso do paciente, que não está registrado. "
-                        "Registre o peso para liberar a verificação de dose."
+                        f"Dose de {dose_amount} {dose_unit} é por kg e exige o peso do "
+                        "paciente, que não está registrado. Registre o peso para liberar a "
+                        "verificação."
                     ),
                     rule_id=rule.id,
                 )
@@ -210,8 +286,9 @@ class DoseChecker:
                 return DoseVerdict(
                     verdict=Verdict.WEIGHT_GATE,
                     reason=(
-                        f"Peso do paciente está desatualizado (> {weight_staleness_days} dias). "
-                        "Atualize o peso para liberar a verificação de dose por kg."
+                        f"Dose de {dose_amount} {dose_unit} é por kg, mas o peso do paciente "
+                        f"está desatualizado (> {weight_staleness_days} dias). Atualize o peso "
+                        "para reavaliar."
                     ),
                     rule_id=rule.id,
                 )
@@ -274,6 +351,24 @@ class DoseChecker:
                     rule_id=rule.id,
                 )
 
+        # 7b. Daily cap exists but frequency is missing → we CANNOT verify the
+        #     daily dimension, so we must not overclaim a clean SAFE. Per-dose and
+        #     the absolute ceiling were already enforced above (a single-dose
+        #     overdose is still caught); this flags only the unverifiable daily cap.
+        if rule.max_per_day is not None and not frequency_per_day:
+            return DoseVerdict(
+                verdict=Verdict.DATA_MISSING,
+                reason=(
+                    f"Dose {dose} {rule.dose_unit} por administração dentro do intervalo, mas a "
+                    f"frequência diária não foi informada; não foi possível verificar o teto "
+                    f"diário de {rule.max_per_day} {rule.dose_unit}."
+                ),
+                expected_low=expected_low,
+                expected_high=expected_high,
+                max_per_dose=absolute_max,
+                rule_id=rule.id,
+            )
+
         # 8. Within band, under both ceilings → SAFE.
         return DoseVerdict(
             verdict=Verdict.SAFE,
@@ -290,17 +385,38 @@ class DoseChecker:
     # ── helpers ────────────────────────────────────────────────────────────────
 
     @staticmethod
-    def _select_rule(*, formulary, patient_age_days, weight_kg, route):
+    def _dose_label(dose_amount, dose_unit):
+        """Human label for a prescribed dose, used in WEIGHT_GATE / NO_RULE_MATCH
+        reasons. It MUST reflect the amount whenever one is present — even without a
+        unit — so that editing the dose changes the reason string. Collapsing a
+        unit-less dose to a static label would let an acknowledged blocking alert be
+        bypassed by editing only the amount (the override-preservation predicate keys
+        on the message), so the unit-less case still embeds the number.
+        """
+        if dose_amount is None:
+            return "prescrita"
+        return f"{dose_amount} {dose_unit}" if dose_unit else f"{dose_amount} (sem unidade)"
+
+    @staticmethod
+    def _same_dimension(unit_a, unit_b):
+        """True if both units belong to the same known physical-dimension family."""
+        for fam in _UNIT_FAMILIES:
+            if unit_a in fam and unit_b in fam:
+                return True
+        return False
+
+    @staticmethod
+    def _select_rule(*, active_rules, formulary, patient_age_days, weight_kg, route):
         """Pick the matching DoseRule deterministically.
 
-        Filters active rules by age band, weight band, and route. Null bound =
-        unbounded. If several match, the most specific (narrowest age band, then
-        narrowest weight band, then a concrete route over a blank one) wins; ties
-        break on the rule's stable ordering (age_min_days, then id) so the choice
-        is deterministic across runs.
+        Filters the already-materialized ``active_rules`` by age band, weight band,
+        and route (no re-query). Null bound = unbounded. If several match, the most
+        specific (narrowest age band, then narrowest weight band, then a concrete
+        route over a blank one) wins; ties break on the rule's stable ordering
+        (stricter ceiling, then id) so the choice is deterministic across runs.
         """
         candidates = []
-        for rule in formulary.dose_rules.filter(active=True):
+        for rule in active_rules:
             if not DoseChecker._age_matches(rule, patient_age_days):
                 continue
             if not DoseChecker._weight_matches(rule, weight_kg):
@@ -325,12 +441,14 @@ class DoseChecker:
         """Sort key: smaller = more specific, picked first.
 
         Narrower age band first, then narrower weight band, then a concrete route
-        before a blank (any-route) rule, then stable tie-break on id string.
+        before a blank (any-route) rule, then — on a genuine tie — the STRICTER
+        (lowest absolute_max_dose) rule, and only finally a stable id tie-break.
+        Never let an arbitrary UUID pick a looser (higher-ceiling) rule.
         """
         age_span = DoseChecker._span(rule.age_min_days, rule.age_max_days)
         weight_span = DoseChecker._span(rule.weight_min_kg, rule.weight_max_kg)
         route_rank = 0 if rule.route else 1
-        return (age_span, weight_span, route_rank, str(rule.id))
+        return (age_span, weight_span, route_rank, Decimal(rule.absolute_max_dose), str(rule.id))
 
     @staticmethod
     def _span(low, high):

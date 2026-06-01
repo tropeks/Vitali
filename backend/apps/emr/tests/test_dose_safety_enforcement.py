@@ -9,6 +9,7 @@ ILLUSTRATIVE TEST NUMBERS — NOT CLINICAL TRUTH (see test_dose_checker.py heade
 ═══════════════════════════════════════════════════════════════════════════════
 """
 
+from datetime import date
 from decimal import Decimal
 
 from django.utils import timezone
@@ -203,6 +204,379 @@ class TestFeatureFlagOff(_EnforceBase):
             ).exists()
         )
 
+    def test_flag_off_releases_preexisting_blocking_alert(self):
+        """A pre-existing flagged engine contraindication alert must NOT keep the
+        gate locked once the flag is turned OFF — has_blocking returns False and
+        sign() succeeds (no permanent 409 lock)."""
+        from apps.emr.services.dose_safety import DoseCheckService
+
+        rx, item = self._make_rx(dose=Decimal("40"))
+        # Simulate a flagged blocking alert left over from when the flag was ON.
+        AISafetyAlert.objects.create(
+            prescription_item=item,
+            alert_type="dose",
+            source="engine",
+            severity="contraindication",
+            status="flagged",
+            message="Dose 40 mg fora do intervalo esperado 5–10 mg.",
+        )
+        # Flag ON: gate is blocking.
+        self.assertTrue(DoseCheckService.has_blocking_dose_alert(rx))
+
+        # Turn the flag OFF.
+        self._set_flag(False)
+        # The self-guard releases the gate even though the flagged row still exists.
+        self.assertFalse(DoseCheckService.has_blocking_dose_alert(rx))
+
+        resp = self._sign(rx)
+        self.assertEqual(resp.status_code, 200)
+        rx.refresh_from_db()
+        self.assertTrue(rx.is_signed)
+
+
+class TestUnitMismatchBlocks(_EnforceBase):
+    def test_unit_mismatch_blocks_sign_409(self):
+        """A structured dose with a mismatched unit (mcg vs rule mg) must BLOCK —
+        a silent 1000x overdose can never sail through the sign gate."""
+        rx, _item = self._make_rx(dose=Decimal("7"), unit="mcg")
+        resp = self._sign(rx)
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(resp.data["code"], "dose_safety_block")
+        self.assertTrue(resp.data["alerts"])
+        rx.refresh_from_db()
+        self.assertFalse(rx.is_signed)
+        alert = AISafetyAlert.objects.get(
+            prescription_item__prescription=rx, source="engine", alert_type="dose"
+        )
+        self.assertEqual(alert.severity, "contraindication")
+
+
+class TestCrossDimensionUnitAdvisory(_EnforceBase):
+    def test_cross_dimension_unit_is_advisory_not_block(self):
+        """R4: dose_unit=mL against a mg rule is incomparable (cross-dimension) →
+        DATA_MISSING advisory (caution), NOT a 409 block."""
+        rx, _item = self._make_rx(dose=Decimal("7"), unit="mL")
+        resp = self._sign(rx)
+        self.assertEqual(resp.status_code, 200)
+        rx.refresh_from_db()
+        self.assertTrue(rx.is_signed)
+        alert = AISafetyAlert.objects.get(
+            prescription_item__prescription=rx, source="engine", alert_type="dose"
+        )
+        self.assertEqual(alert.severity, "caution")
+
+    def test_missing_unit_is_advisory_not_block(self):
+        """R4: a structured dose with NO unit → DATA_MISSING advisory, not a 409."""
+        rx, _item = self._make_rx(dose=Decimal("7"), unit="")
+        resp = self._sign(rx)
+        self.assertEqual(resp.status_code, 200)
+        rx.refresh_from_db()
+        self.assertTrue(rx.is_signed)
+        alert = AISafetyAlert.objects.get(
+            prescription_item__prescription=rx, source="engine", alert_type="dose"
+        )
+        self.assertEqual(alert.severity, "caution")
+
+
+class TestWeightBandedGateBlocks(_EnforceBase):
+    def test_weight_banded_rule_no_weight_blocks_409(self):
+        """R1: a weight-BANDED rule that matches age/route but is unselectable
+        without a weight must WEIGHT_GATE → 409 (block), not advise-and-pass."""
+        drug = Drug.objects.create(name="FAKE-Enf-WeightBand", generic_name="fake_enf_wb")
+        formulary = MedicationFormulary.objects.create(
+            drug=drug,
+            strength_value=Decimal("1.000"),
+            strength_unit="mg",
+            route="IV",
+            active=True,
+        )
+        DoseRule.objects.create(
+            formulary=formulary,
+            basis="fixed",
+            dose_unit="mg",
+            weight_min_kg=Decimal("10"),
+            weight_max_kg=Decimal("20"),
+            min_per_dose=Decimal("1"),
+            max_per_dose=Decimal("2"),
+            absolute_max_dose=Decimal("2"),
+            active=True,
+        )
+        # Patient with NO recorded weight.
+        patient2 = Patient.objects.create(
+            full_name="WB NoWeight", birth_date=date(1990, 1, 1), gender="F", cpf="33344455566"
+        )
+        enc2 = Encounter.objects.create(patient=patient2, professional=self.prof)
+        rx = Prescription.objects.create(encounter=enc2, patient=patient2, prescriber=self.prof)
+        PrescriptionItem.objects.create(
+            prescription=rx,
+            drug=drug,
+            quantity=Decimal("5"),
+            unit_of_measure="un",
+            dose_amount=Decimal("1.5"),
+            dose_unit="mg",
+            route="IV",
+            frequency_per_day=1,
+        )
+        resp = self._sign(rx)
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(resp.data["code"], "dose_safety_block")
+        rx.refresh_from_db()
+        self.assertFalse(rx.is_signed)
+        alert = AISafetyAlert.objects.get(
+            prescription_item__prescription=rx, source="engine", alert_type="dose"
+        )
+        self.assertEqual(alert.severity, "contraindication")
+
+
+class TestAdvisoryIdempotency(_EnforceBase):
+    def test_advisory_reeval_is_idempotent_one_audit_ack_preserved(self):
+        """R3: re-evaluating the SAME advisory situation twice must write exactly
+        ONE AuditLog (no spam) and must NOT wipe a prior acknowledgement."""
+        from apps.core.models import AuditLog
+        from apps.emr.services.dose_safety import DoseCheckService
+
+        # A band-gap drug → NO_RULE_MATCH advisory (caution, non-blocking).
+        drug = Drug.objects.create(name="FAKE-AdvIdem", generic_name="fake_advidem")
+        formulary = MedicationFormulary.objects.create(
+            drug=drug,
+            strength_value=Decimal("1.000"),
+            strength_unit="mg",
+            route="IV",
+            active=True,
+        )
+        DoseRule.objects.create(
+            formulary=formulary,
+            basis="fixed",
+            dose_unit="mg",
+            age_min_days=0,
+            age_max_days=28,  # neonate-only; adult patient → gap
+            min_per_dose=Decimal("1"),
+            max_per_dose=Decimal("2"),
+            absolute_max_dose=Decimal("2"),
+            active=True,
+        )
+        # Fresh patient with a real date birth_date + a recorded weight, so the
+        # direct service call (no API reload) resolves age/weight cleanly.
+        patient2 = Patient.objects.create(
+            full_name="Adv Idem", birth_date=date(1990, 1, 1), gender="M", cpf="77788899900"
+        )
+        enc2 = Encounter.objects.create(patient=patient2, professional=self.prof)
+        VitalSigns.objects.create(encounter=enc2, weight_kg=Decimal("10.00"))
+        rx = Prescription.objects.create(encounter=enc2, patient=patient2, prescriber=self.prof)
+        item = PrescriptionItem.objects.create(
+            prescription=rx,
+            drug=drug,
+            quantity=Decimal("5"),
+            unit_of_measure="un",
+            dose_amount=Decimal("7"),
+            dose_unit="mg",
+            route="IV",
+            frequency_per_day=1,
+        )
+
+        service = DoseCheckService(requesting_user=self.doctor)
+        service.evaluate_prescription(rx, gate="sign")
+
+        alert = AISafetyAlert.objects.get(
+            prescription_item=item, source="engine", alert_type="dose"
+        )
+        self.assertEqual(alert.severity, "caution")
+        first_audits = AuditLog.objects.filter(
+            action="dose_no_rule_match", resource_id=str(item.id)
+        ).count()
+        self.assertEqual(first_audits, 1)
+
+        # Clinician acknowledges the advisory.
+        alert.acknowledge(self.doctor, reason="Faixa fora de cobertura; ciente e conferido.")
+        alert.refresh_from_db()
+        self.assertEqual(alert.status, "acknowledged")
+
+        # Re-evaluate the SAME situation (e.g. at the dispense gate).
+        service.evaluate_prescription(rx, gate="dispense")
+
+        alert.refresh_from_db()
+        # Ack NOT wiped.
+        self.assertEqual(alert.status, "acknowledged")
+        self.assertEqual(alert.acknowledged_by, self.doctor)
+        # No audit spam — still exactly one row for this advisory.
+        self.assertEqual(
+            AuditLog.objects.filter(action="dose_no_rule_match", resource_id=str(item.id)).count(),
+            1,
+        )
+
+    def test_advisory_dose_change_reflags_and_audits(self):
+        """FIX B: a NO_RULE_MATCH advisory is acknowledged at dose=5; the dose is
+        then changed to 500 (still a band gap → still NO_RULE_MATCH). Because the
+        advisory reason now embeds the dose, the changed dose changes the reason →
+        the idempotency suppression no longer applies. A NEW AuditLog is written
+        (the change is recorded for the flywheel) and the alert is re-flagged (the
+        stale ack is NOT silently preserved)."""
+        from apps.core.models import AuditLog
+        from apps.emr.services.dose_safety import DoseCheckService
+
+        # A band-gap drug → NO_RULE_MATCH advisory (caution, non-blocking).
+        drug = Drug.objects.create(name="FAKE-AdvDoseChg", generic_name="fake_advdosechg")
+        formulary = MedicationFormulary.objects.create(
+            drug=drug,
+            strength_value=Decimal("1.000"),
+            strength_unit="mg",
+            route="IV",
+            active=True,
+        )
+        DoseRule.objects.create(
+            formulary=formulary,
+            basis="fixed",
+            dose_unit="mg",
+            age_min_days=0,
+            age_max_days=28,  # neonate-only; adult patient → gap
+            min_per_dose=Decimal("1"),
+            max_per_dose=Decimal("2"),
+            absolute_max_dose=Decimal("2"),
+            active=True,
+        )
+        patient2 = Patient.objects.create(
+            full_name="Adv DoseChg", birth_date=date(1990, 1, 1), gender="M", cpf="44455566677"
+        )
+        enc2 = Encounter.objects.create(patient=patient2, professional=self.prof)
+        VitalSigns.objects.create(encounter=enc2, weight_kg=Decimal("10.00"))
+        rx = Prescription.objects.create(encounter=enc2, patient=patient2, prescriber=self.prof)
+        item = PrescriptionItem.objects.create(
+            prescription=rx,
+            drug=drug,
+            quantity=Decimal("5"),
+            unit_of_measure="un",
+            dose_amount=Decimal("5"),
+            dose_unit="mg",
+            route="IV",
+            frequency_per_day=1,
+        )
+
+        service = DoseCheckService(requesting_user=self.doctor)
+        service.evaluate_prescription(rx, gate="sign")
+
+        alert = AISafetyAlert.objects.get(
+            prescription_item=item, source="engine", alert_type="dose"
+        )
+        self.assertEqual(alert.severity, "caution")
+        first_reason = alert.message
+        # The dose is embedded in the advisory reason (stored at 4 decimals).
+        self.assertIn("5.0000 mg", first_reason)
+        self.assertEqual(
+            AuditLog.objects.filter(action="dose_no_rule_match", resource_id=str(item.id)).count(),
+            1,
+        )
+
+        # Clinician acknowledges the advisory.
+        alert.acknowledge(self.doctor, reason="Faixa fora de cobertura; ciente e conferido.")
+        alert.refresh_from_db()
+        self.assertEqual(alert.status, "acknowledged")
+
+        # Change the dose to a very different value (still a gap → NO_RULE_MATCH).
+        item.dose_amount = Decimal("500")
+        item.save(update_fields=["dose_amount"])
+        service.evaluate_prescription(rx, gate="dispense")
+
+        alert.refresh_from_db()
+        # Reason changed (dose embedded) → the change is NOT suppressed.
+        self.assertNotEqual(alert.message, first_reason)
+        self.assertIn("500.0000 mg", alert.message)
+        # Ack NOT silently preserved — the alert is re-flagged.
+        self.assertEqual(alert.status, "flagged")
+        self.assertIsNone(alert.acknowledged_by)
+        # A NEW AuditLog records the change (now two rows for this item).
+        self.assertEqual(
+            AuditLog.objects.filter(action="dose_no_rule_match", resource_id=str(item.id)).count(),
+            2,
+        )
+
+
+class TestBandGapAdvisory(_EnforceBase):
+    def test_band_gap_is_advisory_not_block(self):
+        """Formulary HAS a rule for one age band; patient falls in a GAP →
+        NO_RULE_MATCH advisory (caution), NOT a 409 block."""
+        drug = Drug.objects.create(name="FAKE-GapDrug", generic_name="fake_gap")
+        formulary = MedicationFormulary.objects.create(
+            drug=drug,
+            strength_value=Decimal("1.000"),
+            strength_unit="mg",
+            route="IV",
+            active=True,
+        )
+        # Rule only covers neonates (0–28 days); our patient is an adult → gap.
+        DoseRule.objects.create(
+            formulary=formulary,
+            basis="fixed",
+            dose_unit="mg",
+            age_min_days=0,
+            age_max_days=28,
+            min_per_dose=Decimal("1"),
+            max_per_dose=Decimal("2"),
+            absolute_max_dose=Decimal("2"),
+            active=True,
+        )
+        rx, _item = self._make_rx(dose=Decimal("7"), drug=drug)
+        resp = self._sign(rx)
+        self.assertEqual(resp.status_code, 200)
+        rx.refresh_from_db()
+        self.assertTrue(rx.is_signed)
+        alert = AISafetyAlert.objects.get(
+            prescription_item__prescription=rx, source="engine", alert_type="dose"
+        )
+        self.assertEqual(alert.severity, "caution")
+
+
+class TestWeightGateSpoofClosed(_EnforceBase):
+    def test_ack_not_preserved_after_dose_change_on_weight_gate(self):
+        """A clinician acknowledges a WEIGHT_GATE, then edits the dose to a lethal
+        value. Because the WEIGHT_GATE reason now embeds the dose, the changed dose
+        changes the reason → the override-preservation predicate fails → the alert
+        is re-flagged and the gate blocks again."""
+        from apps.emr.services.dose_safety import DoseCheckService
+
+        # Patient with NO weight → per_kg → WEIGHT_GATE (blocking).
+        patient2 = Patient.objects.create(
+            full_name="Spoof NoWeight", birth_date=date(1990, 1, 1), gender="F", cpf="12121212121"
+        )
+        enc2 = Encounter.objects.create(patient=patient2, professional=self.prof)
+        rx = Prescription.objects.create(encounter=enc2, patient=patient2, prescriber=self.prof)
+        item = PrescriptionItem.objects.create(
+            prescription=rx,
+            drug=make_perkg_drug(),
+            quantity=Decimal("5"),
+            unit_of_measure="un",
+            dose_amount=Decimal("7"),
+            dose_unit="mg",
+            route="IV",
+            frequency_per_day=1,
+        )
+
+        service = DoseCheckService(requesting_user=self.doctor)
+        service.evaluate_prescription(rx, gate="sign")
+        alert = AISafetyAlert.objects.get(
+            prescription_item=item, source="engine", alert_type="dose"
+        )
+        self.assertEqual(alert.severity, "contraindication")
+        self.assertEqual(alert.status, "flagged")
+        first_reason = alert.message
+
+        # Clinician acknowledges the weight-gate.
+        alert.acknowledge(self.doctor, reason="Peso será registrado em seguida; ciente.")
+        alert.refresh_from_db()
+        self.assertEqual(alert.status, "acknowledged")
+
+        # SPOOF: edit the dose to a lethal value, then re-evaluate.
+        item.dose_amount = Decimal("9999")
+        item.save(update_fields=["dose_amount"])
+        service.evaluate_prescription(rx, gate="dispense")
+
+        alert.refresh_from_db()
+        # The reason changed (dose embedded) → ack must NOT be preserved.
+        self.assertNotEqual(alert.message, first_reason)
+        self.assertEqual(alert.status, "flagged")
+        self.assertIsNone(alert.acknowledged_by)
+        # Gate blocks again.
+        self.assertTrue(DoseCheckService.has_blocking_dose_alert(rx))
+
 
 class TestDispenseGate(_EnforceBase):
     def _make_lot(self, drug, qty):
@@ -272,8 +646,8 @@ class TestEngineLlmIndependence(_EnforceBase):
 
 class TestAdvisoryPaths(_EnforceBase):
     def test_data_missing_is_advisory_not_block(self):
-        # Unit mismatch (mcg vs rule mg) → DATA_MISSING → caution, NON-blocking.
-        rx, _item = self._make_rx(dose=Decimal("7"), unit="mcg")
+        # No structured dose at all → DATA_MISSING → caution, NON-blocking.
+        rx, _item = self._make_rx(dose=None)
         resp = self._sign(rx)
         self.assertEqual(resp.status_code, 200)
         rx.refresh_from_db()

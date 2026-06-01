@@ -52,9 +52,9 @@ logger = logging.getLogger(__name__)
 DOSE_SAFETY_FEATURE_KEY = "dose_safety"
 
 # Verdicts that BLOCK the gate (soft-stop). Everything else is advisory or silent.
-_BLOCKING_VERDICTS = frozenset({Verdict.OUT_OF_RANGE, Verdict.WEIGHT_GATE})
+_BLOCKING_VERDICTS = frozenset({Verdict.OUT_OF_RANGE, Verdict.WEIGHT_GATE, Verdict.UNIT_MISMATCH})
 # Verdicts that produce a non-blocking advisory alert.
-_ADVISORY_VERDICTS = frozenset({Verdict.DATA_MISSING, Verdict.ENGINE_ERROR})
+_ADVISORY_VERDICTS = frozenset({Verdict.DATA_MISSING, Verdict.ENGINE_ERROR, Verdict.NO_RULE_MATCH})
 
 
 class DoseCheckService:
@@ -124,7 +124,14 @@ class DoseCheckService:
         Blocking = alert_type="dose", source="engine", severity="contraindication",
         status="flagged" (i.e. NOT yet acknowledged). Acknowledging flips status to
         "acknowledged", so the predicate stops matching and the re-submit succeeds.
+
+        When the dose_safety feature flag is OFF this ALWAYS returns False, so the
+        gate is fully released — a stale flagged row from a previously-ON period
+        can never permanently lock the gate after the flag is turned off.
         """
+        if not DoseCheckService.is_enabled():
+            return False
+
         from apps.emr.models import AISafetyAlert
 
         return AISafetyAlert.objects.filter(
@@ -238,12 +245,36 @@ class DoseCheckService:
     ) -> None:
         from apps.emr.models import AISafetyAlert
 
-        action = (
-            "dose_data_missing"
-            if verdict.verdict == Verdict.DATA_MISSING
-            else "dose_check_unavailable"
-        )
+        if verdict.verdict == Verdict.NO_RULE_MATCH:
+            action = "dose_no_rule_match"
+        elif verdict.verdict == Verdict.DATA_MISSING:
+            action = "dose_data_missing"
+        else:
+            action = "dose_check_unavailable"
         with transaction.atomic():
+            existing = (
+                AISafetyAlert.objects.select_for_update()
+                .filter(
+                    prescription_item=item,
+                    alert_type="dose",
+                    source=AISafetyAlert.Source.ENGINE,
+                )
+                .first()
+            )
+
+            # Idempotency: an unchanged advisory (same message, still a caution)
+            # is the SAME clinical situation on re-evaluation. Re-writing it would
+            # wipe any acknowledgement and spam the audit log on every dispense
+            # re-eval. Return without touching the row or auditing. A genuinely
+            # changed advisory message, or a transition FROM a prior blocking
+            # (contraindication) row, falls through and re-flags + audits.
+            if (
+                existing is not None
+                and existing.message == verdict.reason
+                and existing.severity == "caution"
+            ):
+                return
+
             alert, _created = AISafetyAlert.objects.update_or_create(
                 prescription_item=item,
                 alert_type="dose",
@@ -326,6 +357,8 @@ class DoseCheckService:
             return "Registre/atualize o peso do paciente e reavalie."
         if verdict.verdict == Verdict.OUT_OF_RANGE:
             return "Reveja a dose; confirme peso/idade ou ajuste para o intervalo esperado."
+        if verdict.verdict == Verdict.UNIT_MISMATCH:
+            return "Confirme a unidade prescrita; ela difere da unidade da regra de dose."
         return ""
 
     def _audit(

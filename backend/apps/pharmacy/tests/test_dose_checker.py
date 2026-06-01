@@ -121,8 +121,8 @@ class _Base(TenantTestCase):
 class TestDoseCheckerPerKg(_Base):
     def test_safe_within_per_kg_band(self):
         drug, _f, _r = make_per_kg_formulary()
-        # 10kg × [0.5, 1.0] = [5, 10] mg; dose 7 mg → SAFE
-        v = self.check_perkg(drug, dose=Decimal("7"), weight=Decimal("10"))
+        # 10kg × [0.5, 1.0] = [5, 10] mg; dose 7 mg, 1×/dia (7 ≤ 60/dia) → SAFE
+        v = self.check_perkg(drug, dose=Decimal("7"), weight=Decimal("10"), freq=1)
         self.assertEqual(v.verdict, Verdict.SAFE)
         self.assertEqual(v.expected_low, Decimal("5.0000"))
         self.assertEqual(v.expected_high, Decimal("10.0000"))
@@ -189,19 +189,19 @@ class TestDoseCheckerPerKg(_Base):
 
     def test_boundary_equals_high_allowed(self):
         drug, _f, _r = make_per_kg_formulary()
-        # 10kg → high exactly 10mg; dose == 10 → SAFE (boundary allowed)
-        v = self.check_perkg(drug, dose=Decimal("10"), weight=Decimal("10"))
+        # 10kg → high exactly 10mg; dose == 10, 1×/dia → SAFE (boundary allowed)
+        v = self.check_perkg(drug, dose=Decimal("10"), weight=Decimal("10"), freq=1)
         self.assertEqual(v.verdict, Verdict.SAFE)
 
     def test_boundary_equals_low_allowed(self):
         drug, _f, _r = make_per_kg_formulary()
-        v = self.check_perkg(drug, dose=Decimal("5"), weight=Decimal("10"))
+        v = self.check_perkg(drug, dose=Decimal("5"), weight=Decimal("10"), freq=1)
         self.assertEqual(v.verdict, Verdict.SAFE)
 
     def test_boundary_equals_absolute_max_allowed(self):
         drug, _f, _r = make_per_kg_formulary()
-        # 100kg → band [50,100]; dose == abs cap 50 → SAFE (== allowed)
-        v = self.check_perkg(drug, dose=Decimal("50"), weight=Decimal("100"))
+        # 100kg → band [50,100]; dose == abs cap 50, 1×/dia → SAFE (== allowed)
+        v = self.check_perkg(drug, dose=Decimal("50"), weight=Decimal("100"), freq=1)
         self.assertEqual(v.verdict, Verdict.SAFE)
 
 
@@ -224,16 +224,67 @@ class TestDoseCheckerFixed(_Base):
 
 
 class TestDoseCheckerDataAndApplicability(_Base):
-    def test_unit_mismatch_data_missing_never_coerced(self):
+    def test_unit_mismatch_blocks_never_coerced(self):
         drug, _f, _r = make_fixed_formulary()
-        # rule unit mg, prescribed mcg → DATA_MISSING (NEVER coerce mg↔mcg)
+        # rule unit mg, prescribed mcg → UNIT_MISMATCH (NEVER coerce mg↔mcg).
+        # This is a BLOCKING verdict: a 1000x error must never sail through.
         v = self.check_fixed(drug, dose=Decimal("15"), unit="mcg")
-        self.assertEqual(v.verdict, Verdict.DATA_MISSING)
+        self.assertEqual(v.verdict, Verdict.UNIT_MISMATCH)
+        # Reason must embed the dose amount and both units.
+        self.assertIn("15", v.reason)
+        self.assertIn("mcg", v.reason)
+        self.assertIn("mg", v.reason)
 
     def test_missing_dose_data_missing(self):
         drug, _f, _r = make_fixed_formulary()
         v = self.check_fixed(drug, dose=None)
         self.assertEqual(v.verdict, Verdict.DATA_MISSING)
+
+    def test_cross_dimension_unit_is_data_missing_not_block(self):
+        """R4: mL (volume) vs a mg (mass) rule is incomparable — it can't be a
+        1000x typo, so it degrades to DATA_MISSING (advisory), NOT a hard block."""
+        drug, _f, _r = make_fixed_formulary()
+        v = self.check_fixed(drug, dose=Decimal("15"), unit="mL")
+        self.assertEqual(v.verdict, Verdict.DATA_MISSING)
+        self.assertIn("mL", v.reason)
+        self.assertIn("mg", v.reason)
+
+    def test_missing_unit_is_data_missing(self):
+        """R4: a dose with NO unit can't be compared → DATA_MISSING (advisory)."""
+        drug, _f, _r = make_fixed_formulary()
+        v = self.check_fixed(drug, dose=Decimal("15"), unit=None)
+        self.assertEqual(v.verdict, Verdict.DATA_MISSING)
+        self.assertIn("mg", v.reason)
+
+    def test_mass_family_mismatch_still_blocks(self):
+        """R4 guard: g vs mg (both mass-family) is the dangerous off-by-1000 →
+        UNIT_MISMATCH (blocking), must stay blocking."""
+        drug, _f, _r = make_fixed_formulary()
+        v = self.check_fixed(drug, dose=Decimal("15"), unit="g")
+        self.assertEqual(v.verdict, Verdict.UNIT_MISMATCH)
+
+    def test_volume_family_mismatch_blocks(self):
+        """FIX A: a same-dimension VOLUME mismatch (mL vs L) is an off-by-1000
+        confusion within the volume family and MUST hard-block, exactly like the
+        mass family. Volume units are not in DOSE_UNIT_CHOICES today; we test the
+        engine logic directly with a stub rule (do NOT add mL/L to the model)."""
+
+        class _Rule:
+            id = None
+            dose_unit = "L"
+
+        rule = _Rule()
+        # Both belong to the volume family → block.
+        self.assertTrue(DoseChecker._same_dimension("mL", rule.dose_unit))
+        self.assertTrue(DoseChecker._same_dimension("L", "mL"))
+        # Cross-dimension (volume vs mass) is NOT the same family → advise.
+        self.assertFalse(DoseChecker._same_dimension("mL", "mg"))
+        self.assertFalse(DoseChecker._same_dimension("L", "g"))
+
+    def test_same_dimension_unknown_unit_is_not_same_family(self):
+        """An unknown unit shares no family → cross-dimension (advisory)."""
+        self.assertFalse(DoseChecker._same_dimension("IU", "mg"))
+        self.assertFalse(DoseChecker._same_dimension("foo", "bar"))
 
     def test_drug_not_in_formulary_not_applicable(self):
         from apps.pharmacy.models import Drug
@@ -249,7 +300,12 @@ class TestDoseCheckerDataAndApplicability(_Base):
         v = self.check_fixed(drug, dose=Decimal("15"))
         self.assertEqual(v.verdict, Verdict.NOT_APPLICABLE)
 
-    def test_no_matching_age_band_not_applicable(self):
+    def test_no_matching_age_band_no_rule_match(self):
+        """Formulary HAS active rules, but none cover this patient's band → GAP.
+
+        This must be NO_RULE_MATCH (advisory), NOT a silent NOT_APPLICABLE: the
+        drug IS dose-checkable, we just couldn't cover this patient.
+        """
         from apps.pharmacy.models import DoseRule, Drug, MedicationFormulary
 
         drug = Drug.objects.create(name="FAKE-NeonatalOnly", generic_name="fake_neo")
@@ -284,7 +340,36 @@ class TestDoseCheckerDataAndApplicability(_Base):
             now=self.now,
             weight_staleness_days=90,
         )
+        self.assertEqual(v.verdict, Verdict.NO_RULE_MATCH)
+
+    def test_formulary_with_no_active_rules_not_applicable(self):
+        """Active formulary but ZERO active rules (not yet authored) → NOT_APPLICABLE."""
+        from apps.pharmacy.models import Drug, MedicationFormulary
+
+        drug = Drug.objects.create(name="FAKE-NoRules", generic_name="fake_norules")
+        MedicationFormulary.objects.create(
+            drug=drug,
+            strength_value=Decimal("1.000"),
+            strength_unit="mg",
+            route="IV",
+            active=True,
+        )
+        v = self.check_fixed(drug, dose=Decimal("15"))
         self.assertEqual(v.verdict, Verdict.NOT_APPLICABLE)
+
+    def test_daily_cap_with_missing_frequency_is_data_missing(self):
+        """Per-dose in range, daily cap exists, but frequency unknown → DATA_MISSING.
+
+        We must not overclaim SAFE: the daily dimension is unverifiable.
+        """
+        drug, _f, _r = make_per_kg_formulary()  # max_per_day=60 set
+        # 10kg → band [5,10]; dose 7 in range; freq None → can't check daily cap.
+        v = self.check_perkg(drug, dose=Decimal("7"), weight=Decimal("10"), freq=None)
+        self.assertEqual(v.verdict, Verdict.DATA_MISSING)
+        self.assertIn("frequência diária", v.reason)
+        self.assertIn("60", v.reason)
+        self.assertEqual(v.expected_low, Decimal("5.0000"))
+        self.assertEqual(v.expected_high, Decimal("10.0000"))
 
     def test_engine_error_when_check_throws(self):
         """A drug-like object whose .formulary access raises → ENGINE_ERROR (advisory)."""
@@ -307,6 +392,112 @@ class TestDoseCheckerDataAndApplicability(_Base):
             weight_staleness_days=90,
         )
         self.assertEqual(v.verdict, Verdict.ENGINE_ERROR)
+
+
+class TestDoseCheckerWeightGateOnMissingWeight(_Base):
+    """R1: a weight-DEPENDENT rule that matches age/route but is unselectable
+    because the patient weight is unknown must WEIGHT_GATE (block), never fall
+    through to NO_RULE_MATCH (advisory) — a fail-safe escape would let a
+    pediatric weight-banded rule sail past the hard block."""
+
+    def _weight_banded_drug(self):
+        from apps.pharmacy.models import DoseRule, Drug, MedicationFormulary
+
+        drug = Drug.objects.create(name="FAKE-WeightBand", generic_name="fake_wb")
+        formulary = MedicationFormulary.objects.create(
+            drug=drug,
+            strength_value=Decimal("1.000"),
+            strength_unit="mg",
+            route="IV",
+            active=True,
+        )
+        # Weight-BANDED fixed rule (10–20 kg). Matches age/route, but the band
+        # can't be confirmed without a weight.
+        DoseRule.objects.create(
+            formulary=formulary,
+            basis="fixed",
+            dose_unit="mg",
+            weight_min_kg=Decimal("10"),
+            weight_max_kg=Decimal("20"),
+            min_per_dose=Decimal("1"),
+            max_per_dose=Decimal("2"),
+            absolute_max_dose=Decimal("2"),
+            active=True,
+        )
+        return drug
+
+    def test_weight_banded_rule_missing_weight_weight_gates(self):
+        drug = self._weight_banded_drug()
+        v = DoseChecker.check(
+            drug=drug,
+            dose_amount=Decimal("1.5"),
+            dose_unit="mg",
+            route="IV",
+            frequency_per_day=None,
+            patient_age_days=3650,
+            weight_kg=None,
+            weight_recorded_at=self.fresh,
+            now=self.now,
+            weight_staleness_days=90,
+        )
+        self.assertEqual(v.verdict, Verdict.WEIGHT_GATE)
+        self.assertIsNone(v.rule_id)
+        self.assertIn("peso", v.reason)
+        self.assertIn("1.5 mg", v.reason)
+
+    def test_unitless_dose_amount_embedded_so_edit_reblocks(self):
+        """A unit-less dose (amount present, unit missing) hitting the selection
+        WEIGHT_GATE must still embed the AMOUNT in the reason. Otherwise the reason
+        is dose-static and an acknowledged block could be bypassed by editing only
+        the amount (the override-preservation predicate keys on the message)."""
+        drug = self._weight_banded_drug()
+
+        def gate_reason(amount):
+            return DoseChecker.check(
+                drug=drug,
+                dose_amount=Decimal(amount),
+                dose_unit=None,  # no unit
+                route="IV",
+                frequency_per_day=None,
+                patient_age_days=3650,
+                weight_kg=None,
+                weight_recorded_at=self.fresh,
+                now=self.now,
+                weight_staleness_days=90,
+            ).reason
+
+        r10 = gate_reason("10")
+        r1000 = gate_reason("1000")
+        # The amount must appear (even without a unit) and differ across doses, so a
+        # dose edit changes the message → the preserved override is reset → re-block.
+        self.assertIn("10", r10)
+        self.assertIn("1000", r1000)
+        self.assertNotEqual(r10, r1000)
+
+    def test_per_kg_no_band_missing_weight_still_weight_gates(self):
+        """Regression guard: a per_kg rule with NO weight band + no weight is still
+        selected and WEIGHT_GATEs at step 4 (must stay blocking)."""
+        drug, _f, _r = make_per_kg_formulary()
+        v = self.check_perkg(drug, dose=Decimal("7"), weight=None)
+        self.assertEqual(v.verdict, Verdict.WEIGHT_GATE)
+
+    def test_weight_known_outside_all_bands_is_no_rule_match(self):
+        """R1 negative: rules exist, weight IS known, patient genuinely outside all
+        bands → NO_RULE_MATCH (advisory), NOT a WEIGHT_GATE block."""
+        drug = self._weight_banded_drug()  # band 10–20 kg
+        v = DoseChecker.check(
+            drug=drug,
+            dose_amount=Decimal("1.5"),
+            dose_unit="mg",
+            route="IV",
+            frequency_per_day=None,
+            patient_age_days=3650,
+            weight_kg=Decimal("80"),  # outside 10–20 kg
+            weight_recorded_at=self.fresh,
+            now=self.now,
+            weight_staleness_days=90,
+        )
+        self.assertEqual(v.verdict, Verdict.NO_RULE_MATCH)
 
 
 class TestDoseCheckerRuleSelection(_Base):
@@ -359,3 +550,42 @@ class TestDoseCheckerRuleSelection(_Base):
             weight_staleness_days=90,
         )
         self.assertEqual(v.verdict, Verdict.OUT_OF_RANGE)
+
+    def test_tie_break_favors_stricter_lower_ceiling(self):
+        """Two equally-specific rules (same spans, same route-rank) → the one with
+        the LOWER absolute_max_dose (stricter) must win, never an arbitrary UUID."""
+        from apps.pharmacy.models import DoseRule, Drug, MedicationFormulary
+
+        drug = Drug.objects.create(name="FAKE-TieBreak", generic_name="fake_tie")
+        formulary = MedicationFormulary.objects.create(
+            drug=drug,
+            strength_value=Decimal("1.000"),
+            strength_unit="mg",
+            route="PO",
+            active=True,
+        )
+        common = {
+            "formulary": formulary,
+            "basis": "fixed",
+            "dose_unit": "mg",
+            "age_min_days": 0,
+            "age_max_days": 40000,
+            "min_per_dose": Decimal("1"),
+            "max_per_dose": Decimal("100"),
+            "route": "PO",
+            "active": True,
+        }
+        # Looser rule (higher ceiling).
+        loose = DoseRule.objects.create(absolute_max_dose=Decimal("100"), **common)
+        # Stricter rule (lower ceiling) — must be selected on the tie.
+        strict = DoseRule.objects.create(absolute_max_dose=Decimal("50"), **common)
+
+        chosen = DoseChecker._select_rule(
+            active_rules=list(formulary.dose_rules.filter(active=True)),
+            formulary=formulary,
+            patient_age_days=3650,
+            weight_kg=None,
+            route="PO",
+        )
+        self.assertEqual(chosen.id, strict.id)
+        self.assertNotEqual(chosen.id, loose.id)
