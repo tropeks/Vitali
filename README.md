@@ -181,7 +181,8 @@ Datas/escopo detalhados em `docs/EPICS_AND_ROADMAP.md` e nos planos `docs/PLAN_S
 
 ## Documentação
 
-Visão e arquitetura: [`docs/PROJECT_BRIEF.md`](docs/PROJECT_BRIEF.md) ·
+Visão e arquitetura: [`docs/VISION-AI-NATIVE.md`](docs/VISION-AI-NATIVE.md) (tese AI-native — cunha de segurança de dose) ·
+[`docs/PROJECT_BRIEF.md`](docs/PROJECT_BRIEF.md) ·
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) ·
 [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) ·
 [`docs/API_SPEC.md`](docs/API_SPEC.md)
