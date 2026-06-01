@@ -273,6 +273,183 @@ class DispensationLot(models.Model):
         return f"{self.dispensation_id} × {self.stock_item} — {self.quantity}"
 
 
+# ─── Dose-safety wedge PR A: Formulary & DoseRule ─────────────────────────────
+
+
+class MedicationFormulary(models.Model):
+    """
+    Curated dose-checkable subset of the Drug catalog.
+
+    The *existence* of a MedicationFormulary row is the "is this drug
+    dose-checkable?" predicate: only drugs a pharmacist has curated (with a
+    canonical strength + route) get a row. Drugs without a formulary row are
+    NOT_APPLICABLE for the deterministic dose engine (PR B) — they pass with no
+    dose badge. This is intentionally a separate table (not columns on Drug) so
+    the curated clinical truth is decoupled from the general catalog.
+
+    PR A is pure schema. No clinical numbers are seeded here — the curated
+    formulary (≈8 high-alert drugs + their strengths) is pharmacist-supplied
+    external truth, landing with the dose engine in PR B.
+    """
+
+    class Route(models.TextChoices):
+        IV = "IV", "Intravenosa"
+        IM = "IM", "Intramuscular"
+        SC = "SC", "Subcutânea"
+        PO = "PO", "Oral"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    drug = models.OneToOneField(
+        Drug,
+        on_delete=models.PROTECT,
+        related_name="formulary",
+        help_text="Drug this formulary entry curates. One row per drug = dose-checkable.",
+    )
+    strength_value = models.DecimalField(
+        max_digits=10,
+        decimal_places=3,
+        help_text="Canonical strength magnitude, e.g. 10.000 for '10 mg'.",
+    )
+    strength_unit = models.CharField(
+        max_length=10,
+        help_text="Strength unit, e.g. 'mg', 'mcg', 'mEq', 'unit', 'g'.",
+    )
+    volume_value = models.DecimalField(
+        max_digits=10,
+        decimal_places=3,
+        null=True,
+        blank=True,
+        help_text="For injectables expressed per volume: the volume magnitude (e.g. 1.000).",
+    )
+    volume_unit = models.CharField(
+        max_length=10,
+        blank=True,
+        help_text="Volume unit for injectables, e.g. 'mL' (strength is per this volume).",
+    )
+    route = models.CharField(
+        max_length=4,
+        choices=Route.choices,
+        help_text="Canonical administration route for this formulary entry.",
+    )
+    is_injectable = models.BooleanField(default=False)
+    is_high_alert = models.BooleanField(
+        default=False,
+        help_text="ISMP high-alert medication (heightened risk of significant patient harm).",
+    )
+    active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["drug__name"]
+        verbose_name = "Medication Formulary Entry"
+        verbose_name_plural = "Medication Formulary"
+
+    def __str__(self):
+        return f"{self.drug} — {self.strength_value}{self.strength_unit} {self.route}"
+
+
+class DoseRule(models.Model):
+    """
+    A single dose-band rule for a formulary entry.
+
+    ONE shape handles BOTH pediatric weight-based (mg/kg) bands AND adult
+    fixed-range + absolute-max rules:
+      - basis="per_kg": dose computed per kilogram of body weight. The band may
+        be scoped by age and/or weight. max_per_dose remains an ABSOLUTE ceiling
+        in dose_unit (NOT per-kg) — it catches weight-entry typos that would
+        otherwise blow a per-kg calc past a safe absolute dose.
+      - basis="fixed": a fixed dose range independent of weight.
+
+    PR A is pure schema: no clinical numbers are seeded. The deterministic
+    DoseChecker engine that consumes these rules is PR B (pending pharmacist
+    dose numbers). max_per_dose is the only NOT-NULL numeric field — the
+    mandatory absolute safety ceiling.
+    """
+
+    class Basis(models.TextChoices):
+        PER_KG = "per_kg", "Por kg de peso"
+        FIXED = "fixed", "Dose fixa"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    formulary = models.ForeignKey(
+        MedicationFormulary,
+        on_delete=models.PROTECT,
+        related_name="dose_rules",
+    )
+    basis = models.CharField(
+        max_length=10,
+        choices=Basis.choices,
+        help_text="per_kg = dose scales with body weight; fixed = weight-independent.",
+    )
+    age_min_years = models.SmallIntegerField(
+        null=True, blank=True, help_text="Lower age bound (years), inclusive. Null = unbounded."
+    )
+    age_max_years = models.SmallIntegerField(
+        null=True, blank=True, help_text="Upper age bound (years), inclusive. Null = unbounded."
+    )
+    weight_min_kg = models.DecimalField(
+        max_digits=6,
+        decimal_places=3,
+        null=True,
+        blank=True,
+        help_text="Lower weight bound (kg) for this band. Null = unbounded.",
+    )
+    weight_max_kg = models.DecimalField(
+        max_digits=6,
+        decimal_places=3,
+        null=True,
+        blank=True,
+        help_text="Upper weight bound (kg) for this band. Null = unbounded.",
+    )
+    dose_unit = models.CharField(
+        max_length=20,
+        help_text="Unit the dose figures are expressed in (e.g. 'mg', 'mg/kg').",
+    )
+    min_per_dose = models.DecimalField(
+        max_digits=12,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text="Minimum recommended single dose. Null = no lower bound.",
+    )
+    max_per_dose = models.DecimalField(
+        max_digits=12,
+        decimal_places=4,
+        help_text=(
+            "MANDATORY absolute ceiling for a single administration, in dose_unit. "
+            "For basis='per_kg' this is still an ABSOLUTE cap (not per-kg) that catches "
+            "weight-entry typos which would otherwise push a per-kg calc past a safe dose."
+        ),
+    )
+    max_per_day = models.DecimalField(
+        max_digits=12,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text="Maximum cumulative dose per day (for max-daily checks in PR B). Null = none.",
+    )
+    route = models.CharField(
+        max_length=4,
+        blank=True,
+        help_text="Optional route this rule applies to; blank = any route on the formulary entry.",
+    )
+    active = models.BooleanField(default=True, db_index=True)
+    notes = models.TextField(
+        blank=True, help_text="Clinical citation / source for this rule (e.g. reference, dataset)."
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["formulary__drug__name", "age_min_years"]
+        verbose_name = "Dose Rule"
+        verbose_name_plural = "Dose Rules"
+
+    def __str__(self):
+        return f"{self.formulary.drug} — {self.get_basis_display()} (≤ {self.max_per_dose} {self.dose_unit})"
+
+
 # ─── S-042: Purchase Orders ───────────────────────────────────────────────────
 
 
