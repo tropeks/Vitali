@@ -1,6 +1,11 @@
 from django.urls import path
 
-from .views import StudyDetailView, StudyListCreateView, StudyOrthancBackfillView
+from .views import (
+    OrthancSyncTriggerView,
+    StudyDetailView,
+    StudyListCreateView,
+    StudyOrthancBackfillView,
+)
 
 urlpatterns = [
     path("imaging/studies/", StudyListCreateView.as_view(), name="imaging-study-list"),
@@ -13,5 +18,10 @@ urlpatterns = [
         "imaging/studies/<uuid:study_id>/orthanc/",
         StudyOrthancBackfillView.as_view(),
         name="imaging-study-orthanc",
+    ),
+    path(
+        "imaging/orthanc/sync/",
+        OrthancSyncTriggerView.as_view(),
+        name="imaging-orthanc-sync",
     ),
 ]

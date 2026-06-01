@@ -278,6 +278,16 @@ MFA_GRACE_PERIOD_DAYS = env.int("MFA_GRACE_PERIOD_DAYS", default=7)
 # ─── Prescription PDF (S-065) ────────────────────────────────────────────────
 PRESCRIPTION_PDF_CACHE_TTL = env.int("PRESCRIPTION_PDF_CACHE_TTL", default=3600)
 
+# ─── Orthanc PACS ingestion (E-012) ──────────────────────────────────────────
+# Operator (trusted) config for the Orthanc PACS the imaging poll task talks to.
+# When ORTHANC_URL is empty the whole ingestion feature is inert (the Celery
+# task returns early and runs no HTTP). These are NOT user input; egress to the
+# configured Orthanc is an operator concern (see docs/IMAGING.md).
+ORTHANC_URL = env.str("ORTHANC_URL", default="")
+ORTHANC_USERNAME = env.str("ORTHANC_USERNAME", default="")
+ORTHANC_PASSWORD = env.str("ORTHANC_PASSWORD", default="")
+ORTHANC_HTTP_TIMEOUT = env.int("ORTHANC_HTTP_TIMEOUT", default=10)
+
 # billing/ migrations directory is root-owned (755). Redirect to writable package.
 MIGRATION_MODULES = {
     "billing": "billing_migrations",

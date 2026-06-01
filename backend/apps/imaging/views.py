@@ -19,7 +19,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.core.permissions import HasPermission, ModuleRequiredPermission
+from apps.core.permissions import HasPermission, IsPlatformAdmin, ModuleRequiredPermission
 
 from .models import DicomStudy
 from .serializers import (
@@ -113,3 +113,35 @@ class StudyOrthancBackfillView(APIView):
             ]
         )
         return Response(DicomStudySerializer(study).data)
+
+
+class OrthancSyncTriggerView(APIView):
+    """POST `/api/v1/imaging/orthanc/sync/` — run one ingestion pass on demand.
+
+    Convenience for operators/admins to backfill immediately instead of waiting
+    for the periodic beat tick. Platform-admin only. No-ops (200) when
+    ``ORTHANC_URL`` is unset.
+    """
+
+    def get_permissions(self):
+        return [IsAuthenticated(), _IMAGING_MODULE, IsPlatformAdmin()]
+
+    def post(self, request):
+        from django.conf import settings
+
+        from .services.orthanc_client import OrthancError
+        from .services.orthanc_sync import sync_orthanc_studies
+
+        if not getattr(settings, "ORTHANC_URL", ""):
+            return Response(
+                {"detail": "Orthanc not configured (ORTHANC_URL empty).", "inert": True},
+                status=status.HTTP_200_OK,
+            )
+        try:
+            summary = sync_orthanc_studies()
+        except OrthancError as exc:
+            return Response(
+                {"detail": f"Orthanc unreachable: {exc}"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        return Response(summary)
