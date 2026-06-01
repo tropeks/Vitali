@@ -44,5 +44,10 @@ ALLOWED_MODULE_KEYS: frozenset = frozenset(
         "smart_scheduling",
         "triage",
         "mobile",
+        # Dose-safety wedge (PR B): per-tenant toggle for the deterministic
+        # dose-check engine + soft-stop enforcement. Default OFF — a tenant must
+        # explicitly enable it (and have a pharmacist-supplied formulary) before
+        # the prescription/pharmacy gates start blocking on dose verdicts.
+        "dose_safety",
     }
 )
