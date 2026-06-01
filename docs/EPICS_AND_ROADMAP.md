@@ -1,7 +1,73 @@
 # Vitali — Epics, Stories & Roadmap
 
-> **Refs:** [PROJECT_BRIEF.md](./PROJECT_BRIEF.md) | [ARCHITECTURE.md](./ARCHITECTURE.md) |
-> [DATA_MODEL.md](./DATA_MODEL.md)
+> **Refs:** [VISION-AI-NATIVE.md](./VISION-AI-NATIVE.md) | [PROJECT_BRIEF.md](./PROJECT_BRIEF.md) |
+> [ARCHITECTURE.md](./ARCHITECTURE.md) | [DATA_MODEL.md](./DATA_MODEL.md)
+
+---
+
+## AI-Native Reframe (2026-06)
+
+> Esta seção é **aditiva**. Nada abaixo dela foi removido — o registro histórico,
+> os épicos e os status de "shipped" permanecem intactos. Ela apenas reorienta a
+> **prioridade** do roadmap em torno da tese AI-native aprovada em office-hours.
+
+**A tese (ver [VISION-AI-NATIVE.md](./VISION-AI-NATIVE.md)):** o Vitali deixa de ser
+um sistema de *registro* (CRUD que anota o que aconteceu, como Tasy/MV/TOTVS) e passa
+a ser uma **inteligência ativa que intercepta o erro antes que ele alcance o paciente.**
+O fosso não é contagem de módulos nem velocidade — é **arquitetural** (loop fechado na
+espinha do workflow) e **composto** (um data flywheel de alertas + overrides + desfechos
+que nenhum incumbente de núcleo legado consegue igualar, e que ninguém aluga da
+OpenAI/Anthropic). O padrão que se repete em todo módulo: **Observe → Preveja →
+Intercepte → Aprenda.**
+
+### Prioridade reorientada
+
+**1. Flagship — Cunha de segurança de dose (dose-safety interception).**
+A bandeira do produto. O sistema conhece a dose correta para o paciente (peso / idade /
+função renal) e intercepta o desvio nos **três portões** da jornada do medicamento —
+prescrição → farmácia → administração à beira-leito — começando por **injetáveis**
+(maior risco, maior letalidade). Evolui o `AISafetyAlert` (Sprint 15 / S-063) e a
+cascata existente **E-013 / F-03** (encounter-signed) + **F-12** (AI safety alert):
+hoje uma checagem de LLM commodity, a ser aprofundada na espinha real de interceptação
+de dose em tempo real, que aprende com cada override.
+*Observe* a prescrição → *preveja* a faixa segura para aquele paciente → *intercepte*
+o desvio nos três gates → *aprenda* com cada override e desfecho.
+
+**2. Replicar o padrão de loop fechado aos demais loops de alto valor.**
+O **mesmo motor** observe-preveja-intercepte-aprenda, aplicado às próximas dores:
+
+| Loop | Observe → Preveja → Intercepte → Aprenda | Evolui de |
+|------|-------------------------------------------|-----------|
+| **Glosa-prevention** | Observa a guia em montagem → prevê o risco/motivo de glosa → intercepta antes do envio do lote → aprende com cada glosa/recurso real | E-006 S-024, E-008, Glosa AI (Sprint 10) |
+| **Inventory-rupture** | Observa o ledger de estoque → prevê a ruptura antes do `min_stock` → intercepta com PO em rascunho na hora → aprende com o consumo real | E-007 S-027, F-06, `apps.pharmacy_ai` |
+| **No-show** | Observa o padrão do paciente → prevê o risco de falta → intercepta com re-engajamento + reabertura de vaga → aprende com o comparecimento real | E-005, E-009 S-034, F-11 |
+
+### Reprioritization — moat vs. table-stakes
+
+- **Moat work (loop-fechado / inteligência):** é onde o esforço de excelência mora.
+  A cunha de dose e os três loops acima recebem profundidade obsessiva. É o que torna
+  o produto mais defensável **com o uso**.
+- **Table-stakes (compliance / higiene / paridade de CRUD):** EMR, faturamento TISS,
+  cadastro, RBAC, LGPD, etc. são **cleared para a barra de piloto — não gold-plated.**
+  Precisam funcionar, ser compliant e não atrapalhar; não precisam ser melhores que o
+  Tasy. Bom o suficiente para o piloto é o teto, não o chão.
+- **SHELVED até um loop fechado justificar (itens "primitive-only" da Phase 3):**
+  os primitivos que hoje são só esqueleto sem loop estão **explicitamente engavetados**
+  até que uma interceptação de loop fechado os puxe:
+  - **Telemedicina** — state machine de sessão (`apps.telemedicine`), sem WebRTC/loop.
+  - **Mobile** — `MobileDevice`/`PushDelivery` (`apps.mobile`), tabela sem app nem loop.
+  - **"AI" baseada em regra** — `smart_scheduling` e `pharmacy_ai` no estado *rule-based*
+    determinístico atual contam como primitivo; só viram prioridade quando promovidos a
+    loop fechado real (observe→preveja→intercepte→**aprenda** com modelo treinado).
+
+### O que isto DE-prioriza (honestidade)
+
+- Acabamento de UI/feature de paridade com incumbentes além da barra de piloto.
+- Expansão de superfície de módulos ("mais um módulo") sem um loop fechado por trás.
+- Phase-3 primitive-only: telemedicina (WebRTC), mobile (app React Native),
+  smart-scheduling e pharmacy-ai **enquanto rule-based** — todos engavetados até justificados.
+- Multi-country / i18n completo, FHIR além da cobertura atual, Superset embedding —
+  permanecem table-stakes/oportunísticos, não moat.
 
 ---
 

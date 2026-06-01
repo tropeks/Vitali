@@ -18,6 +18,14 @@ mais barato", mas um "Tasy mais inteligente e acessível".
 **Referência de UX:** Tasy (Philips/Rede D'Or) — frontend profissional, fluxos integrados,
 experiência enterprise.
 
+### Visão AI-Native
+
+A tese de longo prazo do Vitali, aprovada em office-hours, é deixar de ser um sistema de
+*registro* (CRUD que anota o que aconteceu) e tornar-se **inteligência ativa que intercepta
+o erro clínico antes que ele alcance o paciente** — começando pela cunha de **segurança de
+dose de medicamento**. Padrão que replica a todo módulo: Observe → Preveja → Intercepte →
+Aprenda. Ver **[VISION-AI-NATIVE.md](./VISION-AI-NATIVE.md)**.
+
 ---
 
 ## 2. Problema
