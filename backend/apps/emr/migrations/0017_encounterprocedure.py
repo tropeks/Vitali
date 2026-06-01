@@ -68,7 +68,7 @@ class Migration(migrations.Migration):
                 (
                     "tuss_code",
                     models.ForeignKey(
-                        on_delete=django.db.models.deletion.PROTECT,
+                        on_delete=django.db.models.deletion.DO_NOTHING,
                         related_name="encounter_procedures",
                         to="core.tusscode",
                     ),

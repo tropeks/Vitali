@@ -358,7 +358,20 @@ class EncounterSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "signed_at", "signed_by", "created_at", "updated_at"]
+        # status / signed_at / signed_by are sign-managed: they may ONLY change
+        # through the dedicated `sign` action (EncounterSigningService), never via
+        # a generic PATCH. Leaving `status` writable would let an emr.write client
+        # flip a signed encounter back to "open", mutate its procedures, and re-sign
+        # it — defeating the CFM signature-integrity write-gate the whole F-03
+        # feature relies on.
+        read_only_fields = [
+            "id",
+            "status",
+            "signed_at",
+            "signed_by",
+            "created_at",
+            "updated_at",
+        ]
 
 
 class PatientInsuranceSerializer(serializers.ModelSerializer):
@@ -424,12 +437,17 @@ class EncounterProcedureSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Quantidade deve ser maior que zero.")
         return value
 
-    def validate_tuss_code(self, value):
-        if value is not None and not value.active:
+    def validate(self, data):
+        # Object-level so the rule holds on PATCH too: a field-level
+        # validate_tuss_code() is skipped when tuss_code is absent from the
+        # payload, but it must still run whenever tuss_code IS supplied (create
+        # or update). PATCH of only quantity/notes (no tuss_code) is unaffected.
+        tuss_code = data.get("tuss_code")
+        if tuss_code is not None and not tuss_code.active:
             raise serializers.ValidationError(
-                "Código TUSS inativo não pode ser usado em procedimento."
+                {"tuss_code": "Código TUSS inativo não pode ser usado em procedimento."}
             )
-        return value
+        return data
 
 
 class PrescriptionItemSerializer(serializers.ModelSerializer):

@@ -681,16 +681,24 @@ class EncounterProcedure(models.Model):
     dica de UX em cache e fica nulo no PR1.
 
     tuss_code aponta para core.TUSSCode (schema público/compartilhado): o
-    PostgreSQL não garante integridade referencial entre schemas, então o
-    on_delete=PROTECT é apenas de camada de aplicação — um signal pre_delete
-    compensa (ver apps/core/signals.py).
+    PostgreSQL não garante integridade referencial entre schemas, então a
+    proteção é apenas de camada de aplicação — o signal pre_delete
+    protect_tuss_code_deletion (ver apps/core/signals.py) bloqueia a exclusão.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     encounter = models.ForeignKey(Encounter, on_delete=models.CASCADE, related_name="procedures")
-    # FK to public-schema TUSSCode — app-layer PROTECT only (cross-schema limit)
+    # FK to PUBLIC-schema TUSSCode from a TENANT-schema model. PROTECT is unusable
+    # here: Django's deletion Collector runs in the public schema and would query
+    # public.emr_encounterprocedure (which does not exist) → ProgrammingError 500
+    # BEFORE the pre_delete signal can raise a graceful ProtectedError. We use
+    # DO_NOTHING and rely on the protect_tuss_code_deletion pre_delete signal
+    # (apps/core/signals.py), which iterates tenant schemas and blocks deletion.
+    # NOTE: billing's TISSGuideItem.tuss_code / PriceTableItem.tuss_code still use
+    # native PROTECT and likely share this latent cross-schema crash — tracked as a
+    # separate pre-existing follow-up (see docs/plans/F03-AUTO-TISS.md), NOT in this PR.
     tuss_code = models.ForeignKey(
-        "core.TUSSCode", on_delete=models.PROTECT, related_name="encounter_procedures"
+        "core.TUSSCode", on_delete=models.DO_NOTHING, related_name="encounter_procedures"
     )
     quantity = models.DecimalField(
         "Quantidade",

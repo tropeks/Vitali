@@ -23,9 +23,19 @@ Writes are allowed **only while `encounter.status == "open"`** (otherwise HTTP 4
 `EncounterViewSet`: writes need `emr.write`, reads need `emr.read`. Capture is NOT
 gated behind the billing module — clinical capture works even if billing is off.
 
-`tuss_code` is an app-layer-PROTECT FK to the shared/public `core.TUSSCode`. The
-cross-schema PROTECT signal (`apps/core/signals.py:protect_tuss_code_deletion`) is
-extended so a TUSS code referenced by an `EncounterProcedure` cannot be hard-deleted.
+`tuss_code` is an app-layer-protected FK to the shared/public `core.TUSSCode`. The
+field uses `on_delete=DO_NOTHING` (NOT native `PROTECT`): for a tenant→public FK,
+Django's deletion Collector runs in the public schema and a native `PROTECT` would
+query `public.emr_encounterprocedure` (which doesn't exist) → `ProgrammingError` 500
+before the signal can fire. Protection is instead provided by the cross-schema
+`pre_delete` signal (`apps/core/signals.py:protect_tuss_code_deletion`), which
+iterates tenant schemas and raises `ProtectedError` if a TUSS code is referenced by
+an `EncounterProcedure`.
+
+> **Follow-up (pre-existing, separate PR):** billing's `TISSGuideItem.tuss_code` and
+> `PriceTableItem.tuss_code` still use native `PROTECT` and likely share the same
+> latent cross-schema deletion crash. Not fixed in F-03 PR1 — flagged for a dedicated
+> follow-up (apply the same `DO_NOTHING` + signal pattern there).
 
 `unit_value` exists as a **cached UX hint only — NOT billing truth**. It is left
 `null` in PR1. Pricing is resolved at guide-build time in PR2.

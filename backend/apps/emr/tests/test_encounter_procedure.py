@@ -177,6 +177,18 @@ class TestEncounterProcedureAPI(TenantTestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertIn("tuss_code", resp.data)
 
+    def test_patch_quantity_only_on_active_code_allowed(self):
+        """Fix 2: PATCH that omits tuss_code (only quantity/notes) on a procedure
+        whose code is still active must NOT be rejected by the inactive-TUSS check."""
+        proc = EncounterProcedure.objects.create(encounter=self.encounter, tuss_code=self.tuss)
+        resp = self._client(self.medico_user).patch(
+            self._url(proc.id), {"quantity": "5", "notes": "revised"}, format="json"
+        )
+        self.assertEqual(resp.status_code, 200, resp.data)
+        proc.refresh_from_db()
+        self.assertEqual(proc.quantity, Decimal("5.00"))
+        self.assertEqual(proc.notes, "revised")
+
     def test_unit_value_is_read_only(self):
         """unit_value is a deferred cache hint; client cannot set it in PR1."""
         resp = self._client(self.medico_user).post(
@@ -207,6 +219,68 @@ class TestEncounterProcedureAPI(TenantTestCase):
         proc = EncounterProcedure.objects.create(encounter=self.encounter, tuss_code=self.tuss)
         resp = self._client(self.enf_user).delete(self._url(proc.id))
         self.assertEqual(resp.status_code, 403)
+
+
+class TestEncounterStatusImmutableViaPatch(TenantTestCase):
+    """Fix 1 (CRITICAL): Encounter.status must NOT be client-mutable via a generic
+    PATCH. Allowing it would let an emr.write client flip a signed encounter back to
+    "open", mutate its procedures, and re-sign — defeating the procedure write-gate
+    and CFM signature integrity. Status changes ONLY through the dedicated sign action.
+    """
+
+    def setUp(self):
+        self.medico_user, self.enf_user, self.patient, self.prof, self.encounter = _make_infra()
+
+    def _client(self, user):
+        c = APIClient()
+        c.defaults["SERVER_NAME"] = self.__class__.domain.domain
+        c.force_authenticate(user=user)
+        return c
+
+    def _detail_url(self):
+        return f"/api/v1/encounters/{self.encounter.id}/"
+
+    def test_patch_status_is_ignored_on_open_encounter(self):
+        """PATCH {"status": "signed"} on an open encounter is ignored — stays open."""
+        resp = self._client(self.medico_user).patch(
+            self._detail_url(), {"status": "signed"}, format="json"
+        )
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.encounter.refresh_from_db()
+        self.assertEqual(self.encounter.status, "open")
+        self.assertIsNone(self.encounter.signed_at)
+
+    def test_patch_cannot_reopen_signed_encounter(self):
+        """A signed encounter cannot be flipped back to "open" via generic PATCH."""
+        self.encounter.status = "signed"
+        self.encounter.save(update_fields=["status"])
+        resp = self._client(self.medico_user).patch(
+            self._detail_url(), {"status": "open"}, format="json"
+        )
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.encounter.refresh_from_db()
+        self.assertEqual(self.encounter.status, "signed")
+
+    def test_patch_signed_by_and_signed_at_ignored(self):
+        """signed_at / signed_by are sign-managed and ignored on generic PATCH."""
+        resp = self._client(self.medico_user).patch(
+            self._detail_url(),
+            {"signed_at": "2020-01-01T00:00:00Z", "signed_by": str(self.medico_user.id)},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.encounter.refresh_from_db()
+        self.assertIsNone(self.encounter.signed_at)
+        self.assertIsNone(self.encounter.signed_by_id)
+
+    def test_sign_action_still_works(self):
+        """The dedicated sign action remains the legitimate path to status=signed."""
+        resp = self._client(self.medico_user).post(f"/api/v1/encounters/{self.encounter.id}/sign/")
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.encounter.refresh_from_db()
+        self.assertEqual(self.encounter.status, "signed")
+        self.assertIsNotNone(self.encounter.signed_at)
+        self.assertEqual(self.encounter.signed_by_id, self.medico_user.id)
 
 
 class TestProtectTUSSCodeDeletionSignal(TenantTestCase):
