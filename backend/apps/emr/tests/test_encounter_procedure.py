@@ -14,6 +14,7 @@ Covers:
 
 from decimal import Decimal
 
+from django.db import transaction
 from django.db.models.deletion import ProtectedError
 from django_tenants.utils import get_public_schema_name, schema_context
 from rest_framework.test import APIClient
@@ -293,7 +294,10 @@ class TestProtectTUSSCodeDeletionSignal(TenantTestCase):
 
     def test_delete_blocked_when_referenced_by_procedure(self):
         EncounterProcedure.objects.create(encounter=self.encounter, tuss_code=self.tuss)
-        with self.assertRaises(ProtectedError) as ctx:
+        # Wrap in a savepoint: the pre_delete signal raises mid-delete(), which
+        # marks the transaction for rollback; without an inner atomic() the
+        # assertion query below would fail with TransactionManagementError.
+        with self.assertRaises(ProtectedError) as ctx, transaction.atomic():
             self.tuss.delete()
         self.assertIn("EncounterProcedure", str(ctx.exception))
         self.assertTrue(TUSSCode.objects.filter(pk=self.tuss.pk).exists())
