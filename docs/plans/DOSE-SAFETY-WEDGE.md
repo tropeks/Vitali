@@ -13,8 +13,19 @@ critical gaps, and the open product/clinical decisions.
 
 > **⚠️ Clinical dose numbers are NOT invented anywhere in this codebase.** The
 > curated formulary (≈8 high-alert injectable drugs, their canonical strengths,
-> and their dose bands) is **pharmacist-supplied external truth**. It lands with
-> PR B. PR A is **pure schema** — the tables exist, but carry no clinical figures.
+> and their dose bands) is **pharmacist-supplied external truth** (decision D-T1).
+> PR A is **pure schema**; PR B ships the **engine + enforcement** but still
+> seeds NO clinical numbers — the production formulary/DoseRule tables stay
+> EMPTY until a pharmacist supplies them. PR B's tests use an explicitly
+> **ILLUSTRATIVE, fabricated** test formulary (clearly labeled, never migrated)
+> purely to exercise the engine math.
+
+> **Progress:** PR A merged (schema, #69). **PR B done** (this PR): deterministic
+> `DoseChecker` engine + soft-stop enforcement at the prescription `sign` gate
+> and the pharmacy `DispenseView` gate + per-tenant `dose_safety` feature flag
+> (default OFF) + flywheel AuditLog capture + exhaustive engine/enforcement
+> tests. The production formulary seed remains **pending pharmacist-supplied
+> numbers (D-T1)**. **PR C (frontend) is next.**
 
 ---
 
@@ -57,7 +68,32 @@ critical gaps, and the open product/clinical decisions.
   gap #1). **Fixed in PR A.**
 - No dose engine, no enforcement, no clinical numbers.
 
-### PR B — Deterministic engine + soft-stop enforcement + weight-gate + flywheel
+### PR B — Deterministic engine + soft-stop enforcement + weight-gate + flywheel — DONE
+
+**Where it lives (import boundary):** the pure engine is in
+`apps/pharmacy/services/dose_checker.py` — pharmacy, NOT emr, because the engine
+must read `pharmacy.MedicationFormulary` / `pharmacy.DoseRule` at module level and
+the `emr → pharmacy` import is only done lazily in this codebase (string FKs). The
+EMR-side orchestrator `apps/emr/services/dose_safety.py` (`DoseCheckService`)
+imports the engine lazily and owns the DB side-effects + AuditLog. Enforcement is
+wired into `apps/emr/views.py` `PrescriptionViewSet.sign` and
+`apps/pharmacy/views.py` `DispenseView.post`. The override path reuses the existing
+`AcknowledgeSafetyAlertView` (no new override code). Feature flag:
+per-tenant `FeatureFlag(module_key="dose_safety")`, default OFF; staleness window
+is `settings.DOSE_SAFETY_WEIGHT_STALENESS_DAYS` (default 90, D-T2).
+
+**Engine verdict logic (Decimal-only, no float):** NOT_APPLICABLE if no active
+formulary row or no matching DoseRule band; DATA_MISSING on unit mismatch (NEVER
+coerce mg↔mL↔mcg) or missing dose; WEIGHT_GATE if a `per_kg` rule has no fresh
+weight; the universal `absolute_max_dose` is ALWAYS enforced first (catches the
+weight-typo class even when the per-kg band "passes"); then the computed
+range and `max_per_day`; boundary (== max/min) is allowed; any unexpected
+exception → ENGINE_ERROR. Blocking = OUT_OF_RANGE / WEIGHT_GATE (409 soft-stop);
+DATA_MISSING / ENGINE_ERROR = advisory (caution alert, allowed); SAFE clears any
+stale engine alert. Every verdict writes one AuditLog (labeled example: drug,
+dose, unit, age_days, weight, verdict, expected range, rule_id, gate,
+correlation_id) for the flywheel.
+
 - **`DoseChecker` engine** (deterministic, authoritative): given a
   `PrescriptionItem` whose `drug` has a `MedicationFormulary` row, resolves the
   applicable `DoseRule` (by age/weight band + route), computes the patient-specific

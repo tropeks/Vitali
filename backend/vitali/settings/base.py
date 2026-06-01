@@ -259,6 +259,14 @@ FEATURE_AI_SCRIBE = env.bool("FEATURE_AI_SCRIBE", default=False)
 FEATURE_WHISPER_FALLBACK = env.bool("FEATURE_WHISPER_FALLBACK", default=True)
 SCRIBE_SESSION_RETENTION_DAYS = env.int("SCRIBE_SESSION_RETENTION_DAYS", default=90)
 
+# ─── Dose-safety wedge (PR B) ───────────────────────────────────────────────
+# Weight-staleness window (decision D-T2): a per-kg dose check requires a patient
+# weight no older than this. Beyond it the weight is treated as stale → WEIGHT_GATE
+# (block until a fresh weight is captured). Default 90 days, pending clinical
+# confirmation. The dose_safety toggle itself is a per-tenant FeatureFlag
+# (module_key="dose_safety", default OFF), NOT a setting.
+DOSE_SAFETY_WEIGHT_STALENESS_DAYS = env.int("DOSE_SAFETY_WEIGHT_STALENESS_DAYS", default=90)
+
 # ─── WhatsApp / Evolution API (S-032) ───────────────────────────────────────
 WHATSAPP_EVOLUTION_URL = env("WHATSAPP_EVOLUTION_URL", default="http://evolution-api:8080")
 WHATSAPP_EVOLUTION_API_KEY = env("WHATSAPP_EVOLUTION_API_KEY", default="")
