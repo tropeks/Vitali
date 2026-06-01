@@ -273,6 +273,12 @@ class TestAISafetyAlertSourceMigrationRoundTrip(TenantTestCase):
             message="engine",
         )
 
+        # Flush deferred FK trigger events from the inserts above: the reverse
+        # migration runs ALTER TABLE, and Postgres refuses to ALTER a table with
+        # pending trigger events inside the test's atomic transaction.
+        with connection.cursor() as cur:
+            cur.execute("SET CONSTRAINTS ALL IMMEDIATE")
+
         # Reverse — must succeed (no duplicate-key IntegrityError).
         executor = MigrationExecutor(connection)
         executor.migrate([self.migrate_from])
