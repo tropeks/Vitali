@@ -217,7 +217,7 @@ class TestPrescriptionSignAPI(TenantTestCase):
         item = PrescriptionItem.objects.create(
             prescription=draft_rx, drug=drug, quantity=1, unit_of_measure="un", dose_amount=5
         )
-        resp = self._client(self.medico_user).patch(
+        self._client(self.medico_user).patch(
             f"/api/v1/prescription-items/{item.id}/",
             {"prescription": str(signed_rx.id), "dose_amount": "7"},
             format="json",
