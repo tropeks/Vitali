@@ -363,12 +363,9 @@ class TISSBatchViewSet(viewsets.ModelViewSet):
             # phantom-read that guide and bill/submit it WITHOUT it ever being
             # evaluated. Scoping to evaluated_ids makes that impossible: only the
             # guides we actually evaluated are summed and submitted.
-            total = (
-                locked_batch.guides.filter(pk__in=evaluated_ids).aggregate(
-                    total=Sum("total_value")
-                )["total"]
-                or Decimal("0")
-            )
+            total = locked_batch.guides.filter(pk__in=evaluated_ids).aggregate(
+                total=Sum("total_value")
+            )["total"] or Decimal("0")
             locked_batch.status = "closed"
             locked_batch.closed_at = timezone.now()
             locked_batch.total_value = total
