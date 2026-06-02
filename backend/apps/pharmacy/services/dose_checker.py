@@ -87,6 +87,11 @@ class DoseVerdict:
     expected_high: Decimal | None = None
     max_per_dose: Decimal | None = None
     rule_id: UUID | None = None
+    # Dose-engine v2 (AXIS 3): the matched rule's enforcement mode. Drives whether
+    # an OUT_OF_RANGE verdict blocks (default) or is a non-blocking caution. Only
+    # meaningful for OUT_OF_RANGE/SAFE returns; "block" elsewhere (the orchestrator
+    # routes WEIGHT_GATE/UNIT_MISMATCH as blocking regardless).
+    enforcement: str = "block"
 
 
 class DoseChecker:
@@ -105,6 +110,7 @@ class DoseChecker:
         weight_recorded_at: datetime | None,
         now: datetime,
         weight_staleness_days: int,
+        dose_role: str | None = None,
     ) -> DoseVerdict:
         """Evaluate a single prescribed dose against the formulary band.
 
@@ -112,6 +118,9 @@ class DoseChecker:
         None). The whole body is wrapped so any unexpected exception degrades to
         ENGINE_ERROR (advisory) rather than crashing the gate — the caller also
         catches, defence in depth.
+
+        ``dose_role`` (AXIS 2) is the prescriber-declared regimen role; None or
+        blank normalizes to "maintenance" — the safe clinical default.
         """
         try:
             return DoseChecker._check(
@@ -125,6 +134,7 @@ class DoseChecker:
                 weight_recorded_at=weight_recorded_at,
                 now=now,
                 weight_staleness_days=weight_staleness_days,
+                dose_role=dose_role,
             )
         except Exception:  # pragma: no cover - exercised via the ENGINE_ERROR test
             logger.exception("DoseChecker raised — degrading to ENGINE_ERROR (advisory).")
@@ -151,7 +161,13 @@ class DoseChecker:
         weight_recorded_at: datetime | None,
         now: datetime,
         weight_staleness_days: int,
+        dose_role: str | None = None,
     ) -> DoseVerdict:
+        # AXIS 2: normalize the prescribed role. None/blank → "maintenance" (the
+        # safe clinical default), so an unmarked order is screened against the
+        # lower maintenance band rather than ever matching a higher loading rule.
+        prescribed_role = dose_role or "maintenance"
+
         # 1. Formulary gate: no row, or inactive → NOT_APPLICABLE (no badge, no
         #    false green). Existence of an active row is the dose-checkable predicate.
         formulary = getattr(drug, "formulary", None)
@@ -166,13 +182,22 @@ class DoseChecker:
         #    Materialize the active rules ONCE: _select_rule iterates this list and
         #    the unmatched-path logic below reuses it — a single query total.
         active_rules = list(formulary.dose_rules.filter(active=True))
-        rule = DoseChecker._select_rule(
+        candidates = DoseChecker._matching_candidates(
             active_rules=active_rules,
-            formulary=formulary,
             patient_age_days=patient_age_days,
             weight_kg=weight_kg,
             route=route,
+            frequency_per_day=frequency_per_day,
+            prescribed_role=prescribed_role,
         )
+        if len(candidates) > 1:
+            logger.info(
+                "DoseChecker: %d DoseRules matched for formulary=%s — most specific band, "
+                "strictest absolute ceiling.",
+                len(candidates),
+                getattr(formulary, "id", None),
+            )
+        rule = DoseChecker._most_specific(candidates)
         if rule is None:
             logger.info(
                 "DoseChecker: no matching DoseRule for formulary=%s age_days=%s weight=%s "
@@ -194,9 +219,17 @@ class DoseChecker:
             # matches age + route but was EXCLUDED only because it needs the weight
             # (per_kg basis, or a weight band), we can't even pick the right band —
             # asking for the weight is the fail-safe, NOT a silent advisory gap.
+            # NOTE: deliberately do NOT filter by frequency here. A missing weight
+            # must raise WEIGHT_GATE even when the frequency is also unknown — for a
+            # drug whose only rules are frequency-banded (e.g. an aminoglycoside),
+            # otherwise a per-kg order with no weight AND no frequency would slip
+            # past the hard weight gate as a mere NO_RULE_MATCH advisory. The weight
+            # gate is the higher-priority block; the missing frequency surfaces on
+            # re-evaluation once the weight is recorded.
             if weight_kg is None and any(
                 DoseChecker._age_matches(r, patient_age_days)
                 and DoseChecker._route_matches(r, route)
+                and DoseChecker._role_matches(r, prescribed_role)
                 and (
                     r.basis == "per_kg"
                     or r.weight_min_kg is not None
@@ -267,7 +300,12 @@ class DoseChecker:
             )
 
         dose = Decimal(dose_amount)
-        absolute_max = Decimal(rule.absolute_max_dose)
+        # The universal hard ceiling is the STRICTEST (lowest) absolute_max_dose
+        # among ALL rules that match this patient — never just the most-specific
+        # rule's. This decouples "which therapeutic band applies" (most specific)
+        # from "what single-dose ceiling can never be exceeded" (strictest), so a
+        # narrower-but-looser overlapping rule can't raise the hard cap.
+        absolute_max = min(Decimal(c.absolute_max_dose) for c in candidates)
 
         # 4. Compute the expected band per basis.
         if rule.basis == "per_kg":
@@ -302,10 +340,14 @@ class DoseChecker:
         dose = _q(dose)
         absolute_max = _q(absolute_max)
 
-        # 5. ALWAYS enforce the universal absolute ceiling FIRST. This is the
-        #    weight-typo / per-kg-math floor: a bad weight (70 kg typed 700 kg)
-        #    can push the per-kg band itself above a lethal absolute dose, so the
-        #    absolute cap must fire even when the dose sits *inside* the per-kg band.
+        # 5. ALWAYS enforce the universal absolute ceiling FIRST, and ALWAYS as a
+        #    hard BLOCK regardless of rule.enforcement. This is the weight-typo /
+        #    per-kg-math floor: a bad weight (70 kg typed 700 kg) can push the
+        #    per-kg band itself above a lethal absolute dose. A soft ("advise")
+        #    rule — e.g. an opioid with no therapeutic ceiling — may legitimately
+        #    titrate ABOVE the expected range, but it must NEVER be allowed to
+        #    breach the absolute catastrophe ceiling on a caution only; that would
+        #    let a lethal typo pass. So this verdict is enforcement="block", fixed.
         if dose > absolute_max:
             return DoseVerdict(
                 verdict=Verdict.OUT_OF_RANGE,
@@ -317,6 +359,7 @@ class DoseChecker:
                 expected_high=expected_high,
                 max_per_dose=absolute_max,
                 rule_id=rule.id,
+                enforcement="block",
             )
 
         # 6. Range check (boundary == low/high is allowed).
@@ -331,6 +374,7 @@ class DoseChecker:
                 expected_high=expected_high,
                 max_per_dose=absolute_max,
                 rule_id=rule.id,
+                enforcement=rule.enforcement,
             )
 
         # 7. Max-per-day: frequency × per-dose vs the daily cap.
@@ -349,6 +393,7 @@ class DoseChecker:
                     expected_high=expected_high,
                     max_per_dose=absolute_max,
                     rule_id=rule.id,
+                    enforcement=rule.enforcement,
                 )
 
         # 7b. Daily cap exists but frequency is missing → we CANNOT verify the
@@ -380,6 +425,7 @@ class DoseChecker:
             expected_high=expected_high,
             max_per_dose=absolute_max,
             rule_id=rule.id,
+            enforcement=rule.enforcement,
         )
 
     # ── helpers ────────────────────────────────────────────────────────────────
@@ -406,15 +452,58 @@ class DoseChecker:
         return False
 
     @staticmethod
-    def _select_rule(*, active_rules, formulary, patient_age_days, weight_kg, route):
+    def _select_rule(
+        *,
+        active_rules,
+        formulary,
+        patient_age_days,
+        weight_kg,
+        route,
+        frequency_per_day,
+        prescribed_role,
+    ):
         """Pick the matching DoseRule deterministically.
 
         Filters the already-materialized ``active_rules`` by age band, weight band,
-        and route (no re-query). Null bound = unbounded. If several match, the most
-        specific (narrowest age band, then narrowest weight band, then a concrete
-        route over a blank one) wins; ties break on the rule's stable ordering
-        (stricter ceiling, then id) so the choice is deterministic across runs.
+        route, frequency band (AXIS 1), and dose role (AXIS 2) — no re-query. Null
+        bound = unbounded. If several match, the most specific (narrowest age band,
+        then weight band, then frequency band, then a concrete route over a blank
+        one) wins; ties break on the rule's stable ordering (stricter ceiling, then
+        id) so the choice is deterministic across runs.
+
+        AXIS 1 fail-safe: a rule with ANY freq bound set does NOT match when the
+        prescribed frequency is unknown (we cannot confirm the regimen) — it falls
+        through to NO_RULE_MATCH (or to a sibling rule with no freq bound).
+
+        AXIS 2 exact-match: the rule's dose_role must equal ``prescribed_role``
+        (blank already normalized to "maintenance" by the caller), so a loading
+        rule is selected only for an explicitly-loading item.
         """
+        return DoseChecker._most_specific(
+            DoseChecker._matching_candidates(
+                active_rules=active_rules,
+                patient_age_days=patient_age_days,
+                weight_kg=weight_kg,
+                route=route,
+                frequency_per_day=frequency_per_day,
+                prescribed_role=prescribed_role,
+            )
+        )
+
+    @staticmethod
+    def _matching_candidates(
+        *,
+        active_rules,
+        patient_age_days,
+        weight_kg,
+        route,
+        frequency_per_day,
+        prescribed_role,
+    ):
+        """All active rules that match this patient on every axis (age, weight,
+        route, frequency band [AXIS 1], dose role [AXIS 2]). The caller picks the
+        most-specific band via ``_most_specific`` and enforces the STRICTEST
+        absolute ceiling across the whole list."""
         candidates = []
         for rule in active_rules:
             if not DoseChecker._age_matches(rule, patient_age_days):
@@ -423,32 +512,44 @@ class DoseChecker:
                 continue
             if not DoseChecker._route_matches(rule, route):
                 continue
+            if not DoseChecker._freq_matches(rule, frequency_per_day):
+                continue
+            if not DoseChecker._role_matches(rule, prescribed_role):
+                continue
             candidates.append(rule)
+        return candidates
 
+    @staticmethod
+    def _most_specific(candidates):
+        """The most-specific rule (narrowest bands; stricter ceiling on a tie), or
+        None when nothing matched."""
         if not candidates:
             return None
-        if len(candidates) > 1:
-            logger.info(
-                "DoseChecker: %d DoseRules matched for formulary=%s — choosing most specific.",
-                len(candidates),
-                getattr(formulary, "id", None),
-            )
-        candidates.sort(key=DoseChecker._specificity_key)
-        return candidates[0]
+        return min(candidates, key=DoseChecker._specificity_key)
 
     @staticmethod
     def _specificity_key(rule):
         """Sort key: smaller = more specific, picked first.
 
-        Narrower age band first, then narrower weight band, then a concrete route
-        before a blank (any-route) rule, then — on a genuine tie — the STRICTER
-        (lowest absolute_max_dose) rule, and only finally a stable id tie-break.
-        Never let an arbitrary UUID pick a looser (higher-ceiling) rule.
+        Narrower age band first, then narrower weight band, then narrower frequency
+        band (AXIS 1), then a concrete route before a blank (any-route) rule, then —
+        on a genuine tie — the STRICTER (lowest absolute_max_dose) rule, and only
+        finally a stable id tie-break. Never let an arbitrary UUID pick a looser
+        (higher-ceiling) rule. dose_role is NOT part of the key: it is an exact-match
+        filter (AXIS 2), so all surviving candidates already share the same role.
         """
         age_span = DoseChecker._span(rule.age_min_days, rule.age_max_days)
         weight_span = DoseChecker._span(rule.weight_min_kg, rule.weight_max_kg)
+        freq_span = DoseChecker._span(rule.freq_min_per_day, rule.freq_max_per_day)
         route_rank = 0 if rule.route else 1
-        return (age_span, weight_span, route_rank, Decimal(rule.absolute_max_dose), str(rule.id))
+        return (
+            age_span,
+            weight_span,
+            freq_span,
+            route_rank,
+            Decimal(rule.absolute_max_dose),
+            str(rule.id),
+        )
 
     @staticmethod
     def _span(low, high):
@@ -490,6 +591,32 @@ class DoseChecker:
         if not rule.route:
             return True
         return route == rule.route
+
+    @staticmethod
+    def _freq_matches(rule, frequency_per_day):
+        # AXIS 1. A rule with NO freq bounds matches any frequency (today's
+        # behavior — backward-compatible). A rule with ANY freq bound set is
+        # frequency-scoped: it matches only when the prescribed frequency falls in
+        # [freq_min, freq_max] (null bound = open on that side). FAIL-SAFE: if the
+        # rule is freq-scoped but the prescription's frequency is unknown, we cannot
+        # confirm the regimen → the rule does NOT match (falls through to
+        # NO_RULE_MATCH, or to a sibling rule with no freq bound).
+        if rule.freq_min_per_day is None and rule.freq_max_per_day is None:
+            return True
+        if frequency_per_day is None:
+            return False
+        if rule.freq_min_per_day is not None and frequency_per_day < rule.freq_min_per_day:
+            return False
+        if rule.freq_max_per_day is not None and frequency_per_day > rule.freq_max_per_day:
+            return False
+        return True
+
+    @staticmethod
+    def _role_matches(rule, prescribed_role):
+        # AXIS 2. Exact match against the (already-normalized) prescribed role.
+        # A loading rule is selected ONLY for an explicitly-loading item; an
+        # unmarked (maintenance) order never matches a loading rule.
+        return rule.dose_role == prescribed_role
 
     @staticmethod
     def _weight_is_stale(weight_recorded_at, now, weight_staleness_days):

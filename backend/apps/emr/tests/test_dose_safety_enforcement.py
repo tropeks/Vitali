@@ -793,3 +793,179 @@ class TestConcurrentSignLock(_EnforceBase):
 
         self.assertEqual(resp.status_code, 200)
         self.assertGreaterEqual(called["n"], 1)
+
+
+def make_advise_perkg_drug(name_suffix=""):
+    """ILLUSTRATIVE advise rule: band [0.5,1.0] mg/kg, abs cap 50mg,
+    enforcement='advise' (opioid-style soft ceiling). NOT clinical."""
+    drug = Drug.objects.create(
+        name=f"FAKE-Enf-Advise{name_suffix}", generic_name=f"fake_enf_advise{name_suffix}"
+    )
+    formulary = MedicationFormulary.objects.create(
+        drug=drug,
+        strength_value=Decimal("10.000"),
+        strength_unit="mg",
+        route="IV",
+        is_injectable=True,
+        is_high_alert=True,
+        active=True,
+    )
+    DoseRule.objects.create(
+        formulary=formulary,
+        basis="per_kg",
+        dose_unit="mg",
+        min_per_kg=Decimal("0.5000"),
+        max_per_kg=Decimal("1.0000"),
+        absolute_max_dose=Decimal("50.0000"),
+        enforcement="advise",
+        active=True,
+    )
+    return drug
+
+
+class TestEnforcementAdvise(_EnforceBase):
+    """AXIS 3: an OUT_OF_RANGE on an enforcement='advise' rule is a non-blocking
+    caution — sign returns 200 with a caution alert recorded, NOT a 409 block."""
+
+    def test_advise_out_of_range_is_caution_not_block(self):
+        drug = make_advise_perkg_drug("-OOR")
+        rx, _item = self._make_rx(dose=Decimal("40"), drug=drug)  # band [5,10] → OOR
+        resp = self._sign(rx)
+        self.assertEqual(resp.status_code, 200)
+        rx.refresh_from_db()
+        self.assertTrue(rx.is_signed)
+        # No blocking alert.
+        from apps.emr.services.dose_safety import DoseCheckService
+
+        self.assertFalse(DoseCheckService.has_blocking_dose_alert(rx))
+        # A caution alert IS recorded (visible, non-silent).
+        alert = AISafetyAlert.objects.get(
+            prescription_item__prescription=rx, source="engine", alert_type="dose"
+        )
+        self.assertEqual(alert.severity, "caution")
+        # The reason still states the dose is out of the expected range.
+        self.assertIn("fora do intervalo", alert.message)
+
+    def test_advise_weight_gate_still_blocks(self):
+        """A WEIGHT_GATE on an advise rule STILL blocks (409) — you cannot dose
+        per-kg without a weight, enforcement mode is irrelevant."""
+        drug = make_advise_perkg_drug("-WG")
+        patient2 = Patient.objects.create(
+            full_name="Adv NoWeight", birth_date=date(1990, 1, 1), gender="F", cpf="66677788899"
+        )
+        enc2 = Encounter.objects.create(patient=patient2, professional=self.prof)
+        rx = Prescription.objects.create(encounter=enc2, patient=patient2, prescriber=self.prof)
+        PrescriptionItem.objects.create(
+            prescription=rx,
+            drug=drug,
+            quantity=Decimal("5"),
+            unit_of_measure="un",
+            dose_amount=Decimal("7"),
+            dose_unit="mg",
+            route="IV",
+            frequency_per_day=1,
+        )
+        resp = self._sign(rx)
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(resp.data["code"], "dose_safety_block")
+        alert = AISafetyAlert.objects.get(
+            prescription_item__prescription=rx, source="engine", alert_type="dose"
+        )
+        self.assertEqual(alert.severity, "contraindication")
+
+    def test_advise_unit_mismatch_still_blocks(self):
+        """A UNIT_MISMATCH on an advise rule STILL blocks (409)."""
+        drug = make_advise_perkg_drug("-UM")
+        rx, _item = self._make_rx(dose=Decimal("7"), unit="mcg", drug=drug)
+        resp = self._sign(rx)
+        self.assertEqual(resp.status_code, 409)
+        alert = AISafetyAlert.objects.get(
+            prescription_item__prescription=rx, source="engine", alert_type="dose"
+        )
+        self.assertEqual(alert.severity, "contraindication")
+
+    def test_block_out_of_range_still_409_regression(self):
+        """Regression guard: a default enforcement='block' rule OUT_OF_RANGE still
+        raises 409 (today's behavior, unchanged by AXIS 3)."""
+        rx, _item = self._make_rx(dose=Decimal("40"))  # default make_perkg_drug → block
+        resp = self._sign(rx)
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(resp.data["code"], "dose_safety_block")
+        rx.refresh_from_db()
+        self.assertFalse(rx.is_signed)
+
+
+class TestDoseRoleOrchestration(_EnforceBase):
+    """AXIS 2 end-to-end: item dose_role drives which band the engine selects."""
+
+    def _make_loading_drug(self):
+        drug = Drug.objects.create(name="FAKE-Enf-Load", generic_name="fake_enf_load")
+        formulary = MedicationFormulary.objects.create(
+            drug=drug,
+            strength_value=Decimal("10.000"),
+            strength_unit="mg",
+            route="IV",
+            is_injectable=True,
+            is_high_alert=True,
+            active=True,
+        )
+        # Maintenance band [10,20] mg/kg → 10 kg = [100,200]. abs cap 2000.
+        DoseRule.objects.create(
+            formulary=formulary,
+            basis="per_kg",
+            dose_unit="mg",
+            min_per_kg=Decimal("10.0000"),
+            max_per_kg=Decimal("20.0000"),
+            absolute_max_dose=Decimal("2000.0000"),
+            dose_role="maintenance",
+            active=True,
+        )
+        # Loading band [25,30] mg/kg → 10 kg = [250,300]. abs cap 3000.
+        DoseRule.objects.create(
+            formulary=formulary,
+            basis="per_kg",
+            dose_unit="mg",
+            min_per_kg=Decimal("25.0000"),
+            max_per_kg=Decimal("30.0000"),
+            absolute_max_dose=Decimal("3000.0000"),
+            dose_role="loading",
+            active=True,
+        )
+        return drug
+
+    def _make_rx_with_role(self, *, drug, dose, role):
+        rx = Prescription.objects.create(
+            encounter=self.encounter, patient=self.patient, prescriber=self.prof
+        )
+        item = PrescriptionItem.objects.create(
+            prescription=rx,
+            drug=drug,
+            quantity=Decimal("5"),
+            unit_of_measure="un",
+            dose_amount=dose,
+            dose_unit="mg",
+            route="IV",
+            frequency_per_day=1,
+            dose_role=role,
+        )
+        return rx, item
+
+    def test_loading_marked_item_uses_loading_band_safe(self):
+        drug = self._make_loading_drug()
+        # 10 kg, loading band [250,300]; dose 280 marked loading → SAFE → sign 200.
+        rx, _item = self._make_rx_with_role(drug=drug, dose=Decimal("280"), role="loading")
+        resp = self._sign(rx)
+        self.assertEqual(resp.status_code, 200)
+        rx.refresh_from_db()
+        self.assertTrue(rx.is_signed)
+
+    def test_unmarked_loading_magnitude_dose_blocks_vs_maintenance(self):
+        """Same 280 mg dose with blank role → screened vs maintenance [100,200] →
+        OUT_OF_RANGE (block) → 409 (fail-safe over-flag)."""
+        drug = self._make_loading_drug()
+        rx, _item = self._make_rx_with_role(drug=drug, dose=Decimal("280"), role="")
+        resp = self._sign(rx)
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(resp.data["code"], "dose_safety_block")
+        rx.refresh_from_db()
+        self.assertFalse(rx.is_signed)

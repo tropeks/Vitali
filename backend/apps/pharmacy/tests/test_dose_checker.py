@@ -586,6 +586,359 @@ class TestDoseCheckerRuleSelection(_Base):
             patient_age_days=3650,
             weight_kg=None,
             route="PO",
+            frequency_per_day=None,
+            prescribed_role="maintenance",
         )
         self.assertEqual(chosen.id, strict.id)
         self.assertNotEqual(chosen.id, loose.id)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Dose-engine v2 — AXIS 1 (frequency band), AXIS 2 (loading vs maintenance),
+# AXIS 3 (block vs advise). ILLUSTRATIVE numbers — NOT clinical truth.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _freq_banded_formulary():
+    """ILLUSTRATIVE: aminoglycoside-style dual paradigm via the AXIS-1 freq band.
+
+    Extended-interval rule: freq 1–1, higher band [4,6] mg/kg.
+    Traditional rule:       freq 2–4, lower band  [1.5,2.5] mg/kg.
+    Same drug/age/route; they coexist and are disambiguated ONLY by frequency.
+    NOT clinical.
+    """
+    from apps.pharmacy.models import DoseRule, Drug, MedicationFormulary
+
+    drug = Drug.objects.create(name="FAKE-FreqBand", generic_name="fake_freqband")
+    formulary = MedicationFormulary.objects.create(
+        drug=drug,
+        strength_value=Decimal("10.000"),
+        strength_unit="mg",
+        route="IV",
+        is_injectable=True,
+        is_high_alert=True,
+        active=True,
+    )
+    extended = DoseRule.objects.create(
+        formulary=formulary,
+        basis="per_kg",
+        dose_unit="mg",
+        min_per_kg=Decimal("4.0000"),
+        max_per_kg=Decimal("6.0000"),
+        absolute_max_dose=Decimal("700.0000"),
+        freq_min_per_day=1,
+        freq_max_per_day=1,
+        active=True,
+    )
+    traditional = DoseRule.objects.create(
+        formulary=formulary,
+        basis="per_kg",
+        dose_unit="mg",
+        min_per_kg=Decimal("1.5000"),
+        max_per_kg=Decimal("2.5000"),
+        absolute_max_dose=Decimal("700.0000"),
+        freq_min_per_day=2,
+        freq_max_per_day=4,
+        active=True,
+    )
+    return drug, formulary, extended, traditional
+
+
+class TestDoseCheckerFrequencyBand(_Base):
+    """AXIS 1: two rules for the same drug/age, disambiguated by frequency."""
+
+    def test_freq1_selects_extended_band(self):
+        drug, _f, extended, _trad = _freq_banded_formulary()
+        # 10 kg, freq 1 → extended band [40,60]; dose 50 → SAFE under extended.
+        v = self.check_perkg(drug, dose=Decimal("50"), weight=Decimal("10"), freq=1)
+        self.assertEqual(v.verdict, Verdict.SAFE)
+        self.assertEqual(v.rule_id, extended.id)
+        self.assertEqual(v.expected_low, Decimal("40.0000"))
+        self.assertEqual(v.expected_high, Decimal("60.0000"))
+
+    def test_freq3_selects_traditional_band(self):
+        drug, _f, _ext, traditional = _freq_banded_formulary()
+        # 10 kg, freq 3 → traditional band [15,25]; dose 20 → SAFE under traditional.
+        v = self.check_perkg(drug, dose=Decimal("20"), weight=Decimal("10"), freq=3)
+        self.assertEqual(v.verdict, Verdict.SAFE)
+        self.assertEqual(v.rule_id, traditional.id)
+        self.assertEqual(v.expected_low, Decimal("15.0000"))
+        self.assertEqual(v.expected_high, Decimal("25.0000"))
+
+    def test_extended_dose_at_traditional_freq_flags(self):
+        """A dose fine for extended (50 mg) but prescribed at a traditional
+        frequency (freq 3) is checked against the traditional band [15,25] → it
+        is OUT_OF_RANGE only at the wrong frequency."""
+        drug, _f, _ext, _trad = _freq_banded_formulary()
+        v = self.check_perkg(drug, dose=Decimal("50"), weight=Decimal("10"), freq=3)
+        self.assertEqual(v.verdict, Verdict.OUT_OF_RANGE)
+
+    def test_missing_frequency_with_freq_banded_rules_is_no_rule_match(self):
+        """FAIL-SAFE: every rule is freq-banded; an unknown frequency cannot
+        confirm the regimen → NO_RULE_MATCH advisory, never a wrong selection."""
+        drug, _f, _ext, _trad = _freq_banded_formulary()
+        v = self.check_perkg(drug, dose=Decimal("50"), weight=Decimal("10"), freq=None)
+        self.assertEqual(v.verdict, Verdict.NO_RULE_MATCH)
+
+    def test_frequency_outside_all_bands_is_no_rule_match(self):
+        """freq 6 is above both bands (extended 1, traditional ≤4) → NO_RULE_MATCH."""
+        drug, _f, _ext, _trad = _freq_banded_formulary()
+        v = self.check_perkg(drug, dose=Decimal("20"), weight=Decimal("10"), freq=6)
+        self.assertEqual(v.verdict, Verdict.NO_RULE_MATCH)
+
+
+def _loading_maintenance_formulary():
+    """ILLUSTRATIVE: vancomicina-style loading vs maintenance (AXIS 2).
+
+    Loading rule (dose_role=loading): higher band [25,30] mg/kg.
+    Maintenance rule (default):       lower band  [10,20] mg/kg.
+    NOT clinical.
+    """
+    from apps.pharmacy.models import DoseRule, Drug, MedicationFormulary
+
+    drug = Drug.objects.create(name="FAKE-LoadMaint", generic_name="fake_loadmaint")
+    formulary = MedicationFormulary.objects.create(
+        drug=drug,
+        strength_value=Decimal("10.000"),
+        strength_unit="mg",
+        route="IV",
+        is_injectable=True,
+        is_high_alert=True,
+        active=True,
+    )
+    maintenance = DoseRule.objects.create(
+        formulary=formulary,
+        basis="per_kg",
+        dose_unit="mg",
+        min_per_kg=Decimal("10.0000"),
+        max_per_kg=Decimal("20.0000"),
+        absolute_max_dose=Decimal("2000.0000"),
+        dose_role="maintenance",
+        active=True,
+    )
+    loading = DoseRule.objects.create(
+        formulary=formulary,
+        basis="per_kg",
+        dose_unit="mg",
+        min_per_kg=Decimal("25.0000"),
+        max_per_kg=Decimal("30.0000"),
+        absolute_max_dose=Decimal("3000.0000"),
+        dose_role="loading",
+        active=True,
+    )
+    return drug, formulary, maintenance, loading
+
+
+class TestDoseCheckerDoseRole(_Base):
+    """AXIS 2: loading rule selected ONLY for an explicitly-loading item."""
+
+    def _check(self, drug, *, dose, weight, freq=1, role=None):
+        return DoseChecker.check(
+            drug=drug,
+            dose_amount=dose,
+            dose_unit="mg",
+            route="IV",
+            frequency_per_day=freq,
+            patient_age_days=3650,
+            weight_kg=weight,
+            weight_recorded_at=self.fresh,
+            now=self.now,
+            weight_staleness_days=90,
+            dose_role=role,
+        )
+
+    def test_loading_item_uses_loading_band(self):
+        drug, _f, _maint, loading = _loading_maintenance_formulary()
+        # 10 kg, loading band [250,300]; dose 280, marked loading → SAFE under loading.
+        v = self._check(drug, dose=Decimal("280"), weight=Decimal("10"), role="loading")
+        self.assertEqual(v.verdict, Verdict.SAFE)
+        self.assertEqual(v.rule_id, loading.id)
+        self.assertEqual(v.expected_low, Decimal("250.0000"))
+        self.assertEqual(v.expected_high, Decimal("300.0000"))
+
+    def test_unmarked_loading_magnitude_dose_checked_vs_maintenance_out_of_range(self):
+        """A loading-magnitude dose (280 mg) with NO role → screened against the
+        lower MAINTENANCE band [100,200] → OUT_OF_RANGE (fail-safe over-flag)."""
+        drug, _f, maintenance, _loading = _loading_maintenance_formulary()
+        v = self._check(drug, dose=Decimal("280"), weight=Decimal("10"), role="")
+        self.assertEqual(v.verdict, Verdict.OUT_OF_RANGE)
+        self.assertEqual(v.rule_id, maintenance.id)
+
+    def test_none_role_normalizes_to_maintenance(self):
+        drug, _f, maintenance, _loading = _loading_maintenance_formulary()
+        # dose 150 in maintenance band [100,200]; role None → maintenance → SAFE.
+        v = self._check(drug, dose=Decimal("150"), weight=Decimal("10"), role=None)
+        self.assertEqual(v.verdict, Verdict.SAFE)
+        self.assertEqual(v.rule_id, maintenance.id)
+
+
+def _advise_formulary(enforcement="advise"):
+    """ILLUSTRATIVE: an opioid-style rule with no hard ceiling (AXIS 3).
+    band [0.5,1.0] mg/kg, abs cap 50; enforcement='advise'. NOT clinical."""
+    from apps.pharmacy.models import DoseRule, Drug, MedicationFormulary
+
+    drug = Drug.objects.create(name=f"FAKE-Advise-{enforcement}", generic_name="fake_advise")
+    formulary = MedicationFormulary.objects.create(
+        drug=drug,
+        strength_value=Decimal("10.000"),
+        strength_unit="mg",
+        route="IV",
+        is_injectable=True,
+        is_high_alert=True,
+        active=True,
+    )
+    DoseRule.objects.create(
+        formulary=formulary,
+        basis="per_kg",
+        dose_unit="mg",
+        min_per_kg=Decimal("0.5000"),
+        max_per_kg=Decimal("1.0000"),
+        absolute_max_dose=Decimal("50.0000"),
+        enforcement=enforcement,
+        active=True,
+    )
+    return drug
+
+
+class TestDoseCheckerEnforcement(_Base):
+    """AXIS 3: enforcement is echoed on the verdict; WEIGHT_GATE/UNIT_MISMATCH
+    stay blocking regardless of enforcement mode."""
+
+    def test_out_of_range_echoes_advise_enforcement(self):
+        drug = _advise_formulary("advise")
+        # 10 kg → band [5,10]; dose 40 → OUT_OF_RANGE, enforcement carried as advise.
+        v = self.check_perkg(drug, dose=Decimal("40"), weight=Decimal("10"))
+        self.assertEqual(v.verdict, Verdict.OUT_OF_RANGE)
+        self.assertEqual(v.enforcement, "advise")
+
+    def test_out_of_range_default_block_enforcement(self):
+        drug = _advise_formulary("block")
+        v = self.check_perkg(drug, dose=Decimal("40"), weight=Decimal("10"))
+        self.assertEqual(v.verdict, Verdict.OUT_OF_RANGE)
+        self.assertEqual(v.enforcement, "block")
+
+    def test_safe_echoes_enforcement(self):
+        drug = _advise_formulary("advise")
+        v = self.check_perkg(drug, dose=Decimal("7"), weight=Decimal("10"), freq=1)
+        self.assertEqual(v.verdict, Verdict.SAFE)
+        self.assertEqual(v.enforcement, "advise")
+
+    def test_absolute_ceiling_breach_always_blocks_even_under_advise(self):
+        """Adversarial-review fix: an 'advise' rule (opioid, no therapeutic
+        ceiling) may titrate ABOVE the expected range as a caution — but breaching
+        the universal absolute_max_dose must STILL hard-block (enforcement='block'),
+        or a 700kg-typo lethal dose would slip past on a mere caution."""
+        drug = _advise_formulary("advise")
+        # 10 kg → band [5,10], abs cap 50. dose 60 > 50 → absolute-ceiling breach.
+        v = self.check_perkg(drug, dose=Decimal("60"), weight=Decimal("10"))
+        self.assertEqual(v.verdict, Verdict.OUT_OF_RANGE)
+        self.assertIn("teto absoluto", v.reason)
+        self.assertEqual(v.enforcement, "block")  # forced, despite rule=advise
+
+
+class TestDoseCheckerV2ReviewFixes(_Base):
+    """Adversarial-review fixes for the dose-engine v2 axes."""
+
+    def test_missing_weight_weight_gates_even_when_frequency_also_missing(self):
+        """Fix: for a drug whose ONLY rules are frequency-banded per_kg (e.g. an
+        aminoglycoside), a per-kg order with NO weight AND no frequency must still
+        WEIGHT_GATE (block) — not slip past as a NO_RULE_MATCH advisory."""
+        drug, _f, _ext, _trad = _freq_banded_formulary()
+        v = self.check_perkg(drug, dose=Decimal("50"), weight=None, freq=None)
+        self.assertEqual(v.verdict, Verdict.WEIGHT_GATE)
+
+    def test_strictest_absolute_ceiling_across_overlapping_candidates(self):
+        """Fix: when two rules overlap on the prescribed frequency, the narrower
+        (more-specific) rule supplies the band, but the absolute ceiling enforced
+        is the STRICTEST (lowest) among ALL matching rules — a narrower-but-looser
+        rule can't raise the hard cap."""
+        from apps.pharmacy.models import DoseRule, Drug, MedicationFormulary
+
+        drug = Drug.objects.create(name="FAKE-Overlap", generic_name="fake_overlap")
+        formulary = MedicationFormulary.objects.create(
+            drug=drug,
+            strength_value=Decimal("10.000"),
+            strength_unit="mg",
+            route="IV",
+            is_injectable=True,
+            is_high_alert=True,
+            active=True,
+        )
+        # Broad rule: freq 1–4, STRICT ceiling 50.
+        DoseRule.objects.create(
+            formulary=formulary,
+            basis="per_kg",
+            dose_unit="mg",
+            min_per_kg=Decimal("0.0000"),
+            max_per_kg=Decimal("5.0000"),
+            absolute_max_dose=Decimal("50.0000"),
+            freq_min_per_day=1,
+            freq_max_per_day=4,
+            active=True,
+        )
+        # Narrower (freq 2–2) but LOOSER: wide band + ceiling 500.
+        narrow_loose = DoseRule.objects.create(
+            formulary=formulary,
+            basis="per_kg",
+            dose_unit="mg",
+            min_per_kg=Decimal("0.0000"),
+            max_per_kg=Decimal("50.0000"),
+            absolute_max_dose=Decimal("500.0000"),
+            freq_min_per_day=2,
+            freq_max_per_day=2,
+            active=True,
+        )
+        # 10 kg, freq 2: both match; narrow_loose wins the band (freq span 0),
+        # but the enforced ceiling = min(50, 500) = 50. dose 100 sits inside
+        # narrow_loose's band [0,500] yet breaches the strict ceiling 50.
+        v = self.check_perkg(drug, dose=Decimal("100"), weight=Decimal("10"), freq=2)
+        self.assertEqual(v.verdict, Verdict.OUT_OF_RANGE)
+        self.assertEqual(v.rule_id, narrow_loose.id)  # band from the specific rule
+        self.assertIn("teto absoluto", v.reason)
+        self.assertEqual(v.max_per_dose, Decimal("50.0000"))  # strictest ceiling
+        self.assertEqual(v.enforcement, "block")
+
+    def test_weight_gate_on_advise_rule_stays_block_default(self):
+        """A WEIGHT_GATE keeps enforcement='block' even on an advise rule — the
+        orchestrator must always block it (you cannot dose per-kg without a weight)."""
+        drug = _advise_formulary("advise")
+        v = self.check_perkg(drug, dose=Decimal("7"), weight=None)
+        self.assertEqual(v.verdict, Verdict.WEIGHT_GATE)
+        self.assertEqual(v.enforcement, "block")
+
+    def test_unit_mismatch_on_advise_rule_stays_block_default(self):
+        drug = _advise_formulary("advise")
+        # mcg vs mg rule, same mass family → UNIT_MISMATCH, enforcement stays block.
+        v = self.check_perkg(drug, dose=Decimal("7"), weight=Decimal("10"), unit="mcg")
+        self.assertEqual(v.verdict, Verdict.UNIT_MISMATCH)
+        self.assertEqual(v.enforcement, "block")
+
+
+class TestDoseEngineV2BackwardCompat(_Base):
+    """Regression guard: a rule with NONE of the new fields set behaves EXACTLY
+    as before — maintenance role, block enforcement, any frequency matches."""
+
+    def test_legacy_rule_unchanged_safe(self):
+        drug, _f, _r = make_per_kg_formulary()
+        v = self.check_perkg(drug, dose=Decimal("7"), weight=Decimal("10"), freq=1)
+        self.assertEqual(v.verdict, Verdict.SAFE)
+        self.assertEqual(v.enforcement, "block")
+
+    def test_legacy_rule_matches_any_frequency(self):
+        drug, _f, _r = make_per_kg_formulary()
+        # No freq band on the rule → matches freq 1 and freq 4 identically.
+        self.assertEqual(
+            self.check_perkg(drug, dose=Decimal("10"), weight=Decimal("10"), freq=1).verdict,
+            Verdict.SAFE,
+        )
+        # freq 4 → 10×4=40 ≤ 60/day cap → still SAFE.
+        self.assertEqual(
+            self.check_perkg(drug, dose=Decimal("10"), weight=Decimal("10"), freq=4).verdict,
+            Verdict.SAFE,
+        )
+
+    def test_legacy_rule_out_of_range_blocks(self):
+        drug, _f, _r = make_per_kg_formulary()
+        v = self.check_perkg(drug, dose=Decimal("40"), weight=Decimal("10"))
+        self.assertEqual(v.verdict, Verdict.OUT_OF_RANGE)
+        self.assertEqual(v.enforcement, "block")
