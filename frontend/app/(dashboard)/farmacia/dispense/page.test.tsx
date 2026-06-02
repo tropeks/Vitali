@@ -53,8 +53,33 @@ const signedPrescription = {
 function okJson(data: unknown) {
   return Promise.resolve({
     ok: true,
+    status: 200,
     json: async () => data,
   } as Response)
+}
+
+function statusJson(status: number, data: unknown) {
+  return Promise.resolve({
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => data,
+  } as Response)
+}
+
+const doseSafetyBlock = {
+  code: 'dose_safety_block',
+  detail: 'Dose fora do intervalo seguro. Reconheça os alertas com justificativa antes de prosseguir.',
+  alerts: [
+    {
+      id: 'alert-1',
+      prescription_item: 'item-1',
+      alert_type: 'dose',
+      severity: 'contraindication',
+      status: 'flagged',
+      message: 'Dose acima do intervalo seguro para o peso informado.',
+      recommendation: 'Reveja a dose; confirme peso/idade ou ajuste para o intervalo esperado.',
+    },
+  ],
 }
 
 beforeEach(() => {
@@ -186,5 +211,85 @@ describe('DispensePage', () => {
       String(url).includes('/api/v1/pharmacy/dispense/') && init?.method === 'POST'
     ))
     expect(dispenseCalls).toHaveLength(0)
+  })
+
+  it('intercepts a dose_safety_block 409, acknowledges, and retries successfully', async () => {
+    const user = userEvent.setup()
+
+    // First dispense POST → 409 block; acknowledge → 204; second dispense POST → 201.
+    let dispenseAttempts = 0
+    mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes('/api/v1/patients/?search=')) {
+        return okJson({
+          results: [
+            { id: 'p-1', full_name: 'Maria Souza', medical_record_number: 'MRN-123', birth_date: '1990-01-01' },
+          ],
+        })
+      }
+      if (url.includes('/api/v1/prescriptions/?patient=p-1&status=signed')) {
+        return okJson({ results: [signedPrescription] })
+      }
+      if (url.includes('/api/v1/prescriptions/?patient=p-1&status=partially_dispensed')) {
+        return okJson({ results: [] })
+      }
+      if (url.includes('/api/v1/pharmacy/stock/availability/?drug=drug-1')) {
+        return okJson({
+          available_lots: [
+            { id: 'lot-1', lot_number: 'A-001', expiry_date: '2026-06-01', quantity: '8.000', location: 'A1' },
+          ],
+          total: 8,
+        })
+      }
+      if (url.includes('/api/v1/safety-alerts/alert-1/acknowledge/') && init?.method === 'POST') {
+        return statusJson(204, {})
+      }
+      if (url.includes('/api/v1/pharmacy/dispense/') && init?.method === 'POST') {
+        dispenseAttempts += 1
+        if (dispenseAttempts === 1) {
+          return statusJson(409, doseSafetyBlock)
+        }
+        return statusJson(201, {
+          id: 'disp-1',
+          total_quantity: '5.000',
+          lots: [{ stock_item: 'lot-1', lot_number: 'A-001', expiry_date: '2026-06-01', quantity: '5.000' }],
+        })
+      }
+      return okJson({ results: [] })
+    })
+
+    render(<DispensePage />)
+
+    await selectPatientFromSearch()
+    await user.click(screen.getAllByRole('button', { name: 'Fechar item' })[0])
+
+    await waitFor(() => {
+      expect(screen.getByText(/A-001/)).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Confirmar dispensação' }))
+
+    // The interception modal opens instead of the generic error.
+    expect(await screen.findByText('Verificação de dose')).toBeInTheDocument()
+    expect(screen.getByText('Dose acima do intervalo seguro para o peso informado.')).toBeInTheDocument()
+
+    // Enter a >=10-char justification and confirm.
+    const textarea = screen.getByPlaceholderText('Descreva a justificativa clínica...')
+    await user.type(textarea, 'Paciente monitorizado em UTI, dose validada.')
+    await user.click(screen.getByRole('button', { name: 'Reconhecer e dispensar' }))
+
+    // After acknowledge + retry → success state.
+    await waitFor(() => {
+      expect(screen.getByText('Dispensação registrada')).toBeInTheDocument()
+    })
+
+    const ackCall = mockFetch.mock.calls.find(([url, init]) => (
+      String(url).includes('/api/v1/safety-alerts/alert-1/acknowledge/') && init?.method === 'POST'
+    ))
+    expect(ackCall).toBeTruthy()
+    expect(JSON.parse((ackCall![1] as RequestInit).body as string)).toMatchObject({
+      reason: 'Paciente monitorizado em UTI, dose validada.',
+    })
+    expect(dispenseAttempts).toBe(2)
   })
 })

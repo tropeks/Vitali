@@ -859,6 +859,7 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
                 "status": a.status,
                 "message": a.message,
                 "recommendation": a.recommendation,
+                "blocking_kind": DoseCheckService.classify_blocking_kind(a),
             }
             for a in DoseCheckService.blocking_dose_alerts(prescription)
         ]
@@ -906,3 +907,31 @@ class PrescriptionItemViewSet(viewsets.ModelViewSet):
                 }
             )
         serializer.save(prescription=rx)
+
+    def perform_update(self, serializer):
+        from rest_framework.exceptions import ValidationError
+
+        # Both the CURRENT parent and any TARGET parent (defence in depth — the
+        # serializer marks `prescription` read-only, but should that ever change,
+        # a PATCH must not move an item onto a signed prescription either) must be
+        # draft for the edit to be allowed.
+        current_rx = serializer.instance.prescription
+        target_rx = serializer.validated_data.get("prescription", current_rx)
+        if current_rx.status != "draft" or target_rx.status != "draft":
+            raise ValidationError(
+                {
+                    "prescription": "Não é possível alterar itens de uma receita já assinada ou cancelada."
+                }
+            )
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if instance.prescription.status != "draft":
+            from rest_framework.exceptions import ValidationError
+
+            raise ValidationError(
+                {
+                    "prescription": "Não é possível alterar itens de uma receita já assinada ou cancelada."
+                }
+            )
+        instance.delete()

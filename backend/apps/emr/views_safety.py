@@ -139,6 +139,26 @@ class AcknowledgeSafetyAlertView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        # A weight-gate block is NON-overridable: you cannot reason away a
+        # missing weight, you must record it. Refuse the acknowledgement at the
+        # authority so the bypass is closed even if a client tries it directly.
+        from apps.emr.services.dose_safety import DoseCheckService
+
+        if (
+            alert.source == AISafetyAlert.Source.ENGINE
+            and alert.alert_type == "dose"
+            and DoseCheckService.classify_blocking_kind(alert) == "weight_gate"
+        ):
+            return Response(
+                {
+                    "error": (
+                        "Não é possível reconhecer um bloqueio por peso ausente. "
+                        "Registre o peso do paciente e reavalie."
+                    )
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
         # Reason required for contraindications (min 10 chars)
         if alert.severity == "contraindication":
             if len(reason) < 10:

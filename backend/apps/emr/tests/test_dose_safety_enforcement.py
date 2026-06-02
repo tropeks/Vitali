@@ -189,6 +189,85 @@ class TestSignGate(_EnforceBase):
         self.assertEqual(resp.status_code, 409)
 
 
+class TestBlockingKind(_EnforceBase):
+    def test_out_of_range_payload_has_blocking_kind(self):
+        rx, _item = self._make_rx(dose=Decimal("40"))  # band [5,10] → OUT_OF_RANGE
+        resp = self._sign(rx)
+        self.assertEqual(resp.status_code, 409)
+        self.assertTrue(resp.data["alerts"])
+        self.assertEqual(resp.data["alerts"][0]["blocking_kind"], "out_of_range")
+
+    def test_weight_gate_payload_has_blocking_kind(self):
+        # Patient with no recorded weight → per_kg → WEIGHT_GATE (blocking).
+        patient2 = Patient.objects.create(
+            full_name="BK No Weight", birth_date=date(1990, 1, 1), gender="F", cpf="10101010101"
+        )
+        enc2 = Encounter.objects.create(patient=patient2, professional=self.prof)
+        rx = Prescription.objects.create(encounter=enc2, patient=patient2, prescriber=self.prof)
+        PrescriptionItem.objects.create(
+            prescription=rx,
+            drug=make_perkg_drug(),
+            quantity=Decimal("5"),
+            dose_amount=Decimal("7"),
+            dose_unit="mg",
+            route="IV",
+            frequency_per_day=1,
+        )
+        resp = self._sign(rx)
+        self.assertEqual(resp.status_code, 409)
+        self.assertTrue(resp.data["alerts"])
+        self.assertEqual(resp.data["alerts"][0]["blocking_kind"], "weight_gate")
+
+
+class TestWeightGateAckRefused(_EnforceBase):
+    def test_weight_gate_ack_refused_409(self):
+        """The authority refuses to acknowledge a weight-gate block — you cannot
+        reason away a missing weight, you must record it."""
+        patient2 = Patient.objects.create(
+            full_name="WG Ack", birth_date=date(1990, 1, 1), gender="F", cpf="20202020202"
+        )
+        enc2 = Encounter.objects.create(patient=patient2, professional=self.prof)
+        rx = Prescription.objects.create(encounter=enc2, patient=patient2, prescriber=self.prof)
+        PrescriptionItem.objects.create(
+            prescription=rx,
+            drug=make_perkg_drug(),
+            quantity=Decimal("5"),
+            dose_amount=Decimal("7"),
+            dose_unit="mg",
+            route="IV",
+            frequency_per_day=1,
+        )
+        self.assertEqual(self._sign(rx).status_code, 409)
+
+        alert = AISafetyAlert.objects.get(
+            prescription_item__prescription=rx, source="engine", alert_type="dose"
+        )
+        ack_url = f"/api/v1/safety-alerts/{alert.id}/acknowledge/"
+        ack = self._client(self.doctor).post(
+            ack_url, {"reason": "Tentando reconhecer sem registrar o peso"}
+        )
+        self.assertEqual(ack.status_code, 409)
+        alert.refresh_from_db()
+        # The alert is NOT acknowledged — the gate stays blocked.
+        self.assertEqual(alert.status, "flagged")
+        self.assertIsNone(alert.acknowledged_by)
+
+    def test_normal_contraindication_still_acknowledges(self):
+        """A normal (out-of-range) contraindication remains overridable."""
+        rx, _item = self._make_rx(dose=Decimal("40"))  # OUT_OF_RANGE
+        self.assertEqual(self._sign(rx).status_code, 409)
+        alert = AISafetyAlert.objects.get(
+            prescription_item__prescription=rx, source="engine", alert_type="dose"
+        )
+        ack_url = f"/api/v1/safety-alerts/{alert.id}/acknowledge/"
+        ack = self._client(self.doctor).post(
+            ack_url, {"reason": "Dose intencional conforme protocolo documentado"}
+        )
+        self.assertEqual(ack.status_code, 200)
+        alert.refresh_from_db()
+        self.assertEqual(alert.status, "acknowledged")
+
+
 class TestFeatureFlagOff(_EnforceBase):
     def test_sign_unaffected_when_flag_off(self):
         self._set_flag(False)

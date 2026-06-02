@@ -51,6 +51,14 @@ logger = logging.getLogger(__name__)
 
 DOSE_SAFETY_FEATURE_KEY = "dose_safety"
 
+# Per-verdict recommendation strings. These are the SINGLE SOURCE OF TRUTH for
+# both the clinician-facing copy (_recommendation) and the machine-readable
+# blocking-kind classification (classify_blocking_kind) — keep them in sync by
+# referencing the constant, never the literal.
+REC_WEIGHT_GATE = "Registre/atualize o peso do paciente e reavalie."
+REC_OUT_OF_RANGE = "Reveja a dose; confirme peso/idade ou ajuste para o intervalo esperado."
+REC_UNIT_MISMATCH = "Confirme a unidade prescrita; ela difere da unidade da regra de dose."
+
 # Verdicts that BLOCK the gate (soft-stop). Everything else is advisory or silent.
 _BLOCKING_VERDICTS = frozenset({Verdict.OUT_OF_RANGE, Verdict.WEIGHT_GATE, Verdict.UNIT_MISMATCH})
 # Verdicts that produce a non-blocking advisory alert.
@@ -354,12 +362,29 @@ class DoseCheckService:
     @staticmethod
     def _recommendation(verdict: DoseVerdict) -> str:
         if verdict.verdict == Verdict.WEIGHT_GATE:
-            return "Registre/atualize o peso do paciente e reavalie."
+            return REC_WEIGHT_GATE
         if verdict.verdict == Verdict.OUT_OF_RANGE:
-            return "Reveja a dose; confirme peso/idade ou ajuste para o intervalo esperado."
+            return REC_OUT_OF_RANGE
         if verdict.verdict == Verdict.UNIT_MISMATCH:
-            return "Confirme a unidade prescrita; ela difere da unidade da regra de dose."
+            return REC_UNIT_MISMATCH
         return ""
+
+    @staticmethod
+    def classify_blocking_kind(alert) -> str:
+        """Map an AISafetyAlert to a machine-readable blocking kind.
+
+        Uses the per-verdict recommendation constants as the single source of
+        truth so the frontend can distinguish a non-overridable weight-gate from
+        an overridable contraindication WITHOUT brittle copy-prefix matching.
+        """
+        recommendation = alert.recommendation
+        if recommendation == REC_WEIGHT_GATE:
+            return "weight_gate"
+        if recommendation == REC_UNIT_MISMATCH:
+            return "unit_mismatch"
+        if recommendation == REC_OUT_OF_RANGE:
+            return "out_of_range"
+        return "dose"
 
     def _audit(
         self,
