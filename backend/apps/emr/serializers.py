@@ -468,9 +468,17 @@ class PrescriptionItemSerializer(serializers.ModelSerializer):
             "quantity",
             "unit_of_measure",
             "dosage_instructions",
+            "dose_amount",
+            "dose_unit",
+            "route",
+            "frequency_per_day",
             "notes",
         ]
-        read_only_fields = ["id", "generic_name"]
+        # `prescription` is read-only: an item's parent is set once at creation
+        # (PrescriptionItemViewSet.perform_create passes it explicitly). Leaving it
+        # writable would let a PATCH re-parent a draft item onto an already-signed
+        # prescription, mutating signed content past the signed-status guard.
+        read_only_fields = ["id", "generic_name", "prescription"]
 
 
 class PrescriptionSerializer(serializers.ModelSerializer):

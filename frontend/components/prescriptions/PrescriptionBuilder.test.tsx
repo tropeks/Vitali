@@ -111,6 +111,67 @@ describe('PrescriptionBuilder', () => {
     expect(screen.getByLabelText('Medicamento')).toHaveValue('Dipirona')
   })
 
+  it('includes the structured dose inputs in the create item payload', async () => {
+    // URL-routed mock so keystroke-triggered drug searches don't desync a queue.
+    const drug = { id: 'drug-1', name: 'Vancomicina', generic_name: 'Vancomicina', is_controlled: false }
+    const createdItem = {
+      id: 'item-2', drug: 'drug-1', drug_name: 'Vancomicina', drug_generic_name: 'Vancomicina',
+      drug_is_controlled: false, generic_name: 'Vancomicina', quantity: '1.000',
+      unit_of_measure: 'ampola', dosage_instructions: '', notes: '',
+    }
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes('/api/v1/prescriptions/?encounter=')) {
+        return response({ results: [{ ...prescription, items: [] }] })
+      }
+      if (url.includes('/api/v1/pharmacy/drugs/?search=')) {
+        return response({ results: [drug] })
+      }
+      if (url === '/api/v1/prescription-items/' && init?.method === 'POST') {
+        return response(createdItem)
+      }
+      return response({ results: [] })
+    })
+
+    render(<PrescriptionBuilder encounterId="enc-1" />)
+
+    await screen.findByText('Prescrição #1')
+    await userEvent.click(screen.getByRole('button', { name: /Adicionar ordem/i }))
+
+    // Structured dose inputs render.
+    expect(screen.getByLabelText('Dose (valor)')).toBeInTheDocument()
+    expect(screen.getByLabelText('Dose (unidade)')).toBeInTheDocument()
+    expect(screen.getByLabelText('Via')).toBeInTheDocument()
+    expect(screen.getByLabelText('Doses/dia')).toBeInTheDocument()
+    expect(screen.getByText('Preencha para ativar a verificação de dose (injetáveis).')).toBeInTheDocument()
+
+    // Pick a drug.
+    await userEvent.type(screen.getByLabelText('Medicamento'), 'Vanco')
+    await userEvent.click(await screen.findByText('Vancomicina'))
+
+    // Fill structured dose fields.
+    await userEvent.type(screen.getByLabelText('Dose (valor)'), '500')
+    await userEvent.selectOptions(screen.getByLabelText('Dose (unidade)'), 'mg')
+    await userEvent.selectOptions(screen.getByLabelText('Via'), 'IV')
+    await userEvent.type(screen.getByLabelText('Doses/dia'), '3')
+
+    await userEvent.click(screen.getByRole('button', { name: /Adicionar ordem/i }))
+
+    await waitFor(() => {
+      const createCall = fetchMock.mock.calls.find(
+        ([url, init]) => url === '/api/v1/prescription-items/' && (init as RequestInit)?.method === 'POST',
+      )
+      expect(createCall).toBeTruthy()
+      expect(JSON.parse((createCall![1] as RequestInit).body as string)).toMatchObject({
+        drug: 'drug-1',
+        dose_amount: 500,
+        dose_unit: 'mg',
+        route: 'IV',
+        frequency_per_day: 3,
+      })
+    })
+  })
+
   it('shows a retryable error state when CPOE loading fails', async () => {
     fetchMock.mockResolvedValueOnce(response({ detail: 'Erro de API' }, false, 500))
 

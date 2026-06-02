@@ -94,7 +94,20 @@ const defaultItemForm = {
   quantity: '1',
   unit_of_measure: 'cp',
   dosage_instructions: '',
+  dose_amount: '',
+  dose_unit: '',
+  route: '',
+  frequency_per_day: '',
 };
+
+const DOSE_UNIT_OPTIONS = ['mg', 'mcg', 'mEq', 'unit', 'g'];
+
+const ROUTE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'IV', label: 'Intravenosa' },
+  { value: 'IM', label: 'Intramuscular' },
+  { value: 'SC', label: 'Subcutânea' },
+  { value: 'PO', label: 'Oral' },
+];
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const token = getAccessToken();
@@ -337,6 +350,7 @@ export function PrescriptionBuilder({ encounterId, readOnly = false }: Prescript
     setSelectedDrug(null);
     setDrugSearch(preset.search);
     setNewItemForm({
+      ...defaultItemForm,
       quantity: preset.quantity,
       unit_of_measure: preset.unit,
       dosage_instructions: preset.dosage,
@@ -357,6 +371,14 @@ export function PrescriptionBuilder({ encounterId, readOnly = false }: Prescript
           quantity: parseFloat(newItemForm.quantity) || 1,
           unit_of_measure: newItemForm.unit_of_measure,
           dosage_instructions: newItemForm.dosage_instructions,
+          // Structured dose fields (optional). Numeric fields must be null when
+          // empty — a DecimalField/IntegerField rejects "". CharFields (dose_unit,
+          // route) accept "" (blank=True).
+          dose_amount: newItemForm.dose_amount.trim() === '' ? null : parseFloat(newItemForm.dose_amount),
+          dose_unit: newItemForm.dose_unit,
+          route: newItemForm.route,
+          frequency_per_day:
+            newItemForm.frequency_per_day.trim() === '' ? null : parseInt(newItemForm.frequency_per_day, 10),
         }),
       });
       setPrescriptions(prev =>
@@ -691,6 +713,78 @@ export function PrescriptionBuilder({ encounterId, readOnly = false }: Prescript
                         />
                       </div>
                     </div>
+
+                    <div className="mt-3 grid gap-3 lg:grid-cols-4">
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold text-slate-700">
+                          Dose (valor)
+                        </label>
+                        <input
+                          aria-label="Dose (valor)"
+                          type="number"
+                          min="0"
+                          step="0.0001"
+                          value={newItemForm.dose_amount}
+                          onChange={e => setNewItemForm(f => ({ ...f, dose_amount: e.target.value }))}
+                          placeholder="Ex.: 500"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold text-slate-700">
+                          Dose (unidade)
+                        </label>
+                        <select
+                          aria-label="Dose (unidade)"
+                          value={newItemForm.dose_unit}
+                          onChange={e => setNewItemForm(f => ({ ...f, dose_unit: e.target.value }))}
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="">—</option>
+                          {DOSE_UNIT_OPTIONS.map(u => (
+                            <option key={u} value={u}>{u}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold text-slate-700">
+                          Via
+                        </label>
+                        <select
+                          aria-label="Via"
+                          value={newItemForm.route}
+                          onChange={e => setNewItemForm(f => ({ ...f, route: e.target.value }))}
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="">—</option>
+                          {ROUTE_OPTIONS.map(r => (
+                            <option key={r.value} value={r.value}>{r.label}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold text-slate-700">
+                          Doses/dia
+                        </label>
+                        <input
+                          aria-label="Doses/dia"
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={newItemForm.frequency_per_day}
+                          onChange={e => setNewItemForm(f => ({ ...f, frequency_per_day: e.target.value }))}
+                          placeholder="Ex.: 3"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    <p className="mt-2 text-xs text-slate-500">
+                      Preencha para ativar a verificação de dose (injetáveis).
+                    </p>
 
                     <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-end">
                       <button

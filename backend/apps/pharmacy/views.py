@@ -403,6 +403,7 @@ class DispenseView(APIView):
                 "status": a.status,
                 "message": a.message,
                 "recommendation": a.recommendation,
+                "blocking_kind": DoseCheckService.classify_blocking_kind(a),
             }
             for a in DoseCheckService.blocking_dose_alerts(prescription)
         ]

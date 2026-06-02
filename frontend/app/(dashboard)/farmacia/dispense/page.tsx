@@ -13,8 +13,11 @@ import {
   ShieldAlert,
 } from 'lucide-react'
 import { getAccessToken } from '@/lib/auth'
+import { ApiError } from '@/lib/api'
+import { isDoseSafetyBlock, type DoseSafetyBlock } from '@/lib/dose-safety'
 import { PRESCRIPTION_STATUS_META, resolveBadgeMeta } from '@/lib/operational-ui'
 import { PageShell, ReadinessPanel, StatusBadge } from '@/components/shared'
+import { DoseSafetyModal } from '@/components/prescriptions/DoseSafetyModal'
 
 function extractError(err: any): string {
   if (typeof err === 'string') return err
@@ -141,6 +144,7 @@ export default function DispensePage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState<DispenseResult | null>(null)
+  const [doseBlock, setDoseBlock] = useState<DoseSafetyBlock | null>(null)
 
   const searchPatientsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const prefillLoadedRef = useRef(false)
@@ -297,14 +301,11 @@ export default function DispensePage() {
 
   const ready = blockers.length === 0
 
-  const handleDispense = async (event: FormEvent) => {
-    event.preventDefault()
+  // Single dispense submission with identical params — reused on retry after a
+  // dose-safety override. Throws ApiError on non-ok so the dose-safety block
+  // (HTTP 409 + code:'dose_safety_block') can be detected by the caller.
+  const submitDispense = useCallback(async () => {
     if (!selectedItem) return
-    if (blockers.length > 0) {
-      setError(`Pendências antes de dispensar: ${blockers.join(', ')}.`)
-      return
-    }
-
     const token = getAccessToken()
     if (!token) {
       setError('Sessão expirada')
@@ -323,21 +324,50 @@ export default function DispensePage() {
           notes,
         }),
       })
-      const data = await response.json()
+      const data = await response.json().catch(() => null)
       if (!response.ok) {
-        setError(extractError(data))
-        return
+        throw new ApiError(response.status, data)
       }
+      setDoseBlock(null)
       setResult(data)
       if (selectedPatient) await loadPrescriptions(selectedPatient.id)
       await loadLots(selectedItem.drug)
+    } catch (err) {
+      const block = isDoseSafetyBlock(err)
+      if (block) {
+        // Dose-safety interception: open the modal instead of the generic error.
+        setDoseBlock(block)
+        return
+      }
+      setError(err instanceof ApiError ? extractError(err.body) : 'Erro ao dispensar. Tente novamente.')
     } finally {
       setSaving(false)
     }
+  }, [loadLots, loadPrescriptions, notes, requestedQty, selectedItem, selectedPatient])
+
+  const handleDispense = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!selectedItem) return
+    if (blockers.length > 0) {
+      setError(`Pendências antes de dispensar: ${blockers.join(', ')}.`)
+      return
+    }
+    await submitDispense()
   }
 
   return (
     <PageShell variant="workbench">
+        {doseBlock && selectedPatient && (
+          <DoseSafetyModal
+            block={doseBlock}
+            patientId={selectedPatient.id}
+            onResolved={() => {
+              setDoseBlock(null)
+              void submitDispense()
+            }}
+            onClose={() => setDoseBlock(null)}
+          />
+        )}
         <header className="flex flex-wrap items-center gap-3">
           <div className="min-w-0 flex-1">
             <h1 className="text-2xl font-semibold text-slate-900">Bancada de Dispensação</h1>
