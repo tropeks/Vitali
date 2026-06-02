@@ -1,0 +1,16 @@
+medicamento,generico,forca_frasco,via,basis,dose_role,enforcement,idade_min_dias,idade_max_dias,peso_min_kg,peso_max_kg,freq_min_dia,freq_max_dia,dose_unit,min_por_kg,max_por_kg,min_por_dose,max_por_dose,absolute_max_dose,max_por_dia,VALIDADO_S_N,VALOR_CORRIGIDO,FONTE_OBS_FARMACEUTICO
+Vancomicina,cloridrato de vancomicina,500 mg / 1 g pó,IV,per_kg,maintenance,block,,,,,3,4,mg,10,20,,,2000,4000,,,🚩 max_por_dia: proposto 4000 (conserv.) — fontes divergem 4g vs 6g. Loading NÃO incluso aqui (linha abaixo).
+Vancomicina,cloridrato de vancomicina,500 mg / 1 g pó,IV,per_kg,loading,block,,,,,1,1,mg,25,30,,,2000,,,,Loading dose (ataque). Confirmar se a casa usa loading e a faixa 25–30 mg/kg.
+Gentamicina,sulfato de gentamicina,40 mg/mL,IV,per_kg,maintenance,block,,,,,1,1,mg,5,7,,,700,,,,🚩 absolute_max_dose: proposto 700 — Claude não achou teto mg universal; agy=700 (~100kg). ESTENDIDO (1x/dia).
+Gentamicina,sulfato de gentamicina,40 mg/mL,IV,per_kg,maintenance,block,,,,,2,3,mg,1.7,2.5,,,240,,,,TRADICIONAL (8/8h). 🚩 confirmar teto absoluto/dia. Neonato: intervalo por idade gestacional (fora desta linha).
+Amicacina,sulfato de amicacina,500 mg (frasco),IV,per_kg,maintenance,block,,,,,1,1,mg,15,20,,,1500,1500,,,ESTENDIDO (1x/dia). FC pode exceder legitimamente — confirmar exceção.
+Amicacina,sulfato de amicacina,500 mg (frasco),IV,per_kg,maintenance,block,,,,,2,3,mg,5,7.5,,,1500,1500,,,TRADICIONAL (8–12h).
+Morfina,sulfato de morfina,10 mg/mL,IV,per_kg,maintenance,advise,0,18249,,,,,mg,0.05,0.1,,,10,,,,PEDS. 🚩 absolute_max_dose proposto 10 (conserv.) vs 15. enforcement=advise (sem teto rígido; ALERTA). >50kg usar linha adulto.
+Morfina,sulfato de morfina,10 mg/mL,IV,fixed,maintenance,advise,18250,,,,,,mg,,,2,10,15,,,,ADULTO (fixo). enforcement=advise. Sem teto diário (titulação); alerta se >60 mg/d IV virgem.
+Fentanila,citrato de fentanila,50 mcg/mL (base),IV,per_kg,maintenance,advise,0,18249,,,,,mcg,1,2,,,100,,,,"PEDS. dose_unit=MCG (crítico). Concentração = BASE 50 mcg/mL (NÃO 78,5 do citrato). enforcement=advise."
+Fentanila,citrato de fentanila,50 mcg/mL (base),IV,fixed,maintenance,advise,18250,,,,,,mcg,,,25,100,200,,,,"ADULTO analgesia (fixo, MCG). Indução ≫ — fora desta linha. enforcement=advise."
+Midazolam,midazolam,1 mg/mL e 5 mg/mL,IV,per_kg,maintenance,advise,182,2190,,,,,mg,0.05,0.1,,,6,,,,PEDS 6m–~6a. 🚩 absolute_max_dose proposto 6 (6m–5a) vs 10 (6–12a) — confirmar por faixa. Duas concentrações no mercado.
+Midazolam,midazolam,1 mg/mL e 5 mg/mL,IV,fixed,maintenance,advise,18250,,,,,,mg,,,1,2.5,5,,,,ADULTO sedação procedural (fixo). Reduzir idoso/debilitado. enforcement=advise.
+Adrenalina,epinefrina 1:1000,1 mg/mL (1:1000),IM,per_kg,maintenance,block,0,18249,,,,,mg,0.01,0.01,,,0.3,,,,"PEDS anafilaxia IM. 🚩 teto pré-púbere 0,3 (SBP) vs 0,5. SÓ 1:1000 IM (nunca 1:10000 IV). Repetir 5–15 min."
+Adrenalina,epinefrina 1:1000,1 mg/mL (1:1000),IM,fixed,maintenance,block,18250,,,,,,mg,,,0.3,0.5,0.5,,,,"ADULTO/adolescente anafilaxia IM (fixo). Teto 0,5 mg/dose."
+Cetamina,cloridrato de cetamina,50 mg/mL,IV,per_kg,maintenance,advise,,,,,,,mg,1,2,,,150,,,,"IV sedação/indução. 🚩 teto: 4,5 mg/kg (label) vs ~150 mg fixo — proposto 150. VIA muda muito a dose (IM 4–13 mg/kg = OUTRA linha). enforcement=advise."
