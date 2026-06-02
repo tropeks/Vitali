@@ -98,6 +98,7 @@ const defaultItemForm = {
   dose_unit: '',
   route: '',
   frequency_per_day: '',
+  dose_role: '',
 };
 
 const DOSE_UNIT_OPTIONS = ['mg', 'mcg', 'mEq', 'unit', 'g'];
@@ -107,6 +108,11 @@ const ROUTE_OPTIONS: { value: string; label: string }[] = [
   { value: 'IM', label: 'Intramuscular' },
   { value: 'SC', label: 'Subcutânea' },
   { value: 'PO', label: 'Oral' },
+];
+
+const DOSE_ROLE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'maintenance', label: 'Manutenção' },
+  { value: 'loading', label: 'Ataque/Loading' },
 ];
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -379,6 +385,8 @@ export function PrescriptionBuilder({ encounterId, readOnly = false }: Prescript
           route: newItemForm.route,
           frequency_per_day:
             newItemForm.frequency_per_day.trim() === '' ? null : parseInt(newItemForm.frequency_per_day, 10),
+          // dose_role is a blank-default CharField (blank=maintenance/unspecified).
+          dose_role: newItemForm.dose_role,
         }),
       });
       setPrescriptions(prev =>
@@ -779,6 +787,23 @@ export function PrescriptionBuilder({ encounterId, readOnly = false }: Prescript
                           placeholder="Ex.: 3"
                           className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold text-slate-700">
+                          Tipo de dose
+                        </label>
+                        <select
+                          aria-label="Tipo de dose"
+                          value={newItemForm.dose_role}
+                          onChange={e => setNewItemForm(f => ({ ...f, dose_role: e.target.value }))}
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="">—</option>
+                          {DOSE_ROLE_OPTIONS.map(r => (
+                            <option key={r.value} value={r.value}>{r.label}</option>
+                          ))}
+                        </select>
                       </div>
                     </div>
 

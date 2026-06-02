@@ -472,6 +472,7 @@ class PrescriptionItemSerializer(serializers.ModelSerializer):
             "dose_unit",
             "route",
             "frequency_per_day",
+            "dose_role",
             "notes",
         ]
         # `prescription` is read-only: an item's parent is set once at creation

@@ -557,6 +557,25 @@ class PrescriptionItem(models.Model):
         blank=True,
         help_text="Number of doses per day (for max-daily checks in PR B).",
     )
+    # ─── Dose-engine v2 (AXIS 2): loading vs maintenance ──────────────────────
+    # blank default "" → most orders are maintenance/unspecified. The dose engine
+    # treats blank as "maintenance" (the safe clinical default): a loading rule is
+    # selected ONLY when the prescriber explicitly marks the item as loading, so an
+    # unmarked loading-magnitude dose is screened against the lower maintenance band.
+    DOSE_ROLE_CHOICES = [
+        ("maintenance", "Manutenção"),
+        ("loading", "Ataque/Loading"),
+    ]
+    dose_role = models.CharField(
+        max_length=12,
+        blank=True,
+        default="",
+        choices=DOSE_ROLE_CHOICES,
+        help_text=(
+            "Optional dose role for the dose engine: 'loading' selects an explicit loading rule; "
+            "blank/'maintenance' uses the maintenance band (safe default)."
+        ),
+    )
 
     class Meta:
         ordering = ["id"]

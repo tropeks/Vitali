@@ -388,6 +388,32 @@ class DoseRule(models.Model):
         PER_KG = "per_kg", "Por kg de peso"
         FIXED = "fixed", "Dose fixa"
 
+    class DoseRole(models.TextChoices):
+        """Loading vs maintenance regimen (dose-engine v2, AXIS 2).
+
+        A LOADING rule (e.g. vancomicina 25–30 mg/kg) is selected ONLY when the
+        prescriber explicitly marks the item as loading. The default MAINTENANCE
+        rule covers ordinary orders; an unmarked loading-magnitude dose is
+        therefore screened against the lower maintenance band → over-flag
+        (fail-safe), never a silent pass.
+        """
+
+        MAINTENANCE = "maintenance", "Manutenção"
+        LOADING = "loading", "Ataque/Loading"
+
+    class Enforcement(models.TextChoices):
+        """Block vs advise on an out-of-range result (dose-engine v2, AXIS 3).
+
+        BLOCK (default) → an OUT_OF_RANGE verdict raises a blocking 409 alert
+        (today's behavior). ADVISE → an OUT_OF_RANGE verdict surfaces as a
+        NON-blocking caution (for opioids/sedatives with no hard pharmacological
+        ceiling — the "max" is an alert threshold, not a physical block). Note:
+        WEIGHT_GATE and UNIT_MISMATCH remain blocking regardless of this field.
+        """
+
+        BLOCK = "block", "Bloquear"
+        ADVISE = "advise", "Alertar (não bloqueante)"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     formulary = models.ForeignKey(
         MedicationFormulary,
@@ -494,6 +520,47 @@ class DoseRule(models.Model):
         blank=True,
         help_text="Optional route this rule applies to; blank = any route on the formulary entry.",
     )
+    # ─── AXIS 1: frequency band (dose-engine v2) ──────────────────────────────
+    # Lets two rules coexist for the same drug/age that differ ONLY by regimen
+    # frequency: e.g. gentamicina extended-interval (1×/dia, higher mg/kg) vs
+    # traditional (2–4×/dia, lower mg/kg). Null bound = open (unbounded) on that
+    # side. A rule with ANY freq bound set matches a prescribed frequency only
+    # when it falls in [freq_min, freq_max]; if the prescription's frequency is
+    # unknown, such a rule does NOT match (fail-safe — we can't confirm regimen).
+    freq_min_per_day = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Lower bound (inclusive) on doses/day this rule applies to. Null = unbounded. "
+            "Set together with freq_max_per_day to scope a rule to one regimen frequency."
+        ),
+    )
+    freq_max_per_day = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text="Upper bound (inclusive) on doses/day this rule applies to. Null = unbounded.",
+    )
+    # ─── AXIS 2: loading vs maintenance (dose-engine v2) ──────────────────────
+    dose_role = models.CharField(
+        max_length=12,
+        choices=DoseRole.choices,
+        default=DoseRole.MAINTENANCE,
+        help_text=(
+            "maintenance (default) or loading. A loading rule is selected ONLY when the "
+            "prescribed item is explicitly marked loading; otherwise the maintenance band applies."
+        ),
+    )
+    # ─── AXIS 3: block vs advise enforcement (dose-engine v2) ─────────────────
+    enforcement = models.CharField(
+        max_length=10,
+        choices=Enforcement.choices,
+        default=Enforcement.BLOCK,
+        help_text=(
+            "block (default) → OUT_OF_RANGE raises a blocking 409; advise → OUT_OF_RANGE is a "
+            "non-blocking caution (opioids/sedatives with no hard ceiling). WEIGHT_GATE / "
+            "UNIT_MISMATCH always block regardless of this field."
+        ),
+    )
     active = models.BooleanField(default=True, db_index=True)
     notes = models.TextField(
         blank=True, help_text="Clinical citation / source for this rule (e.g. reference, dataset)."
@@ -545,6 +612,14 @@ class DoseRule(models.Model):
                 and self.max_per_dose < self.min_per_dose
             ):
                 errors["max_per_dose"] = "max_per_dose must be >= min_per_dose."
+
+        # AXIS 1: if BOTH frequency bounds are set, the band must be coherent.
+        if (
+            self.freq_min_per_day is not None
+            and self.freq_max_per_day is not None
+            and self.freq_max_per_day < self.freq_min_per_day
+        ):
+            errors["freq_max_per_day"] = "freq_max_per_day must be >= freq_min_per_day."
 
         if errors:
             raise ValidationError(errors)

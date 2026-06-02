@@ -187,9 +187,24 @@ class DoseCheckService:
             weight_recorded_at=weight_recorded_at,
             now=now,
             weight_staleness_days=staleness_days,
+            dose_role=item.dose_role or None,
         )
 
-        if verdict.verdict in _BLOCKING_VERDICTS:
+        # Routing (dose-engine v2, AXIS 3):
+        #   WEIGHT_GATE / UNIT_MISMATCH → ALWAYS blocking (you cannot dose per-kg
+        #     without a weight, and a unit mismatch is always dangerous —
+        #     enforcement mode is irrelevant for these).
+        #   OUT_OF_RANGE → blocking IFF the matched rule's enforcement == "block";
+        #     under an "advise" rule it is a NON-blocking caution (opioids/sedatives
+        #     with no hard pharmacological ceiling).
+        #   DATA_MISSING / ENGINE_ERROR / NO_RULE_MATCH → advisory (unchanged).
+        #   SAFE → resolve. NOT_APPLICABLE → nothing.
+        if verdict.verdict == Verdict.OUT_OF_RANGE:
+            if verdict.enforcement == "advise":
+                self._raise_advisory_alert(item, verdict, gate)
+            else:
+                self._raise_blocking_alert(item, verdict, gate)
+        elif verdict.verdict in _BLOCKING_VERDICTS:
             self._raise_blocking_alert(item, verdict, gate)
         elif verdict.verdict in _ADVISORY_VERDICTS:
             self._raise_advisory_alert(item, verdict, gate)
@@ -257,6 +272,11 @@ class DoseCheckService:
             action = "dose_no_rule_match"
         elif verdict.verdict == Verdict.DATA_MISSING:
             action = "dose_data_missing"
+        elif verdict.verdict == Verdict.OUT_OF_RANGE:
+            # AXIS 3: an OUT_OF_RANGE on an enforcement="advise" rule routed here.
+            # It is a visible caution, not a block — the reason already states the
+            # dose exceeded the expected range.
+            action = "dose_out_of_range_advisory"
         else:
             action = "dose_check_unavailable"
         with transaction.atomic():
