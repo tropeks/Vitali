@@ -49,5 +49,10 @@ ALLOWED_MODULE_KEYS: frozenset = frozenset(
         # explicitly enable it (and have a pharmacist-supplied formulary) before
         # the prescription/pharmacy gates start blocking on dose verdicts.
         "dose_safety",
+        # Glosa-safety wedge (PR G1): per-tenant toggle for the deterministic
+        # glosa (insurance-denial) interceptor + per-guia soft-stop on batch
+        # close. Default OFF — a tenant must explicitly enable it before the
+        # batch-close gate starts blocking on duplicate/not-tabled findings.
+        "glosa_safety",
     }
 )
