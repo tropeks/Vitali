@@ -229,7 +229,8 @@ class GlosaSafetyService:
 
         item_ctxs: list[GuideItemContext] = []
         for item in items:
-            code = item.tuss_code.code
+            tuss = item.tuss_code
+            code = tuss.code
             in_table = code in active_codes
             item_ctxs.append(
                 GuideItemContext(
@@ -239,8 +240,22 @@ class GlosaSafetyService:
                     in_active_table=in_table,
                     active_table_value=active_value_by_tuss.get(code),
                     duplicate=code in duplicate_tuss,
+                    # Clinical-compatibility metadata copied STRAIGHT off the
+                    # public core.TUSSCode row (G3b). ANS-sourced, never
+                    # fabricated; defaults (null/B/[]) keep the check inert.
+                    tuss_age_min_days=tuss.age_min_days,
+                    tuss_age_max_days=tuss.age_max_days,
+                    tuss_sex_allowed=tuss.sex_allowed or "B",
+                    tuss_cid10_whitelist=list(tuss.cid10_whitelist or []),
                 )
             )
+
+        # Patient clinical context for the G3b clinical_incompat check. Resolved
+        # from the guide's Patient (emr.Patient.birth_date / .gender). Sex is
+        # normalised to M/F; anything else (O/N/blank) → None so the sex check
+        # stays inert. Age is computed in DAYS relative to the guide's effective
+        # date (the billing date), not "now", so a re-evaluation is stable.
+        patient_age_days, patient_sex = self._patient_clinical_context(guide)
 
         return GuideContext(
             guide_type=guide.guide_type,
@@ -250,7 +265,47 @@ class GlosaSafetyService:
             cid10_codes=list(guide.cid10_codes or []),
             items=item_ctxs,
             table_resolved=table_resolved,
+            patient_age_days=patient_age_days,
+            patient_sex=patient_sex,
+            guide_cid10_codes=self._guide_cid10_code_list(guide),
         )
+
+    def _patient_clinical_context(self, guide: TISSGuide) -> tuple[int | None, str | None]:
+        """(age_in_days, sex) for the guide's patient, for the G3b check.
+
+        Age is computed from ``emr.Patient.birth_date`` relative to the guide's
+        effective (billing) date. Sex comes from ``emr.Patient.gender``,
+        normalised to "M"/"F"; the model's other choices (O = Outro, N = Não
+        informado) and any blank map to None, which the engine treats as
+        "unknown" → the sex sub-check stays inert (never guesses a constraint)."""
+        patient = getattr(guide, "patient", None)
+        if patient is None:
+            return None, None
+
+        age_days: int | None = None
+        birth = getattr(patient, "birth_date", None)
+        if birth is not None:
+            effective = self._guide_effective_date(guide)
+            age_days = max((effective - birth).days, 0)
+
+        gender = (getattr(patient, "gender", "") or "").upper()
+        sex = gender if gender in ("M", "F") else None
+        return age_days, sex
+
+    @staticmethod
+    def _guide_cid10_code_list(guide: TISSGuide) -> list[str]:
+        """Flatten the guide's ``cid10_codes`` JSON (list of {"code": "X00"}) to a
+        plain list of CID-10 code strings for the whitelist comparison. Tolerates
+        either dicts or bare strings; skips anything without a code."""
+        out: list[str] = []
+        for entry in guide.cid10_codes or []:
+            if isinstance(entry, dict):
+                code = (entry.get("code") or "").strip().upper()
+            else:
+                code = str(entry).strip().upper()
+            if code:
+                out.append(code)
+        return out
 
     def _guide_effective_date(self, guide: TISSGuide) -> datetime.date:
         """The actual date used to test PriceTable validity windows.

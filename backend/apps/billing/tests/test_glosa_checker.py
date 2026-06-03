@@ -10,8 +10,10 @@ from decimal import Decimal
 from unittest import TestCase
 
 from apps.billing.services.glosa_checker import (
+    ANS_CODE_AGE_INCOMPAT,
     ANS_CODE_INCOMPLETE,
     ANS_CODE_NOT_IN_TABLE,
+    ANS_CODE_SEX_INCOMPAT,
     GlosaChecker,
     GuideContext,
     GuideItemContext,
@@ -169,3 +171,189 @@ class GlosaCheckerTests(TestCase):
         self.assertIn("duplicate", codes)
         self.assertIn("table_unresolved", codes)
         self.assertNotIn("not_in_table", codes)
+
+
+class GlosaClinicalIncompatTests(TestCase):
+    """clinical_incompat (G3b): advise-only age/sex/CID check, INERT without ANS
+    metadata on the TUSS row."""
+
+    # ── age window ──────────────────────────────────────────────────────────
+
+    def test_age_below_window_fires_advise(self):
+        # Patient 30 days old; procedure requires >= 365 days → advise.
+        findings = GlosaChecker.check(
+            guide_ctx=_ctx(
+                items=[_item(tuss_age_min_days=365)],
+                patient_age_days=30,
+            )
+        )
+        f = next(x for x in findings if x.check_code == "clinical_incompat")
+        self.assertEqual(f.severity, "advise")
+        self.assertEqual(f.ans_glosa_code, ANS_CODE_AGE_INCOMPAT)
+        self.assertEqual(f.guide_item_id, 1)
+        self.assertIn("idade", f.message.lower())
+
+    def test_age_above_window_fires_advise(self):
+        findings = GlosaChecker.check(
+            guide_ctx=_ctx(
+                items=[_item(tuss_age_max_days=365)],
+                patient_age_days=5000,
+            )
+        )
+        codes = [f.check_code for f in findings]
+        self.assertIn("clinical_incompat", codes)
+
+    def test_age_inside_window_no_finding(self):
+        findings = GlosaChecker.check(
+            guide_ctx=_ctx(
+                items=[_item(tuss_age_min_days=365, tuss_age_max_days=36500)],
+                patient_age_days=4000,
+            )
+        )
+        self.assertNotIn("clinical_incompat", [f.check_code for f in findings])
+
+    def test_age_unknown_patient_no_finding(self):
+        # TUSS has a window but patient age is unknown → inert (no guess).
+        findings = GlosaChecker.check(
+            guide_ctx=_ctx(
+                items=[_item(tuss_age_min_days=365)],
+                patient_age_days=None,
+            )
+        )
+        self.assertNotIn("clinical_incompat", [f.check_code for f in findings])
+
+    # ── sex ─────────────────────────────────────────────────────────────────
+
+    def test_sex_mismatch_fires_advise(self):
+        # Procedure allowed only for M; patient is F → advise.
+        findings = GlosaChecker.check(
+            guide_ctx=_ctx(
+                items=[_item(tuss_sex_allowed="M")],
+                patient_sex="F",
+            )
+        )
+        f = next(x for x in findings if x.check_code == "clinical_incompat")
+        self.assertEqual(f.severity, "advise")
+        self.assertEqual(f.ans_glosa_code, ANS_CODE_SEX_INCOMPAT)
+        self.assertIn("sexo", f.message.lower())
+
+    def test_sex_allowed_both_no_finding(self):
+        # sex_allowed="B" (default) = no constraint → inert regardless of patient.
+        findings = GlosaChecker.check(
+            guide_ctx=_ctx(items=[_item(tuss_sex_allowed="B")], patient_sex="F")
+        )
+        self.assertNotIn("clinical_incompat", [f.check_code for f in findings])
+
+    def test_sex_match_no_finding(self):
+        findings = GlosaChecker.check(
+            guide_ctx=_ctx(items=[_item(tuss_sex_allowed="F")], patient_sex="F")
+        )
+        self.assertNotIn("clinical_incompat", [f.check_code for f in findings])
+
+    def test_sex_unknown_patient_no_finding(self):
+        findings = GlosaChecker.check(
+            guide_ctx=_ctx(items=[_item(tuss_sex_allowed="M")], patient_sex=None)
+        )
+        self.assertNotIn("clinical_incompat", [f.check_code for f in findings])
+
+    # ── CID-10 whitelist ──────────────────────────────────────────────────────
+
+    def test_cid_not_in_whitelist_fires_advise(self):
+        findings = GlosaChecker.check(
+            guide_ctx=_ctx(
+                items=[_item(tuss_cid10_whitelist=["C50", "C51"])],
+                guide_cid10_codes=["J00"],
+            )
+        )
+        f = next(x for x in findings if x.check_code == "clinical_incompat")
+        self.assertEqual(f.severity, "advise")
+        self.assertIn("CID", f.message)
+
+    def test_cid_in_whitelist_no_finding(self):
+        findings = GlosaChecker.check(
+            guide_ctx=_ctx(
+                items=[_item(tuss_cid10_whitelist=["C50", "J00"])],
+                guide_cid10_codes=["J00"],
+            )
+        )
+        self.assertNotIn("clinical_incompat", [f.check_code for f in findings])
+
+    def test_empty_whitelist_no_finding(self):
+        # Empty whitelist (default) = no CID constraint → inert.
+        findings = GlosaChecker.check(
+            guide_ctx=_ctx(
+                items=[_item(tuss_cid10_whitelist=[])],
+                guide_cid10_codes=["J00"],
+            )
+        )
+        self.assertNotIn("clinical_incompat", [f.check_code for f in findings])
+
+    def test_no_guide_cids_skips_cid_check(self):
+        # FIX 1: a guide with NO CIDs + a non-empty whitelist must SKIP the CID
+        # sub-check (empty guide CIDs = "unknown", not "incompatible"). The old
+        # code flagged this as a false positive because `not (empty & whitelist)`
+        # was True. The missing-CID structural case is covered by _check_incomplete.
+        findings = GlosaChecker.check(
+            guide_ctx=_ctx(
+                items=[_item(tuss_cid10_whitelist=["C50", "C51"])],
+                guide_cid10_codes=[],
+            )
+        )
+        self.assertNotIn("clinical_incompat", [f.check_code for f in findings])
+
+    def test_cid_matches_whitelist_case_insensitively(self):
+        # FIX 2: CID-10 is case-insensitive — guide CID "a00" must match a
+        # whitelist of "A00" → NO finding.
+        findings = GlosaChecker.check(
+            guide_ctx=_ctx(
+                items=[_item(tuss_cid10_whitelist=["A00"])],
+                guide_cid10_codes=["a00"],
+            )
+        )
+        self.assertNotIn("clinical_incompat", [f.check_code for f in findings])
+
+    # ── INERT default & combination ───────────────────────────────────────────
+
+    def test_inert_when_no_tuss_metadata(self):
+        # A TUSS with no ANS metadata (defaults) → NO clinical_incompat finding
+        # regardless of patient context.
+        findings = GlosaChecker.check(
+            guide_ctx=_ctx(
+                items=[_item()],  # inert defaults: None/None/B/[]
+                patient_age_days=30,
+                patient_sex="F",
+                guide_cid10_codes=["J00"],
+            )
+        )
+        self.assertNotIn("clinical_incompat", [f.check_code for f in findings])
+
+    def test_multiple_violations_collapse_to_one_finding_per_item(self):
+        # Age + sex + CID all violated on one item → exactly ONE clinical_incompat
+        # finding (so the per-item alert stays unique under the DB constraint).
+        findings = GlosaChecker.check(
+            guide_ctx=_ctx(
+                items=[
+                    _item(
+                        tuss_age_min_days=365,
+                        tuss_sex_allowed="M",
+                        tuss_cid10_whitelist=["C50"],
+                    )
+                ],
+                patient_age_days=30,
+                patient_sex="F",
+                guide_cid10_codes=["J00"],
+            )
+        )
+        clinical = [f for f in findings if f.check_code == "clinical_incompat"]
+        self.assertEqual(len(clinical), 1)
+        # Most specific ANS code (age "03") is kept.
+        self.assertEqual(clinical[0].ans_glosa_code, ANS_CODE_AGE_INCOMPAT)
+
+    def test_clinical_never_blocks(self):
+        findings = GlosaChecker.check(
+            guide_ctx=_ctx(
+                items=[_item(tuss_sex_allowed="M")],
+                patient_sex="F",
+            )
+        )
+        self.assertEqual([f for f in findings if f.severity == "block"], [])

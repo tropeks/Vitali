@@ -49,6 +49,15 @@ ANS_CODE_INCOMPLETE = "05"  # Inconsistência nos dados do beneficiário
 ANS_CODE_DUPLICATE = "99"  # Outro — TODO confirm operator-specific "já apresentado" code
 ANS_CODE_STALE_PRICE = ""  # internal caution, no operator-facing ANS reason
 ANS_CODE_TABLE_UNRESOLVED = ""  # coverage not verified — internal caution, no ANS reason
+# Clinical-incompatibility ANS reason codes (glosa wedge G3b).
+#   "03" → procedimento incompatível com a idade do beneficiário.
+#   "02" → procedimento incompatível com o sexo do beneficiário.
+# CID incompatibility has NO single fixed code in this codebase's
+# GLOSA_REASON_CODES set, so it is left "" (blank/unmapped) for the faturista to
+# confirm the exact operator-specific code — NOT guessed here.
+ANS_CODE_AGE_INCOMPAT = "03"  # incompatível com a idade
+ANS_CODE_SEX_INCOMPAT = "02"  # incompatível com o sexo
+ANS_CODE_CID_INCOMPAT = ""  # no fixed ANS code — left blank, confirmed by faturista
 
 
 @dataclass(frozen=True)
@@ -67,6 +76,15 @@ class GuideItemContext:
     in_active_table: bool
     active_table_value: Decimal | None
     duplicate: bool
+    # ── Clinical-compatibility metadata (G3b), resolved by the service from the
+    # public core.TUSSCode row. These are ANS-STANDARD TRUTH, never fabricated:
+    # the service copies them straight off the TUSS row. When the row has no ANS
+    # metadata (the default), the values below are INERT (null age window /
+    # sex "B" / empty whitelist) and the clinical_incompat check fires NOTHING.
+    tuss_age_min_days: int | None = None
+    tuss_age_max_days: int | None = None
+    tuss_sex_allowed: str = "B"  # M / F / B (B = both/any → no constraint)
+    tuss_cid10_whitelist: list = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -79,6 +97,15 @@ class GuideContext:
     competency: str
     cid10_codes: list
     items: list[GuideItemContext] = field(default_factory=list)
+    # ── Patient clinical context (G3b), pre-computed by the service from the
+    # guide's Patient: age in days from Patient.birth_date, sex from
+    # Patient.gender normalised to M/F (anything else → None = unknown, so the
+    # sex check stays inert). guide_cid10_codes is the flat list of CID-10 code
+    # strings extracted from the guide's cid10_codes JSON. All default to the
+    # inert "unknown / none" so the pure unit tests and safe callers fire nothing.
+    patient_age_days: int | None = None
+    patient_sex: str | None = None  # "M" / "F" / None (unknown → inert)
+    guide_cid10_codes: list = field(default_factory=list)
     # False when the service could NOT confidently resolve an active price table
     # for the provider. The engine then SKIPS the table-dependent checks
     # (not_in_table / stale_price) and emits ONE table_unresolved advise instead
@@ -115,6 +142,93 @@ class GlosaChecker:
     """Pure, deterministic glosa checker. No state, no I/O."""
 
     @staticmethod
+    def _check_clinical_incompat(
+        item: GuideItemContext, guide_ctx: GuideContext
+    ) -> GlosaFinding | None:
+        """Clinical-compatibility check (advise, NEVER block) — glosa wedge G3b.
+
+        Compares the patient's age/sex and the guide's CID-10 codes against the
+        ANS clinical-compatibility metadata on the procedure's TUSS row. INERT by
+        construction: when the TUSS row carries no ANS metadata (null age window,
+        sex_allowed="B", empty CID whitelist) NOTHING fires — and when the patient
+        context is unknown (age None / sex None / no CIDs on the guide) the
+        respective sub-check is skipped rather than guessed. Always ``advise``:
+        the ANS source data is sparse/may have typos, so it must never block the
+        close().
+
+        All sub-violations for ONE item collapse into a SINGLE clinical_incompat
+        finding (one message, joined reasons) so the per-item alert row stays
+        unique under (guide, guide_item, check_code, source) — mirrors the
+        guide-level ``_check_incomplete`` collapse. The most specific ANS code is
+        kept (age "03" > sex "02" > cid blank), matching the order of detection.
+        """
+        reasons: list[str] = []
+        ans_code = ANS_CODE_CID_INCOMPAT  # least specific default
+
+        # ── age window ────────────────────────────────────────────────────────
+        # Only meaningful when the TUSS has a bound AND we know the patient's age.
+        age = guide_ctx.patient_age_days
+        if age is not None and (
+            item.tuss_age_min_days is not None or item.tuss_age_max_days is not None
+        ):
+            below = item.tuss_age_min_days is not None and age < item.tuss_age_min_days
+            above = item.tuss_age_max_days is not None and age > item.tuss_age_max_days
+            if below or above:
+                lo = item.tuss_age_min_days if item.tuss_age_min_days is not None else "sem mínimo"
+                hi = item.tuss_age_max_days if item.tuss_age_max_days is not None else "sem máximo"
+                reasons.append(
+                    f"idade do paciente ({age} dias) fora da janela permitida ({lo}–{hi} dias)"
+                )
+                ans_code = ANS_CODE_AGE_INCOMPAT
+
+        # ── sex ───────────────────────────────────────────────────────────────
+        # Only when the TUSS restricts to M or F AND we know the patient's sex.
+        if (
+            item.tuss_sex_allowed in ("M", "F")
+            and guide_ctx.patient_sex is not None
+            and guide_ctx.patient_sex != item.tuss_sex_allowed
+        ):
+            reasons.append(
+                f"sexo do paciente ({guide_ctx.patient_sex}) incompatível "
+                f"(permitido: {item.tuss_sex_allowed})"
+            )
+            if ans_code == ANS_CODE_CID_INCOMPAT:
+                ans_code = ANS_CODE_SEX_INCOMPAT
+
+        # ── CID-10 whitelist ──────────────────────────────────────────────────
+        # Only meaningful when the TUSS has a non-empty whitelist AND the guide
+        # actually carries at least one CID. A guide with NO CIDs must SKIP this
+        # sub-check (an empty guide_cids is "unknown", not "incompatible") — the
+        # missing-CID structural case is covered separately by _check_incomplete.
+        # Compare case-insensitively: CID-10 codes are normalised to uppercase at
+        # the data boundaries (guide extraction + whitelist import), and we upper
+        # again here for defence-in-depth so "a00" matches whitelist "A00".
+        whitelist = {str(c).strip().upper() for c in (item.tuss_cid10_whitelist or [])}
+        guide_cids = {str(c).strip().upper() for c in (guide_ctx.guide_cid10_codes or [])}
+        if whitelist and guide_cids and guide_cids.isdisjoint(whitelist):
+            reasons.append(
+                f"CID da guia não compatível (CIDs aceitos: {', '.join(sorted(whitelist))})"
+            )
+
+        if not reasons:
+            return None
+
+        joined = "; ".join(reasons)
+        return GlosaFinding(
+            check_code="clinical_incompat",
+            severity=_SEVERITY_ADVISE,
+            message=(
+                f"Procedimento {item.tuss_code} clinicamente incompatível com o paciente: {joined}."
+            ),
+            recommendation=(
+                "Confirme idade, sexo e diagnóstico (CID-10) do paciente e a indicação clínica "
+                "do procedimento antes de faturar."
+            ),
+            ans_glosa_code=ans_code,
+            guide_item_id=item.item_id,
+        )
+
+    @staticmethod
     def check(*, guide_ctx: GuideContext) -> list[GlosaFinding]:
         """Evaluate one guide and return every finding.
 
@@ -127,6 +241,12 @@ class GlosaChecker:
 
         for item in guide_ctx.items:
             findings.extend(GlosaChecker._check_item(item, table_resolved=guide_ctx.table_resolved))
+            # Clinical-compatibility (G3b) is TUSS-metadata driven, not price-table
+            # driven, so it runs regardless of table_resolved. Always advise; one
+            # combined finding per item (or None when inert).
+            clinical = GlosaChecker._check_clinical_incompat(item, guide_ctx)
+            if clinical is not None:
+                findings.append(clinical)
 
         # When the active price table could not be resolved, the table-dependent
         # checks are suppressed per-item above; emit ONE guide-level advise so

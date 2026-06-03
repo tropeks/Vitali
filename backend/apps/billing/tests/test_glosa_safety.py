@@ -679,3 +679,120 @@ class AcknowledgeGlosaAlertTests(TenantTestCase):
         self.assertEqual(resp.status_code, 200)
         alert.refresh_from_db()
         self.assertEqual(alert.status, "acknowledged")
+
+
+class GlosaClinicalCompatServiceTests(GlosaSafetyTestCase):
+    """Orchestrator-level G3b: the service resolves patient age/sex (from the
+    guide's Patient) + the guide's CID-10 codes + the TUSS ANS metadata, and the
+    engine emits advise-only clinical_incompat. INERT without ANS metadata; never
+    blocks the close()."""
+
+    def _populate_tuss(self, tuss, **meta):
+        """Stamp ANS clinical-compat metadata onto a public TUSSCode row (this is
+        what import_tuss would do from the ANS source — here done directly)."""
+        for field_name, value in meta.items():
+            setattr(tuss, field_name, value)
+        tuss.save(update_fields=list(meta.keys()))
+
+    def test_age_mismatch_advises_in_window_silent(self):
+        self._enable_glosa()
+        # Patient born 1985 → ~40y ≈ 15000 days. Restrict tuss_a to infants only.
+        self._populate_tuss(self.tuss_a, age_min_days=0, age_max_days=365)
+        enc = Encounter.objects.create(patient=self.patient, professional=self.professional)
+        guide = self._make_guide(encounter=enc, tuss=self.tuss_a, unit_value=Decimal("100.00"))
+        svc = GlosaSafetyService(requesting_user=self.faturista)
+        svc.evaluate_guide(guide, gate="batch_close")
+        alert = GlosaSafetyAlert.objects.filter(guide=guide, check_code="clinical_incompat").first()
+        self.assertIsNotNone(alert)
+        self.assertEqual(alert.severity, "advise")
+
+        # In-window: widen the window to cover the adult patient → no finding.
+        enc2 = Encounter.objects.create(patient=self.patient, professional=self.professional)
+        guide2 = self._make_guide(encounter=enc2, tuss=self.tuss_b, unit_value=Decimal("50.00"))
+        self._populate_tuss(self.tuss_b, age_min_days=0, age_max_days=40000)
+        svc.evaluate_guide(guide2, gate="batch_close")
+        self.assertFalse(
+            GlosaSafetyAlert.objects.filter(guide=guide2, check_code="clinical_incompat").exists()
+        )
+
+    def test_sex_mismatch_advises_both_silent(self):
+        self._enable_glosa()
+        # Patient is F (setUp). Restrict tuss_a to M → advise.
+        self._populate_tuss(self.tuss_a, sex_allowed="M")
+        enc = Encounter.objects.create(patient=self.patient, professional=self.professional)
+        guide = self._make_guide(encounter=enc, tuss=self.tuss_a, unit_value=Decimal("100.00"))
+        svc = GlosaSafetyService(requesting_user=self.faturista)
+        svc.evaluate_guide(guide, gate="batch_close")
+        self.assertTrue(
+            GlosaSafetyAlert.objects.filter(
+                guide=guide, check_code="clinical_incompat", severity="advise"
+            ).exists()
+        )
+
+        # sex_allowed="B" (default for tuss_b) → no finding.
+        enc2 = Encounter.objects.create(patient=self.patient, professional=self.professional)
+        guide2 = self._make_guide(encounter=enc2, tuss=self.tuss_b, unit_value=Decimal("50.00"))
+        svc.evaluate_guide(guide2, gate="batch_close")
+        self.assertFalse(
+            GlosaSafetyAlert.objects.filter(guide=guide2, check_code="clinical_incompat").exists()
+        )
+
+    def test_cid_whitelist_advises_when_guide_cid_not_in_it(self):
+        self._enable_glosa()
+        # Guide CID is J00 (setUp default). Restrict tuss_a to C50 → advise.
+        self._populate_tuss(self.tuss_a, cid10_whitelist=["C50", "C51"])
+        enc = Encounter.objects.create(patient=self.patient, professional=self.professional)
+        guide = self._make_guide(encounter=enc, tuss=self.tuss_a, unit_value=Decimal("100.00"))
+        svc = GlosaSafetyService(requesting_user=self.faturista)
+        svc.evaluate_guide(guide, gate="batch_close")
+        self.assertTrue(
+            GlosaSafetyAlert.objects.filter(
+                guide=guide, check_code="clinical_incompat", severity="advise"
+            ).exists()
+        )
+
+    def test_cid_in_whitelist_silent(self):
+        self._enable_glosa()
+        # Whitelist includes the guide's CID J00 → no finding.
+        self._populate_tuss(self.tuss_a, cid10_whitelist=["J00", "J01"])
+        enc = Encounter.objects.create(patient=self.patient, professional=self.professional)
+        guide = self._make_guide(
+            encounter=enc,
+            tuss=self.tuss_a,
+            unit_value=Decimal("100.00"),
+            cid10_codes=[{"code": "J00"}],
+        )
+        svc = GlosaSafetyService(requesting_user=self.faturista)
+        svc.evaluate_guide(guide, gate="batch_close")
+        self.assertFalse(
+            GlosaSafetyAlert.objects.filter(guide=guide, check_code="clinical_incompat").exists()
+        )
+
+    def test_inert_when_tuss_has_no_ans_metadata(self):
+        self._enable_glosa()
+        # tuss_a left at defaults (no ANS metadata) → NO clinical_incompat,
+        # regardless of the patient's age/sex/CID.
+        enc = Encounter.objects.create(patient=self.patient, professional=self.professional)
+        guide = self._make_guide(encounter=enc, tuss=self.tuss_a, unit_value=Decimal("100.00"))
+        svc = GlosaSafetyService(requesting_user=self.faturista)
+        svc.evaluate_guide(guide, gate="batch_close")
+        self.assertFalse(
+            GlosaSafetyAlert.objects.filter(guide=guide, check_code="clinical_incompat").exists()
+        )
+
+    def test_clinical_incompat_alone_does_not_409(self):
+        # Regression guard: a guide whose ONLY issue is clinical_incompat (advise)
+        # must NOT block the close() — advise never enters the blocking set.
+        self._enable_glosa()
+        self._populate_tuss(self.tuss_b, sex_allowed="M")  # patient is F
+        enc = Encounter.objects.create(patient=self.patient, professional=self.professional)
+        guide = self._make_guide(encounter=enc, tuss=self.tuss_b, unit_value=Decimal("50.00"))
+        batch = self._make_batch(guide)
+        resp = self._auth().post(f"/api/v1/billing/batches/{batch.id}/close/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["status"], "closed")
+        # The advise alert WAS recorded.
+        alert = GlosaSafetyAlert.objects.filter(guide=guide, check_code="clinical_incompat").first()
+        self.assertIsNotNone(alert)
+        self.assertEqual(alert.severity, "advise")
+        self.assertFalse(GlosaSafetyService.has_blocking_glosa_alert(guide))
