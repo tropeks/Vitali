@@ -2,6 +2,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    AcknowledgeStockAlertView,
     DispensationViewSet,
     DispenseView,
     DrugViewSet,
@@ -11,6 +12,7 @@ from .views import (
     StockAvailabilityView,
     StockItemViewSet,
     StockMovementViewSet,
+    StockRiskView,
     SupplierViewSet,
 )
 
@@ -30,4 +32,11 @@ urlpatterns = [
         "pharmacy/stock/availability/", StockAvailabilityView.as_view(), name="stock-availability"
     ),
     path("pharmacy/dispense/", DispenseView.as_view(), name="pharmacy-dispense"),
+    # Stockout-prediction wedge S3: proactive predictive risk surface + ack.
+    path("pharmacy/stock/risk/", StockRiskView.as_view(), name="stock-risk"),
+    path(
+        "pharmacy/stock-alerts/<uuid:alert_id>/acknowledge/",
+        AcknowledgeStockAlertView.as_view(),
+        name="stock-alert-acknowledge",
+    ),
 ]

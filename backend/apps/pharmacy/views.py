@@ -22,6 +22,7 @@ from .models import (
     Material,
     PurchaseOrder,
     PurchaseOrderItem,
+    StockAlert,
     StockItem,
     StockMovement,
     Supplier,
@@ -268,6 +269,125 @@ class StockAvailabilityView(APIView):
         data = StockItemSerializer(lots, many=True).data
         return Response(
             {"available_lots": data, "total": sum(float(lot["quantity"]) for lot in data)}
+        )
+
+
+# ─── Stockout-prediction wedge S3: proactive risk surface ─────────────────────
+
+
+def _serialize_stock_alert(alert: StockAlert) -> dict:
+    """Serialize one persistent StockAlert for the supply-risk dashboard (S3).
+
+    PROACTIVE ONLY — this is the predictive layer (StockAlert rows written by the
+    deterministic StockoutService), kept entirely separate from the legacy
+    Redis-cached StockAlertsView. The reorder suggestion is the value the engine
+    persisted at eval time (sized from derived velocity + configured lead time +
+    real balance — no invented supplier/contract data); it is only present for
+    stockout_risk alerts.
+    """
+    target = alert.target
+    return {
+        "id": str(alert.id),
+        "kind": alert.kind,
+        "kind_display": alert.get_kind_display(),
+        "drug": str(alert.drug_id) if alert.drug_id else None,
+        "material": str(alert.material_id) if alert.material_id else None,
+        "product_name": target.name if target is not None else "",
+        "stock_item": str(alert.stock_item_id) if alert.stock_item_id else None,
+        "predicted_date": (alert.predicted_date.isoformat() if alert.predicted_date else None),
+        "days_to_stockout": (
+            str(alert.days_to_stockout) if alert.days_to_stockout is not None else None
+        ),
+        "predicted_waste_qty": (
+            str(alert.predicted_waste_qty) if alert.predicted_waste_qty is not None else None
+        ),
+        "suggested_reorder_qty": (
+            str(alert.suggested_reorder_qty) if alert.suggested_reorder_qty is not None else None
+        ),
+        "message": alert.message,
+        "severity": alert.severity,
+        "status": alert.status,
+        "created_at": alert.created_at.isoformat(),
+    }
+
+
+class StockRiskView(APIView):
+    """GET /pharmacy/stock/risk/ — the PROACTIVE predictive supply-risk surface.
+
+    Lists OPEN ``StockAlert`` rows produced by the deterministic StockoutService
+    (stockout_risk + expiry_waste), with a reorder suggestion per stockout_risk
+    alert. This is a NEW endpoint, deliberately separate from the legacy
+    Redis-cached ``StockAlertsView`` (which we do not touch).
+
+    Respects the ``stockout_safety`` feature flag: when OFF the list is EMPTY
+    (the engine never ran, and the gestor should not see stale predictions).
+    Optional ``?kind=stockout_risk|expiry_waste`` filter. Read-only; advise only —
+    there is NO dispense-time gate anywhere in this wedge.
+    """
+
+    def get_permissions(self):
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission("pharmacy.read")]
+
+    def get(self, request):
+        from apps.pharmacy.services.stockout_safety import StockoutService
+
+        if not StockoutService.is_enabled():
+            return Response({"alerts": [], "stockout_safety_enabled": False})
+
+        qs = (
+            StockAlert.objects.filter(status=StockAlert.Status.OPEN)
+            .select_related("drug", "material")
+            .order_by("predicted_date", "-created_at")
+        )
+        kind = request.query_params.get("kind")
+        if kind in (StockAlert.Kind.STOCKOUT_RISK, StockAlert.Kind.EXPIRY_WASTE):
+            qs = qs.filter(kind=kind)
+
+        alerts = [_serialize_stock_alert(a) for a in qs]
+        return Response({"alerts": alerts, "stockout_safety_enabled": True})
+
+
+class AcknowledgeStockAlertView(APIView):
+    """POST /pharmacy/stock-alerts/<uuid:alert_id>/acknowledge/
+
+    Body: {note?: str}
+
+    Mirrors billing.AcknowledgeGlosaAlertView. Sets status=acknowledged,
+    acknowledged_by, acknowledged_at (+ optional note). NO minimum-length rule:
+    StockAlerts are advise-only (no block path), so a justification is optional.
+    The acknowledged alert leaves the OPEN risk list. Same pharmacy.read /
+    module permission as the risk surface.
+    """
+
+    def get_permissions(self):
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission("pharmacy.read")]
+
+    def post(self, request, alert_id):
+        note = (request.data.get("note") or "").strip()
+        try:
+            alert = StockAlert.objects.get(id=alert_id)
+        except StockAlert.DoesNotExist:
+            return Response(
+                {"detail": "Alerta de estoque não encontrado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        alert.acknowledge(request.user, note)
+        log_audit(
+            request,
+            "stock_alert_acknowledged",
+            "stock_alert",
+            alert.id,
+            new_data={"note": note, "kind": alert.kind},
+        )
+        return Response(
+            {
+                "message": "Alerta reconhecido com sucesso.",
+                "alert_id": str(alert.id),
+                "status": alert.status,
+                "acknowledged_at": alert.acknowledged_at.isoformat(),
+            },
+            status=status.HTTP_200_OK,
         )
 
 
