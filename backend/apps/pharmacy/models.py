@@ -12,6 +12,7 @@ from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.db.models import F
+from django.utils import timezone
 
 from apps.core.constants import DOSE_UNIT_CHOICES, VOLUME_UNIT_CHOICES
 
@@ -318,6 +319,152 @@ class DispensationLot(models.Model):
 
     def __str__(self):
         return f"{self.dispensation_id} × {self.stock_item} — {self.quantity}"
+
+
+# ─── Stockout-prediction wedge PR S2: persistent StockAlert ───────────────────
+
+
+class StockAlert(models.Model):
+    """Verdict do motor determinístico de ruptura/validade (wedge PR S2). Per-tenant.
+
+    Mirror direto do ``billing.GlosaSafetyAlert``: linha de verdict do motor
+    (``source="engine"``), ``UniqueConstraint`` para que a re-avaliação faça
+    update_or_create no lugar (nunca duplica nem atropela um override
+    reconhecido), e campos de ack para que um reconhecimento-com-justificativa
+    permaneça. NÃO usa o cache Redis efêmero do StockAlertsView (que não dá
+    flywheel) — esta é a linha persistente que o S3/S4 consomem.
+
+    POSTURA — ADVISE, NUNCA BLOQUEIA. Previsão de suprimento jamais bloqueia
+    dispensa clínica; a única severidade é ``advise`` (não há caminho ``block``).
+
+    Alvo do alerta: o PRODUTO de catálogo (``drug`` XOR ``material``) — ruptura
+    e validade são por produto. Para ``expiry_waste`` o ``stock_item`` aponta o
+    lote específico que vence encalhado, com ``predicted_waste_qty``.
+    """
+
+    class Kind(models.TextChoices):
+        STOCKOUT_RISK = "stockout_risk", "Risco de ruptura"
+        EXPIRY_WASTE = "expiry_waste", "Desperdício por validade"
+
+    class Severity(models.TextChoices):
+        # Só "advise" é usado hoje; não há caminho de bloqueio para suprimento.
+        ADVISE = "advise", "Avisa"
+
+    class Source(models.TextChoices):
+        ENGINE = "engine", "Motor determinístico"
+        # Reservado: um futuro priorizador/explicador LLM escreveria source="llm"
+        # aqui, espelhando o split engine|llm do GlosaSafetyAlert.
+        LLM = "llm", "LLM (explicação)"
+
+    class Status(models.TextChoices):
+        OPEN = "open", "Aberto"
+        ACKNOWLEDGED = "acknowledged", "Reconhecido"
+        RESOLVED = "resolved", "Resolvido"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    drug = models.ForeignKey(
+        Drug,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="stock_alerts",
+    )
+    material = models.ForeignKey(
+        Material,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="stock_alerts",
+    )
+    # Lote-alvo do alerta de validade (NULL para stockout_risk, que é por produto).
+    stock_item = models.ForeignKey(
+        StockItem,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="stock_alerts",
+        help_text="Lote específico para expiry_waste; NULL para stockout_risk.",
+    )
+    kind = models.CharField(max_length=20, choices=Kind.choices)
+    severity = models.CharField(max_length=10, choices=Severity.choices, default=Severity.ADVISE)
+    source = models.CharField(
+        max_length=10,
+        choices=Source.choices,
+        default=Source.ENGINE,
+        help_text="Qual checker produziu a linha: verdict 'engine' ou (futuro) 'llm'.",
+    )
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.OPEN)
+    predicted_date = models.DateField(
+        "Data prevista", null=True, blank=True, help_text="Ruptura ou vencimento previsto."
+    )
+    days_to_stockout = models.DecimalField(
+        "Dias até ruptura", max_digits=10, decimal_places=1, null=True, blank=True
+    )
+    predicted_waste_qty = models.DecimalField(
+        "Desperdício previsto", max_digits=12, decimal_places=3, null=True, blank=True
+    )
+    engine_version = models.CharField(max_length=10, default="s2")
+    message = models.TextField("Mensagem (pt-BR)")
+    acknowledged_by = models.ForeignKey(
+        "core.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="acknowledged_stock_alerts",
+    )
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+    note = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Alerta de Estoque (motor)"
+        verbose_name_plural = "Alertas de Estoque (motor)"
+        ordering = ["-created_at"]
+        constraints = [
+            # Exatamente um de drug/material setado (alvo é o produto de catálogo).
+            models.CheckConstraint(
+                condition=(
+                    models.Q(drug__isnull=False, material__isnull=True)
+                    | models.Q(drug__isnull=True, material__isnull=False)
+                ),
+                name="stock_alert_drug_xor_material",
+            ),
+            # Uma linha por (drug, material, kind, source, stock_item) para que a
+            # re-avaliação faça update_or_create no lugar e nunca atropele um
+            # override reconhecido com uma duplicata. stock_item é NULL para
+            # stockout_risk (alerta por produto) e setado para expiry_waste
+            # (alerta por lote). Um UNIQUE legado do Postgres trata NULL como
+            # DISTINTO, então as linhas de stockout_risk (stock_item IS NULL)
+            # acumulariam duplicatas e quebrariam o update_or_create com
+            # MultipleObjectsReturned. nulls_distinct=False (Django 5.0+ /
+            # Postgres 15+; aqui Django 5.2, PG 16) faz NULL comparar IGUAL, então
+            # a unicidade vale também para os alertas por produto. Mesma correção
+            # de NULL do GlosaSafetyAlert / do UniqueConstraint do StockItem.
+            models.UniqueConstraint(
+                fields=["drug", "material", "kind", "source", "stock_item"],
+                nulls_distinct=False,
+                name="uniq_stock_alert",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["status", "kind"]),
+        ]
+
+    @property
+    def target(self):
+        """O produto de catálogo que este alerta endereça (Drug ou Material)."""
+        return self.drug or self.material
+
+    def __str__(self):
+        return f"{self.get_kind_display()} — {self.target} ({self.get_status_display()})"
+
+    def acknowledge(self, user, note=""):
+        self.acknowledged_by = user
+        self.note = note
+        self.acknowledged_at = timezone.now()
+        self.status = self.Status.ACKNOWLEDGED
+        self.save(update_fields=["acknowledged_by", "note", "acknowledged_at", "status"])
 
 
 # ─── Dose-safety wedge PR A: Formulary & DoseRule ─────────────────────────────
