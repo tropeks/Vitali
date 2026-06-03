@@ -184,6 +184,44 @@ class TUSSCode(models.Model):
     active = models.BooleanField(default=True, db_index=True)
     search_vector = SearchVectorField(null=True)  # pg_trgm + tsvector for fuzzy search
 
+    # ── Clinical-compatibility metadata (glosa wedge PR G3b) ──────────────────
+    # ANS-STANDARD TRUTH, NEVER FABRICATED IN CODE. These columns encode the
+    # age/sex/CID restrictions the ANS publishes for a procedure. They are
+    # populated ONLY by the `import_tuss` command FROM the ANS source export
+    # (out of band). Until a row is populated, every field keeps its INERT
+    # default (null window / sex "B" / empty whitelist) so the clinical_incompat
+    # glosa check fires NOTHING — no fabricated clinical rule ever ships in code.
+    SEX_CHOICES = [
+        ("M", "Masculino"),
+        ("F", "Feminino"),
+        ("B", "Ambos/Qualquer"),  # B = both/any → no sex constraint (default)
+    ]
+    age_min_days = models.IntegerField(
+        "Idade mínima (dias)",
+        null=True,
+        blank=True,
+        help_text="Idade mínima do paciente para o procedimento, em dias. Null = sem limite inferior. Fonte: ANS.",
+    )
+    age_max_days = models.IntegerField(
+        "Idade máxima (dias)",
+        null=True,
+        blank=True,
+        help_text="Idade máxima do paciente para o procedimento, em dias. Null = sem limite superior. Fonte: ANS.",
+    )
+    sex_allowed = models.CharField(
+        "Sexo permitido",
+        max_length=1,
+        choices=SEX_CHOICES,
+        default="B",
+        help_text="Sexo do paciente compatível com o procedimento (B = ambos, sem restrição). Fonte: ANS.",
+    )
+    cid10_whitelist = models.JSONField(
+        "CIDs compatíveis (whitelist)",
+        default=list,
+        blank=True,
+        help_text="Lista de códigos CID-10 compatíveis com o procedimento. Lista vazia = sem restrição de CID. Fonte: ANS.",
+    )
+
     class Meta:
         app_label = "core"
         verbose_name = "Código TUSS"

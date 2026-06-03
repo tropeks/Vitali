@@ -4,9 +4,16 @@ Management command: import_tuss
 Imports the ANS TUSS procedure/material/fee code table into `core.TUSSCode`.
 
 Usage:
-    python manage.py import_tuss --file tuss_procedimentos_2024_01.csv
-    python manage.py import_tuss --file tuss_procedimentos_2024_01.csv --version 2024-01
-    python manage.py import_tuss --file tuss_procedimentos_2024_01.csv --deactivate-old
+    python manage.py import_tuss --file tuss_procedimentos_2024_01.csv --tuss-version 2024-01
+    python manage.py import_tuss --file tuss.csv --tuss-version 2024-01 --deactivate-old
+
+The data-version label option is ``--tuss-version`` and is REQUIRED — an
+invocation without it errors loudly rather than importing under a silent
+default.  ``--version`` is NOT the data-version flag: it is Django's BaseCommand
+built-in (prints the framework version and exits 0).  The custom option was
+renamed precisely because a second ``--version`` collided with that built-in and
+raised argparse ArgumentError at parser construction, making the command
+un-runnable.
 
 The command is idempotent: existing codes are updated in-place, new codes are
 created. Codes absent from the import file are left untouched unless
@@ -14,6 +21,22 @@ created. Codes absent from the import file are left untouched unless
 
 Expected CSV format (ANS standard export, semicolon-delimited, UTF-8):
     CODIGO;DESCRICAO;GRUPO;SUBGRUPO
+
+Optional clinical-compatibility columns (glosa wedge PR G3b)
+-----------------------------------------------------------
+If — and ONLY if — the ANS source export carries them, four additional
+columns are imported into the clinical-compatibility metadata fields on
+``core.TUSSCode``:
+    IDADE_MIN_DIAS / IDADE_MAX_DIAS  → age_min_days / age_max_days
+    SEXO                             → sex_allowed   (M / F / B)
+    CID10_WHITELIST                  → cid10_whitelist (CSV/JSON list of CIDs)
+
+These values are ANS-STANDARD TRUTH and are NEVER fabricated here: the
+importer only copies what the source row provides. When the source row lacks
+a column (the common case for the legacy CODIGO;DESCRICAO;GRUPO;SUBGRUPO
+export), the field is LEFT AT ITS INERT DEFAULT (null age window / sex "B" /
+empty whitelist) so the downstream ``clinical_incompat`` glosa check fires
+nothing. No drug/procedure rule is ever hardcoded in this command.
 
 The command also updates the PostgreSQL full-text search vector (search_vector)
 for all imported rows so that the TUSS fuzzy-search API works immediately.
@@ -42,10 +65,22 @@ class Command(BaseCommand):
             required=True,
             help="Path to the TUSS CSV file (semicolon-delimited, UTF-8)",
         )
+        # NOTE: the option is "--tuss-version", NOT "--version": Django's
+        # BaseCommand already registers a built-in "--version" on every command,
+        # so a second "--version" here raises argparse ArgumentError at parser
+        # construction (the command was previously un-runnable for this reason).
+        # It is REQUIRED: a caller who passes the wrong "--version" hits Django's
+        # built-in version action (prints version, sys.exit(0)) → a SILENT no-op
+        # import. Making "--tuss-version" required means such an invocation errors
+        # loudly ("the following arguments are required") instead of succeeding
+        # silently. dest is left at the auto "tuss_version" (NOT "version"): a
+        # dest="version" would collide with the built-in --version's dest and
+        # break call_command(tuss_version=...) once the arg is required.
         parser.add_argument(
-            "--version",
-            default="",
-            help='Version label to store on imported rows, e.g. "2024-01"',
+            "--tuss-version",
+            required=True,
+            help='REQUIRED data-version label stored on imported rows, e.g. "2024-01". '
+            "NOT the same as Django's built-in --version flag.",
         )
         parser.add_argument(
             "--deactivate-old",
@@ -64,7 +99,8 @@ class Command(BaseCommand):
         if not csv_path.exists():
             raise CommandError(f"File not found: {csv_path}")
 
-        version = options["version"] or csv_path.stem
+        # Required arg → always present and non-empty; no csv_path.stem fallback.
+        version = options["tuss_version"]
         delimiter = options["delimiter"]
         deactivate_old = options["deactivate_old"]
 
@@ -91,6 +127,48 @@ class Command(BaseCommand):
                 f"Could not find any of {candidates} in CSV columns: {list(row.keys())}"
             )
 
+        # ── OPTIONAL clinical-compatibility columns (glosa wedge G3b) ──────────
+        # Defensive readers: these columns are ANS-sourced and OPTIONAL. When the
+        # source row does not carry them we return None / "B" / [] so the field
+        # keeps its INERT default and the clinical_incompat check fires nothing.
+        # Values are NEVER fabricated — only what the source provides is stored.
+        def _opt_col(row: dict, *candidates: str) -> str | None:
+            for key in candidates:
+                if key in row and row[key] is not None:
+                    return row[key].strip()
+            return None  # column absent in this ANS export
+
+        def _opt_int(row: dict, *candidates: str) -> int | None:
+            raw = _opt_col(row, *candidates)
+            if not raw:
+                return None
+            try:
+                return int(raw)
+            except (ValueError, TypeError):
+                return None  # malformed source value → leave unbounded, do not guess
+
+        def _opt_sex(row: dict) -> str:
+            raw = (_opt_col(row, "SEXO", "sexo", "Sexo", "sex_allowed") or "").upper()
+            return raw if raw in ("M", "F", "B") else "B"  # default = no constraint
+
+        def _opt_cid_list(row: dict) -> list:
+            raw = _opt_col(row, "CID10_WHITELIST", "cid10_whitelist", "CIDS", "cids")
+            if not raw:
+                return []  # empty list = no CID constraint
+            # Accept either a JSON array or a delimiter-separated list of codes.
+            try:
+                import json
+
+                parsed = json.loads(raw)
+                if isinstance(parsed, list):
+                    # Normalise to uppercase + stripped so the stored whitelist
+                    # compares case-insensitively against guide CIDs (CID-10 is
+                    # case-insensitive; "a00" must match whitelist "A00").
+                    return [str(c).strip().upper() for c in parsed if str(c).strip()]
+            except (ValueError, TypeError):
+                pass
+            return [c.strip().upper() for c in raw.replace(";", ",").split(",") if c.strip()]
+
         with transaction.atomic():
             for row in rows:
                 code = _col(row, "CODIGO", "codigo", "Código", "code")
@@ -108,15 +186,35 @@ class Command(BaseCommand):
 
                 codes_in_file.add(code)
 
+                defaults = {
+                    "description": description,
+                    "group": group,
+                    "subgroup": subgroup,
+                    "version": version,
+                    "active": True,
+                }
+                # Clinical-compatibility metadata (G3b): ONLY write a field when
+                # the ANS source row actually carries that column — otherwise
+                # leave it untouched (do NOT clobber previously-imported ANS data
+                # or the inert default with a fabricated value). The age columns
+                # write through even when blank (→ None = unbounded), which is a
+                # legitimate ANS "no limit" value.
+                if any(k in row for k in ("IDADE_MIN_DIAS", "idade_min_dias", "age_min_days")):
+                    defaults["age_min_days"] = _opt_int(
+                        row, "IDADE_MIN_DIAS", "idade_min_dias", "age_min_days"
+                    )
+                if any(k in row for k in ("IDADE_MAX_DIAS", "idade_max_dias", "age_max_days")):
+                    defaults["age_max_days"] = _opt_int(
+                        row, "IDADE_MAX_DIAS", "idade_max_dias", "age_max_days"
+                    )
+                if any(k in row for k in ("SEXO", "sexo", "Sexo", "sex_allowed")):
+                    defaults["sex_allowed"] = _opt_sex(row)
+                if any(k in row for k in ("CID10_WHITELIST", "cid10_whitelist", "CIDS", "cids")):
+                    defaults["cid10_whitelist"] = _opt_cid_list(row)
+
                 obj, was_created = TUSSCode.objects.update_or_create(
                     code=code,
-                    defaults={
-                        "description": description,
-                        "group": group,
-                        "subgroup": subgroup,
-                        "version": version,
-                        "active": True,
-                    },
+                    defaults=defaults,
                 )
                 if was_created:
                     created += 1

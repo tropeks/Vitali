@@ -532,6 +532,11 @@ class GlosaSafetyAlert(models.Model):
         # active price table could be confidently resolved for the provider.
         # Emitted INSTEAD of blocking every line with not_in_table.
         TABLE_UNRESOLVED = "table_unresolved", "Cobertura não verificada"
+        # Clinical-compatibility advisory (G3b): the procedure's ANS metadata
+        # (age window / sex / CID whitelist on the public TUSS row) is
+        # incompatible with the patient. ALWAYS advise, never blocks — and inert
+        # until the TUSS row has ANS-sourced metadata populated.
+        CLINICAL_INCOMPAT = "clinical_incompat", "Incompatibilidade clínica"
 
     class Severity(models.TextChoices):
         BLOCK = "block", "Bloqueia"
