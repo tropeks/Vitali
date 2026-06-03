@@ -14,6 +14,7 @@ from django.core.cache import cache
 from rest_framework.test import APIClient
 
 from apps.billing.models import (
+    Authorization,
     GlosaSafetyAlert,
     InsuranceProvider,
     PriceTable,
@@ -866,3 +867,228 @@ class GlosaQuantityCeilingServiceTests(GlosaSafetyTestCase):
         alert = GlosaSafetyAlert.objects.filter(guide=guide, check_code="quantity_exceeds").first()
         self.assertIsNotNone(alert)
         self.assertEqual(alert.severity, "advise")
+
+
+class GlosaAuthorizationServiceTests(GlosaSafetyTestCase):
+    """Orchestrator-level G3d: the service resolves requires_authorization off the
+    line's ACTIVE PriceTableItem and authorization satisfaction (guide senha OR a
+    matching approved+in-window Authorization, or a generic tuss=null auth). The
+    engine emits advise-only authorization_missing. INERT when the item does NOT
+    require authorization; never blocks the close()."""
+
+    def _require_auth(self, tuss, required=True):
+        pti = PriceTableItem.objects.get(table=self.table, tuss_code=tuss)
+        pti.requires_authorization = required
+        pti.save(update_fields=["requires_authorization"])
+
+    def _make_auth(self, *, tuss=None, status="approved", valid_from=None, valid_until=None, **kw):
+        return Authorization.objects.create(
+            patient=kw.get("patient", self.patient),
+            provider=kw.get("provider", self.provider),
+            tuss_code=tuss,
+            status=status,
+            valid_from=valid_from or datetime.date(2020, 1, 1),
+            valid_until=valid_until,
+            authorization_number=kw.get("authorization_number", ""),
+        )
+
+    def _guide_for(self, tuss):
+        enc = Encounter.objects.create(patient=self.patient, professional=self.professional)
+        return self._make_guide(encounter=enc, tuss=tuss, unit_value=Decimal("50.00"))
+
+    def _evaluate(self, guide):
+        GlosaSafetyService(requesting_user=self.faturista).evaluate_guide(guide, gate="batch_close")
+
+    # ── requires_authorization False (default) → inert ─────────────────────────
+
+    def test_not_required_is_inert(self):
+        # Default requires_authorization=False; no auth anywhere → no finding.
+        self._enable_glosa()
+        guide = self._guide_for(self.tuss_b)
+        self._evaluate(guide)
+        self.assertFalse(
+            GlosaSafetyAlert.objects.filter(
+                guide=guide, check_code="authorization_missing"
+            ).exists()
+        )
+
+    # ── requires True + no senha + no Authorization → advise ───────────────────
+
+    def test_required_no_senha_no_auth_advises(self):
+        self._enable_glosa()
+        self._require_auth(self.tuss_b)
+        guide = self._guide_for(self.tuss_b)  # authorization_number blank, no Authorization
+        self._evaluate(guide)
+        alert = GlosaSafetyAlert.objects.filter(
+            guide=guide, check_code="authorization_missing"
+        ).first()
+        self.assertIsNotNone(alert)
+        self.assertEqual(alert.severity, "advise")
+
+    # ── requires True + guide.authorization_number filled → pass ───────────────
+
+    def test_required_but_senha_filled_silent(self):
+        self._enable_glosa()
+        self._require_auth(self.tuss_b)
+        enc = Encounter.objects.create(patient=self.patient, professional=self.professional)
+        guide = self._make_guide(
+            encounter=enc,
+            tuss=self.tuss_b,
+            unit_value=Decimal("50.00"),
+            authorization_number="SENHA123",
+        )
+        self._evaluate(guide)
+        self.assertFalse(
+            GlosaSafetyAlert.objects.filter(
+                guide=guide, check_code="authorization_missing"
+            ).exists()
+        )
+
+    # ── requires True + matching approved Authorization (TUSS) → pass ──────────
+
+    def test_required_with_matching_approved_auth_silent(self):
+        self._enable_glosa()
+        self._require_auth(self.tuss_b)
+        self._make_auth(tuss=self.tuss_b, status="approved")
+        guide = self._guide_for(self.tuss_b)
+        self._evaluate(guide)
+        self.assertFalse(
+            GlosaSafetyAlert.objects.filter(
+                guide=guide, check_code="authorization_missing"
+            ).exists()
+        )
+
+    # ── requires True + generic (tuss=null) approved Authorization → pass ──────
+
+    def test_required_with_generic_approved_auth_silent(self):
+        self._enable_glosa()
+        self._require_auth(self.tuss_b)
+        self._make_auth(tuss=None, status="approved")  # generic = covers any procedure
+        guide = self._guide_for(self.tuss_b)
+        self._evaluate(guide)
+        self.assertFalse(
+            GlosaSafetyAlert.objects.filter(
+                guide=guide, check_code="authorization_missing"
+            ).exists()
+        )
+
+    # ── requires True + auth NOT satisfying → advise ───────────────────────────
+
+    def test_denied_auth_does_not_satisfy(self):
+        self._enable_glosa()
+        self._require_auth(self.tuss_b)
+        self._make_auth(tuss=self.tuss_b, status="denied")
+        guide = self._guide_for(self.tuss_b)
+        self._evaluate(guide)
+        self.assertTrue(
+            GlosaSafetyAlert.objects.filter(
+                guide=guide, check_code="authorization_missing", severity="advise"
+            ).exists()
+        )
+
+    def test_expired_auth_does_not_satisfy(self):
+        self._enable_glosa()
+        self._require_auth(self.tuss_b)
+        # valid_until in the past (guide effective date is "now", 2026) → expired.
+        self._make_auth(
+            tuss=self.tuss_b,
+            status="approved",
+            valid_from=datetime.date(2020, 1, 1),
+            valid_until=datetime.date(2020, 12, 31),
+        )
+        guide = self._guide_for(self.tuss_b)
+        self._evaluate(guide)
+        self.assertTrue(
+            GlosaSafetyAlert.objects.filter(
+                guide=guide, check_code="authorization_missing", severity="advise"
+            ).exists()
+        )
+
+    def test_wrong_provider_or_patient_does_not_satisfy(self):
+        self._enable_glosa()
+        self._require_auth(self.tuss_b)
+        other_provider = InsuranceProvider.objects.create(name="Other", ans_code="888888")
+        other_patient = Patient.objects.create(
+            full_name="Outro",
+            cpf="111.111.111-11",
+            birth_date=datetime.date(1990, 1, 1),
+            gender="M",
+        )
+        # Approved auths, but for the wrong provider AND the wrong patient.
+        self._make_auth(tuss=self.tuss_b, status="approved", provider=other_provider)
+        self._make_auth(tuss=self.tuss_b, status="approved", patient=other_patient)
+        guide = self._guide_for(self.tuss_b)
+        self._evaluate(guide)
+        self.assertTrue(
+            GlosaSafetyAlert.objects.filter(
+                guide=guide, check_code="authorization_missing", severity="advise"
+            ).exists()
+        )
+
+    # ── advise-only → close() does NOT 409 (regression guard) ──────────────────
+
+    def test_authorization_missing_alone_does_not_409(self):
+        self._enable_glosa()
+        self._require_auth(self.tuss_b)
+        guide = self._guide_for(self.tuss_b)
+        batch = self._make_batch(guide)
+        resp = self._auth().post(f"/api/v1/billing/batches/{batch.id}/close/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["status"], "closed")
+        self.assertFalse(GlosaSafetyService.has_blocking_glosa_alert(guide))
+        alert = GlosaSafetyAlert.objects.filter(
+            guide=guide, check_code="authorization_missing"
+        ).first()
+        self.assertIsNotNone(alert)
+        self.assertEqual(alert.severity, "advise")
+
+    # ── single auth-resolution query (no N+1) ──────────────────────────────────
+
+    def test_authorization_coverage_is_a_single_query(self):
+        self._enable_glosa()
+        self._require_auth(self.tuss_a)
+        self._require_auth(self.tuss_b)
+        # Several approved auths for the patient/provider.
+        self._make_auth(tuss=self.tuss_a, status="approved")
+        self._make_auth(tuss=self.tuss_b, status="approved")
+        self._make_auth(tuss=None, status="approved")
+        enc = Encounter.objects.create(patient=self.patient, professional=self.professional)
+        guide = TISSGuide.objects.create(
+            guide_type="sadt",
+            encounter=enc,
+            patient=self.patient,
+            provider=self.provider,
+            insured_card_number="0001234567890001",
+            competency="2026-03",
+            cid10_codes=[{"code": "J00"}],
+            status="pending",
+        )
+        TISSGuideItem.objects.create(
+            guide=guide,
+            tuss_code=self.tuss_a,
+            description="x",
+            quantity=Decimal("1"),
+            unit_value=Decimal("100.00"),
+        )
+        TISSGuideItem.objects.create(
+            guide=guide,
+            tuss_code=self.tuss_b,
+            description="y",
+            quantity=Decimal("1"),
+            unit_value=Decimal("50.00"),
+        )
+        svc = GlosaSafetyService(requesting_user=self.faturista)
+        # The coverage resolution must hit billing_authorization exactly ONCE,
+        # regardless of the number of guide items (no per-item lookup → no N+1).
+        # Measure the auth query specifically rather than total queries, so the
+        # django-tenants `SET search_path` (harness overhead, emitted lazily in a
+        # fresh capture context) isn't miscounted as a data query.
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        with CaptureQueriesContext(connection) as ctx:
+            covered, generic = svc._approved_authorization_coverage(guide)
+        auth_queries = [q for q in ctx.captured_queries if "billing_authorization" in q["sql"]]
+        self.assertEqual(len(auth_queries), 1, f"expected 1 auth query, got {len(auth_queries)}")
+        self.assertEqual(covered, {self.tuss_a.code, self.tuss_b.code})
+        self.assertTrue(generic)

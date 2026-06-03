@@ -35,6 +35,7 @@ from django.db import connection, transaction
 from django.db.models import Q
 
 from apps.billing.models import (
+    Authorization,
     GlosaSafetyAlert,
     PriceTable,
     PriceTableItem,
@@ -219,15 +220,26 @@ class GlosaSafetyService:
         # (not_in_table / stale_price) are MEANINGFUL: when no active table can
         # be confidently resolved, we must NOT block every line — fail toward a
         # single advise instead (see _active_table_values).
-        active_value_by_tuss, active_ceiling_by_tuss, table_resolved = self._active_table_values(
-            guide
-        )
+        (
+            active_value_by_tuss,
+            active_ceiling_by_tuss,
+            active_requires_auth_by_tuss,
+            table_resolved,
+        ) = self._active_table_values(guide)
         active_codes = set(active_value_by_tuss.keys())
 
         # Cross-guide duplicate detection (race fix, decision A-2): lock the
         # Encounter row FIRST so two concurrent closes cannot both pass, then find
         # other active-status guides' items with the same encounter + TUSS.
         duplicate_tuss = self._duplicate_tuss_codes(guide, [i.tuss_code.code for i in items])
+
+        # Authorization resolution (G3d): ONE query for all approved+in-window
+        # Authorizations for the guide's patient+provider → (covered TUSS codes,
+        # generic-auth flag). Plus the guide's own authorization_number. A line is
+        # "satisfied" when the guide carries a senha OR a generic auth exists OR
+        # this line's TUSS is in the covered set. No per-item query (no N+1).
+        auth_covered_tuss, auth_generic = self._approved_authorization_coverage(guide)
+        guide_has_auth_number = bool((guide.authorization_number or "").strip())
 
         item_ctxs: list[GuideItemContext] = []
         for item in items:
@@ -247,6 +259,15 @@ class GlosaSafetyService:
                     # or the contract sets no ceiling → check stays inert.
                     quantity=Decimal(item.quantity),
                     max_per_procedure=active_ceiling_by_tuss.get(code),
+                    # Authorization (G3d): requirement comes off the active
+                    # PriceTableItem (default False → inert); satisfaction is the
+                    # guide's senha OR a generic auth OR this TUSS being in the
+                    # approved+in-window covered set. Resolved here so the engine
+                    # stays pure (no DB).
+                    authorization_required=active_requires_auth_by_tuss.get(code, False),
+                    authorization_satisfied=(
+                        guide_has_auth_number or auth_generic or code in auth_covered_tuss
+                    ),
                     # Clinical-compatibility metadata copied STRAIGHT off the
                     # public core.TUSSCode row (G3b). ANS-sourced, never
                     # fabricated; defaults (null/B/[]) keep the check inert.
@@ -332,14 +353,17 @@ class GlosaSafetyService:
 
     def _active_table_values(
         self, guide: TISSGuide
-    ) -> tuple[dict[str, Decimal], dict[str, int | None], bool]:
+    ) -> tuple[dict[str, Decimal], dict[str, int | None], dict[str, bool], bool]:
         """Resolve the provider's CURRENTLY ACTIVE PriceTable whose validity window
         contains the guide's effective date, and return
-        ({tuss_code: negotiated_value}, {tuss_code: max_per_procedure}, table_resolved).
+        ({tuss_code: negotiated_value}, {tuss_code: max_per_procedure},
+        {tuss_code: requires_authorization}, table_resolved).
 
         The second map carries the per-procedure quantity ceiling (G3c) from the
         same active PriceTableItem rows; a value of None means the contract set no
-        ceiling for that code (the quantity_exceeds check then stays inert).
+        ceiling for that code (the quantity_exceeds check then stays inert). The
+        third map carries the requires_authorization flag (G3d) off the same rows;
+        False (the default) keeps the authorization_missing check inert.
 
         Robust resolution: an active table covers the guide when its
         valid_from is on/before the effective date AND valid_until is null or
@@ -362,15 +386,50 @@ class GlosaSafetyService:
             .first()
         )
         if table is None:
-            return {}, {}, False
+            return {}, {}, {}, False
 
         values: dict[str, Decimal] = {}
         ceilings: dict[str, int | None] = {}
+        requires_auth: dict[str, bool] = {}
         for pti in PriceTableItem.objects.filter(table=table).select_related("tuss_code"):
             code = pti.tuss_code.code
             values[code] = Decimal(pti.negotiated_value)
             ceilings[code] = pti.max_per_procedure
-        return values, ceilings, True
+            requires_auth[code] = pti.requires_authorization
+        return values, ceilings, requires_auth, True
+
+    def _approved_authorization_coverage(self, guide: TISSGuide) -> tuple[set[str], bool]:
+        """Authorization coverage for the guide (G3d), in ONE query (no N+1).
+
+        Fetches every APPROVED Authorization for the guide's patient + provider
+        whose validity window contains the guide's effective date
+        (valid_from <= date AND (valid_until IS NULL OR valid_until >= date)) and
+        returns ({covered TUSS codes}, generic_auth_present). A row with
+        tuss_code NULL is a GENERIC authorization (covers any procedure) and sets
+        the generic flag; a row with a tuss_code adds that code to the covered set.
+        The pure engine then marks a line satisfied when the guide carries a senha
+        OR the generic flag is set OR the line's TUSS is in the covered set."""
+        effective_date = self._guide_effective_date(guide)
+
+        rows = (
+            Authorization.objects.filter(
+                patient_id=guide.patient_id,
+                provider_id=guide.provider_id,
+                status=Authorization.Status.APPROVED,
+                valid_from__lte=effective_date,
+            )
+            .filter(Q(valid_until__isnull=True) | Q(valid_until__gte=effective_date))
+            .values_list("tuss_code__code", flat=True)
+        )
+
+        covered: set[str] = set()
+        generic = False
+        for code in rows:
+            if code is None:
+                generic = True
+            else:
+                covered.add(code)
+        return covered, generic
 
     def _duplicate_tuss_codes(self, guide: TISSGuide, tuss_codes: list[str]) -> set[str]:
         """TUSS codes on this guide that ALSO appear on another active-status guide
