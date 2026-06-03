@@ -245,3 +245,105 @@ class StockoutChecker:
                 f"além do lead time ({lead_time_days} dias)."
             ),
         )
+
+
+@dataclass(frozen=True)
+class ExpiryWaste:
+    """One lot projected to expire before the running consumption can reach it.
+
+    ``stock_item_id`` is the lot that will be left partially unconsumed at its
+    ``expiry_date``; ``waste_qty`` is the Decimal remainder that will be wasted;
+    ``reason`` is a deterministic pt-BR sentence embedding the numbers.
+    """
+
+    stock_item_id: object
+    waste_qty: Decimal
+    expiry_date: date
+    reason: str = ""
+
+
+def predict_expiry_waste(
+    lots: Sequence[tuple[object, Decimal, date | None]],
+    daily_velocity: Decimal | None,
+    now: datetime,
+) -> list[ExpiryWaste]:
+    """Pure FEFO expiry-waste predictor — no DB, no clock (``now`` injected).
+
+    ``lots`` is a list of ``(stock_item_id, on_hand_qty, expiry_date)`` tuples for
+    ONE product's on-hand StockItems. The orchestrator supplies them; this
+    function only does the arithmetic.
+
+    Algorithm (LOCKED — FEFO):
+      * INERT (return ``[]``) when ``daily_velocity`` is None (no/insufficient
+        dispense history — division would be meaningless) — mirrors the stockout
+        engine's inert guard. Division-by-zero is impossible since velocity == 0
+        collapses to None upstream.
+      * Stack the lots by ``expiry_date`` ASC (FEFO — earliest-expiring consumed
+        first). Lots with no ``expiry_date`` cannot expire-waste → skipped (and
+        do NOT consume the runway, since an undated lot is consumed last in
+        practice and never the binding waste constraint).
+      * Walk the stack: each lot becomes available to consume only AFTER every
+        earlier-expiring lot ahead of it is consumed. The cumulative quantity
+        ahead of (and including) a lot takes ``cumulative / velocity`` days to
+        burn down. If that day count lands AFTER the lot's ``expiry_date`` (i.e.
+        ``now + days_to_finish_this_lot > expiry_date``), the portion that cannot
+        be consumed in the remaining days is predicted waste.
+      * waste = on_hand - max(0, units_consumable_before_expiry - units_ahead),
+        clamped to [0, on_hand]. A lot fully consumed before its expiry → 0
+        (omitted from the result).
+
+    Returns a list of ``ExpiryWaste`` (only lots with waste_qty > 0), in FEFO
+    order.
+    """
+    if daily_velocity is None:
+        return []
+
+    velocity = Decimal(daily_velocity)
+    if velocity <= 0:
+        return []
+
+    # FEFO: earliest expiry first. Lots without an expiry date can never be a
+    # waste prediction and don't bind the runway → drop them from the stack.
+    dated = [(sid, abs(Decimal(qty)), exp) for (sid, qty, exp) in lots if exp is not None]
+    dated.sort(key=lambda t: t[2])
+
+    out: list[ExpiryWaste] = []
+    units_ahead = Decimal("0")  # cumulative on-hand of all earlier-expiring lots
+    today = now.date()
+
+    for stock_item_id, on_hand, expiry in dated:
+        if on_hand <= 0:
+            units_ahead += on_hand
+            continue
+
+        days_left = Decimal((expiry - today).days)
+        # Units we can physically consume by this lot's expiry across the whole
+        # FEFO stack up to and including it.
+        consumable_by_expiry = days_left * velocity if days_left > 0 else Decimal("0")
+        # Of those, the lots ahead are burned first; what remains is available to
+        # this lot. Clamp at 0 (a lot whose predecessors already outlast the date).
+        available_to_this = consumable_by_expiry - units_ahead
+        if available_to_this < 0:
+            available_to_this = Decimal("0")
+
+        consumed = available_to_this if available_to_this < on_hand else on_hand
+        waste = on_hand - consumed
+
+        if waste > 0:
+            out.append(
+                ExpiryWaste(
+                    stock_item_id=stock_item_id,
+                    waste_qty=waste,
+                    expiry_date=expiry,
+                    reason=(
+                        f"Desperdício por validade (ADVISE): lote com {on_hand} un. vence "
+                        f"em {expiry.isoformat()} ({int(days_left)} dias); ao consumo de "
+                        f"{velocity}/dia (FEFO) só ~{_qv(consumed)} un. serão usadas — "
+                        f"sobra prevista {_qv(waste)} un."
+                    ),
+                )
+            )
+
+        units_ahead += on_hand
+
+    return out

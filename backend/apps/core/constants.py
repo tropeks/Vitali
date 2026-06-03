@@ -54,5 +54,10 @@ ALLOWED_MODULE_KEYS: frozenset = frozenset(
         # close. Default OFF — a tenant must explicitly enable it before the
         # batch-close gate starts blocking on duplicate/not-tabled findings.
         "glosa_safety",
+        # Stockout-prediction wedge (PR S2): per-tenant toggle for the
+        # deterministic stockout/expiry interceptor (advise-only). Default OFF —
+        # a tenant must explicitly enable it before the engine evaluates products
+        # and persists StockAlert rows. Proactive only (no DispenseView gate).
+        "stockout_safety",
     }
 )
