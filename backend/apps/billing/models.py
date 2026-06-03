@@ -497,3 +497,134 @@ class Glosa(models.Model):
             f"Glosa {self.get_reason_code_display()} — Guia {self.guide.guide_number} "
             f"R${self.value_denied}"
         )
+
+
+# ─── Glosa-safety wedge (PR G1): deterministic engine verdict ──────────────────
+
+
+class GlosaSafetyAlert(models.Model):
+    """Verdict do motor determinístico de glosa (wedge PR G1). Per-tenant.
+
+    DEDICATED engine-verdict row — deliberately NOT a reuse of
+    ``apps.ai.GlosaPrediction`` (decision A-1). GlosaPrediction is the LLM
+    artifact for the flywheel, generated on guide edit and tied to AIUsageLog;
+    mixing a deterministic verdict there would conflict lifecycles and risk
+    clobbering the LLM ground-truth. This model mirrors ``emr.AISafetyAlert``:
+    a ``source`` split (``engine`` today, ``llm`` reserved for later), a
+    ``unique_together`` so re-evaluation update_or_create()s in place instead of
+    spawning duplicates, and ack fields so an override-with-justification stands.
+
+    Item-level vs guide-level: ``guide_item`` is set for per-line checks
+    (duplicate / not_in_table / stale_price) and left NULL for the guide-level
+    structural-completeness check.
+    """
+
+    class CheckCode(models.TextChoices):
+        DUPLICATE = "duplicate", "Procedimento duplicado"
+        STALE_PRICE = "stale_price", "Valor diverge da tabela vigente"
+        NOT_IN_TABLE = "not_in_table", "Procedimento não tabelado"
+        INCOMPLETE = "incomplete", "Dados incompletos"
+        # Fail-open / engine-error advisory. A DISTINCT code so the defensive
+        # fail-open write can never collide with a real "incomplete" finding on
+        # the same (guide, NULL item, source) key.
+        ENGINE_ERROR = "engine_error", "Verificação indisponível"
+        # Table-unresolved advisory: coverage could not be verified because no
+        # active price table could be confidently resolved for the provider.
+        # Emitted INSTEAD of blocking every line with not_in_table.
+        TABLE_UNRESOLVED = "table_unresolved", "Cobertura não verificada"
+
+    class Severity(models.TextChoices):
+        BLOCK = "block", "Bloqueia"
+        ADVISE = "advise", "Avisa"
+
+    class Source(models.TextChoices):
+        ENGINE = "engine", "Motor determinístico"
+        # Reserved: a future LLM glosa-explainer would write source="llm" here,
+        # mirroring the AISafetyAlert engine|llm split. Keeps this row safe to
+        # update_or_create() without clobbering an LLM-authored sibling.
+        LLM = "llm", "LLM (explicação)"
+
+    class Status(models.TextChoices):
+        FLAGGED = "flagged", "Alertado"
+        ACKNOWLEDGED = "acknowledged", "Reconhecido"
+        RESOLVED = "resolved", "Resolvido"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    guide = models.ForeignKey(
+        TISSGuide, on_delete=models.CASCADE, related_name="glosa_safety_alerts"
+    )
+    guide_item = models.ForeignKey(
+        TISSGuideItem,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="glosa_safety_alerts",
+        help_text="Set for per-line checks; NULL for guide-level structural checks.",
+    )
+    check_code = models.CharField(max_length=20, choices=CheckCode.choices)
+    severity = models.CharField(max_length=10, choices=Severity.choices)
+    source = models.CharField(
+        max_length=10,
+        choices=Source.choices,
+        default=Source.ENGINE,
+        help_text="Which checker produced this row: 'engine' verdict or (future) 'llm'.",
+    )
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.FLAGGED)
+    message = models.TextField("Mensagem (pt-BR)")
+    recommendation = models.TextField("Recomendação (pt-BR)", blank=True)
+    ans_glosa_code = models.CharField(
+        "Código de glosa ANS",
+        max_length=5,
+        blank=True,
+        help_text="Mapped ANS reason code (see GLOSA_REASON_CODES). Blank = unmapped.",
+    )
+    acknowledged_by = models.ForeignKey(
+        "core.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="acknowledged_glosa_alerts",
+    )
+    override_reason = models.TextField(blank=True)
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+    # Flywheel label, backfilled later from the retorno parser at guide_item/TUSS
+    # level (decision A-5). Left NULL now — never set by G1.
+    was_denied = models.BooleanField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Alerta de Glosa (motor)"
+        verbose_name_plural = "Alertas de Glosa (motor)"
+        ordering = ["-created_at"]
+        # One row per (guide, item, check, source) so re-evaluation
+        # update_or_create()s in place and never clobbers an acknowledged
+        # override with a duplicate. A plain unique_together (Postgres unique
+        # index) treats NULL guide_item as DISTINCT, so guide-level alerts
+        # (guide_item IS NULL) would accumulate duplicate rows and later brick
+        # update_or_create with MultipleObjectsReturned. nulls_distinct=False
+        # (Django 5.0+ / Postgres 15+) makes NULL compare EQUAL so uniqueness
+        # holds for guide-level alerts too.
+        constraints = [
+            models.UniqueConstraint(
+                fields=["guide", "guide_item", "check_code", "source"],
+                nulls_distinct=False,
+                name="uniq_glosa_alert",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["guide", "status", "severity"]),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.get_severity_display()} — {self.get_check_code_display()} "
+            f"(Guia {self.guide_id})"
+        )
+
+    def acknowledge(self, user, reason=""):
+        self.acknowledged_by = user
+        self.override_reason = reason
+        self.acknowledged_at = timezone.now()
+        self.status = self.Status.ACKNOWLEDGED
+        self.save(update_fields=["acknowledged_by", "override_reason", "acknowledged_at", "status"])

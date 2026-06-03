@@ -22,7 +22,15 @@ from rest_framework.views import APIView
 from apps.core.models import TUSSCode
 from apps.core.permissions import ModuleRequiredPermission
 
-from .models import Glosa, InsuranceProvider, PriceTable, PriceTableItem, TISSBatch, TISSGuide
+from .models import (
+    Glosa,
+    GlosaSafetyAlert,
+    InsuranceProvider,
+    PriceTable,
+    PriceTableItem,
+    TISSBatch,
+    TISSGuide,
+)
 from .permissions import IsFaturistaOrAdmin
 from .serializers import (
     GlosaSerializer,
@@ -266,13 +274,30 @@ class TISSBatchViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         with db_transaction.atomic():
+            # TOCTOU fix: lock the BATCH row first, then read its guide set from
+            # the locked instance. Without the batch lock a concurrent
+            # guides.add(new_guide) could slip an UNEVALUATED guide into the
+            # batch between evaluation and the blocking-check (which reads
+            # batch.guides.all()), letting an un-checked guide through the gate.
+            # We evaluate exactly locked_batch.guides.all() and then run the
+            # blocking-check over that SAME locked instance, so no guide can be
+            # present-but-unevaluated.
+            locked_batch = TISSBatch.objects.select_for_update().get(pk=batch.pk)
+
             # Re-validate double-submit at close time. Two batches can both be
             # left "open" with the same guide (the serializer/signal checks ran
             # while both were open and saw no *finalised* conflict); without this
             # re-check, closing both would export the guide in two XMLs → billed
             # twice (financial + ANS violation). Lock the candidate guides so a
             # concurrent close of a sibling batch cannot race past this check.
-            locked_guides = list(batch.guides.select_for_update())
+            #
+            # Capture the guide id set ONCE under the batch-row lock. This is the
+            # SET OF RECORD for the rest of close(): we evaluate exactly these
+            # guides AND run the blocking-check over exactly these ids, so no
+            # guide can be present-but-unevaluated. A membership re-assertion just
+            # before finalize closes the add-after-capture window.
+            locked_guides = list(locked_batch.guides.select_for_update())
+            evaluated_ids = [g.pk for g in locked_guides]
             try:
                 for guide in locked_guides:
                     # Only finalised batches (closed/submitted) constitute a real
@@ -280,19 +305,108 @@ class TISSBatchViewSet(viewsets.ModelViewSet):
                     # batch holding the same guide is fine — whichever closes
                     # first wins, and the second close will then be rejected here.
                     # Cancelled batches never conflict.
-                    batch.check_guide_not_double_submitted(guide, statuses=["closed", "submitted"])
+                    locked_batch.check_guide_not_double_submitted(
+                        guide, statuses=["closed", "submitted"]
+                    )
             except DjangoValidationError as exc:
                 # Surface model-layer ValidationError as an HTTP 400 (DRF) with a
                 # clear PT-BR message instead of an uncaught 500.
                 raise serializers.ValidationError({"guides": list(exc.messages)}) from exc
 
-            total = batch.guides.aggregate(total=Sum("total_value"))["total"] or Decimal("0")
-            batch.status = "closed"
-            batch.closed_at = timezone.now()
-            batch.total_value = total
-            batch.save(update_fields=["status", "closed_at", "total_value"])
-            batch.guides.filter(status="pending").update(status="submitted")
-        return Response(TISSBatchSerializer(batch).data)
+            # Glosa-safety soft-stop (wedge PR G1). No-op when the glosa_safety
+            # feature flag is OFF for this tenant — gate behaves exactly as
+            # before. PER-GUIA: evaluate each guide under the lock, then 409 with
+            # ONLY the offending guides if any has an unacknowledged BLOCKING
+            # alert. The faturista removes/acknowledges those guides and
+            # re-closes; we do NOT close the batch nor block the clean guides.
+            from .services.glosa_safety import GlosaSafetyService
+
+            glosa_service = GlosaSafetyService(requesting_user=request.user)
+            # Evaluate exactly the captured guide-id set...
+            for guide in locked_guides:
+                glosa_service.evaluate_guide(guide, gate="batch_close")
+            # ...and check blocking alerts over the SAME id set (NOT a fresh
+            # batch.guides.all() re-query), so the evaluated set and the checked
+            # set are provably identical — a guide cannot be
+            # present-but-unevaluated between the two steps.
+            blocking = glosa_service.blocking_glosa_alerts_for_guides(evaluated_ids)
+            if blocking:
+                return Response(
+                    self._glosa_block_payload(blocking),
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            # Membership re-assertion: immediately before finalizing (batch row
+            # still locked, same atomic block), re-read the batch's current guide
+            # set. If it differs from the set we evaluated, a guide was
+            # added/removed mid-close — finalizing now would close a
+            # present-but-unevaluated guide. Reject with 409 instead; the
+            # faturista re-closes and the new set is re-evaluated.
+            current_ids = set(locked_batch.guides.values_list("pk", flat=True))
+            if current_ids != set(evaluated_ids):
+                return Response(
+                    {
+                        "code": "batch_modified_during_close",
+                        "detail": (
+                            "O lote foi modificado durante o fechamento; "
+                            "reavalie e feche novamente."
+                        ),
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            # Finalize STRICTLY over the evaluated id set — never re-query the
+            # `.guides` relation here. Under READ COMMITTED a concurrent
+            # guides.add() can commit between the re-assertion above and these
+            # writes (Postgres FK FOR KEY SHARE does not conflict with the batch
+            # row's FOR NO KEY UPDATE lock); a fresh `.guides` query would then
+            # phantom-read that guide and bill/submit it WITHOUT it ever being
+            # evaluated. Scoping to evaluated_ids makes that impossible: only the
+            # guides we actually evaluated are summed and submitted.
+            total = locked_batch.guides.filter(pk__in=evaluated_ids).aggregate(
+                total=Sum("total_value")
+            )["total"] or Decimal("0")
+            locked_batch.status = "closed"
+            locked_batch.closed_at = timezone.now()
+            locked_batch.total_value = total
+            locked_batch.save(update_fields=["status", "closed_at", "total_value"])
+            locked_batch.guides.filter(pk__in=evaluated_ids, status="pending").update(
+                status="submitted"
+            )
+        return Response(TISSBatchSerializer(locked_batch).data)
+
+    @staticmethod
+    def _glosa_block_payload(blocking):
+        """Build the per-guia 409 body listing ONLY the offending guides and their
+        unacknowledged blocking glosa alerts. ``blocking`` is the
+        [(guide, [alert, ...]), ...] from blocking_glosa_alerts_for_batch."""
+        return {
+            "code": "glosa_safety_block",
+            "detail": (
+                "Há guias com risco de glosa bloqueante. Remova ou reconheça (com "
+                "justificativa) as guias abaixo e feche o lote novamente."
+            ),
+            "guides": [
+                {
+                    "guide_id": str(guide.id),
+                    "guide_number": guide.guide_number,
+                    "alerts": [
+                        {
+                            "id": str(a.id),
+                            "check_code": a.check_code,
+                            "severity": a.severity,
+                            "message": a.message,
+                            "recommendation": a.recommendation,
+                            "guide_item": str(a.guide_item_id)
+                            if a.guide_item_id is not None
+                            else None,
+                        }
+                        for a in alerts
+                    ],
+                }
+                for guide, alerts in blocking
+            ],
+        }
 
     @action(detail=True, methods=["post"], url_path="export")
     def export(self, request, pk=None):
@@ -639,3 +753,53 @@ def _process_pix_payment_received(charge_id: str) -> None:
         charge_id,
         str(charge.appointment_id),
     )
+
+
+class AcknowledgeGlosaAlertView(APIView):
+    """
+    POST /api/v1/billing/glosa-safety-alerts/{alert_id}/acknowledge/
+
+    Body: {reason: str}
+
+    Mirrors emr.AcknowledgeSafetyAlertView. For severity="block" the reason is
+    REQUIRED (min 10 chars) → 400 if missing. An "advise" alert acks without a
+    reason. Sets status="acknowledged", acknowledged_by, override_reason,
+    acknowledged_at. Same faturista/admin permission as the batch-close gate.
+    """
+
+    permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
+
+    def post(self, request, alert_id):
+        reason = request.data.get("reason", "").strip()
+
+        try:
+            alert = GlosaSafetyAlert.objects.get(id=alert_id)
+        except GlosaSafetyAlert.DoesNotExist:
+            return Response(
+                {"error": "Alerta não encontrado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if alert.severity == GlosaSafetyAlert.Severity.BLOCK and len(reason) < 10:
+            return Response(
+                {"error": "Para bloqueios de glosa, o motivo deve ter pelo menos 10 caracteres."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        alert.acknowledge(request.user, reason)
+
+        logger.info(
+            "Glosa safety alert %s acknowledged by user %s (severity=%s)",
+            alert.id,
+            request.user.id,
+            alert.severity,
+        )
+
+        return Response(
+            {
+                "message": "Alerta reconhecido com sucesso.",
+                "alert_id": str(alert.id),
+                "acknowledged_at": alert.acknowledged_at.isoformat(),
+            },
+            status=status.HTTP_200_OK,
+        )

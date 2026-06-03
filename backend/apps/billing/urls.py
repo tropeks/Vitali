@@ -7,6 +7,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    AcknowledgeGlosaAlertView,
     AsaasWebhookView,
     GlosaViewSet,
     InsuranceProviderViewSet,
@@ -32,4 +33,10 @@ urlpatterns = [
         "billing/pix/charges/<uuid:charge_id>/", PIXChargeView.as_view(), name="pix-charge-detail"
     ),
     path("billing/pix/webhook/", AsaasWebhookView.as_view(), name="asaas-webhook"),
+    # Glosa-safety wedge (PR G1): acknowledge a deterministic glosa alert.
+    path(
+        "billing/glosa-safety-alerts/<uuid:alert_id>/acknowledge/",
+        AcknowledgeGlosaAlertView.as_view(),
+        name="glosa-safety-alert-acknowledge",
+    ),
 ]
