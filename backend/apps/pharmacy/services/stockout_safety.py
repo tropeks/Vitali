@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+from collections import defaultdict
 from decimal import ROUND_CEILING, Decimal
 from uuid import uuid4
 
@@ -52,6 +53,11 @@ ENGINE_VERSION = "s2"
 
 # Only consumption events drive the velocity (LOCKED: movement_type="dispense").
 DISPENSE_MOVEMENT_TYPE = "dispense"
+
+# A replenishment landing in the prediction window = the warning was acted on
+# (LOCKED: movement_type="purchase_order_receiving"). Used by the S4 flywheel to
+# distinguish an INTERCEPTED prediction (system worked) from a FALSE_POSITIVE.
+PURCHASE_RECEIPT_MOVEMENT_TYPE = "purchase_order_receiving"
 
 # Days of stock to TARGET on top of the replenishment lead time when sizing a
 # reorder suggestion (wedge S3). Matches the 30-day velocity window so the
@@ -145,6 +151,181 @@ class StockoutService:
                 self._evaluate_one(drug, now=now)
             for material in materials:
                 self._evaluate_one(material, now=now)
+
+    # ── flywheel grading (wedge S4) ───────────────────────────────────────────────
+
+    def grade_predictions(self, *, now: datetime.datetime) -> dict[str, int]:
+        """Grade every past-due, still-pending ``stockout_risk`` prediction.
+
+        The nightly FLYWHEEL ground-truth step. For each ``StockAlert`` with
+        ``kind=stockout_risk``, ``outcome=pending`` and ``predicted_date <=
+        now.date()`` (past due), compares the prediction to what ACTUALLY
+        happened and stamps ``outcome`` + ``graded_at``:
+
+          1. **true_positive**  — current on-hand balance ``<= 0``: it really
+             stocked out. Checked FIRST (LOCKED): a product that received a PO
+             but STILL hit zero is a true stockout (the receipt wasn't enough),
+             so zero-stock wins over intercepted.
+          2. **intercepted**    — else, IF a ``purchase_order_receiving``
+             movement landed for the product in ``(created_at, predicted_date]``:
+             a replenishment arrived in time → the system WORKED. Explicitly NOT
+             a false positive.
+          3. **false_positive** — else (balance > 0, no receipt in window):
+             consumption slowed / the prediction over-fired.
+
+        ``now`` is injected so grading is reproducible. IDEMPOTENT: only pending
+        past-due alerts are candidates, so a re-run grades nothing already
+        graded and never regrades. ``expiry_waste`` alerts are NEVER graded here
+        (out of scope for S4 — they stay ``pending``).
+
+        FLAG-INDEPENDENT: this only grades already-created alerts (it never
+        creates one). If the ``stockout_safety`` flag is/was off there are simply
+        no pending alerts and the method is a no-op — so it is safe to run always.
+
+        NO N+1: the on-hand balance for ALL candidate products is resolved in ONE
+        aggregate query per product-kind (grouped by drug/material id), and the
+        purchase-order receipts in ONE query per kind. The per-alert loop only
+        does in-memory dict lookups + the receipt-window test — no DB round-trip
+        per alert. Returns counts per outcome for the accuracy summary.
+        """
+        today = now.date()
+
+        # Candidate set: only stockout_risk, still pending, past-due. expiry_waste
+        # is never graded here. This same filter guarantees idempotency — a re-run
+        # finds nothing already graded.
+        alerts = list(
+            StockAlert.objects.filter(
+                kind=StockAlert.Kind.STOCKOUT_RISK,
+                outcome=StockAlert.Outcome.PENDING,
+                predicted_date__isnull=False,
+                predicted_date__lte=today,
+            )
+        )
+
+        counts: dict[str, int] = {
+            StockAlert.Outcome.TRUE_POSITIVE: 0,
+            StockAlert.Outcome.INTERCEPTED: 0,
+            StockAlert.Outcome.FALSE_POSITIVE: 0,
+        }
+        if not alerts:
+            return counts
+
+        drug_ids = {a.drug_id for a in alerts if a.drug_id is not None}
+        material_ids = {a.material_id for a in alerts if a.material_id is not None}
+
+        balances = self._grading_balances(drug_ids, material_ids)
+        receipts = self._grading_receipts(drug_ids, material_ids)
+
+        with transaction.atomic():
+            for alert in alerts:
+                key = ("drug", alert.drug_id) if alert.drug_id else ("material", alert.material_id)
+                balance = balances.get(key, Decimal("0"))
+
+                # ORDER LOCKED: zero-stock wins over intercepted.
+                if balance <= 0:
+                    outcome = StockAlert.Outcome.TRUE_POSITIVE
+                elif self._receipt_in_window(alert, receipts.get(key, ())):
+                    outcome = StockAlert.Outcome.INTERCEPTED
+                else:
+                    outcome = StockAlert.Outcome.FALSE_POSITIVE
+
+                alert.outcome = outcome
+                alert.graded_at = now
+                alert.save(update_fields=["outcome", "graded_at", "updated_at"])
+                counts[outcome] += 1
+                self._audit_graded(alert, outcome=outcome, balance=balance)
+
+        return counts
+
+    @staticmethod
+    def _receipt_in_window(alert: StockAlert, receipt_dates) -> bool:
+        """True if a purchase_order_receiving landed in ``(created_at, predicted_date]``.
+
+        A replenishment that arrived AFTER the warning was raised and ON OR
+        BEFORE the predicted stockout day means the gestor acted on the alert and
+        the stockout was averted. ``predicted_date`` is a date; we include the
+        whole day by comparing against its end-of-day datetime. ``receipt_dates``
+        is the pre-fetched list of receipt timestamps for this product (no
+        per-alert DB hit).
+        """
+        if alert.predicted_date is None:
+            # Candidate set already excludes NULL predicted_date; guard for typing.
+            return False
+        window_end = _end_of_day(alert.predicted_date)
+        for ts in receipt_dates:
+            if alert.created_at < ts <= window_end:
+                return True
+        return False
+
+    @staticmethod
+    def _grading_balances(drug_ids: set, material_ids: set) -> dict[tuple, Decimal]:
+        """Current on-hand balance per product — ONE query per kind, summed in memory.
+
+        balance = SUM(StockItem.quantity) for the product. ONE ``values_list`` per
+        kind pulls (product_id, quantity) for all candidate lots, summed by product
+        in Python (lot counts per product are bounded; still no per-alert/per-product
+        round-trip). Products with no lots are absent → the caller's ``.get(..., 0)``
+        treats them as 0 (stocked out). (``.values().annotate()`` would be one fewer
+        query but currently crashes the django-stubs mypy plugin.)
+        """
+        out: dict[tuple, Decimal] = defaultdict(lambda: Decimal("0"))
+        if drug_ids:
+            for drug_id, qty in StockItem.objects.filter(drug_id__in=drug_ids).values_list(
+                "drug_id", "quantity"
+            ):
+                out[("drug", drug_id)] += Decimal(qty or 0)
+        if material_ids:
+            for material_id, qty in StockItem.objects.filter(
+                material_id__in=material_ids
+            ).values_list("material_id", "quantity"):
+                out[("material", material_id)] += Decimal(qty or 0)
+        return dict(out)
+
+    @staticmethod
+    def _grading_receipts(drug_ids: set, material_ids: set) -> dict[tuple, list]:
+        """purchase_order_receiving timestamps per product — ONE query per kind.
+
+        Joined through the lot (``stock_item__drug`` / ``stock_item__material``)
+        so a receipt against ANY lot of the product counts. Returned as
+        product → list[created_at] for the in-memory window test.
+        """
+        out: dict[tuple, list] = defaultdict(list)
+        if drug_ids:
+            rows = StockMovement.objects.filter(
+                stock_item__drug_id__in=drug_ids,
+                movement_type=PURCHASE_RECEIPT_MOVEMENT_TYPE,
+            ).values_list("stock_item__drug_id", "created_at")
+            for drug_id, ts in rows:
+                out[("drug", drug_id)].append(ts)
+        if material_ids:
+            rows = StockMovement.objects.filter(
+                stock_item__material_id__in=material_ids,
+                movement_type=PURCHASE_RECEIPT_MOVEMENT_TYPE,
+            ).values_list("stock_item__material_id", "created_at")
+            for material_id, ts in rows:
+                out[("material", material_id)].append(ts)
+        return out
+
+    def _audit_graded(self, alert: StockAlert, *, outcome: str, balance: Decimal) -> None:
+        """One AuditLog per grading — the persistent accuracy record the flywheel reads."""
+        AuditLog.objects.create(
+            user=self.requesting_user,
+            action="stockout_prediction_graded",
+            resource_type="stock_alert",
+            resource_id=str(alert.id),
+            new_data={
+                "correlation_id": self.correlation_id,
+                "alert_id": str(alert.id),
+                "drug_id": str(alert.drug_id) if alert.drug_id else None,
+                "material_id": str(alert.material_id) if alert.material_id else None,
+                "kind": alert.kind,
+                "predicted_date": (
+                    alert.predicted_date.isoformat() if alert.predicted_date else None
+                ),
+                "outcome": outcome,
+                "balance": str(balance),
+            },
+        )
 
     # ── core evaluation (DB-derived inputs → pure engine → persistence) ───────────
 
@@ -493,3 +674,16 @@ class StockoutService:
                 "alert_id": str(alert.id),
             },
         )
+
+
+def _end_of_day(date_value: datetime.date) -> datetime.datetime:
+    """End-of-day datetime for a date, so ``ts <= predicted_date`` includes the
+    whole predicted day (a receipt landing ON the predicted date still counts).
+    Timezone-aware iff Django is running with USE_TZ (matches StockMovement.created_at).
+    """
+    from django.utils import timezone as _tz
+
+    naive = datetime.datetime.combine(date_value, datetime.time.max)
+    if _tz.is_aware(_tz.now()):
+        return _tz.make_aware(naive, _tz.get_current_timezone())
+    return naive

@@ -361,6 +361,21 @@ class StockAlert(models.Model):
         ACKNOWLEDGED = "acknowledged", "Reconhecido"
         RESOLVED = "resolved", "Resolvido"
 
+    class Outcome(models.TextChoices):
+        """Rótulo do flywheel (wedge S4): o que ACONTECEU vs. o que foi previsto.
+
+        Gravado pelo job noturno ``grade_stockout_predictions`` para cada
+        predição de ``stockout_risk`` vencida. ``pending`` até a data-alvo
+        passar. Subtileza crucial: uma predição INTERCEPTADA por um recebimento
+        de pedido de compra NÃO é falso-positivo — o sistema funcionou (o
+        gestor agiu sobre o aviso e a ruptura foi evitada).
+        """
+
+        PENDING = "pending", "Pendente (ainda não vencida)"
+        TRUE_POSITIVE = "true_positive", "Acerto (estoque zerou)"
+        INTERCEPTED = "intercepted", "Interceptado (reposição chegou)"
+        FALSE_POSITIVE = "false_positive", "Falso-positivo (não zerou, sem reposição)"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     drug = models.ForeignKey(
         Drug,
@@ -420,6 +435,25 @@ class StockAlert(models.Model):
         ),
     )
     engine_version = models.CharField(max_length=10, default="s2")
+    # ── Flywheel grading (wedge S4) ───────────────────────────────────────────
+    # Rótulo do que ACONTECEU vs. a predição. ``pending`` até a data-alvo
+    # passar; o job noturno grada cada stockout_risk vencido exatamente uma vez
+    # (graded_at marca o grading → idempotência). expiry_waste NÃO é gradado
+    # por este job.
+    outcome = models.CharField(
+        "Resultado (flywheel)",
+        max_length=20,
+        choices=Outcome.choices,
+        default=Outcome.PENDING,
+        db_index=True,
+        help_text="Rótulo do flywheel: o que aconteceu vs. o previsto. Gradado pelo job noturno.",
+    )
+    graded_at = models.DateTimeField(
+        "Gradado em",
+        null=True,
+        blank=True,
+        help_text="Quando o job de flywheel gradou esta predição. NULL → ainda não gradado.",
+    )
     message = models.TextField("Mensagem (pt-BR)")
     acknowledged_by = models.ForeignKey(
         "core.User",

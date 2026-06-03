@@ -127,3 +127,27 @@ def _check_min_stock_alerts_for_tenant(schema_name: str):
     key = f"pharmacy:{schema_name}:min_stock_alerts"
     r.set(key, json.dumps(items), ex=86400)
     logger.info("check_min_stock_alerts: %d items written to %s", len(items), key)
+
+
+@shared_task(name="pharmacy.grade_stockout_predictions")
+def grade_stockout_predictions():
+    """Stockout-prediction wedge S4 — nightly flywheel.
+
+    Thin wrapper around the ``grade_stockout_predictions`` management command:
+    runs it for EVERY tenant via ``tenant_context`` (Celery beat fires in the
+    public schema). Grades each past-due ``stockout_risk`` prediction by what
+    actually happened (true_positive / intercepted / false_positive). Idempotent,
+    flag-independent (only grades already-created alerts). Registered to run
+    nightly via the django_celery_beat PeriodicTask created in pharmacy migration
+    0012; can also be run by hand as ``manage.py grade_stockout_predictions``.
+    """
+    from django.core.management import call_command
+    from django_tenants.utils import tenant_context
+
+    Tenant = get_tenant_model()
+    for tenant in Tenant.objects.exclude(schema_name="public"):
+        try:
+            with tenant_context(tenant):
+                call_command("grade_stockout_predictions")
+        except Exception:
+            logger.exception("grade_stockout_predictions failed for tenant %s", tenant.schema_name)
