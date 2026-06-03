@@ -11,6 +11,7 @@ from unittest import TestCase
 
 from apps.billing.services.glosa_checker import (
     ANS_CODE_AGE_INCOMPAT,
+    ANS_CODE_AUTHORIZATION_MISSING,
     ANS_CODE_INCOMPLETE,
     ANS_CODE_NOT_IN_TABLE,
     ANS_CODE_QUANTITY_EXCEEDS,
@@ -402,3 +403,71 @@ class GlosaCheckerQuantityCeilingTests(TestCase):
             guide_ctx=_ctx(items=[_item(quantity=Decimal("10"), max_per_procedure=1)])
         )
         self.assertEqual([f for f in findings if f.severity == "block"], [])
+
+
+class GlosaCheckerAuthorizationTests(TestCase):
+    """Authorization-required check (G3d). Pure engine, advise-only, inert by default."""
+
+    def test_required_and_not_satisfied_fires_advise(self):
+        findings = GlosaChecker.check(
+            guide_ctx=_ctx(
+                items=[_item(authorization_required=True, authorization_satisfied=False)],
+            )
+        )
+        auth = [f for f in findings if f.check_code == "authorization_missing"]
+        self.assertEqual(len(auth), 1)
+        self.assertEqual(auth[0].severity, "advise")
+        self.assertEqual(auth[0].ans_glosa_code, ANS_CODE_AUTHORIZATION_MISSING)
+        self.assertEqual(auth[0].guide_item_id, 1)
+        self.assertIn("exige autorização", auth[0].message)
+        self.assertIn("nenhuma autorização válida", auth[0].message)
+
+    def test_required_but_satisfied_silent(self):
+        findings = GlosaChecker.check(
+            guide_ctx=_ctx(
+                items=[_item(authorization_required=True, authorization_satisfied=True)],
+            )
+        )
+        self.assertNotIn("authorization_missing", [f.check_code for f in findings])
+
+    def test_not_required_is_inert(self):
+        # Default requires_authorization=False → never fires, even when unsatisfied.
+        findings = GlosaChecker.check(
+            guide_ctx=_ctx(
+                items=[_item(authorization_required=False, authorization_satisfied=False)],
+            )
+        )
+        self.assertNotIn("authorization_missing", [f.check_code for f in findings])
+
+    def test_default_item_is_inert(self):
+        # The base _item() defaults (required False / satisfied False) fire nothing.
+        findings = GlosaChecker.check(guide_ctx=_ctx())
+        self.assertNotIn("authorization_missing", [f.check_code for f in findings])
+
+    def test_authorization_missing_never_blocks(self):
+        findings = GlosaChecker.check(
+            guide_ctx=_ctx(
+                items=[_item(authorization_required=True, authorization_satisfied=False)],
+            )
+        )
+        self.assertEqual([f for f in findings if f.severity == "block"], [])
+
+    def test_fires_even_when_table_unresolved(self):
+        # Authorization is not price-table dependent: it must still evaluate when
+        # the active table could not be resolved (table_resolved=False).
+        findings = GlosaChecker.check(
+            guide_ctx=_ctx(
+                items=[
+                    _item(
+                        in_active_table=False,
+                        active_table_value=None,
+                        authorization_required=True,
+                        authorization_satisfied=False,
+                    )
+                ],
+                table_resolved=False,
+            )
+        )
+        self.assertIn("authorization_missing", [f.check_code for f in findings])
+        # And not_in_table is suppressed when the table is unresolved.
+        self.assertNotIn("not_in_table", [f.check_code for f in findings])

@@ -38,6 +38,11 @@ ANS glosa-code mapping (see ``apps.billing.models.GLOSA_REASON_CODES``):
     per-procedure ceiling (PriceTableItem.max_per_procedure). No quantity-specific
     code exists in GLOSA_REASON_CODES, so — like stale_price — it stays an
     internal caution with no operator-facing ANS reason.
+  * authorization_missing → "" (blank). The line's PriceTableItem requires an
+    authorization (senha) but none is valid. GLOSA_REASON_CODES has no
+    authorization-specific reason ("01"=não coberto and "04"=carência are
+    different causes), so — like stale_price/quantity_exceeds — it stays an
+    internal caution with no operator-facing ANS reason.
 """
 
 from __future__ import annotations
@@ -68,6 +73,15 @@ ANS_CODE_CID_INCOMPAT = ""  # no fixed ANS code — left blank, confirmed by fat
 # contract-internal caution, not (yet) an operator-facing ANS denial reason. The
 # faturista confirms the operator-specific code if a denial actually lands.
 ANS_CODE_QUANTITY_EXCEEDS = ""  # no fixed ANS code — internal caution, left blank
+# Authorization-required (glosa wedge G3d). The GLOSA_REASON_CODES set in this
+# codebase has NO authorization/senha-specific reason: "01" (não coberto) is a
+# coverage denial (a different cause), "04" (prazo de carência) is a waiting
+# period, and "00/99" are too generic to assert. The ANS TISS standard's
+# authorization-failure reasons are not represented here, so — like stale_price
+# and quantity_exceeds — this stays "" (blank): an internal caution, not an
+# operator-facing ANS denial reason. The faturista confirms the operator-specific
+# code if a denial actually lands.
+ANS_CODE_AUTHORIZATION_MISSING = ""  # no fixed ANS code — internal caution, left blank
 
 
 @dataclass(frozen=True)
@@ -94,6 +108,18 @@ class GuideItemContext:
     # unit tests and safe callers fire nothing.
     quantity: Decimal = Decimal("0")
     max_per_procedure: int | None = None
+    # ── Authorization (G3d) ──────────────────────────────────────────────────────
+    # ``authorization_required`` mirrors the line's ACTIVE PriceTableItem
+    # .requires_authorization (default False → the check is INERT for the item).
+    # ``authorization_satisfied`` is PRE-RESOLVED by the service (NO DB here): it
+    # is True when the guide already carries an authorization_number OR the service
+    # found a matching approved+in-window Authorization row (matching patient +
+    # provider + this item's TUSS, or a generic tuss=null auth). The engine only
+    # compares these two booleans — it never queries the Authorization table. Both
+    # default to the inert state (not required / treated as satisfied) so the pure
+    # unit tests and safe callers fire nothing.
+    authorization_required: bool = False
+    authorization_satisfied: bool = False
     # ── Clinical-compatibility metadata (G3b), resolved by the service from the
     # public core.TUSSCode row. These are ANS-STANDARD TRUTH, never fabricated:
     # the service copies them straight off the TUSS row. When the row has no ANS
@@ -344,6 +370,35 @@ class GlosaChecker:
                         "(ex.: autorização específica) antes de faturar."
                     ),
                     ans_glosa_code=ANS_CODE_QUANTITY_EXCEEDS,
+                    guide_item_id=item.item_id,
+                )
+            )
+
+        # AUTHORIZATION_MISSING (advise, NEVER block) — glosa wedge G3d. Fires ONLY
+        # when the line's active PriceTableItem is flagged requires_authorization
+        # (authorization_required=True) AND no valid authorization was found
+        # (authorization_satisfied=False). "Valid" is resolved by the service: the
+        # guide already carries an authorization_number, OR a matching approved,
+        # in-window Authorization row exists (patient + provider + this TUSS, or a
+        # generic tuss=null auth). INERT when authorization_required is False (the
+        # default), so procedures that need no senha are never false-flagged. Runs
+        # independently of table_resolved: authorization_required is False unless
+        # the service resolved it off the active table, so this never fires
+        # spuriously when coverage is unknown.
+        if item.authorization_required and not item.authorization_satisfied:
+            findings.append(
+                GlosaFinding(
+                    check_code="authorization_missing",
+                    severity=_SEVERITY_ADVISE,
+                    message=(
+                        f"Procedimento {item.tuss_code} exige autorização; "
+                        f"nenhuma autorização válida encontrada."
+                    ),
+                    recommendation=(
+                        "Solicite/registre a autorização (senha) da operadora — preencha a senha "
+                        "na guia ou cadastre uma autorização aprovada e vigente antes de faturar."
+                    ),
+                    ans_glosa_code=ANS_CODE_AUTHORIZATION_MISSING,
                     guide_item_id=item.item_id,
                 )
             )

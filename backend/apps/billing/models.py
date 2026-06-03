@@ -154,6 +154,19 @@ class PriceTableItem(models.Model):
         blank=True,
         help_text="Quantidade máxima por procedimento no contrato. Vazio = sem teto.",
     )
+    # Does this contracted procedure REQUIRE prior authorization (senha)? (glosa
+    # wedge G3d). Default False → the authorization_missing glosa check stays
+    # INERT for every item until the establishment explicitly marks the item as
+    # requiring authorization. Only when True does the engine demand a valid
+    # authorization (guide.authorization_number filled OR a matching approved
+    # Authorization row). This keeps procedures that need NO senha (most
+    # consultas/SADT) from being false-flagged. Contract TRUTH supplied by the
+    # establishment's price-table config — never fabricated in code.
+    requires_authorization = models.BooleanField(
+        "Exige autorização prévia",
+        default=False,
+        help_text="Se marcado, o procedimento exige autorização (senha) válida para faturar.",
+    )
 
     class Meta:
         verbose_name = "Item de Tabela"
@@ -162,6 +175,78 @@ class PriceTableItem(models.Model):
 
     def __str__(self):
         return f"{self.tuss_code.code} — R${self.negotiated_value}"
+
+
+class Authorization(models.Model):
+    """Autorização prévia (senha) de um procedimento por uma operadora. Per-tenant.
+
+    Glosa wedge G3d. Records an operator's prior authorization for a patient. The
+    glosa engine consults these (via the orchestrator) ONLY for items whose active
+    PriceTableItem is flagged ``requires_authorization=True``; otherwise the check
+    is inert.
+
+    A row "covers" a guide line when status=approved, its validity window contains
+    the guide's effective date (valid_from <= date <= valid_until-or-open), it
+    matches the guide's patient + provider, and either its ``tuss_code`` matches
+    the line's TUSS or ``tuss_code`` is NULL (a GENERIC authorization that covers
+    any procedure / a generic encounter authorization).
+
+    Cross-schema FK note: ``tuss_code`` points at the PUBLIC-schema TUSSCode.
+    PostgreSQL does NOT enforce referential integrity across schemas, so
+    on_delete=PROTECT is application-layer only — identical to PriceTableItem and
+    TISSGuideItem; a pre-delete signal on TUSSCode compensates (see
+    apps/core/signals.py).
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pendente"
+        APPROVED = "approved", "Aprovada"
+        DENIED = "denied", "Negada"
+
+    patient = models.ForeignKey(
+        "emr.Patient", on_delete=models.CASCADE, related_name="authorizations"
+    )
+    provider = models.ForeignKey(
+        InsuranceProvider, on_delete=models.CASCADE, related_name="authorizations"
+    )
+    # FK to public-schema TUSSCode — app-layer PROTECT only (cross-schema limit).
+    # NULL = a GENERIC authorization covering ANY procedure / a generic encounter
+    # authorization (the orchestrator treats it as a wildcard).
+    tuss_code = models.ForeignKey(
+        "core.TUSSCode",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="authorizations",
+        help_text="Procedimento autorizado. Vazio = autorização genérica (qualquer procedimento).",
+    )
+    valid_from = models.DateField("Válida a partir de")
+    valid_until = models.DateField(
+        "Válida até",
+        null=True,
+        blank=True,
+        help_text="Vazio = sem data de término (autorização em aberto).",
+    )
+    status = models.CharField(
+        "Status", max_length=10, choices=Status.choices, default=Status.PENDING, db_index=True
+    )
+    authorization_number = models.CharField("Número da autorização", max_length=20, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Autorização"
+        verbose_name_plural = "Autorizações"
+        ordering = ["-valid_from"]
+        indexes = [
+            models.Index(fields=["patient", "provider", "status"]),
+            models.Index(fields=["tuss_code"]),
+            models.Index(fields=["valid_from", "valid_until"]),
+        ]
+
+    def __str__(self):
+        target = self.tuss_code.code if self.tuss_code_id else "genérica"
+        return f"Autorização {self.authorization_number or '—'} ({target}) — {self.get_status_display()}"
 
 
 # ─── TISS Guides ─────────────────────────────────────────────────────────────
@@ -554,6 +639,12 @@ class GlosaSafetyAlert(models.Model):
         # the contract's PriceTableItem.max_per_procedure. ALWAYS advise, never
         # blocks — and inert until a ceiling is configured on the active table.
         QUANTITY_EXCEEDS = "quantity_exceeds", "Quantidade acima do teto"
+        # Authorization-required advisory (G3d): the line's active PriceTableItem
+        # is flagged requires_authorization=True but NO valid authorization was
+        # found (neither guide.authorization_number filled NOR a matching approved,
+        # in-window Authorization row). ALWAYS advise, never blocks — and inert
+        # until an item is explicitly marked requires_authorization.
+        AUTHORIZATION_MISSING = "authorization_missing", "Autorização ausente"
 
     class Severity(models.TextChoices):
         BLOCK = "block", "Bloqueia"
@@ -583,7 +674,7 @@ class GlosaSafetyAlert(models.Model):
         related_name="glosa_safety_alerts",
         help_text="Set for per-line checks; NULL for guide-level structural checks.",
     )
-    check_code = models.CharField(max_length=20, choices=CheckCode.choices)
+    check_code = models.CharField(max_length=30, choices=CheckCode.choices)
     severity = models.CharField(max_length=10, choices=Severity.choices)
     source = models.CharField(
         max_length=10,
