@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import datetime
 import logging
-from decimal import Decimal
+from decimal import ROUND_CEILING, Decimal
 from uuid import uuid4
 
 from django.db import connection, transaction
@@ -53,7 +53,40 @@ ENGINE_VERSION = "s2"
 # Only consumption events drive the velocity (LOCKED: movement_type="dispense").
 DISPENSE_MOVEMENT_TYPE = "dispense"
 
+# Days of stock to TARGET on top of the replenishment lead time when sizing a
+# reorder suggestion (wedge S3). Matches the 30-day velocity window so the
+# suggestion is "lead time + one month of cover". A constant, NOT invented
+# supplier data — the suggestion uses only the derived velocity, the configured
+# lead time, and the real balance. Establishments tune the realized qty downstream.
+DEFAULT_COVERAGE_DAYS = 30
+
 CatalogItem = Drug | Material
+
+
+def compute_suggested_reorder_qty(
+    *,
+    current_balance: Decimal,
+    daily_velocity: Decimal | None,
+    lead_time_days: int | None,
+    coverage_days: int = DEFAULT_COVERAGE_DAYS,
+) -> Decimal | None:
+    """Pure reorder-quantity suggestion for a stockout_risk alert (wedge S3).
+
+    ``ceil(velocity * (lead_time_days + coverage_days) - current_balance)``,
+    clamped to ``>= 0``. Returns ``None`` when the inputs are insufficient
+    (no velocity history, or no lead time configured) — same inert posture as
+    the engine, so we never invent a number. Uses ONLY the derived velocity, the
+    configured lead time, and the real on-hand balance — no supplier/contract data.
+    Decimal-only; the ceiling rounds up to a whole orderable unit.
+    """
+    if daily_velocity is None or lead_time_days is None:
+        return None
+    horizon = Decimal(lead_time_days + coverage_days)
+    target = Decimal(daily_velocity) * horizon
+    needed = target - Decimal(current_balance)
+    if needed <= 0:
+        return Decimal("0")
+    return needed.quantize(Decimal("1"), rounding=ROUND_CEILING)
 
 
 class StockoutService:
@@ -132,7 +165,13 @@ class StockoutService:
             now=now,
         )
         if verdict.kind == KIND_STOCKOUT_RISK:
-            self._upsert_stockout_alert(item, is_drug=is_drug, verdict=verdict)
+            self._upsert_stockout_alert(
+                item,
+                is_drug=is_drug,
+                verdict=verdict,
+                current_balance=current_balance,
+                velocity=velocity,
+            )
         else:
             # sufficient / not_applicable → resolve any stale open stockout alert.
             self._resolve_stockout_alert(item, is_drug=is_drug)
@@ -213,8 +252,24 @@ class StockoutService:
 
     # ── persistence ───────────────────────────────────────────────────────────────
 
-    def _upsert_stockout_alert(self, item: CatalogItem, *, is_drug: bool, verdict) -> None:
+    def _upsert_stockout_alert(
+        self,
+        item: CatalogItem,
+        *,
+        is_drug: bool,
+        verdict,
+        current_balance: Decimal,
+        velocity: Decimal | None,
+    ) -> None:
         key = self._alert_key(item, is_drug=is_drug, kind=StockAlert.Kind.STOCKOUT_RISK)
+
+        # Reorder suggestion (S3): sized from the derived velocity + configured lead
+        # time + real balance — no invented supplier data. None when inert.
+        suggested = compute_suggested_reorder_qty(
+            current_balance=current_balance,
+            daily_velocity=velocity,
+            lead_time_days=item.lead_time_days,
+        )
 
         existing = StockAlert.objects.select_for_update().filter(**key).first()
 
@@ -232,8 +287,8 @@ class StockoutService:
                 is_drug=is_drug,
                 kind=StockAlert.Kind.STOCKOUT_RISK,
                 predicted_date=verdict.predicted_date,
-                balance=self._current_balance(item, is_drug=is_drug),
-                velocity=None,
+                balance=current_balance,
+                velocity=velocity,
                 alert_id=existing.id,
             )
             return
@@ -246,6 +301,7 @@ class StockoutService:
                 "predicted_date": verdict.predicted_date,
                 "days_to_stockout": verdict.days_to_stockout,
                 "predicted_waste_qty": None,
+                "suggested_reorder_qty": suggested,
                 "engine_version": ENGINE_VERSION,
                 "message": verdict.reason,
                 # A new/changed prediction reopens, so reset the ack fields.
@@ -260,8 +316,8 @@ class StockoutService:
             is_drug=is_drug,
             kind=StockAlert.Kind.STOCKOUT_RISK,
             predicted_date=verdict.predicted_date,
-            balance=self._current_balance(item, is_drug=is_drug),
-            velocity=None,
+            balance=current_balance,
+            velocity=velocity,
             alert_id=alert.id,
         )
 

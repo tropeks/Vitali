@@ -403,6 +403,22 @@ class StockAlert(models.Model):
     predicted_waste_qty = models.DecimalField(
         "Desperdício previsto", max_digits=12, decimal_places=3, null=True, blank=True
     )
+    # Sugestão de reposição (wedge S3). Calculada pelo StockoutService na avaliação
+    # (onde velocidade e saldo são conhecidos) APENAS para stockout_risk:
+    #   ceil(velocidade * (lead_time_days + coverage_days) - saldo), clamp em ≥ 0.
+    # NULL para expiry_waste e quando não há config suficiente. NÃO inventa dado de
+    # fornecedor/contrato — só usa velocidade (derivada), lead_time (config) e saldo.
+    suggested_reorder_qty = models.DecimalField(
+        "Reposição sugerida",
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text=(
+            "Qtd sugerida p/ repor (stockout_risk): "
+            "ceil(velocidade*(lead_time+cobertura)-saldo). NULL → sem sugestão."
+        ),
+    )
     engine_version = models.CharField(max_length=10, default="s2")
     message = models.TextField("Mensagem (pt-BR)")
     acknowledged_by = models.ForeignKey(
