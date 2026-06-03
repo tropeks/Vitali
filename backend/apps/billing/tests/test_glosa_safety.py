@@ -796,3 +796,73 @@ class GlosaClinicalCompatServiceTests(GlosaSafetyTestCase):
         self.assertIsNotNone(alert)
         self.assertEqual(alert.severity, "advise")
         self.assertFalse(GlosaSafetyService.has_blocking_glosa_alert(guide))
+
+
+class GlosaQuantityCeilingServiceTests(GlosaSafetyTestCase):
+    """Orchestrator-level G3c: the service resolves max_per_procedure off the
+    line's ACTIVE PriceTableItem and the engine emits advise-only
+    quantity_exceeds. INERT when no ceiling is configured; never blocks close()."""
+
+    def _set_ceiling(self, tuss, max_per_procedure):
+        pti = PriceTableItem.objects.get(table=self.table, tuss_code=tuss)
+        pti.max_per_procedure = max_per_procedure
+        pti.save(update_fields=["max_per_procedure"])
+
+    def _set_quantity(self, guide, quantity):
+        item = guide.items.first()
+        item.quantity = Decimal(quantity)
+        item.save(update_fields=["quantity", "total_value"])
+
+    def test_quantity_exceeds_fires_advise_via_orchestrator(self):
+        self._enable_glosa()
+        self._set_ceiling(self.tuss_b, 3)
+        enc = Encounter.objects.create(patient=self.patient, professional=self.professional)
+        guide = self._make_guide(encounter=enc, tuss=self.tuss_b, unit_value=Decimal("50.00"))
+        self._set_quantity(guide, "5")
+        svc = GlosaSafetyService(requesting_user=self.faturista)
+        svc.evaluate_guide(guide, gate="batch_close")
+        alert = GlosaSafetyAlert.objects.filter(guide=guide, check_code="quantity_exceeds").first()
+        self.assertIsNotNone(alert)
+        self.assertEqual(alert.severity, "advise")
+        self.assertIn("5 > 3", alert.message)
+
+    def test_quantity_at_ceiling_silent(self):
+        # Boundary: quantity == ceiling → no finding.
+        self._enable_glosa()
+        self._set_ceiling(self.tuss_b, 3)
+        enc = Encounter.objects.create(patient=self.patient, professional=self.professional)
+        guide = self._make_guide(encounter=enc, tuss=self.tuss_b, unit_value=Decimal("50.00"))
+        self._set_quantity(guide, "3")
+        svc = GlosaSafetyService(requesting_user=self.faturista)
+        svc.evaluate_guide(guide, gate="batch_close")
+        self.assertFalse(
+            GlosaSafetyAlert.objects.filter(guide=guide, check_code="quantity_exceeds").exists()
+        )
+
+    def test_null_ceiling_inert_via_orchestrator(self):
+        # No ceiling configured on the PriceTableItem → inert regardless of qty.
+        self._enable_glosa()
+        enc = Encounter.objects.create(patient=self.patient, professional=self.professional)
+        guide = self._make_guide(encounter=enc, tuss=self.tuss_b, unit_value=Decimal("50.00"))
+        self._set_quantity(guide, "999")
+        svc = GlosaSafetyService(requesting_user=self.faturista)
+        svc.evaluate_guide(guide, gate="batch_close")
+        self.assertFalse(
+            GlosaSafetyAlert.objects.filter(guide=guide, check_code="quantity_exceeds").exists()
+        )
+
+    def test_quantity_exceeds_alone_does_not_409(self):
+        # Regression guard: advise-only quantity_exceeds must NOT block close().
+        self._enable_glosa()
+        self._set_ceiling(self.tuss_b, 1)
+        enc = Encounter.objects.create(patient=self.patient, professional=self.professional)
+        guide = self._make_guide(encounter=enc, tuss=self.tuss_b, unit_value=Decimal("50.00"))
+        self._set_quantity(guide, "10")
+        batch = self._make_batch(guide)
+        resp = self._auth().post(f"/api/v1/billing/batches/{batch.id}/close/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["status"], "closed")
+        self.assertFalse(GlosaSafetyService.has_blocking_glosa_alert(guide))
+        alert = GlosaSafetyAlert.objects.filter(guide=guide, check_code="quantity_exceeds").first()
+        self.assertIsNotNone(alert)
+        self.assertEqual(alert.severity, "advise")

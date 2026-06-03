@@ -13,6 +13,7 @@ from apps.billing.services.glosa_checker import (
     ANS_CODE_AGE_INCOMPAT,
     ANS_CODE_INCOMPLETE,
     ANS_CODE_NOT_IN_TABLE,
+    ANS_CODE_QUANTITY_EXCEEDS,
     ANS_CODE_SEX_INCOMPAT,
     GlosaChecker,
     GuideContext,
@@ -355,5 +356,49 @@ class GlosaClinicalIncompatTests(TestCase):
                 items=[_item(tuss_sex_allowed="M")],
                 patient_sex="F",
             )
+        )
+        self.assertEqual([f for f in findings if f.severity == "block"], [])
+
+
+class GlosaCheckerQuantityCeilingTests(TestCase):
+    """Per-procedure quantity ceiling check (G3c). Pure engine, advise-only."""
+
+    def test_quantity_above_ceiling_fires_advise(self):
+        findings = GlosaChecker.check(
+            guide_ctx=_ctx(
+                items=[_item(quantity=Decimal("5"), max_per_procedure=3)],
+            )
+        )
+        qty = [f for f in findings if f.check_code == "quantity_exceeds"]
+        self.assertEqual(len(qty), 1)
+        self.assertEqual(qty[0].severity, "advise")
+        self.assertEqual(qty[0].ans_glosa_code, ANS_CODE_QUANTITY_EXCEEDS)
+        self.assertEqual(qty[0].guide_item_id, 1)
+        # Message embeds the offending value (override-preservation predicate).
+        self.assertIn("5 > 3", qty[0].message)
+
+    def test_quantity_below_ceiling_no_finding(self):
+        findings = GlosaChecker.check(
+            guide_ctx=_ctx(items=[_item(quantity=Decimal("2"), max_per_procedure=3)])
+        )
+        self.assertNotIn("quantity_exceeds", [f.check_code for f in findings])
+
+    def test_quantity_equal_to_ceiling_no_finding(self):
+        # Boundary: quantity == max is allowed (strictly greater triggers).
+        findings = GlosaChecker.check(
+            guide_ctx=_ctx(items=[_item(quantity=Decimal("3"), max_per_procedure=3)])
+        )
+        self.assertNotIn("quantity_exceeds", [f.check_code for f in findings])
+
+    def test_null_ceiling_is_inert(self):
+        # max_per_procedure None → no finding regardless of quantity.
+        findings = GlosaChecker.check(
+            guide_ctx=_ctx(items=[_item(quantity=Decimal("999"), max_per_procedure=None)])
+        )
+        self.assertNotIn("quantity_exceeds", [f.check_code for f in findings])
+
+    def test_quantity_exceeds_never_blocks(self):
+        findings = GlosaChecker.check(
+            guide_ctx=_ctx(items=[_item(quantity=Decimal("10"), max_per_procedure=1)])
         )
         self.assertEqual([f for f in findings if f.severity == "block"], [])
