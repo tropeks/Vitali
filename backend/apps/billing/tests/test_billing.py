@@ -5,6 +5,7 @@ Run: python manage.py test apps.billing.tests.test_billing
 """
 
 import datetime
+from decimal import Decimal
 
 from django.core.cache import cache
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -12,9 +13,17 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from apps.billing.models import Glosa, InsuranceProvider, TISSBatch, TISSGuide
+from apps.ai.models import GlosaPrediction
+from apps.billing.models import (
+    Glosa,
+    GlosaSafetyAlert,
+    InsuranceProvider,
+    TISSBatch,
+    TISSGuide,
+    TISSGuideItem,
+)
 from apps.billing.services.retorno_parser import parse_retorno
-from apps.core.models import FeatureFlag, Role, User
+from apps.core.models import FeatureFlag, Role, TUSSCode, User
 from apps.emr.models import Encounter, Patient, Professional
 from apps.test_utils import TenantTestCase
 
@@ -44,6 +53,72 @@ def _make_retorno_xml(
           <ans:numeroGuiaPrestador>{guide_number}</ans:numeroGuiaPrestador>
           <ans:situacaoGuia>{situacao}</ans:situacaoGuia>
           {glosas_block}
+        </ans:guiaSP_SADT>
+      </ans:retornoGuias>
+    </ans:retornoLote>
+  </ans:operadoraParaPrestador>
+</ans:mensagemTISS>""".encode()
+
+
+def _proc_glosa_block(sequencial: int, tuss: str, codigo: str, descricao: str, valor: str) -> str:
+    """A single <procedimentoExecutado> with an item-level glosa (TISS structure)."""
+    return f"""
+        <ans:procedimentoExecutado>
+          <ans:sequencialItem>{sequencial}</ans:sequencialItem>
+          <ans:procedimento>
+            <ans:codigoTabela>22</ans:codigoTabela>
+            <ans:codigoProcedimento>{tuss}</ans:codigoProcedimento>
+          </ans:procedimento>
+          <ans:glosasProcedimento>
+            <ans:glosa>
+              <ans:codigoGlosa>{codigo}</ans:codigoGlosa>
+              <ans:descricaoGlosa>{descricao}</ans:descricaoGlosa>
+              <ans:valorGlosa>{valor}</ans:valorGlosa>
+            </ans:glosa>
+          </ans:glosasProcedimento>
+        </ans:procedimentoExecutado>"""
+
+
+def _make_retorno_xml_itemlevel(
+    batch_number: str,
+    guide_number: str,
+    *,
+    situacao: str = "3",
+    procedimentos: str = "",
+    glosas_guia: str = "",
+) -> bytes:
+    """Build a TISS retorno XML with item-level (procedimentoExecutado) glosas.
+
+    ``procedimentos`` is a concatenation of _proc_glosa_block(...) fragments.
+    ``glosas_guia`` is raw <ans:glosa>... markup for a true guide-level denial.
+    """
+    proc_section = (
+        f"""
+          <ans:procedimentosExecutados>
+            {procedimentos}
+          </ans:procedimentosExecutados>"""
+        if procedimentos
+        else ""
+    )
+    guia_section = (
+        f"""
+          <ans:glosasGuia>
+            {glosas_guia}
+          </ans:glosasGuia>"""
+        if glosas_guia
+        else ""
+    )
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<ans:mensagemTISS xmlns:ans="{TISS_NS}">
+  <ans:operadoraParaPrestador>
+    <ans:retornoLote>
+      <ans:numeroLote>{batch_number}</ans:numeroLote>
+      <ans:retornoGuias>
+        <ans:guiaSP_SADT>
+          <ans:numeroGuiaPrestador>{guide_number}</ans:numeroGuiaPrestador>
+          <ans:situacaoGuia>{situacao}</ans:situacaoGuia>
+          {proc_section}
+          {guia_section}
         </ans:guiaSP_SADT>
       </ans:retornoGuias>
     </ans:retornoLote>
@@ -593,6 +668,225 @@ class RetornoParserTestCase(TenantTestCase):
         parse_retorno(xml)
         self.batch.refresh_from_db()
         self.assertEqual(self.batch.status, "processed")
+
+
+class RetornoItemLevelTestCase(TenantTestCase):
+    """Item-level glosa mapping + was_denied backfill (G3a, decision A-5).
+
+    Kills the data-poisoning trap: a guide with N items where only ONE is
+    glosado must mark ONLY that item denied, never the whole guide.
+    """
+
+    def setUp(self):
+        cache.clear()
+        faturista_role = Role.objects.create(
+            name="faturista_il",
+            permissions=["billing.read", "billing.write"],
+            is_system=True,
+        )
+        prof_user = User.objects.create_user(
+            email="medico_il@test.com",
+            full_name="Dr. ItemLevel",
+            password="Str0ng!Pass#2024",
+            role=faturista_role,
+        )
+        patient = Patient.objects.create(
+            full_name="Ana ItemLevel",
+            cpf="222.222.222-22",
+            birth_date=datetime.date(1990, 3, 10),
+            gender="F",
+        )
+        professional = Professional.objects.create(
+            user=prof_user,
+            council_type="CRM",
+            council_number="22222",
+            council_state="SP",
+        )
+        encounter = Encounter.objects.create(patient=patient, professional=professional)
+        self.provider = InsuranceProvider.objects.create(name="Amil Test", ans_code="777777")
+        self.batch = TISSBatch.objects.create(provider=self.provider, status="closed")
+        self.guide = TISSGuide.objects.create(
+            guide_type="sadt",
+            encounter=encounter,
+            patient=patient,
+            provider=self.provider,
+            status="submitted",
+            insured_card_number="1234567890000002",
+            competency="2026-03",
+        )
+        TISSGuide.objects.filter(pk=self.guide.pk).update(guide_number="202603000200")
+        self.guide.refresh_from_db()
+        self.batch.guides.add(self.guide)
+
+        # 3 TUSS codes, 3 distinct guide items.
+        self.tuss_a = TUSSCode.objects.create(
+            code="10101012", description="Consulta", group="procedimento", version="2024-01"
+        )
+        self.tuss_b = TUSSCode.objects.create(
+            code="40304361", description="Hemograma", group="procedimento", version="2024-01"
+        )
+        self.tuss_c = TUSSCode.objects.create(
+            code="40302024", description="Glicose", group="procedimento", version="2024-01"
+        )
+        self.item_a = TISSGuideItem.objects.create(
+            guide=self.guide,
+            tuss_code=self.tuss_a,
+            description="Consulta",
+            quantity=Decimal("1"),
+            unit_value=Decimal("100.00"),
+        )
+        self.item_b = TISSGuideItem.objects.create(
+            guide=self.guide,
+            tuss_code=self.tuss_b,
+            description="Hemograma",
+            quantity=Decimal("1"),
+            unit_value=Decimal("50.00"),
+        )
+        self.item_c = TISSGuideItem.objects.create(
+            guide=self.guide,
+            tuss_code=self.tuss_c,
+            description="Glicose",
+            quantity=Decimal("1"),
+            unit_value=Decimal("30.00"),
+        )
+
+        # Flywheel rows: one engine alert per item + one prediction per TUSS.
+        for item in (self.item_a, self.item_b, self.item_c):
+            GlosaSafetyAlert.objects.create(
+                guide=self.guide,
+                guide_item=item,
+                check_code=GlosaSafetyAlert.CheckCode.NOT_IN_TABLE,
+                severity=GlosaSafetyAlert.Severity.ADVISE,
+                message="x",
+            )
+            GlosaPrediction.objects.create(
+                guide=self.guide,
+                tuss_code=item.tuss_code.code,
+                insurer_ans_code=self.provider.ans_code,
+                guide_type="sadt",
+                risk_level="low",
+                risk_reason="x",
+            )
+
+    def test_only_glosado_item_is_denied(self):
+        """Multi-item guide, ONE procedure glosado → exactly one item-level Glosa;
+        was_denied True only for that item's flywheel rows, others untouched."""
+        procs = _proc_glosa_block(
+            sequencial=2,
+            tuss=self.tuss_b.code,
+            codigo="01",
+            descricao="Procedimento não coberto",
+            valor="50.00",
+        )
+        xml = _make_retorno_xml_itemlevel(
+            self.batch.batch_number, self.guide.guide_number, situacao="3", procedimentos=procs
+        )
+        result = parse_retorno(xml)
+
+        self.assertEqual(result["glosas_created"], 1)
+        glosa = Glosa.objects.get(guide=self.guide)
+        self.assertEqual(glosa.guide_item_id, self.item_b.pk)
+        self.assertEqual(glosa.reason_code, "01")
+
+        # Only item_b's flywheel rows flipped.
+        alerts = {a.guide_item_id: a.was_denied for a in GlosaSafetyAlert.objects.all()}
+        self.assertTrue(alerts[self.item_b.pk])
+        self.assertIsNone(alerts[self.item_a.pk])
+        self.assertIsNone(alerts[self.item_c.pk])
+
+        preds = {p.tuss_code: p.was_denied for p in GlosaPrediction.objects.all()}
+        self.assertTrue(preds[self.tuss_b.code])
+        self.assertIsNone(preds[self.tuss_a.code])
+        self.assertIsNone(preds[self.tuss_c.code])
+
+    def test_guide_level_glosa_does_not_mark_items(self):
+        """A guide-level glosa (no procedure context, e.g. missing signature) →
+        Glosa.guide_item is None and NO item gets was_denied=True."""
+        glosas_guia = f"""<ans:glosa xmlns:ans="{TISS_NS}">
+          <ans:codigoGlosa>17</ans:codigoGlosa>
+          <ans:descricaoGlosa>Falta assinatura do beneficiário</ans:descricaoGlosa>
+          <ans:valorGlosa>0.00</ans:valorGlosa>
+        </ans:glosa>"""
+        xml = _make_retorno_xml_itemlevel(
+            self.batch.batch_number,
+            self.guide.guide_number,
+            situacao="2",
+            glosas_guia=glosas_guia,
+        )
+        result = parse_retorno(xml)
+
+        self.assertEqual(result["glosas_created"], 1)
+        glosa = Glosa.objects.get(guide=self.guide)
+        self.assertIsNone(glosa.guide_item_id)
+
+        # No item-level was_denied flips.
+        self.assertEqual(GlosaSafetyAlert.objects.filter(was_denied=True).count(), 0)
+        self.assertEqual(GlosaPrediction.objects.filter(was_denied=True).count(), 0)
+
+    def test_idempotent_reparse(self):
+        """Parsing the same item-level retorno twice → no duplicate Glosa, labels stable."""
+        procs = _proc_glosa_block(
+            sequencial=2,
+            tuss=self.tuss_b.code,
+            codigo="01",
+            descricao="Procedimento não coberto",
+            valor="50.00",
+        )
+        xml = _make_retorno_xml_itemlevel(
+            self.batch.batch_number, self.guide.guide_number, situacao="3", procedimentos=procs
+        )
+        parse_retorno(xml)
+        parse_retorno(xml)
+
+        self.assertEqual(Glosa.objects.filter(guide=self.guide).count(), 1)
+        self.assertEqual(
+            GlosaSafetyAlert.objects.filter(guide_item=self.item_b, was_denied=True).count(),
+            1,
+        )
+        # Other items still untouched after re-parse.
+        self.assertEqual(
+            GlosaSafetyAlert.objects.filter(was_denied=True)
+            .exclude(guide_item=self.item_b)
+            .count(),
+            0,
+        )
+
+    def test_ambiguous_duplicate_tuss_no_sequence_falls_back_guidelevel(self):
+        """Duplicate TUSS lines with no sequencialItem → cannot disambiguate →
+        guide-level Glosa (guide_item None), never guess-attached to an item."""
+        # Add a SECOND item with the same TUSS as item_b → ambiguous.
+        TISSGuideItem.objects.create(
+            guide=self.guide,
+            tuss_code=self.tuss_b,
+            description="Hemograma 2",
+            quantity=Decimal("1"),
+            unit_value=Decimal("50.00"),
+        )
+        # Procedure glosa with NO sequencialItem (sequencial=0 → omitted-ish).
+        proc = f"""
+        <ans:procedimentoExecutado>
+          <ans:procedimento>
+            <ans:codigoTabela>22</ans:codigoTabela>
+            <ans:codigoProcedimento>{self.tuss_b.code}</ans:codigoProcedimento>
+          </ans:procedimento>
+          <ans:glosasProcedimento>
+            <ans:glosa>
+              <ans:codigoGlosa>01</ans:codigoGlosa>
+              <ans:descricaoGlosa>Ambíguo</ans:descricaoGlosa>
+              <ans:valorGlosa>50.00</ans:valorGlosa>
+            </ans:glosa>
+          </ans:glosasProcedimento>
+        </ans:procedimentoExecutado>"""
+        xml = _make_retorno_xml_itemlevel(
+            self.batch.batch_number, self.guide.guide_number, situacao="3", procedimentos=proc
+        )
+        result = parse_retorno(xml)
+
+        glosa = Glosa.objects.get(guide=self.guide)
+        self.assertIsNone(glosa.guide_item_id)
+        self.assertTrue(any("ambiguous" in e.lower() for e in result["errors"]))
+        # No item flipped denied.
+        self.assertEqual(GlosaSafetyAlert.objects.filter(was_denied=True).count(), 0)
 
 
 class GlosaAppealTestCase(TenantTestCase):
