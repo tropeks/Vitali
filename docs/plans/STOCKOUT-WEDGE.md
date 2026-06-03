@@ -69,6 +69,30 @@ suprimento em saúde é perigoso). Determinístico autoritativo; LLM só prioriz
   + `StockAlert`) + sugestão de reposição (PurchaseOrder draft). Sem gate no dispense.
 - **S4:** job noturno de flywheel (intercepted vs false_positive vs true_positive).
 
+### S4 — notas de implementação (shipped)
+- **Onde:** `StockoutService.grade_predictions(*, now)` (lógica), comando
+  `manage.py grade_stockout_predictions [--schema]` (gatilho manual, thin →
+  service, espelha `evaluate_stockout`), task `pharmacy.grade_stockout_predictions`
+  (fan-out por tenant) + `StockAlert.outcome`/`graded_at` + migração 0011.
+- **Ordem LOCKED (confirmada):** `true_positive` (saldo ≤ 0) é checado ANTES de
+  `intercepted` — um produto que recebeu PO mas mesmo assim zerou é ruptura real
+  (o recebimento não bastou). Senão `intercepted`; senão `false_positive`.
+- **Janela do recebimento:** `(created_at, predicted_date]` — recebimento DEPOIS
+  do alerta e ATÉ o dia previsto (fim-do-dia inclusivo).
+- **Saldo/recebimento (sem N+1):** saldo = SUM(StockItem.quantity) por produto,
+  UMA query por kind (drug/material) somada em memória; recebimentos UMA query
+  por kind (`stock_item__drug/material`). Loop por alerta só faz lookup em dict.
+- **expiry_waste fora de escopo no S4:** só `stockout_risk` é gradado; alertas de
+  validade permanecem `outcome=pending`/ungraded (gradar desperdício = trabalho
+  futuro, exige comparar lote previsto-vencido vs. baixa real `expired_write_off`).
+- **Independente da flag:** o job só GRADA alertas já existentes (nunca cria);
+  se `stockout_safety` está/esteve OFF não há alertas pendentes → no-op. Roda
+  sempre, sem gate de flag — mais simples e seguro.
+- **celery-beat:** registrado (migração 0012) seguindo o padrão existente de
+  `apps/ai` (DatabaseScheduler + PeriodicTask via `get_or_create`, dep em
+  `django_celery_beat`); roda nightly 03:00 UTC. Cron equivalente manual:
+  `0 3 * * * manage.py grade_stockout_predictions --schema <schema>`.
+
 ## Decisões a travar (eng-review) — RESOLVIDAS acima
 - Janela e método da velocidade (média móvel simples? sazonalidade fora de escopo v1).
 - StockAlert novo vs estender o alerta existente do StockAlertsView.
