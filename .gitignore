@@ -141,3 +141,4 @@ backend/terminate_test_db.sh
 
 # uv lockfile (project uses pip via requirements/*.txt; uv.lock is per-dev opt-in)
 backend/uv.lock
+cache/

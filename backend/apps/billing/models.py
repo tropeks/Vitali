@@ -141,6 +141,19 @@ class PriceTableItem(models.Model):
         decimal_places=2,
         validators=[MinValueValidator(0)],
     )
+    # Per-procedure quantity ceiling negotiated in the contract (glosa wedge G3c).
+    # NULL = no ceiling (default): the quantity_exceeds check stays INERT. When
+    # set, a guide line whose quantity exceeds this value gets an ADVISE finding
+    # (never a block). This is contract TRUTH supplied by the establishment's
+    # price-table import/config — never fabricated in code. The MONTHLY aggregate
+    # ceiling is deliberately OUT OF SCOPE (race + cost in close()); this is the
+    # per-line ceiling only.
+    max_per_procedure = models.PositiveIntegerField(
+        "Teto de quantidade por procedimento",
+        null=True,
+        blank=True,
+        help_text="Quantidade máxima por procedimento no contrato. Vazio = sem teto.",
+    )
 
     class Meta:
         verbose_name = "Item de Tabela"
@@ -537,6 +550,10 @@ class GlosaSafetyAlert(models.Model):
         # incompatible with the patient. ALWAYS advise, never blocks — and inert
         # until the TUSS row has ANS-sourced metadata populated.
         CLINICAL_INCOMPAT = "clinical_incompat", "Incompatibilidade clínica"
+        # Per-procedure quantity ceiling advisory (G3c): the line quantity exceeds
+        # the contract's PriceTableItem.max_per_procedure. ALWAYS advise, never
+        # blocks — and inert until a ceiling is configured on the active table.
+        QUANTITY_EXCEEDS = "quantity_exceeds", "Quantidade acima do teto"
 
     class Severity(models.TextChoices):
         BLOCK = "block", "Bloqueia"

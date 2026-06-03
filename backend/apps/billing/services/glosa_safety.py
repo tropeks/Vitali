@@ -219,7 +219,9 @@ class GlosaSafetyService:
         # (not_in_table / stale_price) are MEANINGFUL: when no active table can
         # be confidently resolved, we must NOT block every line — fail toward a
         # single advise instead (see _active_table_values).
-        active_value_by_tuss, table_resolved = self._active_table_values(guide)
+        active_value_by_tuss, active_ceiling_by_tuss, table_resolved = self._active_table_values(
+            guide
+        )
         active_codes = set(active_value_by_tuss.keys())
 
         # Cross-guide duplicate detection (race fix, decision A-2): lock the
@@ -240,6 +242,11 @@ class GlosaSafetyService:
                     in_active_table=in_table,
                     active_table_value=active_value_by_tuss.get(code),
                     duplicate=code in duplicate_tuss,
+                    # Per-procedure quantity ceiling (G3c) resolved off the active
+                    # PriceTableItem. None when the line isn't in the active table
+                    # or the contract sets no ceiling → check stays inert.
+                    quantity=Decimal(item.quantity),
+                    max_per_procedure=active_ceiling_by_tuss.get(code),
                     # Clinical-compatibility metadata copied STRAIGHT off the
                     # public core.TUSSCode row (G3b). ANS-sourced, never
                     # fabricated; defaults (null/B/[]) keep the check inert.
@@ -323,10 +330,16 @@ class GlosaSafetyService:
             return competency_date
         return datetime.date.today()
 
-    def _active_table_values(self, guide: TISSGuide) -> tuple[dict[str, Decimal], bool]:
+    def _active_table_values(
+        self, guide: TISSGuide
+    ) -> tuple[dict[str, Decimal], dict[str, int | None], bool]:
         """Resolve the provider's CURRENTLY ACTIVE PriceTable whose validity window
         contains the guide's effective date, and return
-        ({tuss_code: negotiated_value}, table_resolved).
+        ({tuss_code: negotiated_value}, {tuss_code: max_per_procedure}, table_resolved).
+
+        The second map carries the per-procedure quantity ceiling (G3c) from the
+        same active PriceTableItem rows; a value of None means the contract set no
+        ceiling for that code (the quantity_exceeds check then stays inert).
 
         Robust resolution: an active table covers the guide when its
         valid_from is on/before the effective date AND valid_until is null or
@@ -349,13 +362,15 @@ class GlosaSafetyService:
             .first()
         )
         if table is None:
-            return {}, False
+            return {}, {}, False
 
-        values = {
-            pti.tuss_code.code: Decimal(pti.negotiated_value)
-            for pti in PriceTableItem.objects.filter(table=table).select_related("tuss_code")
-        }
-        return values, True
+        values: dict[str, Decimal] = {}
+        ceilings: dict[str, int | None] = {}
+        for pti in PriceTableItem.objects.filter(table=table).select_related("tuss_code"):
+            code = pti.tuss_code.code
+            values[code] = Decimal(pti.negotiated_value)
+            ceilings[code] = pti.max_per_procedure
+        return values, ceilings, True
 
     def _duplicate_tuss_codes(self, guide: TISSGuide, tuss_codes: list[str]) -> set[str]:
         """TUSS codes on this guide that ALSO appear on another active-status guide

@@ -34,6 +34,10 @@ ANS glosa-code mapping (see ``apps.billing.models.GLOSA_REASON_CODES``):
     operator-specific code.
   * stale_price → "" (blank). A snapshot-vs-current divergence is an internal
     caution, not (yet) a denial reason emitted to the operator — no ANS code.
+  * quantity_exceeds → "" (blank). The line quantity exceeds the contract's
+    per-procedure ceiling (PriceTableItem.max_per_procedure). No quantity-specific
+    code exists in GLOSA_REASON_CODES, so — like stale_price — it stays an
+    internal caution with no operator-facing ANS reason.
 """
 
 from __future__ import annotations
@@ -58,6 +62,12 @@ ANS_CODE_TABLE_UNRESOLVED = ""  # coverage not verified — internal caution, no
 ANS_CODE_AGE_INCOMPAT = "03"  # incompatível com a idade
 ANS_CODE_SEX_INCOMPAT = "02"  # incompatível com o sexo
 ANS_CODE_CID_INCOMPAT = ""  # no fixed ANS code — left blank, confirmed by faturista
+# Per-procedure quantity ceiling (glosa wedge G3c). The GLOSA_REASON_CODES set in
+# this codebase has NO quantity/limit-specific reason ("99/Outro" is too generic
+# to assert confidently), so — like stale_price — this stays "" (blank): a
+# contract-internal caution, not (yet) an operator-facing ANS denial reason. The
+# faturista confirms the operator-specific code if a denial actually lands.
+ANS_CODE_QUANTITY_EXCEEDS = ""  # no fixed ANS code — internal caution, left blank
 
 
 @dataclass(frozen=True)
@@ -76,6 +86,14 @@ class GuideItemContext:
     in_active_table: bool
     active_table_value: Decimal | None
     duplicate: bool
+    # ── Per-procedure quantity ceiling (G3c) ────────────────────────────────────
+    # ``quantity`` is the guide line's quantity (TISSGuideItem.quantity is a
+    # Decimal). ``max_per_procedure`` is the contract ceiling resolved by the
+    # service off the line's ACTIVE PriceTableItem — None means NO ceiling, so the
+    # quantity_exceeds check is INERT. Both default to the inert state so the pure
+    # unit tests and safe callers fire nothing.
+    quantity: Decimal = Decimal("0")
+    max_per_procedure: int | None = None
     # ── Clinical-compatibility metadata (G3b), resolved by the service from the
     # public core.TUSSCode row. These are ANS-STANDARD TRUTH, never fabricated:
     # the service copies them straight off the TUSS row. When the row has no ANS
@@ -298,6 +316,34 @@ class GlosaChecker:
                         "distinta antes de fechar o lote."
                     ),
                     ans_glosa_code=ANS_CODE_DUPLICATE,
+                    guide_item_id=item.item_id,
+                )
+            )
+
+        # QUANTITY_EXCEEDS (advise, NEVER block) — glosa wedge G3c. Purely local,
+        # in-memory: when the line's active PriceTableItem carries a
+        # max_per_procedure ceiling AND the line quantity exceeds it, advise. INERT
+        # when max_per_procedure is None (the default → no ceiling configured).
+        # Decimal-safe compare (quantity is a Decimal; the ceiling is an int).
+        # Runs independently of table_resolved: the ceiling is None unless the
+        # service resolved it off the active table, so this never fires spuriously.
+        if item.max_per_procedure is not None and Decimal(item.quantity) > Decimal(
+            item.max_per_procedure
+        ):
+            qty_str = Decimal(item.quantity).normalize()
+            findings.append(
+                GlosaFinding(
+                    check_code="quantity_exceeds",
+                    severity=_SEVERITY_ADVISE,
+                    message=(
+                        f"Quantidade do procedimento {item.tuss_code} ({qty_str}) acima do teto "
+                        f"do procedimento no contrato ({qty_str} > {item.max_per_procedure})."
+                    ),
+                    recommendation=(
+                        "Confirme se a quantidade está correta ou se há justificativa "
+                        "(ex.: autorização específica) antes de faturar."
+                    ),
+                    ans_glosa_code=ANS_CODE_QUANTITY_EXCEEDS,
                     guide_item_id=item.item_id,
                 )
             )
