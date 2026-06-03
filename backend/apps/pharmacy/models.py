@@ -48,6 +48,28 @@ class Drug(models.Model):
     )
     is_active = models.BooleanField(default=True, db_index=True)
     notes = models.TextField(blank=True)
+    # ── Stockout-prediction config (wedge S1) ─────────────────────────────────
+    # All nullable → engine is INERT until the establishment supplies them. No
+    # invented defaults: NULL means "no prediction", not "zero".
+    lead_time_days = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Prazo de reposição do fornecedor (dias). NULL → predição inerte.",
+    )
+    safety_stock = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Estoque de segurança (unidades-buffer). NULL → não considerado.",
+    )
+    reorder_point = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Ponto de reposição explícito (unidades). NULL → não considerado.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -77,6 +99,28 @@ class Material(models.Model):
     unit_of_measure = models.CharField(max_length=20, default="un")
     is_active = models.BooleanField(default=True, db_index=True)
     notes = models.TextField(blank=True)
+    # ── Stockout-prediction config (wedge S1) ─────────────────────────────────
+    # All nullable → engine is INERT until the establishment supplies them. No
+    # invented defaults: NULL means "no prediction", not "zero".
+    lead_time_days = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Prazo de reposição do fornecedor (dias). NULL → predição inerte.",
+    )
+    safety_stock = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Estoque de segurança (unidades-buffer). NULL → não considerado.",
+    )
+    reorder_point = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Ponto de reposição explícito (unidades). NULL → não considerado.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
