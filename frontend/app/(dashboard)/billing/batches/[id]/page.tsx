@@ -1,8 +1,15 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { getAccessToken } from '@/lib/auth';
+import { ApiError } from '@/lib/api';
+import {
+  isGlosaSafetyBlock,
+  isBatchModifiedDuringClose,
+  type GlosaSafetyBlock,
+} from '@/lib/glosa-safety';
+import { GlosaSafetyModal } from '@/components/billing/GlosaSafetyModal';
 
 const STATUS_BADGE: Record<string, string> = {
   open: 'bg-blue-100 text-blue-700',
@@ -45,21 +52,32 @@ export default function BatchDetailPage() {
   const [actionMsg, setActionMsg] = useState('');
   const [busy, setBusy] = useState(false);
   const [downloadUrl, setDownloadUrl] = useState('');
+  const [glosaBlock, setGlosaBlock] = useState<GlosaSafetyBlock | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
+  // Refetch the batch (and its guides) — used on initial load and after a
+  // `batch_modified_during_close` 409, when the guide set changed mid-close.
+  const loadBatch = useCallback(async () => {
     const token = getAccessToken();
     if (!token) { setError('Sessão expirada'); setLoading(false); return; }
-    fetch(`/api/v1/billing/batches/${id}/`, {
+    const res = await fetch(`/api/v1/billing/batches/${id}/`, {
       headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(r => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); })
-      .then(setBatch)
-      .catch(e => setError(e.message))
-      .finally(() => setLoading(false));
+    });
+    if (!res.ok) throw new Error(`${res.status}`);
+    const data = await res.json();
+    setBatch(data);
   }, [id]);
 
-  const closeBatch = async () => {
+  useEffect(() => {
+    loadBatch()
+      .catch((e: any) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [loadBatch]);
+
+  // Single batch-close submission — reused on retry after a glosa-safety
+  // override. Wraps a non-ok response into ApiError so isGlosaSafetyBlock /
+  // isBatchModifiedDuringClose can detect the 409 interception shapes.
+  const submitClose = useCallback(async () => {
     const token = getAccessToken();
     if (!token) { setError('Sessão expirada'); return; }
     setBusy(true); setError(''); setActionMsg('');
@@ -68,15 +86,38 @@ export default function BatchDetailPage() {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error(`${res.status}`);
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new ApiError(res.status, data);
+      }
+      setGlosaBlock(null);
       setBatch(data);
       setActionMsg('Lote fechado com sucesso!');
     } catch (e: any) {
-      setError(e.message);
+      const block = isGlosaSafetyBlock(e);
+      if (block) {
+        // Glosa interception: open the modal instead of the generic error.
+        setGlosaBlock(block);
+        return;
+      }
+      if (isBatchModifiedDuringClose(e)) {
+        // Guide set changed mid-close → refetch and let the user retry.
+        try {
+          await loadBatch();
+        } catch {
+          /* keep the notice even if refetch fails */
+        }
+        setActionMsg('O lote mudou; reavaliado — tente fechar novamente.');
+        return;
+      }
+      setError(e instanceof ApiError ? `${e.status}` : e.message);
     } finally {
       setBusy(false);
     }
+  }, [id, loadBatch]);
+
+  const closeBatch = () => {
+    void submitClose();
   };
 
   const exportXml = async () => {
@@ -151,6 +192,16 @@ export default function BatchDetailPage() {
 
   return (
     <div className="space-y-6">
+      {glosaBlock && (
+        <GlosaSafetyModal
+          block={glosaBlock}
+          onResolved={() => {
+            setGlosaBlock(null);
+            void submitClose();
+          }}
+          onClose={() => setGlosaBlock(null)}
+        />
+      )}
       <div className="flex items-center gap-3 flex-wrap">
         <button onClick={() => router.back()} className="text-slate-400 hover:text-slate-600 text-sm">← Voltar</button>
         <h1 className="text-2xl font-semibold text-slate-900">
