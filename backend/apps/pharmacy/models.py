@@ -54,6 +54,11 @@ class Drug(models.Model):
     controlled_class = models.CharField(
         max_length=5, choices=CONTROLLED_CHOICES, default="none", db_index=True
     )
+    # Controlled-diversion wedge (C1): minimum days between dispensations of THIS
+    # drug to the same patient before a re-dispense is flagged as an early refill.
+    # null → the refill-too-soon signal is INERT for this drug (no honest public
+    # default exists — establishment-configured, never invented).
+    min_refill_interval_days = models.PositiveSmallIntegerField(null=True, blank=True)
     is_active = models.BooleanField(default=True, db_index=True)
     notes = models.TextField(blank=True)
     # ── Stockout-prediction config (wedge S1) ─────────────────────────────────
@@ -592,6 +597,93 @@ class StockAlert(models.Model):
 
     def __str__(self):
         return f"{self.get_kind_display()} — {self.target} ({self.get_status_display()})"
+
+    def acknowledge(self, user, note=""):
+        self.acknowledged_by = user
+        self.note = note
+        self.acknowledged_at = timezone.now()
+        self.status = self.Status.ACKNOWLEDGED
+        self.save(update_fields=["acknowledged_by", "note", "acknowledged_at", "status"])
+
+
+# ─── Controlled-diversion wedge PR C1: persistent ControlledAlert ─────────────
+
+
+class ControlledAlert(models.Model):
+    """Veredito do motor de diversão de controlados (wedge C1). Per-tenant.
+
+    Mirror do ``StockAlert``: linha persistente do sinal determinístico
+    (``source`` implícito = engine), com ``detail`` explicável e campos de
+    flywheel + ack. POSTURA — **ADVISE/compliance, NUNCA bloqueia** a dispensa de
+    controlado (o gate de permissão+notas do ``DispenseView`` já governa o ato).
+
+    Uma dispensação pode levantar MÚLTIPLOS sinais (linhas separadas); a chave
+    única ``(dispensation, signal_kind)`` faz a re-avaliação dar update no lugar.
+    Risco DERIVADO do histórico; sem resolve-stale (o sinal é fato pontual).
+    """
+
+    class SignalKind(models.TextChoices):
+        REFILL_TOO_SOON = "refill_too_soon", "Refill cedo demais"
+        MULTIPLE_PRESCRIBERS = "multiple_prescribers", "Múltiplos prescritores"
+        QUANTITY_ESCALATION = "quantity_escalation", "Escalada de quantidade"
+
+    class Severity(models.TextChoices):
+        ADVISE = "advise", "Avisa"
+
+    class Status(models.TextChoices):
+        OPEN = "open", "Aberto"
+        ACKNOWLEDGED = "acknowledged", "Reconhecido"
+        RESOLVED = "resolved", "Resolvido"
+
+    class Outcome(models.TextChoices):
+        PENDING = "pending", "Pendente"
+        TRUE_POSITIVE = "true_positive", "Confirmado (diversão real)"
+        FALSE_POSITIVE = "false_positive", "Falso-positivo"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    dispensation = models.ForeignKey(
+        Dispensation, on_delete=models.CASCADE, related_name="controlled_alerts"
+    )
+    patient = models.ForeignKey(
+        "emr.Patient", on_delete=models.CASCADE, related_name="controlled_alerts"
+    )
+    drug = models.ForeignKey(Drug, on_delete=models.CASCADE, related_name="controlled_alerts")
+    signal_kind = models.CharField(max_length=24, choices=SignalKind.choices, db_index=True)
+    severity = models.CharField(max_length=10, choices=Severity.choices, default=Severity.ADVISE)
+    detail = models.JSONField(default=dict)
+    status = models.CharField(max_length=14, choices=Status.choices, default=Status.OPEN)
+    outcome = models.CharField(
+        max_length=16, choices=Outcome.choices, default=Outcome.PENDING, db_index=True
+    )
+    engine_version = models.CharField(max_length=40)
+    acknowledged_by = models.ForeignKey(
+        "core.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="acknowledged_controlled_alerts",
+    )
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+    note = models.TextField(blank=True)
+    graded_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Alerta de Controlado (motor)"
+        verbose_name_plural = "Alertas de Controlado (motor)"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["dispensation", "signal_kind"], name="uniq_controlled_alert"
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["status", "signal_kind"]),
+        ]
+
+    def __str__(self):
+        return f"{self.get_signal_kind_display()} — {self.drug} ({self.get_status_display()})"
 
     def acknowledge(self, user, note=""):
         self.acknowledged_by = user
