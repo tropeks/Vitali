@@ -742,6 +742,109 @@ class AISafetyAlert(models.Model):
         self.save(update_fields=["acknowledged_by", "override_reason", "acknowledged_at", "status"])
 
 
+# ─── Clinical-deterioration wedge (PR D2): NEWS2 early-warning alert ──────────
+
+
+class DeteriorationAlert(models.Model):
+    """Veredito do motor NEWS2 (clinical-deterioration wedge, PR D2). Per-tenant.
+
+    Mirror do ``AISafetyAlert`` / ``pharmacy.StockAlert``: linha persistente do
+    veredito do motor determinístico (``source="engine"``), com campos de ack
+    para que um reconhecimento clínico permaneça, e o flywheel ``AuditLog`` em
+    volta. O motor (``apps.emr.services.news2``) DECIDE; o serviço persiste.
+
+    POSTURA — ADVISE/ESCALONAMENTO, NUNCA BLOQUEIA. O registro de sinais vitais
+    jamais é bloqueado; este alerta é levantado quando o NEWS2 cruza a banda de
+    risco, para o painel de deterioração e o time clínico agirem (D3).
+
+    De-dup (LOCKED no eng-review): no máximo UM alerta ``open`` por encounter
+    (UniqueConstraint parcial). Uma nova leitura ATUALIZA o alerta aberto se o
+    escore SUBIU; depois do ack/resolução, uma nova leitura que volte a cruzar a
+    banda cria um alerta NOVO — o histórico de escalonamentos vira trilha.
+    """
+
+    class Band(models.TextChoices):
+        LOW = "low", "Baixo"
+        LOW_MEDIUM = "low_medium", "Baixo-médio (escore 3 em parâmetro único)"
+        MEDIUM = "medium", "Médio"
+        HIGH = "high", "Alto"
+
+    class Severity(models.TextChoices):
+        ADVISE = "advise", "Avisa"
+        ESCALATION = "escalation", "Escalonamento (emergência)"
+
+    class Source(models.TextChoices):
+        ENGINE = "engine", "Motor determinístico"
+        # Reservado: um futuro priorizador/explicador LLM escreveria source="llm".
+        LLM = "llm", "LLM (explicação)"
+
+    class Status(models.TextChoices):
+        OPEN = "open", "Aberto"
+        ACKNOWLEDGED = "acknowledged", "Reconhecido"
+        RESOLVED = "resolved", "Resolvido"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    encounter = models.ForeignKey(
+        Encounter, on_delete=models.CASCADE, related_name="deterioration_alerts"
+    )
+    # A leitura que disparou/atualizou o alerta (a mais recente que cruzou a banda).
+    vital_signs = models.ForeignKey(
+        VitalSigns, on_delete=models.CASCADE, related_name="deterioration_alerts"
+    )
+    score = models.PositiveSmallIntegerField()
+    band = models.CharField(max_length=12, choices=Band.choices)
+    # Sub-escore por parâmetro (o "porquê" do escore) — espelha NEWS2Result.breakdown.
+    breakdown = models.JSONField(default=dict)
+    any_param_three = models.BooleanField(default=False)
+    spo2_scale = models.PositiveSmallIntegerField(help_text="Escala SpO2 aplicada (1 ou 2).")
+    severity = models.CharField(max_length=12, choices=Severity.choices)
+    source = models.CharField(max_length=10, choices=Source.choices, default=Source.ENGINE)
+    status = models.CharField(max_length=14, choices=Status.choices, default=Status.OPEN)
+    engine_version = models.CharField(max_length=40)
+    message = models.TextField("Mensagem (pt-BR)")
+    acknowledged_by = models.ForeignKey(
+        "core.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="acknowledged_deterioration_alerts",
+    )
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+    note = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Alerta de Deterioração (NEWS2)"
+        verbose_name_plural = "Alertas de Deterioração (NEWS2)"
+        ordering = ["-created_at"]
+        constraints = [
+            # No máximo UM alerta aberto por encounter (índice único parcial). Uma
+            # nova leitura faz update do alerta aberto; depois do ack/resolução o
+            # parcial libera, então uma re-deterioração cria um alerta novo.
+            models.UniqueConstraint(
+                fields=["encounter"],
+                condition=models.Q(status="open"),
+                name="uniq_open_deterioration_alert_per_encounter",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["status", "band"]),
+        ]
+
+    def __str__(self):
+        return f"NEWS2 {self.score} ({self.get_band_display()}) — {self.encounter}"
+
+    def acknowledge(self, user, note=""):
+        self.acknowledged_by = user
+        self.note = note
+        self.acknowledged_at = timezone.now()
+        self.status = self.Status.ACKNOWLEDGED
+        self.save(
+            update_fields=["acknowledged_by", "note", "acknowledged_at", "status", "updated_at"]
+        )
+
+
 # ─── S-064: AI CID-10 Suggestion ─────────────────────────────────────────────
 
 
