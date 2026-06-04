@@ -20,6 +20,27 @@ que nenhum incumbente de núcleo legado consegue igualar, e que ninguém aluga d
 OpenAI/Anthropic). O padrão que se repete em todo módulo: **Observe → Preveja →
 Intercepte → Aprenda.**
 
+### Entregue neste ciclo (SHIPPED — flag-gated OFF) — 2026-06
+
+> **Built ≠ live.** As **três cunhas AI-native** foram construídas e mergeadas no
+> master. Todas **OFF por padrão** (cada uma atrás de um `FeatureFlag` per-tenant) e
+> nenhuma processa nada até que **dados validados por humano** sejam fornecidos.
+> **Nada de número clínico/contratual/ANS foi inventado em código.** Índice
+> consolidado: [`AI-NATIVE-WEDGES.md`](./AI-NATIVE-WEDGES.md).
+
+| Wedge | Flag (default OFF) | Estado | Para ir ao ar (gate humano) |
+|-------|--------------------|--------|------------------------------|
+| **Dose-safety** | `dose_safety` | Motor `DoseChecker` (`apps/pharmacy/services/dose_checker.py`) + dose-engine v2 (frequency band / `dose_role` / enforcement-advise) + soft-stop em `Prescription.sign` e `DispenseView` + `AISafetyAlert(source)` + `DoseSafetyModal`. **SHIPPED.** | **Flag ON** + **formulário validado por farmacêutico** (`MedicationFormulary`/`DoseRule`) — decisão **D-T1, PENDENTE**. Tabelas de produção ficam VAZIAS até a assinatura. Ver [`plans/DOSE-SAFETY-WEDGE.md`](./plans/DOSE-SAFETY-WEDGE.md) e [`formulary-package/`](./formulary-package/). |
+| **Glosa-interception** | `glosa_safety` | Motor `GlosaChecker` (`apps/billing/services/glosa_checker.py`) + soft-stop por-guia em `TISSBatchViewSet.close` + `GlosaSafetyAlert` + `Authorization` + backfill item-level + compat clínica (`TUSSCode` idade/sexo/CID) + teto por procedimento + `GlosaSafetyModal`. **SHIPPED.** | **Flag ON.** Checks de maior valor rodam **sem dado novo**; os checks clínicos/teto/autorização ficam inertes (advise) até **import ANS / config do estabelecimento** — verdade externa, nunca inventada. Ver [`plans/GLOSA-WEDGE.md`](./plans/GLOSA-WEDGE.md). |
+| **Stockout-prediction** | `stockout_safety` | `StockoutChecker` (SMA de velocidade) + `StockAlert` + validade FEFO (`expiry_waste`) + `StockRiskView` + painel de risco + job noturno de flywheel (grading). **SHIPPED.** | **Flag ON** + acúmulo de histórico de consumo. Velocidade é **derivada** de `StockMovement` (não inventada); `lead_time_days`/`safety_stock`/`reorder_point` são config per-establishment, **inertes** até preenchidos. **Advise-only — nunca bloqueia dispensa.** Ver [`plans/STOCKOUT-WEDGE.md`](./plans/STOCKOUT-WEDGE.md). |
+
+Padrão compartilhado (os 4 princípios da §5 da [Visão](./VISION-AI-NATIVE.md), em código):
+motor determinístico puro (autoritativo) + orquestrador + alerta persistente +
+flag per-tenant (default OFF) + flywheel via `AuditLog`. O LLM, quando presente, só
+**explica** — nunca decide o portão. Postura **advise-vs-block** por wedge. Isto
+**prova o padrão de loop fechado** (item 2 abaixo) para glosa e estoque — mas as
+três permanecem **construídas, não no ar**, até flag + dado humano.
+
 ### Prioridade reorientada
 
 **1. Flagship — Cunha de segurança de dose (dose-safety interception).**
@@ -36,11 +57,11 @@ o desvio nos três gates → *aprenda* com cada override e desfecho.
 **2. Replicar o padrão de loop fechado aos demais loops de alto valor.**
 O **mesmo motor** observe-preveja-intercepte-aprenda, aplicado às próximas dores:
 
-| Loop | Observe → Preveja → Intercepte → Aprenda | Evolui de |
-|------|-------------------------------------------|-----------|
-| **Glosa-prevention** | Observa a guia em montagem → prevê o risco/motivo de glosa → intercepta antes do envio do lote → aprende com cada glosa/recurso real | E-006 S-024, E-008, Glosa AI (Sprint 10) |
-| **Inventory-rupture** | Observa o ledger de estoque → prevê a ruptura antes do `min_stock` → intercepta com PO em rascunho na hora → aprende com o consumo real | E-007 S-027, F-06, `apps.pharmacy_ai` |
-| **No-show** | Observa o padrão do paciente → prevê o risco de falta → intercepta com re-engajamento + reabertura de vaga → aprende com o comparecimento real | E-005, E-009 S-034, F-11 |
+| Loop | Observe → Preveja → Intercepte → Aprenda | Evolui de | Estado |
+|------|-------------------------------------------|-----------|--------|
+| **Glosa-prevention** | Observa a guia em montagem → prevê o risco/motivo de glosa → intercepta antes do envio do lote → aprende com cada glosa/recurso real | E-006 S-024, E-008, Glosa AI (Sprint 10) | **SHIPPED** (motor determinístico `glosa_safety`, flag OFF — ver "Entregue neste ciclo") |
+| **Inventory-rupture** | Observa o ledger de estoque → prevê a ruptura antes do `min_stock` → intercepta (alerta proativo + reposição sugerida) → aprende com o consumo real | E-007 S-027, F-06, `apps.pharmacy_ai` | **SHIPPED** (motor determinístico `stockout_safety`, flag OFF, advise-only — ver "Entregue neste ciclo") |
+| **No-show** | Observa o padrão do paciente → prevê o risco de falta → intercepta com re-engajamento + reabertura de vaga → aprende com o comparecimento real | E-005, E-009 S-034, F-11 | Planejado |
 
 ### Reprioritization — moat vs. table-stakes
 

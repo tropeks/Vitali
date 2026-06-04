@@ -115,6 +115,32 @@ if tenant_has_feature(request.tenant, 'module_pharmacy'):
 
 ---
 
+## Camada de interceptação AI-native
+
+O Vitali deixa de ser um sistema de *registro* e passa a **interceptar o erro antes
+que ele alcance o paciente / o caixa / a prateleira**. Três *wedges* foram entregues
+neste ciclo, todos seguindo o **mesmo padrão** — `Observe → Preveja → Intercepte →
+Aprenda`:
+
+> **motor determinístico puro** (autoritativo; o LLM só explica) + **orquestrador** +
+> **alerta persistente** + **feature flag per-tenant (default OFF)** + **flywheel**
+> (`AuditLog` de alerta/override/desfecho).
+
+| Wedge | Flag (default **OFF**) | O que intercepta |
+|-------|------------------------|------------------|
+| **Dose-safety** | `dose_safety` | dose fora da faixa segura para o paciente, na prescrição e na dispensação (soft-stop) |
+| **Glosa-interception** | `glosa_safety` | risco de glosa por guia, antes de fechar o lote TISS (soft-stop por-guia) |
+| **Stockout-prediction** | `stockout_safety` | ruptura de estoque e validade encalhada, em painel proativo (advise — nunca bloqueia dispensa) |
+
+**Construído ≠ no ar.** As três flags vêm **desligadas** e nenhuma processa nada até
+que **dados validados por humano** sejam fornecidos — formulário de dose validado por
+farmacêutico (pendente, decisão D-T1), atributos `TUSSCode`/contrato via import ANS, e
+config de suprimentos por estabelecimento. **Nenhum número clínico/contratual/ANS é
+inventado em código.** Índice consolidado e checklist "para ir ao ar":
+[`docs/AI-NATIVE-WEDGES.md`](docs/AI-NATIVE-WEDGES.md).
+
+---
+
 ## Comandos úteis
 
 ```bash
@@ -182,6 +208,7 @@ Datas/escopo detalhados em `docs/EPICS_AND_ROADMAP.md` e nos planos `docs/PLAN_S
 ## Documentação
 
 Visão e arquitetura: [`docs/VISION-AI-NATIVE.md`](docs/VISION-AI-NATIVE.md) (tese AI-native — cunha de segurança de dose) ·
+[`docs/AI-NATIVE-WEDGES.md`](docs/AI-NATIVE-WEDGES.md) (camada de interceptação — 3 wedges, flag-gated OFF) ·
 [`docs/PROJECT_BRIEF.md`](docs/PROJECT_BRIEF.md) ·
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) ·
 [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) ·

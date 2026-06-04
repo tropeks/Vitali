@@ -202,6 +202,36 @@ via API calls, no local model training.
 supports PostgreSQL natively, pre-built chart types cover all healthcare KPIs.
 Alternative (Metabase) is simpler but less flexible for embedding.
 
+### ADR-009: AI-Native Interception Pattern (deterministic engine + flywheel)
+
+**Status:** Accepted — three wedges shipped (flag-gated OFF). See
+[`AI-NATIVE-WEDGES.md`](./AI-NATIVE-WEDGES.md) and [`VISION-AI-NATIVE.md`](./VISION-AI-NATIVE.md).
+
+**Decision:** Each high-value interception (dose-safety, glosa-interception,
+stockout-prediction) follows one shared shape on the spine of a real workflow —
+`Observe → Predict → Intercept → Learn`:
+
+1. **Pure deterministic engine** — authoritative, `Decimal`-only where numeric, no
+   LLM in the decision path (e.g. `apps/pharmacy/services/dose_checker.py`,
+   `apps/billing/services/glosa_checker.py`,
+   `apps/pharmacy/services/stockout_checker.py`). When an LLM is present it only
+   *explains*; it never decides the gate.
+2. **Orchestrator** — resolves inputs in single queries (no N+1), persists the
+   verdict, writes the flywheel `AuditLog`.
+3. **Persistent alert** — a dedicated row (`AISafetyAlert` with a `source` field,
+   `GlosaSafetyAlert`, `StockAlert`), not an ephemeral cache, so verdict + override
+   + outcome survive for learning.
+4. **Per-tenant `FeatureFlag`, default OFF** — `dose_safety`, `glosa_safety`,
+   `stockout_safety`. Nothing intercepts until a tenant enables it.
+5. **Advise-vs-block posture** per domain — dose/glosa can soft-stop; stockout is
+   advise-only (never gate a clinical dispense on a supply prediction).
+
+**Justification:** Reusing one pattern keeps the interception logic auditable and
+deterministic (regulatory-friendly) while the flywheel compounds a data moat with
+use. **No clinical / contractual / ANS numbers are invented in code** — schema +
+engine ship; the reference data is human-supplied external truth, loaded per tenant
+before the flag is flipped. Built ≠ live.
+
 ---
 
 ## 3. High-Level Architecture Diagram
