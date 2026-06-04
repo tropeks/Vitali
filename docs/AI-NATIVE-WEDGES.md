@@ -193,6 +193,13 @@ LLM-only) and a soft-stop at prescription **sign** / **dispense**.
     (curating `Drug.active_ingredients` sharpens it). Cross-reactivity
     (`AllergenClass`) and interactions (`DrugInteraction`) are **human-curated**
     tables — inert until populated, never invented.
+  - [ ] **Curation guideline (alert-fatigue):** record allergens as **full
+    ingredient names**, not bare salts/radicals. The matcher is normalized
+    token-subset, so an over-generic single-token allergen (e.g. just `"sulfato"`)
+    will hard-block any drug containing that token (e.g. `"Sulfato de Magnésio"`).
+    This is fail-safe (it over-blocks and is overridable-with-reason, never
+    under-blocks) but causes avoidable alert fatigue — populate `active_ingredients`
+    and use specific allergen names to keep blocks precise.
 
 ---
 
