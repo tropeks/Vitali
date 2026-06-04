@@ -59,5 +59,11 @@ ALLOWED_MODULE_KEYS: frozenset = frozenset(
         # a tenant must explicitly enable it before the engine evaluates products
         # and persists StockAlert rows. Proactive only (no DispenseView gate).
         "stockout_safety",
+        # Clinical-deterioration wedge (PR D2): per-tenant toggle for the NEWS2
+        # early-warning interceptor (advise/escalation-only — NEVER blocks vitals
+        # recording). Default OFF — a tenant must explicitly enable it (clinical
+        # governance + escalation protocol) before VitalSigns saves raise a
+        # DeteriorationAlert. NEWS2 itself is a public RCP standard, not invented.
+        "deterioration_safety",
     }
 )

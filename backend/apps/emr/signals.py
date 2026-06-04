@@ -49,3 +49,36 @@ def trigger_safety_check(sender, instance, created, **kwargs):
         "Scheduled safety check for PrescriptionItem %s (on_commit)",
         instance.id,
     )
+
+
+@receiver(post_save, sender="emr.VitalSigns")
+def trigger_deterioration_check(sender, instance, created, **kwargs):
+    """Run the NEWS2 deterioration check after a VitalSigns row is committed.
+
+    Clinical-deterioration wedge (PR D2). Fires on BOTH create and update — vitals
+    are recorded by PATCHing the blank check-in row, so the meaningful evaluation
+    happens on update; the blank create scores as incomplete (engine inert → no-op).
+
+    Deferred via ``transaction.on_commit`` so the service reads the committed row
+    and — critically — so the synchronous evaluation runs only AFTER the vitals
+    save is durable. The save is therefore never blocked or rolled back by the
+    check (it is advise/escalation-only). The service itself no-ops when the
+    ``deterioration_safety`` flag is OFF and fails safe on any error.
+    """
+    vital_signs_pk = instance.pk
+
+    def _run():
+        # Import here to avoid a circular import at module load time.
+        from apps.emr.models import VitalSigns
+        from apps.emr.services.deterioration import DeteriorationService
+
+        vs = (
+            VitalSigns.objects.select_related("encounter__patient")
+            .filter(pk=vital_signs_pk)
+            .first()
+        )
+        if vs is None:  # row deleted between commit and callback
+            return
+        DeteriorationService().evaluate(vs)
+
+    transaction.on_commit(_run)
