@@ -58,6 +58,7 @@ const NAV_ITEMS: NavItem[] = [
       { label: "Estoque", href: "/farmacia/stock" },
       { label: "Catálogo", href: "/farmacia/catalog" },
       { label: "Compras", href: "/farmacia/compras" },
+      { label: "Controlados", href: "/farmacia/controlados" },
     ],
   },
   {

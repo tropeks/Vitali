@@ -16,6 +16,7 @@ from apps.core.models import AuditLog
 from apps.core.permissions import HasPermission, ModuleRequiredPermission
 
 from .models import (
+    ControlledAlert,
     Dispensation,
     DispensationLot,
     Drug,
@@ -771,5 +772,107 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         )
         return Response(
             PurchaseOrderSerializer(po).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+# ─── Controlled-diversion wedge PR C3: compliance surface ─────────────────────
+
+_CONTROLLED_ALERT_LIST_LIMIT = 200
+
+
+def _serialize_controlled_alert(alert) -> dict:
+    """Plain dict for a ControlledAlert + dispensation/patient context."""
+    return {
+        "id": str(alert.id),
+        "dispensation_id": str(alert.dispensation_id),
+        "patient_id": str(alert.patient_id),
+        "patient_name": alert.patient.full_name,
+        "drug": alert.drug.name,
+        "drug_id": str(alert.drug_id),
+        "controlled_class": alert.drug.controlled_class,
+        "signal_kind": alert.signal_kind,
+        "signal_kind_display": alert.get_signal_kind_display(),
+        "severity": alert.severity,
+        "detail": alert.detail,
+        "status": alert.status,
+        "engine_version": alert.engine_version,
+        "acknowledged_by": str(alert.acknowledged_by_id) if alert.acknowledged_by_id else None,
+        "acknowledged_at": alert.acknowledged_at.isoformat() if alert.acknowledged_at else None,
+        "note": alert.note,
+        "created_at": alert.created_at.isoformat(),
+    }
+
+
+class ControlledAlertsView(APIView):
+    """GET /pharmacy/controlled/alerts/ — the controlled-diversion compliance surface.
+
+    Lists OPEN ``ControlledAlert`` rows (newest first, capped) for pharmacist /
+    compliance review — refill-too-soon, doctor-shopping, quantity-escalation.
+    Respects the ``controlled_safety`` flag: EMPTY when OFF (the monitor never
+    ran). Read-only; ADVISE only — nothing here blocked any dispensation.
+    Optional ``?signal_kind=`` filter.
+    """
+
+    def get_permissions(self):
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission("pharmacy.read")]
+
+    def get(self, request):
+        from apps.pharmacy.services.controlled_safety import ControlledSafetyService
+
+        if not ControlledSafetyService.is_enabled():
+            return Response({"alerts": [], "controlled_safety_enabled": False})
+
+        qs = (
+            ControlledAlert.objects.filter(status=ControlledAlert.Status.OPEN)
+            .select_related("patient", "drug", "dispensation")
+            .order_by("-created_at")
+        )
+        signal_kind = request.query_params.get("signal_kind")
+        if signal_kind in ControlledAlert.SignalKind.values:
+            qs = qs.filter(signal_kind=signal_kind)
+
+        total = qs.count()
+        alerts = [_serialize_controlled_alert(a) for a in qs[:_CONTROLLED_ALERT_LIST_LIMIT]]
+        return Response(
+            {
+                "alerts": alerts,
+                "controlled_safety_enabled": True,
+                "truncated": total > _CONTROLLED_ALERT_LIST_LIMIT,
+            }
+        )
+
+
+class AcknowledgeControlledAlertView(APIView):
+    """POST /pharmacy/controlled/alerts/<uuid:alert_id>/acknowledge/ — body {note?}.
+
+    Flips an OPEN alert to ``acknowledged`` (compliance reviewed it). Re-acking a
+    non-open alert → 409 (preserves the original ack). pharmacy.read floor (same
+    as the stock-risk ack).
+    """
+
+    def get_permissions(self):
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission("pharmacy.read")]
+
+    def post(self, request, alert_id):
+        note = (request.data.get("note") or "").strip()
+        try:
+            alert = ControlledAlert.objects.get(id=alert_id)
+        except ControlledAlert.DoesNotExist:
+            return Response({"detail": "Alerta não encontrado."}, status=status.HTTP_404_NOT_FOUND)
+
+        if alert.status != ControlledAlert.Status.OPEN:
+            return Response(
+                {"detail": "Alerta já reconhecido ou resolvido; nada a fazer."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        alert.acknowledge(request.user, note)
+        return Response(
+            {
+                "message": "Alerta reconhecido com sucesso.",
+                "alert_id": str(alert.id),
+                "acknowledged_at": alert.acknowledged_at.isoformat(),
+            },
             status=status.HTTP_200_OK,
         )
