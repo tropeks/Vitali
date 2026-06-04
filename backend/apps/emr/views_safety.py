@@ -205,6 +205,9 @@ class AcknowledgeSafetyAlertView(APIView):
 
 # ─── Clinical-deterioration wedge (PR D3): NEWS2 early-warning surface ─────────
 
+# Cap on the open-alert dashboard response (sickest-first; excess is truncated).
+_ALERT_LIST_LIMIT = 200
+
 
 def _serialize_deterioration_alert(alert) -> dict:
     """Plain dict for a DeteriorationAlert (mirrors the stockout surface helper)."""
@@ -267,8 +270,19 @@ class DeteriorationAlertsView(APIView):
         if encounter_id:
             qs = qs.filter(encounter_id=encounter_id)
 
-        alerts = [_serialize_deterioration_alert(a) for a in qs]
-        return Response({"alerts": alerts, "deterioration_safety_enabled": True})
+        # Hard cap the response: open alerts are de-duped one-per-encounter, but an
+        # unbounded list could still grow large on a busy ward (or if alerts go
+        # unacked). Sickest-first ordering means the cap drops only the lowest
+        # scores; `truncated` tells the client more exist.
+        total = qs.count()
+        alerts = [_serialize_deterioration_alert(a) for a in qs[:_ALERT_LIST_LIMIT]]
+        return Response(
+            {
+                "alerts": alerts,
+                "deterioration_safety_enabled": True,
+                "truncated": total > _ALERT_LIST_LIMIT,
+            }
+        )
 
 
 class AcknowledgeDeteriorationAlertView(APIView):

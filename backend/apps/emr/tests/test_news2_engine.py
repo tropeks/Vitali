@@ -224,6 +224,12 @@ class TestConsciousness:
     def test_non_alert_is_three(self, acvpu):
         assert _score(consciousness=acvpu).breakdown["consciousness"] == 3
 
+    @pytest.mark.parametrize("bad", ["", " ", "a", "X", "alert", "Z"])
+    def test_empty_or_invalid_consciousness_is_inert_not_phantom_three(self, bad):
+        # An empty string / invalid letter must be treated as MISSING (→ None),
+        # never scored as +3 — otherwise a fixture/import write would fabricate risk.
+        assert _score(consciousness=bad) is None
+
 
 class TestAggregateBands:
     def test_zero_is_low(self):
