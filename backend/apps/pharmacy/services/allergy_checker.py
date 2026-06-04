@@ -34,7 +34,8 @@ ENGINE_VERSION = "allergy-a1"
 
 # Verdicts.
 VERDICT_SAFE = "safe"
-VERDICT_ALLERGY_CONFLICT = "allergy_conflict"
+VERDICT_ALLERGY_CONFLICT = "allergy_conflict"  # direct match → BLOCK
+VERDICT_CROSS_REACTIVITY = "cross_reactivity"  # same curated class → ADVISE
 VERDICT_NOT_APPLICABLE = "not_applicable"
 
 # Tokens stripped from BOTH sides before matching: Portuguese connectors and
@@ -70,10 +71,24 @@ class AllergyInput:
 
 
 @dataclass(frozen=True)
+class CrossReactivityClass:
+    """A curated cross-reactivity class fed to the engine (wedge A2).
+
+    ``members`` are ingredient names (INN). The engine matches a member against an
+    allergen/drug by the same normalized token-subset rule as the direct match.
+    """
+
+    name: str
+    members: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class AllergyVerdict:
     verdict: str
     # The allergen substances that matched the drug (for the alert message).
     matched_substances: list[str] = field(default_factory=list)
+    # For a cross-reactivity verdict, the curated class that links them.
+    cross_reactivity_class: str = ""
     reason: str = ""
     engine_version: str = ENGINE_VERSION
 
@@ -91,6 +106,19 @@ def _drug_tokens(
     return frozenset(tokens)
 
 
+def _member_in(entity_tokens: frozenset[str], members: list[str]) -> bool:
+    """True if any curated member ingredient's tokens appear within the entity.
+
+    Same subset rule as the direct match: the member ingredient is "present" iff
+    its normalized tokens are a subset of the entity's (drug or allergen) tokens.
+    """
+    for member in members:
+        member_tokens = normalize_tokens(member)
+        if member_tokens and member_tokens.issubset(entity_tokens):
+            return True
+    return False
+
+
 class AllergyChecker:
     @staticmethod
     def check(
@@ -99,12 +127,17 @@ class AllergyChecker:
         drug_generic_name: str | None = None,
         drug_active_ingredients: list[str] | None = None,
         allergies: list[AllergyInput],
+        cross_reactivity_classes: list[CrossReactivityClass] | None = None,
     ) -> AllergyVerdict:
         """Decide whether the prescribed drug conflicts with an active allergy.
 
-        Returns NOT_APPLICABLE when the drug cannot be identified (no usable
-        tokens — we never block on an unidentifiable drug), SAFE when no allergy
-        token-set is a subset of the drug's, ALLERGY_CONFLICT otherwise.
+        Priority (highest first): a DIRECT match (allergen token-set ⊆ drug) →
+        ALLERGY_CONFLICT (block). Else, if a curated class links an allergen and
+        the drug → CROSS_REACTIVITY (advise). Else SAFE. NOT_APPLICABLE when the
+        drug cannot be identified (no usable tokens — we never block on that).
+
+        ``cross_reactivity_classes`` is empty by default → no cross-reactivity is
+        ever inferred (inert until the establishment curates the classes).
         """
         drug_tokens = _drug_tokens(drug_name, drug_generic_name, drug_active_ingredients)
         if not drug_tokens:
@@ -113,21 +146,41 @@ class AllergyChecker:
                 reason="Medicamento sem identificação suficiente para checagem de alergia.",
             )
 
+        # 1) Direct match (authoritative block).
         matched: list[str] = []
         for allergy in allergies:
             allergy_tokens = normalize_tokens(allergy.substance)
             if allergy_tokens and allergy_tokens.issubset(drug_tokens):
                 matched.append(allergy.substance)
 
-        if not matched:
-            return AllergyVerdict(verdict=VERDICT_SAFE)
+        if matched:
+            listed = ", ".join(matched)
+            return AllergyVerdict(
+                verdict=VERDICT_ALLERGY_CONFLICT,
+                matched_substances=matched,
+                reason=(
+                    f"Conflito de alergia: o paciente tem alergia ativa registrada a "
+                    f"{listed}, presente neste medicamento."
+                ),
+            )
 
-        listed = ", ".join(matched)
-        return AllergyVerdict(
-            verdict=VERDICT_ALLERGY_CONFLICT,
-            matched_substances=matched,
-            reason=(
-                f"Conflito de alergia: o paciente tem alergia ativa registrada a "
-                f"{listed}, presente neste medicamento."
-            ),
-        )
+        # 2) Cross-reactivity (advise) — only if a curated class links the drug to
+        # an allergen that is NOT already a direct match.
+        for cls in cross_reactivity_classes or []:
+            if not _member_in(drug_tokens, cls.members):
+                continue
+            for allergy in allergies:
+                allergy_tokens = normalize_tokens(allergy.substance)
+                if allergy_tokens and _member_in(allergy_tokens, cls.members):
+                    return AllergyVerdict(
+                        verdict=VERDICT_CROSS_REACTIVITY,
+                        matched_substances=[allergy.substance],
+                        cross_reactivity_class=cls.name,
+                        reason=(
+                            f"Possível reatividade cruzada: alergia a "
+                            f"{allergy.substance} e este medicamento pertencem à "
+                            f"classe {cls.name}."
+                        ),
+                    )
+
+        return AllergyVerdict(verdict=VERDICT_SAFE)
