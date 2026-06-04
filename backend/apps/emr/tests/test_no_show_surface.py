@@ -36,8 +36,12 @@ class _Base(TenantTestCase):
         self.reception = User.objects.create_user(
             email="ns_rec@t.com", password="pw", role=role_rec
         )
+        # Nurse: has schedule.read but NOT schedule.write (ack-negative case).
         role_nur = Role.objects.create(name="enf_ns", permissions=DEFAULT_ROLES["enfermeiro"])
         self.nurse = User.objects.create_user(email="ns_nur@t.com", password="pw", role=role_nur)
+        # Pharmacist: no schedule.* at all (list-negative case).
+        role_ph = Role.objects.create(name="farma_ns", permissions=DEFAULT_ROLES["farmaceutico"])
+        self.pharmacist = User.objects.create_user(email="ns_ph@t.com", password="pw", role=role_ph)
 
         self.prof = Professional.objects.create(
             user=self.doctor, council_type="CRM", council_number="3", council_state="SP"
@@ -112,8 +116,16 @@ class TestList(_Base):
         assert len(body["risks"]) == 1
         assert body["risks"][0]["id"] == str(high.id)
 
-    def test_list_requires_emr_read(self):
+    def test_reception_can_list(self):
+        # Reception is the intended audience — gated on schedule.read, which it has.
+        self._risk(score="0.6000", band="high")
         resp = self._client(self.reception).get(LIST_URL)
+        assert resp.status_code == 200
+        assert len(resp.json()["risks"]) == 1
+
+    def test_list_requires_schedule_read(self):
+        # Pharmacist has no schedule.read → forbidden.
+        resp = self._client(self.pharmacist).get(LIST_URL)
         assert resp.status_code == 403
 
 
@@ -140,7 +152,8 @@ class TestAck(_Base):
         )
         assert resp.status_code == 404
 
-    def test_ack_requires_emr_write(self):
+    def test_ack_requires_schedule_write(self):
+        # Nurse has schedule.read (can list) but NOT schedule.write → ack forbidden.
         risk = self._risk(score="0.6000", band="high")
         resp = self._client(self.nurse).post(_ack_url(risk.id), {}, format="json")
         assert resp.status_code == 403
