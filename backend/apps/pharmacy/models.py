@@ -39,6 +39,13 @@ class Drug(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=300, db_index=True)
     generic_name = models.CharField(max_length=300, blank=True, db_index=True)
+    # Structured active ingredients (INN names) for the allergy-safety wedge — a
+    # curated list (e.g. ["amoxicilina", "clavulanato"]) so the allergy engine can
+    # match a recorded allergen against the drug's true components instead of
+    # relying solely on the free-text name/generic_name. Empty list = uncurated →
+    # the engine falls back to token-matching name+generic_name. Never invented:
+    # populated by a human/import per establishment.
+    active_ingredients = models.JSONField(default=list, blank=True)
     anvisa_code = models.CharField(max_length=20, blank=True, db_index=True)
     barcode = models.CharField(max_length=50, blank=True, unique=True, null=True)
     dosage_form = models.CharField(max_length=100, blank=True)

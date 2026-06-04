@@ -474,11 +474,17 @@ class DispenseView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Gate 4: dose-safety soft-stop (wedge PR B). Re-evaluate at the pharmacy
-        # gate so a dose/weight edited AFTER signing is caught here too. No-op when
-        # the dose_safety feature flag is OFF for this tenant. A re-check inside
-        # the dispense transaction guards against a race with acknowledge.
+        # Gate 4: prescription-safety soft-stop (dose wedge PR B + allergy wedge
+        # PR A1). Re-evaluate at the pharmacy gate so a dose/weight/allergy changed
+        # AFTER signing is caught here too. No-op when both flags are OFF for this
+        # tenant. A re-check inside the dispense transaction guards against a race
+        # with acknowledge.
+        from apps.emr.services.allergy_safety import AllergySafetyService
         from apps.emr.services.dose_safety import DoseCheckService
+        from apps.emr.services.prescription_safety_gate import (
+            build_block_payload,
+            has_blocking_safety_alert,
+        )
 
         with transaction.atomic():
             locked_rx = (
@@ -486,11 +492,15 @@ class DispenseView(APIView):
                 .filter(pk=prescription.pk)
                 .first()
             )
-            dose_service = DoseCheckService(requesting_user=request.user)
-            dose_service.evaluate_prescription(locked_rx, gate="dispense")
-            if DoseCheckService.has_blocking_dose_alert(locked_rx):
+            DoseCheckService(requesting_user=request.user).evaluate_prescription(
+                locked_rx, gate="dispense"
+            )
+            AllergySafetyService(requesting_user=request.user).evaluate_prescription(
+                locked_rx, gate="dispense"
+            )
+            if has_blocking_safety_alert(locked_rx):
                 return Response(
-                    self._dose_block_payload(locked_rx),
+                    build_block_payload(locked_rx),
                     status=status.HTTP_409_CONFLICT,
                 )
 
@@ -516,33 +526,6 @@ class DispenseView(APIView):
             },
         )
         return Response(DispensationSerializer(dispensation).data, status=status.HTTP_201_CREATED)
-
-    @staticmethod
-    def _dose_block_payload(prescription):
-        """Build the 409 body listing outstanding blocking dose alerts."""
-        from apps.emr.services.dose_safety import DoseCheckService
-
-        alerts = [
-            {
-                "id": str(a.id),
-                "prescription_item": str(a.prescription_item_id),
-                "alert_type": a.alert_type,
-                "severity": a.severity,
-                "status": a.status,
-                "message": a.message,
-                "recommendation": a.recommendation,
-                "blocking_kind": DoseCheckService.classify_blocking_kind(a),
-            }
-            for a in DoseCheckService.blocking_dose_alerts(prescription)
-        ]
-        return {
-            "detail": (
-                "Dose fora do intervalo seguro. Reconheça os alertas com justificativa "
-                "antes de dispensar."
-            ),
-            "code": "dose_safety_block",
-            "alerts": alerts,
-        }
 
     @transaction.atomic
     def _dispense_fefo(self, request, prescription, rx_item, drug, requested_qty, notes, today):
