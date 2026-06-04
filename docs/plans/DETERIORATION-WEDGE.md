@@ -94,6 +94,30 @@ autoritativo; LLM só explica/prioriza.
 - Trigger: signal no save de VitalSigns vs serviço explícito (evitar trabalho no signal; on_commit como dose).
 - Inércia: faltando params essenciais (ex. sem FR/consciência) → não escorar (não inventar "normal").
 
+## ✅ SHIPPED (todos merged em master, flag `deterioration_safety` OFF)
+- **D1 #87** — motor puro `apps/emr/services/news2.py` (tabela RCP exata, 7 params,
+  Escalas SpO2 1&2, estrito→None se incompleto; 97 testes de fronteira) + schema
+  `VitalSigns` OneToOne→FK (série temporal) + `respiratory_rate`/`on_supplemental_oxygen`/
+  `consciousness` + `Patient.use_spo2_scale_2`. Bônus: corrigido bug latente na migração
+  0016 (SELECT * no modelo real do Patient quebrava provisionamento de novo tenant).
+- **D2 #88** — `DeteriorationAlert` + `DeteriorationService` (flag OFF, inerte se
+  incompleto/banda baixa; de-dup: atualiza alerta aberto só se escore subiu, novo só
+  após ack; severidade high→escalation; AuditLog flywheel) + signal post_save→on_commit
+  (nunca bloqueia/reverte o registro). Threshold inclui `low_medium` (red score RCP).
+- **D3a #89** — superfície backend: `GET /deterioration-alerts/` (mais grave primeiro,
+  filtro ?encounter_id, vazio se flag OFF, emr.read) + ack endpoint (emr.write,
+  guard 409 se não-aberto).
+- **D3b #90** — board frontend `/deterioracao` (badges de banda, chips por parâmetro,
+  resposta clínica RCP) + `lib/deterioration.ts` + item de nav "Deterioração".
+
+## ⏸️ D4 — flywheel de desfecho (ADIADO, bloqueado por dado ausente)
+Gradar a predição NEWS2 contra o **desfecho clínico real** (transferência p/ UTI,
+chamada de time de resposta rápida, internação) exige um sinal de desfecho que o
+Vitali **não modela** hoje (`Encounter.status` = só open/signed/cancelled). O
+`DeteriorationAlert` + `AuditLog` já guardam cada alerta como exemplo rotulado; a
+gradação espera essa fonte de desfecho — **não inventada** (análogo a dose D-T1 /
+dados de contrato da glosa).
+
 ## Fora de escopo (v1)
 ML/predição de série temporal, qSOFA/SIRS além do NEWS2, telemetria contínua de
 monitor, integração com device. Só NEWS2 determinístico pontual + escalonamento advise.

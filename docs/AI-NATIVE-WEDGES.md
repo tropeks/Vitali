@@ -4,8 +4,8 @@
 > **Thesis:** [`VISION-AI-NATIVE.md`](./VISION-AI-NATIVE.md) ·
 > **Roadmap context:** [`EPICS_AND_ROADMAP.md`](./EPICS_AND_ROADMAP.md) → "AI-Native Reframe"
 
-This page is the single source of truth for the **three AI-native interception
-wedges** shipped this cycle. All three are merged to master and **OFF by default**:
+This page is the single source of truth for the **four AI-native interception
+wedges** shipped this cycle. All four are merged to master and **OFF by default**:
 each is gated by a per-tenant `FeatureFlag` (default OFF) and, where it depends on
 clinical / contractual / ANS reference data, that data is **human-supplied external
 truth** — **none of it is invented in code.** Built ≠ live.
@@ -31,7 +31,8 @@ on the spine of a real workflow, not a bolt-on report:
 - **Advise-vs-block posture** — clinical/operational safety decides who can be
   hard-stopped. Dose blocks (soft-stop, override-with-reason); glosa blocks only
   the highest-confidence checks; stockout never blocks (advise only — never gate a
-  clinical dispense on a supply prediction).
+  clinical dispense on a supply prediction); deterioration never blocks (advise /
+  escalation only — never gate the recording of a vital sign).
 
 > **Nothing invented; human-validated truth.** No pharmacist-validated formulary
 > numbers, no ANS/contract reference values, and no establishment supply policy
@@ -40,7 +41,7 @@ on the spine of a real workflow, not a bolt-on report:
 
 ---
 
-## The three wedges
+## The four wedges
 
 ### 1. Dose-safety — `dose_safety` (OFF)
 
@@ -117,11 +118,52 @@ Predicts the day a drug/material runs out (and lots that will expire unused)
     per-establishment config — nullable and **inert** until filled. The wedge
     surfaces nothing actionable until both the flag is on and history accrues.
 
+### 4. Clinical-deterioration — `deterioration_safety` (OFF)
+
+Early-warning interception of clinical deterioration (sepsis / shock / respiratory
+failure) via the **NEWS2** score — raises an alert when a patient's vital signs
+cross the risk band, **before** the code blue. Surfaced on a clinical dashboard;
+**never blocks the recording of a vital sign.**
+
+- **Engine:** `apps/emr/services/news2.py` (`compute_news2`) — the **public,
+  validated** Royal College of Physicians NEWS2 (2017) table over all 7 parameters
+  (respiratory rate, SpO2 scales 1 & 2, supplemental O2, systolic BP, heart rate,
+  temperature, ACVPU). **Strict:** any of the 7 missing → inert (`None`); no
+  imputation. *NEWS2 is a published standard, not invented truth — unlike the dose
+  numbers it ships as code citing the source.*
+- **Schema:** `VitalSigns` became a time-series (`OneToOne → ForeignKey`) + the 3
+  missing NEWS2 params (`respiratory_rate`, `on_supplemental_oxygen`,
+  `consciousness`); `Patient.use_spo2_scale_2` (Scale 2 for target-88–92% patients,
+  safe-by-default OFF).
+- **Orchestrator:** `apps/emr/services/deterioration.py` (`DeteriorationService`),
+  triggered by a `VitalSigns` `post_save` → `transaction.on_commit` so it can never
+  block/roll back recording. De-dup: one OPEN alert per encounter, escalated only
+  when the score rises; a new alert after the previous is acknowledged.
+- **Alert:** persistent `DeteriorationAlert` (severity **advise** | **escalation**;
+  `high` band → escalation). Partial unique index enforces one open alert/encounter.
+- **Surface:** `GET /deterioration-alerts/` (sickest first) + ack endpoint;
+  frontend board at `/deterioracao`. **No gate anywhere** on vitals recording.
+- **Plan:** [`plans/DETERIORATION-WEDGE.md`](./plans/DETERIORATION-WEDGE.md).
+- **PRs:** #87 (engine + schema) · #88 (alert + orchestrator + flag) · #89 (backend
+  surface) · #90 (frontend board).
+- **To go live:**
+  - [ ] **Flag** `deterioration_safety` enabled for the tenant.
+  - [ ] **Governance:** the NEWS2 algorithm is public/validated and ships as code;
+    enabling it is a **clinical-governance** decision + an **escalation protocol**
+    (who is paged at which band) — establishment config, the *routing*, not the
+    math. Per-patient SpO2 Scale 2 is an explicit clinical toggle.
+  - [ ] *(deferred)* **D4 outcome flywheel** — grading NEWS2 predictions against a
+    real clinical outcome (ICU transfer / rapid-response call / admission) needs an
+    outcome signal Vitali does **not** model yet (`Encounter.status` is only
+    open/signed/cancelled). The `DeteriorationAlert` + `AuditLog` already bank every
+    alert as a labelled example; grading waits on that outcome source — **not
+    fabricated.**
+
 ---
 
 ## Honesty contract
 
-- All three flags ship **OFF**. No wedge is live or enabled by default.
+- All four flags ship **OFF**. No wedge is live or enabled by default.
 - No pharmacist / ANS / contract numbers exist yet in production — they are
   **pending and human-gated** (dose D-T1 explicitly blocks dose go-live).
 - The deterministic engine is authoritative; the LLM only explains.
