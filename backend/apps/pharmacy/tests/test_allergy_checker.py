@@ -173,3 +173,56 @@ class TestCrossReactivity:
             classes=[_BETA_LACTAMS],
         )
         assert v.verdict == VERDICT_SAFE
+
+
+from apps.pharmacy.services.allergy_checker import (  # noqa: E402
+    INTERACTION_ADVISE,
+    INTERACTION_CONTRAINDICATED,
+    DrugInPrescription,
+    DrugInteractionRule,
+    build_drug_tokens,
+    find_interactions,
+)
+
+
+def _line(key, name, ingredients=None):
+    return DrugInPrescription(
+        key=key, label=name, tokens=build_drug_tokens(name, None, ingredients)
+    )
+
+
+_WARF_AAS = DrugInteractionRule(
+    ingredient_a="varfarina", ingredient_b="aas", severity=INTERACTION_ADVISE
+)
+
+
+class TestFindInteractions:
+    def test_both_present_flags_both_lines(self):
+        drugs = [
+            _line("1", "Varfarina 5mg", ["Varfarina"]),
+            _line("2", "AAS 100mg", ["AAS"]),
+        ]
+        findings = find_interactions(drugs, [_WARF_AAS])
+        assert set(findings.keys()) == {"1", "2"}
+        assert findings["1"][0].partner_label == "AAS 100mg"
+        assert findings["2"][0].partner_label == "Varfarina 5mg"
+        assert findings["1"][0].severity == INTERACTION_ADVISE
+
+    def test_only_one_present_no_finding(self):
+        drugs = [_line("1", "Varfarina 5mg", ["Varfarina"]), _line("2", "Paracetamol")]
+        assert find_interactions(drugs, [_WARF_AAS]) == {}
+
+    def test_no_rules_no_finding(self):
+        drugs = [_line("1", "Varfarina", ["Varfarina"]), _line("2", "AAS", ["AAS"])]
+        assert find_interactions(drugs, []) == {}
+
+    def test_contraindicated_severity_propagates(self):
+        rule = DrugInteractionRule("varfarina", "aas", severity=INTERACTION_CONTRAINDICATED)
+        drugs = [_line("1", "Varfarina", ["Varfarina"]), _line("2", "AAS", ["AAS"])]
+        findings = find_interactions(drugs, [rule])
+        assert findings["1"][0].severity == INTERACTION_CONTRAINDICATED
+
+    def test_combo_drug_does_not_interact_with_itself(self):
+        # A single line containing BOTH ingredients is not a finding.
+        drugs = [_line("1", "Varfarina + AAS combo", ["Varfarina", "AAS"])]
+        assert find_interactions(drugs, [_WARF_AAS]) == {}

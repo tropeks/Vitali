@@ -176,6 +176,46 @@ class AllergenClass(models.Model):
         return f"{self.name} ({len(self.members or [])} membros)"
 
 
+class DrugInteraction(models.Model):
+    """Curated drug-drug interaction pair (allergy wedge A3).
+
+    A directional-agnostic pair of ingredients that interact — e.g.
+    ("varfarina", "aas"). The allergy engine flags a prescription that contains
+    BOTH ingredients (matched by normalized token-subset). ``severity`` decides
+    the posture: ``advise`` (caution, surfaces only) or ``contraindicated``
+    (blocks the soft-stop, override-with-reason).
+
+    Human-curated — **inert until populated** (no rows → no interaction checks),
+    like the dose formulary / cross-reactivity classes. Never invented in code.
+    """
+
+    class Severity(models.TextChoices):
+        ADVISE = "advise", "Avisa"
+        CONTRAINDICATED = "contraindicated", "Contraindicada (bloqueia)"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    ingredient_a = models.CharField(max_length=200)
+    ingredient_b = models.CharField(max_length=200)
+    severity = models.CharField(max_length=20, choices=Severity.choices, default=Severity.ADVISE)
+    description = models.TextField(blank=True)
+    active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Interação medicamentosa"
+        verbose_name_plural = "Interações medicamentosas"
+        ordering = ["ingredient_a", "ingredient_b"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["ingredient_a", "ingredient_b"], name="uniq_drug_interaction_pair"
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.ingredient_a} × {self.ingredient_b} ({self.get_severity_display()})"
+
+
 # ─── S-027: Stock ─────────────────────────────────────────────────────────────
 
 
