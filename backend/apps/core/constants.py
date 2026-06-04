@@ -72,5 +72,11 @@ ALLOWED_MODULE_KEYS: frozenset = frozenset(
         # them. Direct allergy match runs on existing data; cross-reactivity /
         # interaction tables (A2/A3) are human-curated, inert until populated.
         "allergy_safety",
+        # No-show prediction wedge (PR N1): per-tenant toggle for the deterministic
+        # no-show risk scorer (advise/operational — NEVER blocks booking or
+        # check-in). Default OFF. The risk is DERIVED from each patient's own
+        # appointment history (no curated data); a patient with < 5 terminal
+        # appointments stays inert. v1 only surfaces a suggested action.
+        "no_show_prediction",
     }
 )
