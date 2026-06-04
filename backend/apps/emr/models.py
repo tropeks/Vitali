@@ -82,6 +82,10 @@ class Patient(models.Model):
     emergency_contact = models.JSONField(default=dict, blank=True)
     photo_url = models.URLField(blank=True)
     notes = EncryptedTextField(blank=True)
+    # NEWS2 SpO2 Scale 2 (alvo 88–92%, ex. DPOC/insuf. respiratória hipercápnica
+    # crônica). Safe-by-default OFF → todos usam a Escala 1; só uma decisão clínica
+    # explícita habilita a Escala 2, pois aplicá-la por engano mascara hipóxia.
+    use_spo2_scale_2 = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -385,11 +389,25 @@ class SOAPNote(models.Model):
 
 
 class VitalSigns(models.Model):
-    """Sinais vitais do encontro"""
+    """Sinais vitais do encontro.
 
-    encounter = models.OneToOneField(
-        Encounter, on_delete=models.CASCADE, related_name="vital_signs"
-    )
+    Série temporal: um Encounter pode ter múltiplas leituras (FK, não OneToOne).
+    A enfermaria mede vitais a cada 4–8h; cada leitura é uma linha imutável
+    (``recorded_at`` auto). Os 3 últimos campos completam os 7 parâmetros do
+    NEWS2 (deterioration wedge) — todos nullable, registrados pela enfermagem.
+    """
+
+    # ACVPU — nível de consciência do NEWS2 (Alert / Confusion / Voice / Pain /
+    # Unresponsive). "C" (nova confusão) e abaixo pontuam 3 no escore.
+    CONSCIOUSNESS_CHOICES = [
+        ("A", "Alerta"),
+        ("C", "Confusão (nova)"),
+        ("V", "Resposta à voz"),
+        ("P", "Resposta à dor"),
+        ("U", "Não responsivo"),
+    ]
+
+    encounter = models.ForeignKey(Encounter, on_delete=models.CASCADE, related_name="vital_signs")
     weight_kg = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     height_cm = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     blood_pressure_systolic = models.PositiveSmallIntegerField(null=True, blank=True)
@@ -397,7 +415,20 @@ class VitalSigns(models.Model):
     heart_rate = models.PositiveSmallIntegerField(null=True, blank=True)
     temperature_celsius = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
     oxygen_saturation = models.PositiveSmallIntegerField(null=True, blank=True)
+    # NEWS2 parameters (deterioration wedge) — nullable; o motor é inerte se faltar algum.
+    respiratory_rate = models.PositiveSmallIntegerField(null=True, blank=True)
+    on_supplemental_oxygen = models.BooleanField(null=True, blank=True)
+    # null=True is deliberate: NULL = "não avaliado" (param ausente → NEWS2 inerte),
+    # semanticamente distinto de "" — por isso suprimimos DJ001 aqui.
+    consciousness = models.CharField(  # noqa: DJ001
+        max_length=1, choices=CONSCIOUSNESS_CHOICES, null=True, blank=True
+    )
     recorded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        # Leitura mais recente primeiro — o último snapshot dirige a tela de
+        # detalhe do encontro e o escore NEWS2.
+        ordering = ["-recorded_at"]
 
     @property
     def bmi(self):

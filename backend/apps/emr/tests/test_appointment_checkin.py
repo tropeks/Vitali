@@ -124,7 +124,9 @@ class TestCheckInAction(TenantTestCase):
         self.assertEqual(self.appt.encounter.patient_id, self.patient.id)
         self.assertEqual(self.appt.encounter.professional_id, self.professional.id)
         self.assertTrue(hasattr(self.appt.encounter, "soap_note"))
-        self.assertTrue(hasattr(self.appt.encounter, "vital_signs"))
+        # VitalSigns is now a FK time-series; the reverse manager always exists,
+        # so assert exactly one blank reading was actually created at check-in.
+        self.assertEqual(self.appt.encounter.vital_signs.count(), 1)
 
     def test_start_is_idempotent_and_reuses_existing_encounter(self):
         c = self._client(self.user)

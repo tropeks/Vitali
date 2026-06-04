@@ -370,7 +370,11 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             },
         )
         SOAPNote.objects.get_or_create(encounter=encounter)
-        VitalSigns.objects.get_or_create(encounter=encounter)
+        # VitalSigns is a time-series (FK): ensure one editable row exists at
+        # check-in without get_or_create, which would raise once a second
+        # reading is added for the encounter.
+        if not VitalSigns.objects.filter(encounter=encounter).exists():
+            VitalSigns.objects.create(encounter=encounter)
 
         log_audit(
             request,
@@ -539,7 +543,11 @@ class EncounterViewSet(AuditReadMixin, viewsets.ModelViewSet):
         encounter = serializer.save()
         # Auto-create empty SOAP note and vital signs
         SOAPNote.objects.get_or_create(encounter=encounter)
-        VitalSigns.objects.get_or_create(encounter=encounter)
+        # VitalSigns is a time-series (FK): ensure one editable row exists at
+        # check-in without get_or_create, which would raise once a second
+        # reading is added for the encounter.
+        if not VitalSigns.objects.filter(encounter=encounter).exists():
+            VitalSigns.objects.create(encounter=encounter)
         log_audit(
             self.request,
             "encounter_create",

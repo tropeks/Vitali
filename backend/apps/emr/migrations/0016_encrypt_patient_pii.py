@@ -46,7 +46,11 @@ def encrypt_existing_pii(apps, schema_editor):
 
     for model_name, fields in _REENCRYPT:
         model = getattr(emr_models, model_name)
-        for obj in model.objects.all():
+        # Select only pk + the columns we re-encrypt. The real (current) model may
+        # carry columns added by LATER migrations (e.g. Patient.use_spo2_scale_2 in
+        # 0020); a bare SELECT * would reference them here — before they exist — and
+        # break a fresh migration build (test DB / new-tenant provisioning).
+        for obj in model.objects.only("pk", *fields):
             obj.save(update_fields=fields)
 
 

@@ -243,6 +243,9 @@ class AppointmentSerializer(serializers.ModelSerializer):
 
 class VitalSignsSerializer(serializers.ModelSerializer):
     bmi = serializers.FloatField(read_only=True)
+    consciousness_display = serializers.CharField(
+        source="get_consciousness_display", read_only=True, default=None
+    )
 
     class Meta:
         model = VitalSigns
@@ -256,6 +259,11 @@ class VitalSignsSerializer(serializers.ModelSerializer):
             "heart_rate",
             "temperature_celsius",
             "oxygen_saturation",
+            # NEWS2 parameters (deterioration wedge).
+            "respiratory_rate",
+            "on_supplemental_oxygen",
+            "consciousness",
+            "consciousness_display",
             "bmi",
             "recorded_at",
         ]
@@ -333,8 +341,16 @@ class EncounterSerializer(serializers.ModelSerializer):
     professional_specialty = serializers.CharField(source="professional.specialty", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     soap_note = SOAPNoteSerializer(read_only=True)
-    vital_signs = VitalSignsSerializer(read_only=True)
+    # VitalSigns is now a time-series (FK, many rows per encounter). The detail
+    # view keeps its single-object contract by surfacing the latest reading.
+    vital_signs = serializers.SerializerMethodField()
     documents = ClinicalDocumentSerializer(many=True, read_only=True)
+
+    def get_vital_signs(self, obj):
+        latest = obj.vital_signs.first()  # Meta.ordering = -recorded_at
+        if latest is None:
+            return None
+        return VitalSignsSerializer(latest, context=self.context).data
 
     class Meta:
         model = Encounter
