@@ -111,6 +111,8 @@ class TestList(_Base):
         assert [a["score"] for a in body["alerts"]] == [9, 5]
         assert body["alerts"][0]["band_display"]
         assert body["alerts"][0]["patient_name"] == "Paciente D3"
+        # Capped response carries a truncation flag (False when under the cap).
+        assert body["truncated"] is False
 
     def test_excludes_acknowledged(self):
         self._alert(status="acknowledged")

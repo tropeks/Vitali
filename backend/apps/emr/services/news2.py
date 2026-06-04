@@ -58,8 +58,11 @@ PARAM_TEMPERATURE = "temperature"
 PARAM_CONSCIOUSNESS = "consciousness"
 
 # ACVPU: only "A" (Alert) scores 0; new Confusion / Voice / Pain / Unresponsive
-# all score 3.
+# all score 3. _VALID_ACVPU is the closed set the engine accepts — anything else
+# (None, "", a stray letter from a fixture/import/admin write) is treated as a
+# MISSING parameter → inert, never a phantom score.
 _ALERT = "A"
+_VALID_ACVPU = frozenset({"A", "C", "V", "P", "U"})
 
 
 @dataclass(frozen=True)
@@ -213,6 +216,11 @@ def compute_news2(
         or temperature is None
         or consciousness is None
     ):
+        return None
+    # consciousness completeness is stricter than "not None": an empty string or
+    # an invalid letter (e.g. from a fixture/import/admin write that bypasses the
+    # serializer's ChoiceField) is ALSO treated as missing — never scored as +3.
+    if consciousness not in _VALID_ACVPU:
         return None
 
     on_oxygen = bool(on_supplemental_oxygen)
