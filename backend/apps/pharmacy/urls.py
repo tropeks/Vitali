@@ -2,7 +2,9 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    AcknowledgeControlledAlertView,
     AcknowledgeStockAlertView,
+    ControlledAlertsView,
     DispensationViewSet,
     DispenseView,
     DrugViewSet,
@@ -38,5 +40,12 @@ urlpatterns = [
         "pharmacy/stock-alerts/<uuid:alert_id>/acknowledge/",
         AcknowledgeStockAlertView.as_view(),
         name="stock-alert-acknowledge",
+    ),
+    # Controlled-diversion wedge C3: compliance surface + ack.
+    path("pharmacy/controlled/alerts/", ControlledAlertsView.as_view(), name="controlled-alerts"),
+    path(
+        "pharmacy/controlled/alerts/<uuid:alert_id>/acknowledge/",
+        AcknowledgeControlledAlertView.as_view(),
+        name="controlled-alert-acknowledge",
     ),
 ]

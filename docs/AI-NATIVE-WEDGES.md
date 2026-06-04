@@ -4,8 +4,8 @@
 > **Thesis:** [`VISION-AI-NATIVE.md`](./VISION-AI-NATIVE.md) ·
 > **Roadmap context:** [`EPICS_AND_ROADMAP.md`](./EPICS_AND_ROADMAP.md) → "AI-Native Reframe"
 
-This page is the single source of truth for the **six AI-native interception
-wedges** shipped this cycle. All six are merged to master and **OFF by default**:
+This page is the single source of truth for the **seven AI-native interception
+wedges** shipped this cycle. All seven are merged to master and **OFF by default**:
 each is gated by a per-tenant `FeatureFlag` (default OFF) and, where it depends on
 clinical / contractual / ANS reference data, that data is **human-supplied external
 truth** — **none of it is invented in code.** Built ≠ live.
@@ -43,7 +43,7 @@ on the spine of a real workflow, not a bolt-on report:
 
 ---
 
-## The six wedges
+## The seven wedges
 
 ### 1. Dose-safety — `dose_safety` (OFF)
 
@@ -231,11 +231,43 @@ movements. Advise/operational — never blocks booking or check-in.
     history; band cutoffs are establishment-tunable config (sensible defaults).
     The wedge is simply inert per-patient until ≥5 terminal appointments accrue.
 
+### 7. Controlled-substance diversion — `controlled_safety` (OFF)
+
+Detects anomalous controlled-substance dispensing patterns (Portaria 344/SNGPC
+context) — early refills, doctor-shopping, quantity escalation — and raises a
+compliance alert. **ADVISE/compliance only — never blocks a controlled
+dispensation** (the existing `dispense_controlled` perm + mandatory-notes gate
+governs the act; a false-positive block would deny a patient a legitimate
+controlled med). Risk derived from dispensation history; no invented data.
+
+- **Engine:** `apps/pharmacy/services/controlled_checker.py` — three deterministic,
+  prior-only, per-class/per-drug signals: **refill_too_soon** (same drug, a
+  *different* prescription within the drug's `min_refill_interval_days`; the
+  fragile `qty/(freq×dose)` days-supply formula is deliberately avoided — dose_unit
+  is mass-only while dispense quantity is countable), **multiple_prescribers** (≥3
+  distinct prescribers, same controlled class, 90d), **quantity_escalation** (last
+  3 same-drug fills strictly increasing). Inert when data absent.
+- **Orchestrator:** `apps/pharmacy/services/controlled_safety.py` — `Dispensation`
+  post_save → `on_commit` (after the 201, never blocks); resolves prior history in
+  2 bounded queries; persists a `ControlledAlert` per signal; AuditLog flywheel.
+- **Schema:** `Drug.min_refill_interval_days` (null → refill inert; no honest
+  public default). `ControlledAlert` (unique `(dispensation, signal_kind)`).
+- **Surface:** `GET /pharmacy/controlled/alerts/` + ack; compliance panel at
+  `/farmacia/controlados`. `pharmacy.read`.
+- **Plan:** [`plans/CONTROLLED-DIVERSION-WEDGE.md`](./plans/CONTROLLED-DIVERSION-WEDGE.md).
+- **PRs:** #102 (engine + model) · #103 (orchestrator + hook + flywheel) · C3 (surface).
+- **To go live:**
+  - [ ] **Flag** `controlled_safety` enabled.
+  - [ ] **Mostly no curated data** — signals derive from dispensation history. Only
+    the refill signal needs a per-drug `min_refill_interval_days` (inert until set,
+    no invented default). The K=3 / 90d doctor-shopping thresholds are operational
+    defaults, **not** ANVISA/Portaria-344 rules.
+
 ---
 
 ## Honesty contract
 
-- All six flags ship **OFF**. No wedge is live or enabled by default.
+- All seven flags ship **OFF**. No wedge is live or enabled by default.
 - No pharmacist / ANS / contract numbers exist yet in production — they are
   **pending and human-gated** (dose D-T1 explicitly blocks dose go-live).
 - The deterministic engine is authoritative; the LLM only explains.
