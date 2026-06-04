@@ -4,8 +4,8 @@
 > **Thesis:** [`VISION-AI-NATIVE.md`](./VISION-AI-NATIVE.md) ·
 > **Roadmap context:** [`EPICS_AND_ROADMAP.md`](./EPICS_AND_ROADMAP.md) → "AI-Native Reframe"
 
-This page is the single source of truth for the **five AI-native interception
-wedges** shipped this cycle. All five are merged to master and **OFF by default**:
+This page is the single source of truth for the **six AI-native interception
+wedges** shipped this cycle. All six are merged to master and **OFF by default**:
 each is gated by a per-tenant `FeatureFlag` (default OFF) and, where it depends on
 clinical / contractual / ANS reference data, that data is **human-supplied external
 truth** — **none of it is invented in code.** Built ≠ live.
@@ -43,7 +43,7 @@ on the spine of a real workflow, not a bolt-on report:
 
 ---
 
-## The five wedges
+## The six wedges
 
 ### 1. Dose-safety — `dose_safety` (OFF)
 
@@ -201,11 +201,41 @@ LLM-only) and a soft-stop at prescription **sign** / **dispense**.
     under-blocks) but causes avoidable alert fatigue — populate `active_ingredients`
     and use specific allergen names to keep blocks precise.
 
+### 6. No-show prediction — `no_show_prediction` (OFF)
+
+Predicts which upcoming appointments will no-show so reception can intercept
+*before* the empty slot (confirm actively / overbook / offer the waitlist).
+**The only wedge that goes live with NO curated data** — the risk is DERIVED from
+each patient's own appointment history, like stockout derives velocity from
+movements. Advise/operational — never blocks booking or check-in.
+
+- **Engine:** `apps/emr/services/no_show_checker.py` (`score_no_show`) — transparent
+  **multiplicative-odds** model (not ML): `base = (no_shows+2)/(terminal+10)`
+  [Beta(2,8) prior → 20% baseline]; `score = odds/(1+odds)` with explainable odds
+  modifiers (no-confirm-after-reminder ×1.6, lead ≥30d ×1.4, ≥2 consecutive prior
+  no-shows ×2.0, self-serve channel ×1.2, return ×1.15). Bands low/medium/high.
+  **INERT** (no row) below 5 terminal appointments — never brand a low-history
+  patient on the prior alone.
+- **Orchestrator:** `apps/emr/services/no_show.py` (`NoShowService`) — nightly
+  `evaluate_window` over the upcoming window in **2 bounded queries** (no N+1);
+  leakage guards (history strictly prior; `cancelled` excluded from numerator AND
+  denominator). `grade_predictions` is the 4-way flywheel (cancelled excluded).
+- **Persistence/surface:** `NoShowRisk` (per-appointment, Decimal score, band,
+  breakdown, `suggested_action`); `GET /no-show-risk/` + ack endpoint; front-desk
+  panel at `/faltas`. Two nightly celery tasks (evaluate 02:00, grade 03:30).
+- **Plan:** [`plans/NOSHOW-WEDGE.md`](./plans/NOSHOW-WEDGE.md).
+- **PRs:** #98 (engine + model) · #99 (orchestrator + job + flywheel) · N3 (surface).
+- **To go live:**
+  - [ ] **Flag** `no_show_prediction` enabled + the nightly beat tasks running.
+  - [ ] **No curated data needed** — the risk is derived from existing appointment
+    history; band cutoffs are establishment-tunable config (sensible defaults).
+    The wedge is simply inert per-patient until ≥5 terminal appointments accrue.
+
 ---
 
 ## Honesty contract
 
-- All five flags ship **OFF**. No wedge is live or enabled by default.
+- All six flags ship **OFF**. No wedge is live or enabled by default.
 - No pharmacist / ANS / contract numbers exist yet in production — they are
   **pending and human-gated** (dose D-T1 explicitly blocks dose go-live).
 - The deterministic engine is authoritative; the LLM only explains.

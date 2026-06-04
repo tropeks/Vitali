@@ -10,6 +10,7 @@ import {
   ClipboardList,
   Stethoscope,
   Activity,
+  CalendarX,
   Pill,
   Receipt,
   BarChart2,
@@ -45,6 +46,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Sala de Espera", href: "/waiting-room", icon: ClipboardList, module: "emr" },
   { label: "Consultas", href: "/encounters", icon: Stethoscope, module: "emr" },
   { label: "Deterioração", href: "/deterioracao", icon: Activity, module: "emr" },
+  { label: "Faltas", href: "/faltas", icon: CalendarX, module: "emr" },
   {
     label: "Farmácia",
     href: "/farmacia",

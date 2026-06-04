@@ -338,3 +338,115 @@ class AcknowledgeDeteriorationAlertView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+# ─── No-show prediction wedge (PR N3): front-desk risk surface ────────────────
+
+_NO_SHOW_LIST_LIMIT = 200
+
+
+def _serialize_no_show_risk(risk) -> dict:
+    """Plain dict for a NoShowRisk + its appointment context (for the front desk)."""
+    appt = risk.appointment
+    patient = appt.patient
+    return {
+        "id": str(risk.id),
+        "appointment_id": str(appt.id),
+        "patient_id": str(patient.id),
+        "patient_name": patient.full_name,
+        "appointment_start": appt.start_time.isoformat(),
+        "appointment_type": appt.type,
+        "appointment_type_display": appt.get_type_display(),
+        "professional_name": appt.professional.user.full_name,
+        "score": str(risk.score),
+        "band": risk.band,
+        "band_display": risk.get_band_display(),
+        "breakdown": risk.breakdown,
+        "suggested_action": risk.suggested_action,
+        "suggested_action_display": risk.get_suggested_action_display(),
+        "status": risk.status,
+        "engine_version": risk.engine_version,
+        "acknowledged_by": str(risk.acknowledged_by_id) if risk.acknowledged_by_id else None,
+        "acknowledged_at": risk.acknowledged_at.isoformat() if risk.acknowledged_at else None,
+        "note": risk.note,
+        "computed_at": risk.computed_at.isoformat(),
+    }
+
+
+class NoShowRiskView(APIView):
+    """GET /no-show-risk/ — the front-desk no-show risk surface.
+
+    Lists OPEN ``NoShowRisk`` rows (highest score first, capped) so the reception
+    can act before the empty slot — confirm actively / overbook / offer the
+    waitlist. Respects the ``no_show_prediction`` flag: EMPTY when OFF (the job
+    never ran). Read-only; advise/operational — nothing here blocks anything.
+    """
+
+    def get_permissions(self):
+        return [IsAuthenticated(), HasPermission("emr.read")]
+
+    def get(self, request):
+        from apps.emr.models import NoShowRisk
+        from apps.emr.services.no_show import NoShowService
+
+        if not NoShowService.is_enabled():
+            return Response({"risks": [], "no_show_prediction_enabled": False})
+
+        qs = (
+            NoShowRisk.objects.filter(status=NoShowRisk.Status.OPEN)
+            .select_related("appointment__patient", "appointment__professional__user")
+            .order_by("-score", "appointment__start_time")
+        )
+        band = request.query_params.get("band")
+        if band in (NoShowRisk.Band.LOW, NoShowRisk.Band.MEDIUM, NoShowRisk.Band.HIGH):
+            qs = qs.filter(band=band)
+
+        total = qs.count()
+        risks = [_serialize_no_show_risk(r) for r in qs[:_NO_SHOW_LIST_LIMIT]]
+        return Response(
+            {
+                "risks": risks,
+                "no_show_prediction_enabled": True,
+                "truncated": total > _NO_SHOW_LIST_LIMIT,
+            }
+        )
+
+
+class AcknowledgeNoShowRiskView(APIView):
+    """POST /no-show-risk/{risk_id}/acknowledge/ — body: {note?: str}.
+
+    Flips an OPEN risk to ``acknowledged`` (the front desk handled it — e.g.
+    confirmed the patient). Re-acking a non-open row → 409 (preserves the original
+    ack). Operational act → emr.write.
+    """
+
+    def get_permissions(self):
+        return [IsAuthenticated(), HasPermission("emr.write")]
+
+    def post(self, request, risk_id):
+        from apps.emr.models import NoShowRisk
+
+        note = request.data.get("note", "").strip()
+        try:
+            risk = NoShowRisk.objects.get(id=risk_id)
+        except NoShowRisk.DoesNotExist:
+            return Response({"error": "Risco não encontrado."}, status=status.HTTP_404_NOT_FOUND)
+
+        if risk.status != NoShowRisk.Status.OPEN:
+            return Response(
+                {"error": "Risco já reconhecido ou resolvido; nada a fazer."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        risk.acknowledge(request.user, note)
+        logger.info(
+            "No-show risk %s acknowledged by user %s (band=%s)", risk.id, request.user.id, risk.band
+        )
+        return Response(
+            {
+                "message": "Risco reconhecido com sucesso.",
+                "risk_id": str(risk.id),
+                "acknowledged_at": risk.acknowledged_at.isoformat(),
+            },
+            status=status.HTTP_200_OK,
+        )
