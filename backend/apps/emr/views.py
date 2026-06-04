@@ -807,7 +807,12 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
             )
         from django.db import transaction
 
+        from apps.emr.services.allergy_safety import AllergySafetyService
         from apps.emr.services.dose_safety import DoseCheckService
+        from apps.emr.services.prescription_safety_gate import (
+            build_block_payload,
+            has_blocking_safety_alert,
+        )
 
         rx = self.get_object()
         if rx.is_signed:
@@ -816,11 +821,11 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Dose-safety soft-stop (wedge PR B). No-op when the dose_safety feature
-        # flag is OFF for this tenant — gate behaves exactly as before. Run the
-        # deterministic engine BEFORE signing, inside a lock on the prescription,
-        # and re-check the blocking predicate under the lock so a concurrent
-        # acknowledge/edit can't race the gate.
+        # Prescription-safety soft-stop (dose wedge PR B + allergy wedge PR A1).
+        # No-op when both flags are OFF for this tenant — gate behaves exactly as
+        # before. Run the deterministic engines BEFORE signing, inside a lock on
+        # the prescription, and re-check the generalized blocking predicate under
+        # the lock so a concurrent acknowledge/edit can't race the gate.
         with transaction.atomic():
             locked_rx = Prescription.objects.select_for_update().filter(pk=rx.pk).first()
             if locked_rx is None:
@@ -829,12 +834,16 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
-            service = DoseCheckService(requesting_user=request.user)
-            service.evaluate_prescription(locked_rx, gate="sign")
+            DoseCheckService(requesting_user=request.user).evaluate_prescription(
+                locked_rx, gate="sign"
+            )
+            AllergySafetyService(requesting_user=request.user).evaluate_prescription(
+                locked_rx, gate="sign"
+            )
 
-            if DoseCheckService.has_blocking_dose_alert(locked_rx):
+            if has_blocking_safety_alert(locked_rx):
                 return Response(
-                    self._dose_block_payload(locked_rx),
+                    build_block_payload(locked_rx),
                     status=status.HTTP_409_CONFLICT,
                 )
 
@@ -852,33 +861,6 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
             rx = locked_rx
 
         return Response(PrescriptionSerializer(rx).data)
-
-    @staticmethod
-    def _dose_block_payload(prescription):
-        """Build the 409 body listing outstanding blocking dose alerts."""
-        from apps.emr.services.dose_safety import DoseCheckService
-
-        alerts = [
-            {
-                "id": str(a.id),
-                "prescription_item": str(a.prescription_item_id),
-                "alert_type": a.alert_type,
-                "severity": a.severity,
-                "status": a.status,
-                "message": a.message,
-                "recommendation": a.recommendation,
-                "blocking_kind": DoseCheckService.classify_blocking_kind(a),
-            }
-            for a in DoseCheckService.blocking_dose_alerts(prescription)
-        ]
-        return {
-            "detail": (
-                "Dose fora do intervalo seguro. Reconheça os alertas com justificativa "
-                "antes de prosseguir."
-            ),
-            "code": "dose_safety_block",
-            "alerts": alerts,
-        }
 
 
 class PrescriptionItemViewSet(viewsets.ModelViewSet):

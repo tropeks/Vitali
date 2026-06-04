@@ -65,5 +65,12 @@ ALLOWED_MODULE_KEYS: frozenset = frozenset(
         # governance + escalation protocol) before VitalSigns saves raise a
         # DeteriorationAlert. NEWS2 itself is a public RCP standard, not invented.
         "deterioration_safety",
+        # Allergy & drug-interaction wedge (PR A1): per-tenant toggle for the
+        # deterministic allergy-conflict interceptor (soft-stop at prescription
+        # sign / dispense). Default OFF — a tenant must explicitly enable it before
+        # the engine writes engine-sourced allergy alerts and the gate blocks on
+        # them. Direct allergy match runs on existing data; cross-reactivity /
+        # interaction tables (A2/A3) are human-curated, inert until populated.
+        "allergy_safety",
     }
 )
