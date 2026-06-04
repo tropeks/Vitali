@@ -201,3 +201,126 @@ class AcknowledgeSafetyAlertView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+# ─── Clinical-deterioration wedge (PR D3): NEWS2 early-warning surface ─────────
+
+
+def _serialize_deterioration_alert(alert) -> dict:
+    """Plain dict for a DeteriorationAlert (mirrors the stockout surface helper)."""
+    patient = alert.encounter.patient
+    return {
+        "id": str(alert.id),
+        "encounter_id": str(alert.encounter_id),
+        "patient_id": str(patient.id),
+        "patient_name": patient.full_name,
+        "vital_signs_id": str(alert.vital_signs_id),
+        "score": alert.score,
+        "band": alert.band,
+        "band_display": alert.get_band_display(),
+        "breakdown": alert.breakdown,
+        "any_param_three": alert.any_param_three,
+        "spo2_scale": alert.spo2_scale,
+        "severity": alert.severity,
+        "severity_display": alert.get_severity_display(),
+        "status": alert.status,
+        "message": alert.message,
+        "engine_version": alert.engine_version,
+        "acknowledged_by": str(alert.acknowledged_by_id) if alert.acknowledged_by_id else None,
+        "acknowledged_at": alert.acknowledged_at.isoformat() if alert.acknowledged_at else None,
+        "note": alert.note,
+        "created_at": alert.created_at.isoformat(),
+        "updated_at": alert.updated_at.isoformat(),
+    }
+
+
+class DeteriorationAlertsView(APIView):
+    """GET /deterioration-alerts/ — the clinical deterioration early-warning surface.
+
+    Lists OPEN ``DeteriorationAlert`` rows produced by the NEWS2 engine
+    (DeteriorationService), most-severe first. Optional ``?encounter_id=`` filter
+    scopes to one encounter (e.g. the bedside view).
+
+    Respects the ``deterioration_safety`` feature flag: when OFF the list is EMPTY
+    (the engine never ran; no stale early-warnings should surface). Read-only;
+    advise/escalation only — there is NO gate on vitals recording anywhere.
+    """
+
+    def get_permissions(self):
+        # NEWS2 scores are clinical data — emr.read excludes non-clinical roles.
+        return [IsAuthenticated(), HasPermission("emr.read")]
+
+    def get(self, request):
+        from apps.emr.models import DeteriorationAlert
+        from apps.emr.services.deterioration import DeteriorationService
+
+        if not DeteriorationService.is_enabled():
+            return Response({"alerts": [], "deterioration_safety_enabled": False})
+
+        qs = (
+            DeteriorationAlert.objects.filter(status=DeteriorationAlert.Status.OPEN)
+            .select_related("encounter__patient")
+            # Highest score first so the sickest patient tops the dashboard.
+            .order_by("-score", "-created_at")
+        )
+        encounter_id = request.query_params.get("encounter_id")
+        if encounter_id:
+            qs = qs.filter(encounter_id=encounter_id)
+
+        alerts = [_serialize_deterioration_alert(a) for a in qs]
+        return Response({"alerts": alerts, "deterioration_safety_enabled": True})
+
+
+class AcknowledgeDeteriorationAlertView(APIView):
+    """POST /deterioration-alerts/{alert_id}/acknowledge/ — body: {note?: str}.
+
+    Flips an OPEN alert to ``acknowledged`` (records who/when + optional note). A
+    NEWS2 alert is always overridable (unlike a dose weight-gate) — it is an
+    advisory early-warning, never a hard block. Re-acking a non-open alert is
+    rejected (409) so the original acknowledgement and audit trail are preserved.
+    After ack the encounter's open slot frees, so a later re-deterioration raises
+    a NEW alert (see DeteriorationService de-dup).
+    """
+
+    def get_permissions(self):
+        # Acting on a clinical early-warning is a clinical-write act — emr.write
+        # floor (excludes recepcao/faturista). Mirrors the dose-ack surface.
+        return [IsAuthenticated(), HasPermission("emr.write")]
+
+    def post(self, request, alert_id):
+        from apps.emr.models import DeteriorationAlert
+
+        note = request.data.get("note", "").strip()
+
+        try:
+            alert = DeteriorationAlert.objects.get(id=alert_id)
+        except DeteriorationAlert.DoesNotExist:
+            return Response(
+                {"error": "Alerta não encontrado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if alert.status != DeteriorationAlert.Status.OPEN:
+            return Response(
+                {"error": "Alerta já reconhecido ou resolvido; nada a fazer."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        alert.acknowledge(request.user, note)
+
+        logger.info(
+            "Deterioration alert %s acknowledged by user %s (NEWS2=%s, band=%s)",
+            alert.id,
+            request.user.id,
+            alert.score,
+            alert.band,
+        )
+
+        return Response(
+            {
+                "message": "Alerta reconhecido com sucesso.",
+                "alert_id": str(alert.id),
+                "acknowledged_at": alert.acknowledged_at.isoformat(),
+            },
+            status=status.HTTP_200_OK,
+        )
