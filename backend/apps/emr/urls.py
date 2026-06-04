@@ -19,8 +19,10 @@ from .views_cid10 import CID10AcceptView, CID10SuggestView
 from .views_pdf import PrescriptionPDFView
 from .views_safety import (
     AcknowledgeDeteriorationAlertView,
+    AcknowledgeNoShowRiskView,
     AcknowledgeSafetyAlertView,
     DeteriorationAlertsView,
+    NoShowRiskView,
     PrescriptionItemSafetyCheckView,
 )
 from .views_scribe import ScribeStartView, ScribeStatusView, ScribeTranscribeView
@@ -70,6 +72,13 @@ urlpatterns = router.urls + [
         "deterioration-alerts/<uuid:alert_id>/acknowledge/",
         AcknowledgeDeteriorationAlertView.as_view(),
         name="deterioration-alert-acknowledge",
+    ),
+    # No-show prediction wedge (N3): front-desk risk surface
+    path("no-show-risk/", NoShowRiskView.as_view(), name="no-show-risk"),
+    path(
+        "no-show-risk/<uuid:risk_id>/acknowledge/",
+        AcknowledgeNoShowRiskView.as_view(),
+        name="no-show-risk-acknowledge",
     ),
     # S-064: AI CID-10 Suggester
     path(
