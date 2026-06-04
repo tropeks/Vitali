@@ -396,25 +396,23 @@ class TestPrescriptionSafety(TenantTestCase):
         response = client.get(url)
         self.assertEqual(response.status_code, 403)
 
-        # A user WITH emr.read passes the permission gate. We assert at the
-        # permission layer directly (the view's URL conf has a pre-existing
-        # kwarg-arity quirk unrelated to authorization, so we don't dispatch
-        # the handler here).
-        from apps.emr.views_safety import PrescriptionItemSafetyCheckView
-
-        view = PrescriptionItemSafetyCheckView()
-        view.request = None
-        perms = view.get_permissions()
-        from rest_framework.test import APIRequestFactory
-
-        factory = APIRequestFactory()
-        drf_req_allowed = factory.get(url)
-        drf_req_allowed.user = self.user
-        self.assertTrue(all(p.has_permission(drf_req_allowed, view) for p in perms))
-
-        drf_req_denied = factory.get(url)
-        drf_req_denied.user = recepcao_user
-        self.assertFalse(all(p.has_permission(drf_req_denied, view) for p in perms))
+        # A user WITH emr.read now dispatches the handler successfully (the URL/
+        # signature arity bug — view required prescription_id the route never
+        # supplied — is fixed: the view is keyed by item_id alone).
+        ok_client = self._make_client(self.user)
+        ok_refresh = RefreshToken.for_user(self.user)
+        ok_client.credentials(HTTP_AUTHORIZATION=f"Bearer {str(ok_refresh.access_token)}")
+        get_resp = ok_client.get(url)
+        self.assertEqual(get_resp.status_code, 200)
+        self.assertIn("status", get_resp.json())
+        # POST re-queues the safety check → 202.
+        post_resp = ok_client.post(url)
+        self.assertEqual(post_resp.status_code, 202)
+        # Unknown item id → 404 (keyed by item_id alone).
+        missing = ok_client.get(
+            "/api/v1/prescription-items/00000000-0000-0000-0000-000000000000/safety-check/"
+        )
+        self.assertEqual(missing.status_code, 404)
 
     def test_feature_flag_off_returns_no_degraded(self):
         """When ai_prescription_safety is OFF, returns is_safe=True, degraded=False."""
