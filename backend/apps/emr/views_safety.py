@@ -23,6 +23,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.permissions import HasPermission
 from apps.emr.models import AISafetyAlert, PrescriptionItem
 
 logger = logging.getLogger(__name__)
@@ -69,7 +70,10 @@ class PrescriptionItemSafetyCheckView(APIView):
     POST /emr/prescriptions/{prescription_id}/items/{item_id}/safety-check/
     """
 
-    permission_classes = [IsAuthenticated]
+    def get_permissions(self):
+        # Per-item safety status is clinical data; exclude non-clinical roles
+        # (recepcao has no emr.read). Mirrors the EMR read surface.
+        return [IsAuthenticated(), HasPermission("emr.read")]
 
     def get(self, request, prescription_id, item_id):
         """Return current safety status for a PrescriptionItem."""
@@ -126,7 +130,11 @@ class AcknowledgeSafetyAlertView(APIView):
     Calls alert.acknowledge(user, reason).
     """
 
-    permission_classes = [IsAuthenticated]
+    def get_permissions(self):
+        # Overriding a dose contraindication is a clinical-write act. emr.write is
+        # the floor that excludes non-clinical roles (recepcao, faturista) — mirrors
+        # PrescriptionItemViewSet writes.
+        return [IsAuthenticated(), HasPermission("emr.write")]
 
     def post(self, request, alert_id):
         reason = request.data.get("reason", "").strip()
@@ -137,6 +145,15 @@ class AcknowledgeSafetyAlertView(APIView):
             return Response(
                 {"error": "Alerta não encontrado."},
                 status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Only an open (flagged) alert is actionable. Re-acking an already
+        # acknowledged/resolved alert would overwrite the original
+        # acknowledged_by/at and emit audit noise — reject it.
+        if alert.status != "flagged":
+            return Response(
+                {"error": "Alerta já reconhecido ou resolvido; nada a fazer."},
+                status=status.HTTP_409_CONFLICT,
             )
 
         # A weight-gate block is NON-overridable: you cannot reason away a

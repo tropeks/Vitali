@@ -196,6 +196,26 @@ class AcknowledgeStockAlertViewTests(StockRiskBaseCase):
         )
         self.assertEqual(resp.status_code, 404)
 
+    def test_reacknowledge_already_acknowledged_returns_409(self):
+        """LOW-1: re-acking a non-open alert is rejected; origin preserved."""
+        self._make_stockout_risk_drug()
+        alert = StockAlert.objects.get(kind=StockAlert.Kind.STOCKOUT_RISK)
+        url = f"/api/v1/pharmacy/stock-alerts/{alert.id}/acknowledge/"
+
+        resp = self.client.post(url, {"note": "ja pedi"}, format="json")
+        self.assertEqual(resp.status_code, 200)
+        alert.refresh_from_db()
+        original_by = alert.acknowledged_by_id
+        original_at = alert.acknowledged_at
+        original_note = alert.note
+
+        resp = self.client.post(url, {"note": "outra nota"}, format="json")
+        self.assertEqual(resp.status_code, 409)
+        alert.refresh_from_db()
+        self.assertEqual(alert.acknowledged_by_id, original_by)
+        self.assertEqual(alert.acknowledged_at, original_at)
+        self.assertEqual(alert.note, original_note)
+
     def test_acknowledge_permission_gated(self):
         self._make_stockout_risk_drug()
         alert = StockAlert.objects.get(kind=StockAlert.Kind.STOCKOUT_RISK)

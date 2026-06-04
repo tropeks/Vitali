@@ -372,6 +372,14 @@ class AcknowledgeStockAlertView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        # Only an open alert is actionable; re-acking would overwrite the original
+        # acknowledged_by/at and emit audit noise.
+        if alert.status != StockAlert.Status.OPEN:
+            return Response(
+                {"detail": "Alerta já reconhecido ou resolvido; nada a fazer."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
         alert.acknowledge(request.user, note)
         log_audit(
             request,

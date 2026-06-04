@@ -24,6 +24,7 @@ class TestPrescriptionSafety(TenantTestCase):
     def setUp(self):
         import datetime
 
+        from apps.core.models import Role
         from apps.emr.models import (
             Encounter,
             Patient,
@@ -32,10 +33,16 @@ class TestPrescriptionSafety(TenantTestCase):
         )
         from apps.pharmacy.models import Drug
 
+        # Clinical role with emr.write (the floor for dose-override acknowledge)
+        self.clinical_role = Role.objects.create(
+            name="medico",
+            permissions=["emr.read", "emr.write", "emr.sign"],
+        )
         self.user = User.objects.create_user(
             email="safety_test@clinic.test",
             password="TestPass123!",
             full_name="Safety Doctor",
+            role=self.clinical_role,
         )
 
         # Create drug (minimal)
@@ -264,6 +271,150 @@ class TestPrescriptionSafety(TenantTestCase):
 
         alert.refresh_from_db()
         self.assertEqual(alert.status, "acknowledged")
+
+    def test_acknowledge_alert_forbidden_without_emr_write(self):
+        """HIGH-1: a non-clinical role (recepcao) lacking emr.write gets 403."""
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        from apps.core.models import Role
+        from apps.emr.models import AISafetyAlert, PrescriptionItem
+
+        recepcao_role = Role.objects.create(
+            name="recepcao",
+            permissions=[
+                "patients.limited_read",
+                "schedule.read",
+                "schedule.write",
+                "billing.read",
+            ],
+        )
+        recepcao_user = User.objects.create_user(
+            email="recepcao_safety@clinic.test",
+            password="TestPass123!",
+            full_name="Recepcao User",
+            role=recepcao_role,
+        )
+
+        client = self._make_client(recepcao_user)
+        refresh = RefreshToken.for_user(recepcao_user)
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {str(refresh.access_token)}")
+
+        item = PrescriptionItem.objects.create(
+            prescription=self.prescription,
+            drug=self.drug,
+            generic_name="amoxicilina",
+            quantity=1,
+            unit_of_measure="cx",
+        )
+        alert = AISafetyAlert.objects.create(
+            prescription_item=item,
+            alert_type="allergy",
+            severity="caution",
+            message="Cautela",
+        )
+
+        url = f"/api/v1/safety-alerts/{alert.id}/acknowledge/"
+        response = client.post(url, {"reason": "qualquer motivo aqui"})
+        self.assertEqual(response.status_code, 403)
+
+        alert.refresh_from_db()
+        self.assertEqual(alert.status, "flagged")
+        self.assertIsNone(alert.acknowledged_by)
+
+    def test_acknowledge_already_acknowledged_returns_409(self):
+        """LOW-1: re-acking a non-flagged alert returns 409 and preserves origin."""
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        from apps.emr.models import AISafetyAlert, PrescriptionItem
+
+        client = self._make_client(self.user)
+        refresh = RefreshToken.for_user(self.user)
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {str(refresh.access_token)}")
+
+        item = PrescriptionItem.objects.create(
+            prescription=self.prescription,
+            drug=self.drug,
+            generic_name="amoxicilina",
+            quantity=1,
+            unit_of_measure="cx",
+        )
+        alert = AISafetyAlert.objects.create(
+            prescription_item=item,
+            alert_type="allergy",
+            severity="caution",
+            message="Cautela",
+        )
+
+        # First ack succeeds
+        url = f"/api/v1/safety-alerts/{alert.id}/acknowledge/"
+        response = client.post(url, {"reason": "primeiro motivo registrado"})
+        self.assertEqual(response.status_code, 200)
+        alert.refresh_from_db()
+        original_by = alert.acknowledged_by_id
+        original_at = alert.acknowledged_at
+        original_reason = alert.override_reason
+
+        # Second ack rejected with 409, origin unchanged
+        response = client.post(url, {"reason": "segundo motivo diferente"})
+        self.assertEqual(response.status_code, 409)
+        alert.refresh_from_db()
+        self.assertEqual(alert.acknowledged_by_id, original_by)
+        self.assertEqual(alert.acknowledged_at, original_at)
+        self.assertEqual(alert.override_reason, original_reason)
+
+    def test_safety_check_get_forbidden_without_emr_read(self):
+        """HIGH-1: safety-check GET requires emr.read; recepcao (no emr.read) → 403."""
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        from apps.core.models import Role
+        from apps.emr.models import PrescriptionItem
+
+        recepcao_role = Role.objects.create(
+            name="recepcao2",
+            permissions=["patients.limited_read", "schedule.read"],
+        )
+        recepcao_user = User.objects.create_user(
+            email="recepcao_check@clinic.test",
+            password="TestPass123!",
+            full_name="Recepcao Check",
+            role=recepcao_role,
+        )
+
+        item = PrescriptionItem.objects.create(
+            prescription=self.prescription,
+            drug=self.drug,
+            generic_name="amoxicilina",
+            quantity=1,
+            unit_of_measure="cx",
+        )
+
+        client = self._make_client(recepcao_user)
+        refresh = RefreshToken.for_user(recepcao_user)
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {str(refresh.access_token)}")
+
+        url = f"/api/v1/prescription-items/{item.id}/safety-check/"
+        response = client.get(url)
+        self.assertEqual(response.status_code, 403)
+
+        # A user WITH emr.read passes the permission gate. We assert at the
+        # permission layer directly (the view's URL conf has a pre-existing
+        # kwarg-arity quirk unrelated to authorization, so we don't dispatch
+        # the handler here).
+        from apps.emr.views_safety import PrescriptionItemSafetyCheckView
+
+        view = PrescriptionItemSafetyCheckView()
+        view.request = None
+        perms = view.get_permissions()
+        from rest_framework.test import APIRequestFactory
+
+        factory = APIRequestFactory()
+        drf_req_allowed = factory.get(url)
+        drf_req_allowed.user = self.user
+        self.assertTrue(all(p.has_permission(drf_req_allowed, view) for p in perms))
+
+        drf_req_denied = factory.get(url)
+        drf_req_denied.user = recepcao_user
+        self.assertFalse(all(p.has_permission(drf_req_denied, view) for p in perms))
 
     def test_feature_flag_off_returns_no_degraded(self):
         """When ai_prescription_safety is OFF, returns is_safe=True, degraded=False."""

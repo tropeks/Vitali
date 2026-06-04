@@ -681,6 +681,25 @@ class AcknowledgeGlosaAlertTests(TenantTestCase):
         alert.refresh_from_db()
         self.assertEqual(alert.status, "acknowledged")
 
+    def test_reacknowledge_already_acknowledged_returns_409(self):
+        """LOW-1: re-acking a non-flagged alert is rejected; origin preserved."""
+        alert = self._alert("advise")
+        url = f"/api/v1/billing/glosa-safety-alerts/{alert.id}/acknowledge/"
+
+        resp = self._auth().post(url, {"reason": "Justificativa inicial longa."}, format="json")
+        self.assertEqual(resp.status_code, 200)
+        alert.refresh_from_db()
+        original_by = alert.acknowledged_by_id
+        original_at = alert.acknowledged_at
+        original_reason = alert.override_reason
+
+        resp = self._auth().post(url, {"reason": "Outra justificativa diferente."}, format="json")
+        self.assertEqual(resp.status_code, 409)
+        alert.refresh_from_db()
+        self.assertEqual(alert.acknowledged_by_id, original_by)
+        self.assertEqual(alert.acknowledged_at, original_at)
+        self.assertEqual(alert.override_reason, original_reason)
+
 
 class GlosaClinicalCompatServiceTests(GlosaSafetyTestCase):
     """Orchestrator-level G3b: the service resolves patient age/sex (from the

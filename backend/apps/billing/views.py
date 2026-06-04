@@ -780,6 +780,14 @@ class AcknowledgeGlosaAlertView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        # Only a flagged (open) alert is actionable; re-acking would overwrite the
+        # original acknowledged_by/at and emit audit noise.
+        if alert.status != GlosaSafetyAlert.Status.FLAGGED:
+            return Response(
+                {"error": "Alerta já reconhecido ou resolvido; nada a fazer."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
         if alert.severity == GlosaSafetyAlert.Severity.BLOCK and len(reason) < 10:
             return Response(
                 {"error": "Para bloqueios de glosa, o motivo deve ter pelo menos 10 caracteres."},
