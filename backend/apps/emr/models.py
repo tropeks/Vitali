@@ -991,3 +991,94 @@ class WaitlistEntry(models.Model):
 
     def __str__(self):
         return f"WaitlistEntry({self.patient}, {self.professional}, {self.get_status_display()})"
+
+
+# ─── No-show prediction wedge PR N1: persistent risk row ──────────────────────
+
+
+class NoShowRisk(models.Model):
+    """Verdict do motor determinístico de risco de falta (no-show wedge N1).
+
+    Mirror do ``pharmacy.StockAlert``: linha persistente do veredito (uma por
+    agendamento, ``update_or_create`` keyed em ``appointment``), com ``breakdown``
+    explicável e campos de flywheel. NÃO é cache efêmero — é a linha que a
+    superfície (N3) e o grading (N2) consomem.
+
+    POSTURA — ADVISE/OPERACIONAL, NUNCA BLOQUEIA agendamento ou check-in. Só
+    surface a ``suggested_action``; v1 não dispara WhatsApp nem oferta de waitlist.
+    Risco DERIVADO do histórico do paciente (não inventado); inerte (sem linha) se
+    o paciente tem < 5 agendamentos terminais.
+    """
+
+    class Band(models.TextChoices):
+        LOW = "low", "Baixo"
+        MEDIUM = "medium", "Médio"
+        HIGH = "high", "Alto"
+
+    class SuggestedAction(models.TextChoices):
+        NONE = "none", "Nenhuma"
+        CONFIRM_ACTIVE = "confirm_active", "Confirmar ativamente"
+
+    class Status(models.TextChoices):
+        OPEN = "open", "Aberto"
+        ACKNOWLEDGED = "acknowledged", "Reconhecido"
+        RESOLVED = "resolved", "Resolvido"
+
+    class Outcome(models.TextChoices):
+        """Rótulo do flywheel (gradado após o ``start_time`` passar).
+
+        médio+alto = predito-positivo, baixo = predito-negativo; agendamentos
+        ``cancelled`` ficam fora da gradação (``pending``).
+        """
+
+        PENDING = "pending", "Pendente"
+        TRUE_POSITIVE = "true_positive", "Acerto (faltou, previsto)"
+        FALSE_POSITIVE = "false_positive", "Falso-positivo (compareceu, previsto falta)"
+        FALSE_NEGATIVE = "false_negative", "Falso-negativo (faltou, não previsto)"
+        TRUE_NEGATIVE = "true_negative", "Acerto (compareceu, previsto baixo)"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    appointment = models.OneToOneField(
+        Appointment, on_delete=models.CASCADE, related_name="no_show_risk"
+    )
+    score = models.DecimalField(max_digits=5, decimal_places=4)
+    band = models.CharField(max_length=10, choices=Band.choices, db_index=True)
+    breakdown = models.JSONField(default=list)
+    suggested_action = models.CharField(
+        max_length=20, choices=SuggestedAction.choices, default=SuggestedAction.NONE
+    )
+    status = models.CharField(max_length=14, choices=Status.choices, default=Status.OPEN)
+    outcome = models.CharField(
+        max_length=16, choices=Outcome.choices, default=Outcome.PENDING, db_index=True
+    )
+    engine_version = models.CharField(max_length=40)
+    acknowledged_by = models.ForeignKey(
+        "core.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="acknowledged_no_show_risks",
+    )
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+    note = models.TextField(blank=True)
+    computed_at = models.DateTimeField(auto_now=True)
+    graded_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Risco de Falta (motor)"
+        verbose_name_plural = "Riscos de Falta (motor)"
+        ordering = ["-score", "-created_at"]
+        indexes = [
+            models.Index(fields=["band", "outcome"]),
+        ]
+
+    def __str__(self):
+        return f"NoShowRisk({self.appointment_id}, {self.get_band_display()}, {self.score})"
+
+    def acknowledge(self, user, note=""):
+        self.acknowledged_by = user
+        self.note = note
+        self.acknowledged_at = timezone.now()
+        self.status = self.Status.ACKNOWLEDGED
+        self.save(update_fields=["acknowledged_by", "note", "acknowledged_at", "status"])
