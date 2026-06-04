@@ -10,21 +10,30 @@ SAFE inert paths.
 
 from apps.pharmacy.services.allergy_checker import (
     VERDICT_ALLERGY_CONFLICT,
+    VERDICT_CROSS_REACTIVITY,
     VERDICT_NOT_APPLICABLE,
     VERDICT_SAFE,
     AllergyChecker,
     AllergyInput,
+    CrossReactivityClass,
     normalize_tokens,
 )
 
 
-def _check(drug_name=None, generic=None, ingredients=None, allergies=()):
+def _check(drug_name=None, generic=None, ingredients=None, allergies=(), classes=None):
     return AllergyChecker.check(
         drug_name=drug_name,
         drug_generic_name=generic,
         drug_active_ingredients=ingredients,
         allergies=list(allergies),
+        cross_reactivity_classes=classes,
     )
+
+
+_BETA_LACTAMS = CrossReactivityClass(
+    name="Beta-lactâmicos",
+    members=["penicilina", "amoxicilina", "ampicilina", "cefalexina", "cefalotina"],
+)
 
 
 class TestNormalize:
@@ -108,4 +117,59 @@ class TestInert:
 
     def test_blank_allergen_does_not_match(self):
         v = _check(drug_name="Dipirona", allergies=[AllergyInput("   ")])
+        assert v.verdict == VERDICT_SAFE
+
+
+class TestCrossReactivity:
+    def test_penicillin_allergy_flags_cephalosporin_as_cross(self):
+        # Allergic to penicillin, prescribed cephalexin → same class → advise.
+        v = _check(
+            drug_name="Cefalexina 500mg",
+            ingredients=["Cefalexina"],
+            allergies=[AllergyInput("Penicilina")],
+            classes=[_BETA_LACTAMS],
+        )
+        assert v.verdict == VERDICT_CROSS_REACTIVITY
+        assert v.cross_reactivity_class == "Beta-lactâmicos"
+        assert v.matched_substances == ["Penicilina"]
+
+    def test_no_classes_means_no_cross_reactivity(self):
+        # Without curated classes the engine never infers cross-reactivity (inert).
+        v = _check(
+            drug_name="Cefalexina 500mg",
+            ingredients=["Cefalexina"],
+            allergies=[AllergyInput("Penicilina")],
+            classes=None,
+        )
+        assert v.verdict == VERDICT_SAFE
+
+    def test_direct_match_wins_over_cross_reactivity(self):
+        # Allergic to cephalexin AND prescribed cephalexin → DIRECT conflict (block),
+        # not merely cross-reactivity.
+        v = _check(
+            drug_name="Cefalexina 500mg",
+            ingredients=["Cefalexina"],
+            allergies=[AllergyInput("Cefalexina")],
+            classes=[_BETA_LACTAMS],
+        )
+        assert v.verdict == VERDICT_ALLERGY_CONFLICT
+
+    def test_unrelated_class_no_cross(self):
+        # Drug not in the class → no cross-reactivity.
+        v = _check(
+            drug_name="Paracetamol",
+            ingredients=["Paracetamol"],
+            allergies=[AllergyInput("Penicilina")],
+            classes=[_BETA_LACTAMS],
+        )
+        assert v.verdict == VERDICT_SAFE
+
+    def test_allergen_not_in_class_no_cross(self):
+        # Allergen outside the class even if the drug is in it → no cross.
+        v = _check(
+            drug_name="Cefalexina",
+            ingredients=["Cefalexina"],
+            allergies=[AllergyInput("Dipirona")],
+            classes=[_BETA_LACTAMS],
+        )
         assert v.verdict == VERDICT_SAFE

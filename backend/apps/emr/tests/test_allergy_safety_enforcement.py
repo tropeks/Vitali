@@ -24,7 +24,7 @@ from apps.emr.models import (
     PrescriptionItem,
     Professional,
 )
-from apps.pharmacy.models import Drug, StockItem, StockMovement
+from apps.pharmacy.models import AllergenClass, Drug, StockItem, StockMovement
 from apps.test_utils import TenantTestCase
 
 
@@ -157,3 +157,48 @@ class TestDispenseGate(_Base):
         assert resp.status_code == 409
         assert resp.data["code"] == "dose_safety_block"
         assert any(a["blocking_kind"] == "allergy_conflict" for a in resp.data["alerts"])
+
+
+class TestCrossReactivityGate(_Base):
+    """Cross-reactivity (wedge A2) is ADVISE — it surfaces but never blocks."""
+
+    def setUp(self):
+        super().setUp()
+        # The base patient is allergic to Dipirona; add a Penicilina allergy so the
+        # beta-lactam class can link to a prescribed cephalosporin.
+        Allergy.objects.create(
+            patient=self.patient, substance="Penicilina", severity="moderate", status="active"
+        )
+
+    def test_cross_reactivity_advises_but_does_not_block_sign(self):
+        AllergenClass.objects.create(
+            name="Beta-lactâmicos",
+            members=["penicilina", "amoxicilina", "cefalexina"],
+        )
+        cefalexina = Drug.objects.create(
+            name="Cefalexina 500mg", generic_name="Cefalexina", active_ingredients=["Cefalexina"]
+        )
+        rx, item = self._make_rx(drug=cefalexina)
+        resp = self._sign(rx)
+        # NOT blocked — cross-reactivity is advise only.
+        assert resp.status_code == 200
+        rx.refresh_from_db()
+        assert rx.is_signed is True
+        # But a caution allergy alert was raised for visibility.
+        alert = AISafetyAlert.objects.get(
+            prescription_item=item, alert_type="allergy", source=AISafetyAlert.Source.ENGINE
+        )
+        assert alert.severity == "caution"
+        assert alert.status == "flagged"
+
+    def test_no_curated_class_means_no_cross_alert(self):
+        # No AllergenClass rows → inert; a cephalexin rx for a penicillin-allergic
+        # patient signs clean with no allergy alert at all.
+        cefalexina = Drug.objects.create(
+            name="Cefalexina 500mg", generic_name="Cefalexina", active_ingredients=["Cefalexina"]
+        )
+        rx, item = self._make_rx(drug=cefalexina)
+        assert self._sign(rx).status_code == 200
+        assert not AISafetyAlert.objects.filter(
+            prescription_item=item, alert_type="allergy", source=AISafetyAlert.Source.ENGINE
+        ).exists()

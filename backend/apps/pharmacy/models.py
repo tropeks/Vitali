@@ -139,6 +139,43 @@ class Material(models.Model):
         return f"{self.name} ({self.category or '—'})"
 
 
+# ─── Allergy wedge PR A2: curated cross-reactivity classes ────────────────────
+
+
+class AllergenClass(models.Model):
+    """Curated allergen cross-reactivity class (allergy wedge A2).
+
+    A named group of ingredients that cross-react — e.g. "Beta-lactâmicos" =
+    ["penicilina", "amoxicilina", "ampicilina", "cefalexina", ...]. The allergy
+    engine raises an **advise** (never block) cross-reactivity alert when the
+    patient is allergic to one member of a class and the prescribed drug contains
+    another member.
+
+    Human-curated reference data — **inert until populated** (no class rows → no
+    cross-reactivity checks), like the dose formulary. Never invented in code.
+    Per-tenant so each establishment curates the classes its clinical pharmacy
+    endorses.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=200, unique=True)
+    # Member ingredient names (INN). Free-form curated list; the engine matches a
+    # member against an allergen/drug by normalized token-subset (same as A1).
+    members = models.JSONField(default=list, blank=True)
+    description = models.TextField(blank=True)
+    active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Classe de reatividade cruzada"
+        verbose_name_plural = "Classes de reatividade cruzada"
+        ordering = ["name"]
+
+    def __str__(self):
+        return f"{self.name} ({len(self.members or [])} membros)"
+
+
 # ─── S-027: Stock ─────────────────────────────────────────────────────────────
 
 

@@ -32,9 +32,11 @@ from apps.core.utils import tenant_has_feature
 from apps.pharmacy.services.allergy_checker import (
     ENGINE_VERSION,
     VERDICT_ALLERGY_CONFLICT,
+    VERDICT_CROSS_REACTIVITY,
     VERDICT_SAFE,
     AllergyChecker,
     AllergyInput,
+    CrossReactivityClass,
 )
 
 logger = logging.getLogger(__name__)
@@ -44,6 +46,9 @@ ALLERGY_SAFETY_FEATURE_KEY = "allergy_safety"
 _RECOMMENDATION = (
     "Confirme a alergia do paciente. Se a prescrição for clinicamente necessária "
     "mesmo assim, reconheça o alerta com justificativa antes de prosseguir."
+)
+_CROSS_RECOMMENDATION = (
+    "Possível reatividade cruzada. Avalie clinicamente; este é um aviso, não um bloqueio."
 )
 
 
@@ -90,10 +95,23 @@ class AllergySafetyService:
                 self._resolve_to_safe(item, gate)
             return
 
-        for item in items:
-            self._evaluate_item(item, allergies, gate)
+        # Resolve the curated cross-reactivity classes once (wedge A2). Empty when
+        # the establishment has not curated any → no cross-reactivity is inferred.
+        classes = self._cross_reactivity_classes()
 
-    def _evaluate_item(self, item, allergies: list[AllergyInput], gate: str) -> None:
+        for item in items:
+            self._evaluate_item(item, allergies, classes, gate)
+
+    @staticmethod
+    def _cross_reactivity_classes() -> list[CrossReactivityClass]:
+        from apps.pharmacy.models import AllergenClass
+
+        return [
+            CrossReactivityClass(name=c.name, members=list(c.members or []))
+            for c in AllergenClass.objects.filter(active=True)
+        ]
+
+    def _evaluate_item(self, item, allergies, classes, gate: str) -> None:
         drug = item.drug
         if drug is None:
             return
@@ -102,9 +120,12 @@ class AllergySafetyService:
             drug_generic_name=drug.generic_name or None,
             drug_active_ingredients=drug.active_ingredients or [],
             allergies=allergies,
+            cross_reactivity_classes=classes,
         )
         if verdict.verdict == VERDICT_ALLERGY_CONFLICT:
             self._raise_blocking_alert(item, verdict, gate)
+        elif verdict.verdict == VERDICT_CROSS_REACTIVITY:
+            self._raise_advisory_alert(item, verdict, gate)
         elif verdict.verdict == VERDICT_SAFE:
             self._resolve_to_safe(item, gate)
         # NOT_APPLICABLE (unidentifiable drug) → no alert, no false green.
@@ -148,6 +169,47 @@ class AllergySafetyService:
                 },
             )
             self._audit("allergy_alert_raised", item, verdict, gate, alert.id)
+
+    def _raise_advisory_alert(self, item, verdict, gate: str) -> None:
+        """Cross-reactivity (wedge A2): a CAUTION alert — advise, never blocks."""
+        from apps.emr.models import AISafetyAlert
+
+        with transaction.atomic():
+            existing = (
+                AISafetyAlert.objects.select_for_update()
+                .filter(
+                    prescription_item=item,
+                    alert_type="allergy",
+                    source=AISafetyAlert.Source.ENGINE,
+                )
+                .first()
+            )
+            # Idempotency: an unchanged caution is the same clinical situation on
+            # re-evaluation — don't reset an acknowledgement or spam the audit log.
+            # A changed message, or a transition FROM a prior contraindication
+            # (direct match cleared, now only cross-reactivity), falls through.
+            if (
+                existing is not None
+                and existing.severity == "caution"
+                and existing.message == verdict.reason
+            ):
+                return
+
+            alert, _created = AISafetyAlert.objects.update_or_create(
+                prescription_item=item,
+                alert_type="allergy",
+                source=AISafetyAlert.Source.ENGINE,
+                defaults={
+                    "severity": "caution",  # NON-blocking (advise)
+                    "status": "flagged",
+                    "message": verdict.reason,
+                    "acknowledged_by": None,
+                    "override_reason": "",
+                    "acknowledged_at": None,
+                    "recommendation": _CROSS_RECOMMENDATION,
+                },
+            )
+            self._audit("allergy_cross_reactivity_advised", item, verdict, gate, alert.id)
 
     def _resolve_to_safe(self, item, gate: str) -> None:
         """No conflict: clear any stale engine 'allergy' alert (resolve to safe)."""
