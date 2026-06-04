@@ -4,15 +4,14 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('pharmacy', '0012_grade_stockout_beat_schedule'),
+        ("pharmacy", "0012_grade_stockout_beat_schedule"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='drug',
-            name='active_ingredients',
+            model_name="drug",
+            name="active_ingredients",
             field=models.JSONField(blank=True, default=list),
         ),
     ]
