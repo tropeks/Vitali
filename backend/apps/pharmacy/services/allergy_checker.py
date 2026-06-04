@@ -184,3 +184,85 @@ class AllergyChecker:
                     )
 
         return AllergyVerdict(verdict=VERDICT_SAFE)
+
+
+# ─── Drug-drug interactions (allergy wedge A3) ────────────────────────────────
+
+# Interaction severities.
+INTERACTION_ADVISE = "advise"
+INTERACTION_CONTRAINDICATED = "contraindicated"
+
+
+@dataclass(frozen=True)
+class DrugInteractionRule:
+    """A curated interaction pair fed to the engine (ingredient names, INN)."""
+
+    ingredient_a: str
+    ingredient_b: str
+    severity: str = INTERACTION_ADVISE
+    description: str = ""
+
+
+@dataclass(frozen=True)
+class DrugInPrescription:
+    """A prescription line as seen by the interaction engine."""
+
+    key: str  # stable id (the prescription_item id)
+    label: str  # human display (the drug name)
+    tokens: frozenset[str]  # normalized identity tokens (name ∪ generic ∪ ingredients)
+
+
+@dataclass(frozen=True)
+class InteractionFinding:
+    """One interaction surfaced for a given prescription line."""
+
+    partner_label: str
+    severity: str
+    description: str = ""
+
+
+def build_drug_tokens(
+    drug_name: str | None,
+    drug_generic_name: str | None = None,
+    drug_active_ingredients: list[str] | None = None,
+) -> frozenset[str]:
+    """Public helper: the identity token set used for matching (name ∪ generic ∪ ingr)."""
+    return _drug_tokens(drug_name, drug_generic_name, drug_active_ingredients)
+
+
+def find_interactions(
+    drugs: list[DrugInPrescription],
+    rules: list[DrugInteractionRule],
+) -> dict[str, list[InteractionFinding]]:
+    """Pure pairwise interaction scan.
+
+    For each curated rule, find the lines whose tokens contain ingredient A and
+    those containing ingredient B; every distinct (A-line, B-line) pair yields a
+    symmetric finding on both lines. Returns ``{line.key: [findings]}`` with
+    duplicates (same partner+severity) collapsed. A line never interacts with
+    itself (a combo drug matching both A and B is not a finding).
+    """
+    findings: dict[str, list[InteractionFinding]] = {}
+
+    def _add(key: str, finding: InteractionFinding) -> None:
+        bucket = findings.setdefault(key, [])
+        if not any(
+            f.partner_label == finding.partner_label and f.severity == finding.severity
+            for f in bucket
+        ):
+            bucket.append(finding)
+
+    for rule in rules:
+        a_tokens = normalize_tokens(rule.ingredient_a)
+        b_tokens = normalize_tokens(rule.ingredient_b)
+        if not a_tokens or not b_tokens:
+            continue
+        a_lines = [d for d in drugs if a_tokens.issubset(d.tokens)]
+        b_lines = [d for d in drugs if b_tokens.issubset(d.tokens)]
+        for da in a_lines:
+            for db in b_lines:
+                if da.key == db.key:
+                    continue
+                _add(da.key, InteractionFinding(db.label, rule.severity, rule.description))
+                _add(db.key, InteractionFinding(da.label, rule.severity, rule.description))
+    return findings

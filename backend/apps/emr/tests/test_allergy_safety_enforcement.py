@@ -24,7 +24,13 @@ from apps.emr.models import (
     PrescriptionItem,
     Professional,
 )
-from apps.pharmacy.models import AllergenClass, Drug, StockItem, StockMovement
+from apps.pharmacy.models import (
+    AllergenClass,
+    Drug,
+    DrugInteraction,
+    StockItem,
+    StockMovement,
+)
 from apps.test_utils import TenantTestCase
 
 
@@ -201,4 +207,64 @@ class TestCrossReactivityGate(_Base):
         assert self._sign(rx).status_code == 200
         assert not AISafetyAlert.objects.filter(
             prescription_item=item, alert_type="allergy", source=AISafetyAlert.Source.ENGINE
+        ).exists()
+
+
+class TestInteractionGate(_Base):
+    """Drug-drug interactions (wedge A3): advise surfaces; contraindicated blocks."""
+
+    def _rx_with(self, *drugs):
+        rx = Prescription.objects.create(
+            encounter=self.encounter, patient=self.patient, prescriber=self.prof
+        )
+        items = [
+            PrescriptionItem.objects.create(
+                prescription=rx, drug=d, quantity=Decimal("1"), unit_of_measure="un"
+            )
+            for d in drugs
+        ]
+        return rx, items
+
+    def _pair(self):
+        varf = Drug.objects.create(
+            name="Varfarina 5mg", generic_name="Varfarina", active_ingredients=["Varfarina"]
+        )
+        aas = Drug.objects.create(name="AAS 100mg", generic_name="AAS", active_ingredients=["AAS"])
+        return varf, aas
+
+    def test_advise_interaction_surfaces_but_does_not_block(self):
+        DrugInteraction.objects.create(
+            ingredient_a="varfarina", ingredient_b="aas", severity="advise"
+        )
+        varf, aas = self._pair()
+        rx, items = self._rx_with(varf, aas)
+        resp = self._sign(rx)
+        assert resp.status_code == 200  # advise — not blocked
+        for item in items:
+            alert = AISafetyAlert.objects.get(
+                prescription_item=item,
+                alert_type="drug_interaction",
+                source=AISafetyAlert.Source.ENGINE,
+            )
+            assert alert.severity == "caution"
+
+    def test_contraindicated_interaction_blocks(self):
+        DrugInteraction.objects.create(
+            ingredient_a="varfarina", ingredient_b="aas", severity="contraindicated"
+        )
+        varf, aas = self._pair()
+        rx, _items = self._rx_with(varf, aas)
+        resp = self._sign(rx)
+        assert resp.status_code == 409
+        assert resp.data["code"] == "dose_safety_block"
+        assert any(a["blocking_kind"] == "drug_interaction" for a in resp.data["alerts"])
+
+    def test_no_curated_interaction_means_no_alert(self):
+        varf, aas = self._pair()
+        rx, items = self._rx_with(varf, aas)
+        assert self._sign(rx).status_code == 200
+        assert not AISafetyAlert.objects.filter(
+            prescription_item__in=items,
+            alert_type="drug_interaction",
+            source=AISafetyAlert.Source.ENGINE,
         ).exists()

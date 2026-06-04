@@ -24,7 +24,9 @@ def _enabled_blocking_alert_types() -> list[str]:
     if DoseCheckService.is_enabled():
         types.append("dose")
     if AllergySafetyService.is_enabled():
+        # The allergy wedge owns both direct-allergy and drug-interaction blocks.
         types.append("allergy")
+        types.append("drug_interaction")
     return types
 
 

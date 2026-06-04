@@ -31,12 +31,17 @@ from apps.core.models import AuditLog
 from apps.core.utils import tenant_has_feature
 from apps.pharmacy.services.allergy_checker import (
     ENGINE_VERSION,
+    INTERACTION_CONTRAINDICATED,
     VERDICT_ALLERGY_CONFLICT,
     VERDICT_CROSS_REACTIVITY,
     VERDICT_SAFE,
     AllergyChecker,
     AllergyInput,
     CrossReactivityClass,
+    DrugInPrescription,
+    DrugInteractionRule,
+    build_drug_tokens,
+    find_interactions,
 )
 
 logger = logging.getLogger(__name__)
@@ -88,19 +93,22 @@ class AllergySafetyService:
             AllergyInput(substance=a.substance, severity=a.severity)
             for a in prescription.patient.allergies.filter(status="active")
         ]
-        if not allergies:
-            # Nothing to conflict with — still resolve any stale engine allergy
-            # alerts (e.g. an allergy was deactivated) so the gate releases.
+        if allergies:
+            # Resolve the curated cross-reactivity classes once (wedge A2). Empty
+            # when the establishment has not curated any → no cross-reactivity.
+            classes = self._cross_reactivity_classes()
+            for item in items:
+                self._evaluate_item(item, allergies, classes, gate)
+        else:
+            # No active allergies — still resolve any stale engine allergy alerts
+            # (e.g. an allergy was deactivated) so the gate releases.
             for item in items:
                 self._resolve_to_safe(item, gate)
-            return
 
-        # Resolve the curated cross-reactivity classes once (wedge A2). Empty when
-        # the establishment has not curated any → no cross-reactivity is inferred.
-        classes = self._cross_reactivity_classes()
-
-        for item in items:
-            self._evaluate_item(item, allergies, classes, gate)
+        # Drug-drug interactions (wedge A3) — independent of allergies; runs over
+        # every prescription so a pair of interacting drugs is caught even with no
+        # recorded allergy.
+        self._evaluate_interactions(items, gate)
 
     @staticmethod
     def _cross_reactivity_classes() -> list[CrossReactivityClass]:
@@ -239,6 +247,146 @@ class AllergySafetyService:
                     ]
                 )
                 self._audit("allergy_alert_resolved", item, None, gate, existing.id)
+
+    # ── drug-drug interactions (wedge A3) ─────────────────────────────────────
+
+    def _evaluate_interactions(self, items, gate: str) -> None:
+        """Pairwise interaction scan across the prescription (single query)."""
+        from apps.pharmacy.models import DrugInteraction
+
+        drugs = [
+            DrugInPrescription(
+                key=str(item.id),
+                label=item.drug.name,
+                tokens=build_drug_tokens(
+                    item.drug.name,
+                    item.drug.generic_name or None,
+                    item.drug.active_ingredients or [],
+                ),
+            )
+            for item in items
+            if item.drug is not None
+        ]
+        items_by_key = {str(item.id): item for item in items if item.drug is not None}
+
+        # Single query: the curated interaction table is small; load active rows once.
+        rules = [
+            DrugInteractionRule(
+                ingredient_a=r.ingredient_a,
+                ingredient_b=r.ingredient_b,
+                severity=r.severity,
+                description=r.description,
+            )
+            for r in DrugInteraction.objects.filter(active=True)
+        ]
+        findings = find_interactions(drugs, rules) if rules else {}
+
+        for key, item in items_by_key.items():
+            item_findings = findings.get(key)
+            if item_findings:
+                self._raise_interaction_alert(item, item_findings, gate)
+            else:
+                self._resolve_interaction(item, gate)
+
+    def _raise_interaction_alert(self, item, item_findings, gate: str) -> None:
+        from apps.emr.models import AISafetyAlert
+
+        # Any contraindicated interaction on this item → block; else advise.
+        blocking = any(f.severity == INTERACTION_CONTRAINDICATED for f in item_findings)
+        partners = ", ".join(sorted({f.partner_label for f in item_findings}))
+        verb = "contraindicada com" if blocking else "interage com"
+        message = f"Interação medicamentosa: {item.drug.name} {verb} {partners}."
+        severity = "contraindication" if blocking else "caution"
+
+        with transaction.atomic():
+            existing = (
+                AISafetyAlert.objects.select_for_update()
+                .filter(
+                    prescription_item=item,
+                    alert_type="drug_interaction",
+                    source=AISafetyAlert.Source.ENGINE,
+                )
+                .first()
+            )
+            # Override-preservation (blocking) / idempotency (advise): an unchanged
+            # finding on re-evaluation must not reset an acknowledgement or spam.
+            if (
+                existing is not None
+                and existing.message == message
+                and existing.severity == severity
+                and (existing.status == "acknowledged" or severity == "caution")
+            ):
+                if existing.status == "acknowledged":
+                    self._audit_interaction(
+                        "drug_interaction_override_preserved", item, message, gate, existing.id
+                    )
+                return
+
+            alert, _created = AISafetyAlert.objects.update_or_create(
+                prescription_item=item,
+                alert_type="drug_interaction",
+                source=AISafetyAlert.Source.ENGINE,
+                defaults={
+                    "severity": severity,
+                    "status": "flagged",
+                    "message": message,
+                    "acknowledged_by": None,
+                    "override_reason": "",
+                    "acknowledged_at": None,
+                    "recommendation": (
+                        "Avalie a interação. Se a combinação for clinicamente necessária, "
+                        "reconheça com justificativa."
+                    ),
+                },
+            )
+            action = "drug_interaction_blocked" if blocking else "drug_interaction_advised"
+            self._audit_interaction(action, item, message, gate, alert.id)
+
+    def _resolve_interaction(self, item, gate: str) -> None:
+        """No interaction: clear any stale engine 'drug_interaction' alert."""
+        from apps.emr.models import AISafetyAlert
+
+        with transaction.atomic():
+            existing = AISafetyAlert.objects.filter(
+                prescription_item=item,
+                alert_type="drug_interaction",
+                source=AISafetyAlert.Source.ENGINE,
+            ).first()
+            if existing is not None and existing.status != "safe":
+                existing.severity = "caution"
+                existing.status = "safe"
+                existing.message = "Sem interação medicamentosa registrada."
+                existing.acknowledged_by = None
+                existing.override_reason = ""
+                existing.acknowledged_at = None
+                existing.save(
+                    update_fields=[
+                        "severity",
+                        "status",
+                        "message",
+                        "acknowledged_by",
+                        "override_reason",
+                        "acknowledged_at",
+                    ]
+                )
+                self._audit_interaction("drug_interaction_resolved", item, "", gate, existing.id)
+
+    def _audit_interaction(self, action: str, item, message: str, gate: str, alert_id) -> None:
+        AuditLog.objects.create(
+            user=self.requesting_user,
+            action=action,
+            resource_type="prescription_item",
+            resource_id=str(item.id),
+            new_data={
+                "correlation_id": self.correlation_id,
+                "gate": gate,
+                "alert_id": str(alert_id),
+                "prescription_item_id": str(item.id),
+                "drug": getattr(item.drug, "name", None),
+                "message": message,
+                "engine_version": ENGINE_VERSION,
+            },
+        )
 
     def _audit(self, action: str, item, verdict, gate: str, alert_id) -> None:
         """One AuditLog per side-effect, carrying the labeled-example flywheel fields."""
