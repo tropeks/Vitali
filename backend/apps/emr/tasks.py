@@ -322,3 +322,48 @@ def send_post_visit_followup_whatsapp(
                 encounter_id,
                 exc_info=True,
             )
+
+
+# ─── No-show prediction wedge N2: nightly evaluation + flywheel grading ───────
+
+
+@shared_task(name="emr.evaluate_no_show")
+def evaluate_no_show():
+    """No-show wedge N2 — nightly proactive scoring across every tenant.
+
+    Thin wrapper around the ``evaluate_no_show`` management command, fanned out
+    over all tenants via ``tenant_context`` (Celery beat fires in the public
+    schema). No-op per tenant when the ``no_show_prediction`` flag is OFF.
+    Registered nightly via the PeriodicTask in emr migration 0023; also runnable
+    by hand as ``manage.py evaluate_no_show``.
+    """
+    from django.core.management import call_command
+    from django_tenants.utils import get_tenant_model, tenant_context
+
+    Tenant = get_tenant_model()
+    for tenant in Tenant.objects.exclude(schema_name="public"):
+        try:
+            with tenant_context(tenant):
+                call_command("evaluate_no_show")
+        except Exception:
+            logger.exception("evaluate_no_show failed for tenant %s", tenant.schema_name)
+
+
+@shared_task(name="emr.grade_no_show_predictions")
+def grade_no_show_predictions():
+    """No-show wedge N2 — nightly flywheel grading across every tenant.
+
+    Thin wrapper around the ``grade_no_show_predictions`` management command,
+    fanned out over all tenants. Idempotent and flag-independent (only grades
+    existing rows). Registered nightly via emr migration 0023.
+    """
+    from django.core.management import call_command
+    from django_tenants.utils import get_tenant_model, tenant_context
+
+    Tenant = get_tenant_model()
+    for tenant in Tenant.objects.exclude(schema_name="public"):
+        try:
+            with tenant_context(tenant):
+                call_command("grade_no_show_predictions")
+        except Exception:
+            logger.exception("grade_no_show_predictions failed for tenant %s", tenant.schema_name)
