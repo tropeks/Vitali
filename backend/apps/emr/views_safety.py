@@ -66,8 +66,13 @@ def _get_safety_status_from_db(item_id: str) -> dict:
 
 class PrescriptionItemSafetyCheckView(APIView):
     """
-    GET  /emr/prescriptions/{prescription_id}/items/{item_id}/safety-check/
-    POST /emr/prescriptions/{prescription_id}/items/{item_id}/safety-check/
+    GET  /emr/prescription-items/{item_id}/safety-check/
+    POST /emr/prescription-items/{item_id}/safety-check/
+
+    The route is keyed by item_id alone (the PrescriptionItem pk is globally
+    unique within the tenant); the prescription is derivable from the item, so the
+    URL no longer carries prescription_id. The earlier signature still required it
+    and raised a 500 on every (valid) call — fixed here.
     """
 
     def get_permissions(self):
@@ -75,14 +80,11 @@ class PrescriptionItemSafetyCheckView(APIView):
         # (recepcao has no emr.read). Mirrors the EMR read surface.
         return [IsAuthenticated(), HasPermission("emr.read")]
 
-    def get(self, request, prescription_id, item_id):
+    def get(self, request, item_id):
         """Return current safety status for a PrescriptionItem."""
-        # Verify item belongs to prescription
-        if not PrescriptionItem.objects.filter(
-            id=item_id, prescription_id=prescription_id
-        ).exists():
+        if not PrescriptionItem.objects.filter(id=item_id).exists():
             return Response(
-                {"error": "Item não encontrado nesta receita."},
+                {"error": "Item de receita não encontrado."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
@@ -95,13 +97,11 @@ class PrescriptionItemSafetyCheckView(APIView):
         result = _get_safety_status_from_db(str(item_id))
         return Response(result, status=status.HTTP_200_OK)
 
-    def post(self, request, prescription_id, item_id):
+    def post(self, request, item_id):
         """Trigger a fresh safety check by re-queuing the Celery task."""
-        if not PrescriptionItem.objects.filter(
-            id=item_id, prescription_id=prescription_id
-        ).exists():
+        if not PrescriptionItem.objects.filter(id=item_id).exists():
             return Response(
-                {"error": "Item não encontrado nesta receita."},
+                {"error": "Item de receita não encontrado."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
