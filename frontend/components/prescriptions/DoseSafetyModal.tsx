@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { X, AlertTriangle, XCircle, ShieldAlert, Scale } from 'lucide-react';
 import {
   acknowledgeDoseAlert,
+  blockingKindLabel,
   isWeightGate,
   type DoseAlert,
   type DoseSafetyBlock,
@@ -94,7 +95,7 @@ function ContraindicationRow({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className={`text-xs font-semibold uppercase tracking-wide ${styles.text}`}>
-              {styles.label}
+              {blockingKindLabel(alert)}
             </span>
             {acknowledged && (
               <span className="text-xs text-green-600 font-medium">✓ Reconhecido</span>
@@ -192,7 +193,7 @@ export function DoseSafetyModal({ block, patientId, onResolved, onClose }: DoseS
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
           <div className="flex items-center gap-2">
             <span className="text-red-600"><XCircle size={18} /></span>
-            <h2 className="text-base font-semibold text-slate-900">Verificação de dose</h2>
+            <h2 className="text-base font-semibold text-slate-900">Verificação de segurança</h2>
           </div>
           <button
             onClick={onClose}

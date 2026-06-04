@@ -270,7 +270,7 @@ describe('DispensePage', () => {
     await user.click(screen.getByRole('button', { name: 'Confirmar dispensação' }))
 
     // The interception modal opens instead of the generic error.
-    expect(await screen.findByText('Verificação de dose')).toBeInTheDocument()
+    expect(await screen.findByText('Verificação de segurança')).toBeInTheDocument()
     expect(screen.getByText('Dose acima do intervalo seguro para o peso informado.')).toBeInTheDocument()
 
     // Enter a >=10-char justification and confirm.
