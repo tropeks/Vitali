@@ -4,8 +4,8 @@
 > **Thesis:** [`VISION-AI-NATIVE.md`](./VISION-AI-NATIVE.md) ·
 > **Roadmap context:** [`EPICS_AND_ROADMAP.md`](./EPICS_AND_ROADMAP.md) → "AI-Native Reframe"
 
-This page is the single source of truth for the **four AI-native interception
-wedges** shipped this cycle. All four are merged to master and **OFF by default**:
+This page is the single source of truth for the **five AI-native interception
+wedges** shipped this cycle. All five are merged to master and **OFF by default**:
 each is gated by a per-tenant `FeatureFlag` (default OFF) and, where it depends on
 clinical / contractual / ANS reference data, that data is **human-supplied external
 truth** — **none of it is invented in code.** Built ≠ live.
@@ -32,7 +32,9 @@ on the spine of a real workflow, not a bolt-on report:
   hard-stopped. Dose blocks (soft-stop, override-with-reason); glosa blocks only
   the highest-confidence checks; stockout never blocks (advise only — never gate a
   clinical dispense on a supply prediction); deterioration never blocks (advise /
-  escalation only — never gate the recording of a vital sign).
+  escalation only — never gate the recording of a vital sign); allergy direct
+  matches block (soft-stop, override-with-reason), while cross-reactivity and
+  most interactions advise.
 
 > **Nothing invented; human-validated truth.** No pharmacist-validated formulary
 > numbers, no ANS/contract reference values, and no establishment supply policy
@@ -41,7 +43,7 @@ on the spine of a real workflow, not a bolt-on report:
 
 ---
 
-## The four wedges
+## The five wedges
 
 ### 1. Dose-safety — `dose_safety` (OFF)
 
@@ -159,11 +161,44 @@ cross the risk band, **before** the code blue. Surfaced on a clinical dashboard;
     alert as a labelled example; grading waits on that outcome source — **not
     fabricated.**
 
+### 5. Allergy & drug-interaction — `allergy_safety` (OFF)
+
+Completes the medication-safety trilogy with dose: dose answers *"right amount?"*,
+this answers *"safe for **this** patient at all?"*. Adds the deterministic engine
+behind the `AISafetyAlert` `allergy` / `drug_interaction` types (until now
+LLM-only) and a soft-stop at prescription **sign** / **dispense**.
+
+- **Engine:** `apps/pharmacy/services/allergy_checker.py` (`AllergyChecker` +
+  `find_interactions`) — **normalized token-subset** matching (casefold + strip
+  accents + drop dose/connector noise; no raw substring). Three checks: **direct
+  allergy** (allergen tokens ⊆ drug tokens → **block**, severity-agnostic);
+  **cross-reactivity** (curated `AllergenClass` links allergen + drug → **advise**);
+  **drug-drug interaction** (curated `DrugInteraction` pair both present → advise,
+  or block if `contraindicated`).
+- **Schema:** `Drug.active_ingredients` (curated INN list; empty → name/generic
+  fallback). `AllergenClass` + `DrugInteraction` curated tables.
+- **Orchestrator:** `apps/emr/services/allergy_safety.py` (`AllergySafetyService`)
+  — resolves active allergies + curated tables in single queries; writes
+  engine-sourced alerts (override-preservation); flywheel `AuditLog`.
+- **Gate:** the sign/dispense soft-stop was **generalized**
+  (`apps/emr/services/prescription_safety_gate.py`) to block on ANY engine
+  contraindication across enabled wedges (dose + allergy + interaction), keeping
+  each wedge's "flag OFF → gate released". Frontend reuses `DoseSafetyModal`
+  (retitled "Verificação de segurança"; rows labelled by `blocking_kind`).
+- **Plan:** [`plans/ALLERGY-INTERACTION-WEDGE.md`](./plans/ALLERGY-INTERACTION-WEDGE.md).
+- **PRs:** #93 (engine + gate) · #94 (cross-reactivity) · #95 (interactions) · A4 (modal labels).
+- **To go live:**
+  - [ ] **Flag** `allergy_safety` enabled for the tenant.
+  - [ ] **Data:** direct allergy match runs on **existing** `Allergy` + `Drug` data
+    (curating `Drug.active_ingredients` sharpens it). Cross-reactivity
+    (`AllergenClass`) and interactions (`DrugInteraction`) are **human-curated**
+    tables — inert until populated, never invented.
+
 ---
 
 ## Honesty contract
 
-- All four flags ship **OFF**. No wedge is live or enabled by default.
+- All five flags ship **OFF**. No wedge is live or enabled by default.
 - No pharmacist / ANS / contract numbers exist yet in production — they are
   **pending and human-gated** (dose D-T1 explicitly blocks dose go-live).
 - The deterministic engine is authoritative; the LLM only explains.

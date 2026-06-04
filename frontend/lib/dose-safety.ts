@@ -62,6 +62,31 @@ export function isWeightGate(alert: DoseAlert): boolean {
 }
 
 /**
+ * Human label (pt-BR) for a blocking alert, by its structural `blocking_kind`.
+ * The 409 payload now mixes dose, allergy-conflict and drug-interaction blocks
+ * (allergy wedge A1/A3) through the same modal, so the row header names WHICH
+ * kind of safety check fired. Falls back to a generic label for older payloads.
+ */
+export function blockingKindLabel(alert: DoseAlert): string {
+  switch (alert.blocking_kind) {
+    case 'weight_gate':
+      return 'Peso necessário'
+    case 'allergy_conflict':
+      return 'Conflito de alergia'
+    case 'drug_interaction':
+      return 'Interação medicamentosa'
+    case 'out_of_range':
+      return 'Dose fora do intervalo'
+    case 'unit_mismatch':
+      return 'Unidade incompatível'
+    default:
+      if (alert.alert_type === 'allergy') return 'Alergia'
+      if (alert.alert_type === 'drug_interaction') return 'Interação medicamentosa'
+      return 'Verificação de dose'
+  }
+}
+
+/**
  * Acknowledge a blocking dose alert with a clinical justification, then the
  * caller retries the original action. POSTs to the shared acknowledge endpoint.
  */
