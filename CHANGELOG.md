@@ -4,6 +4,48 @@ All notable changes to Vitali Health are documented here.
 
 ## [Unreleased]
 
+### AI-Native Interception Layer — 3 wedges (2026-06)
+
+Three AI-native **interception** wedges shipped this cycle, all on the shared
+`Observe → Predict → Intercept → Learn` pattern: a pure deterministic engine
+(authoritative; LLM only explains) + orchestrator + persistent alert + per-tenant
+feature flag + flywheel (`AuditLog` of alert/override/outcome). Consolidated index
+and "to go live" checklist: `docs/AI-NATIVE-WEDGES.md`.
+
+> **Built ≠ live.** All three flags ship **OFF** and nothing intercepts until a
+> human supplies the reference data. **No clinical / contractual / ANS numbers are
+> invented in code** — schema + engine ship; the numbers are loaded per tenant.
+
+- **Dose-safety wedge** — feature flag `dose_safety` (default **OFF**). Deterministic
+  dose engine (`apps/pharmacy/services/dose_checker.py` over `MedicationFormulary` /
+  `DoseRule`) with dose-engine v2 (frequency-band / `dose_role` loading /
+  enforcement-advise), soft-stop at `Prescription.sign` and the pharmacy
+  `DispenseView`, `AISafetyAlert` gains a `source` field (engine vs LLM, no clobber),
+  and a `DoseSafetyModal` frontend. **Pending:** pharmacist-validated formulary
+  numbers (decision **D-T1**) — the production `MedicationFormulary` / `DoseRule`
+  tables stay EMPTY until a pharmacist supplies and signs them. See
+  `docs/plans/DOSE-SAFETY-WEDGE.md`, `docs/plans/DOSE-FORMULARY-DRAFT.md`, and the
+  validation package in `docs/formulary-package/`.
+- **Glosa-interception wedge** — feature flag `glosa_safety` (default **OFF**).
+  Deterministic glosa engine (`apps/billing/services/glosa_checker.py`) with
+  per-guia soft-stop at `TISSBatchViewSet.close` (closes the rest of the batch,
+  blocks only flagged guias), dedicated `GlosaSafetyAlert`, an `Authorization`
+  model, item-level `was_denied` backfill in the retorno parser (a 1-of-5 denial no
+  longer poisons ground truth), clinical-compat checks (`TUSSCode` age/sex/CID),
+  per-procedure ceiling, and a `GlosaSafetyModal` frontend. The highest-value checks
+  run on the current schema with no new data; the clinical/ceiling/authorization
+  checks stay inert (advise) until ANS-import / per-establishment config is loaded —
+  **external truth, never invented.** See `docs/plans/GLOSA-WEDGE.md`.
+- **Stockout-prediction wedge** — feature flag `stockout_safety` (default **OFF**).
+  `StockoutChecker` (`apps/pharmacy/services/stockout_checker.py`, consumption
+  velocity via 30-day SMA on dispense movements, inert under sparse history) +
+  persistent `StockAlert` + FEFO expiry-waste prediction + `StockRiskView` and a
+  frontend risk panel + a nightly flywheel grading job (true-positive / intercepted /
+  false-positive). **Advise-only — never blocks a clinical dispense.** Velocity is
+  derived from `StockMovement` (not invented); `lead_time_days` / `safety_stock` /
+  `reorder_point` are per-establishment config, nullable and inert until filled.
+  See `docs/plans/STOCKOUT-WEDGE.md`.
+
 ### Security & Infra Hardening (2026-05-30)
 
 Production-readiness pass across security and infrastructure. What changed for you:
