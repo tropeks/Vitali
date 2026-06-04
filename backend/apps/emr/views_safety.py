@@ -380,10 +380,14 @@ class NoShowRiskView(APIView):
     can act before the empty slot — confirm actively / overbook / offer the
     waitlist. Respects the ``no_show_prediction`` flag: EMPTY when OFF (the job
     never ran). Read-only; advise/operational — nothing here blocks anything.
+
+    Gated on ``schedule.read`` (not emr.read): this is a front-desk/scheduling
+    surface, and reception — the intended audience — holds the schedule
+    permissions, not the clinical emr.* ones. Mirrors AppointmentViewSet.
     """
 
     def get_permissions(self):
-        return [IsAuthenticated(), HasPermission("emr.read")]
+        return [IsAuthenticated(), HasPermission("schedule.read")]
 
     def get(self, request):
         from apps.emr.models import NoShowRisk
@@ -417,11 +421,12 @@ class AcknowledgeNoShowRiskView(APIView):
 
     Flips an OPEN risk to ``acknowledged`` (the front desk handled it — e.g.
     confirmed the patient). Re-acking a non-open row → 409 (preserves the original
-    ack). Operational act → emr.write.
+    ack). Operational act → ``schedule.write`` (reception's permission, not the
+    clinical emr.write — mirrors AppointmentViewSet writes).
     """
 
     def get_permissions(self):
-        return [IsAuthenticated(), HasPermission("emr.write")]
+        return [IsAuthenticated(), HasPermission("schedule.write")]
 
     def post(self, request, risk_id):
         from apps.emr.models import NoShowRisk

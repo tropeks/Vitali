@@ -1,7 +1,7 @@
 """No-show orchestrator — no-show prediction wedge PR N2.
 
 Bridges the PURE engine (``apps.emr.services.no_show_checker``) to the DB:
-resolves every upcoming appointment's patient history (in 3 bounded queries, no
+resolves every upcoming appointment's patient history (in 2 bounded queries, no
 N+1), scores it, and persists a ``NoShowRisk`` row; and a nightly flywheel that
 grades past predictions by what actually happened. The engine DECIDES; this
 service persists. Mirrors ``pharmacy.services.stockout_safety.StockoutService``.
