@@ -78,5 +78,12 @@ ALLOWED_MODULE_KEYS: frozenset = frozenset(
         # appointment history (no curated data); a patient with < 5 terminal
         # appointments stays inert. v1 only surfaces a suggested action.
         "no_show_prediction",
+        # Controlled-substance diversion wedge (PR C1): per-tenant toggle for the
+        # deterministic diversion-monitoring layer (refill-too-soon / doctor-shopping
+        # / quantity-escalation). ADVISE/compliance only — NEVER blocks a controlled
+        # dispensation (the existing perm + notes gate governs the act). Default OFF.
+        # Risk derived from dispensation history; refill signal inert until a drug's
+        # min_refill_interval_days is configured.
+        "controlled_safety",
     }
 )
