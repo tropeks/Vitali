@@ -17,7 +17,12 @@ from .views import (
 )
 from .views_cid10 import CID10AcceptView, CID10SuggestView
 from .views_pdf import PrescriptionPDFView
-from .views_safety import AcknowledgeSafetyAlertView, PrescriptionItemSafetyCheckView
+from .views_safety import (
+    AcknowledgeDeteriorationAlertView,
+    AcknowledgeSafetyAlertView,
+    DeteriorationAlertsView,
+    PrescriptionItemSafetyCheckView,
+)
 from .views_scribe import ScribeStartView, ScribeStatusView, ScribeTranscribeView
 from .views_setup import WizardProfessionalSetupView, WizardStatusView
 from .views_waitlist import WaitlistDetailView, WaitlistViewSet
@@ -54,6 +59,17 @@ urlpatterns = router.urls + [
         "safety-alerts/<uuid:alert_id>/acknowledge/",
         AcknowledgeSafetyAlertView.as_view(),
         name="safety-alert-acknowledge",
+    ),
+    # Clinical-deterioration wedge (D3): NEWS2 early-warning surface
+    path(
+        "deterioration-alerts/",
+        DeteriorationAlertsView.as_view(),
+        name="deterioration-alerts",
+    ),
+    path(
+        "deterioration-alerts/<uuid:alert_id>/acknowledge/",
+        AcknowledgeDeteriorationAlertView.as_view(),
+        name="deterioration-alert-acknowledge",
     ),
     # S-064: AI CID-10 Suggester
     path(
