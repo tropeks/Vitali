@@ -535,7 +535,14 @@ class AuditLog(models.Model):
     """
     Append-only audit trail for all data changes.
     Required by CFM Res. 1.821/2007 (prontuário eletrônico).
-    Lives in tenant schema. Never UPDATE or DELETE rows.
+
+    Physically lives in the PUBLIC schema (apps.core is SHARED_APPS), shared
+    across all tenants, and has NO tenant discriminator column. Rows from every
+    tenant commingle here. Today nothing reads AuditLog back to a client, so
+    there is no cross-tenant disclosure — but any future audit-trail read
+    endpoint MUST add and filter by a tenant column first, or it will leak every
+    tenant's rows. See .gstack/security-reports (finding SYS-1).
+    Never UPDATE or DELETE rows (append-only).
     """
 
     id = models.BigAutoField(primary_key=True)
