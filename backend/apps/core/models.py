@@ -1,9 +1,12 @@
 """
 HealthOS Core Models
 ====================
-Public schema: Tenant, Domain, Plan, PlanModule, Subscription, FeatureFlag, TUSSCode,
-               TUSSSyncLog, TenantAIConfig
-Per-tenant: User, Role, AuditLog
+ALL models here live in the PUBLIC schema — apps.core is in SHARED_APPS only.
+That includes User, Role and AuditLog: they are a single GLOBAL registry shared
+across every tenant, NOT per-tenant tables. A user is bound to a tenant via
+``UserTenantMembership`` (enforced by ``TenantJWTAuthentication`` when
+``ENFORCE_TENANT_MEMBERSHIP`` is on); see ``apps.core.tenant_auth`` and
+docs/plans/TENANT-MEMBERSHIP.md.
 
 Multi-tenancy via django-tenants (schema-per-tenant — ADR-004).
 LGPD: CPF armazenado criptografado via django-encrypted-model-fields.
@@ -437,7 +440,8 @@ class TOTPDevice(models.Model):
 
 
 class Role(models.Model):
-    """RBAC role with JSON permission list. Lives in tenant schema."""
+    """RBAC role with JSON permission list. Lives in the PUBLIC schema (apps.core is
+    SHARED_APPS) — a global table shared across tenants, not per-tenant."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(
@@ -471,7 +475,11 @@ class Role(models.Model):
 class User(AbstractBaseUser, PermissionsMixin):
     """
     Custom user model for HealthOS.
-    Lives in tenant schema — each clinic has its own user registry.
+    Lives in the PUBLIC schema (apps.core is SHARED_APPS) — a single GLOBAL user
+    registry shared across all tenants (``email`` is globally unique), NOT a
+    per-clinic table. A user is granted access to a clinic via
+    ``UserTenantMembership``; ``TenantJWTAuthentication`` rejects requests for
+    tenants the user is not a member of (when ``ENFORCE_TENANT_MEMBERSHIP`` is on).
     CPF encrypted at rest (LGPD — dado pessoal sensível).
     """
 
@@ -529,6 +537,53 @@ class User(AbstractBaseUser, PermissionsMixin):
         if self.is_superuser:
             return True
         return bool(self.role and self.role.has_permission(perm))
+
+
+class UserTenantMembership(models.Model):
+    """Binds a global :class:`User` to a tenant (Model B tenant isolation).
+
+    ``User``/``Role`` live in the PUBLIC schema (apps.core is SHARED_APPS) — one
+    global registry shared across every tenant, with no per-tenant binding of its
+    own. This row records that ``user`` may act within ``tenant``;
+    ``TenantJWTAuthentication`` rejects (401) any authenticated request whose user
+    holds no active membership for the current tenant, closing the cross-tenant
+    access hole (a clinic-A credential must not work on clinic-B's domain).
+
+    Lives in the public schema and carries an explicit ``tenant`` FK — the very
+    discriminator AuditLog lacks (mirrors FeatureFlag's correct pattern).
+
+    Phase 1 (M1): ``role`` is recorded for the future per-tenant-role migration
+    (M2) but permission resolution still uses ``User.role``. Invariant:
+    deactivating a membership (``is_active=False``) revokes access to THAT tenant
+    only; ``User.is_active=False`` revokes everywhere.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="tenant_memberships", verbose_name="Usuário"
+    )
+    tenant = models.ForeignKey(
+        Tenant, on_delete=models.CASCADE, related_name="user_memberships", verbose_name="Tenant"
+    )
+    role = models.ForeignKey(
+        Role,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="memberships",
+        verbose_name="Role (reservado p/ M2)",
+    )
+    is_active = models.BooleanField("Ativo", default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Vínculo usuário-tenant"
+        verbose_name_plural = "Vínculos usuário-tenant"
+        unique_together = ("user", "tenant")
+        indexes = [models.Index(fields=["user", "tenant", "is_active"])]
+
+    def __str__(self):
+        return f"{self.user.email} @ {self.tenant.schema_name}"
 
 
 class AuditLog(models.Model):

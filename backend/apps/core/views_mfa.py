@@ -19,7 +19,6 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.tokens import RefreshToken
 
 from .mfa import (
     activate_device,
@@ -29,6 +28,7 @@ from .mfa import (
     get_or_create_device,
     verify_totp_code,
 )
+from .tenant_auth import tokens_for_user
 from .throttles_mfa import MFAVerifyThrottle
 
 User = get_user_model()
@@ -40,7 +40,7 @@ def _issue_mfa_jwt(user) -> dict:
     Issue a JWT pair with mfa_verified=True claim.
     Returns {'access': '...', 'refresh': '...'}.
     """
-    refresh = RefreshToken.for_user(user)
+    refresh = tokens_for_user(user)
     refresh["mfa_verified"] = True
     return {
         "access": str(refresh.access_token),
