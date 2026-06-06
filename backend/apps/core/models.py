@@ -630,15 +630,27 @@ class AuditLog(models.Model):
     Required by CFM Res. 1.821/2007 (prontuário eletrônico).
 
     Physically lives in the PUBLIC schema (apps.core is SHARED_APPS), shared
-    across all tenants, and has NO tenant discriminator column. Rows from every
-    tenant commingle here. Today nothing reads AuditLog back to a client, so
-    there is no cross-tenant disclosure — but any future audit-trail read
-    endpoint MUST add and filter by a tenant column first, or it will leak every
-    tenant's rows. See .gstack/security-reports (finding SYS-1).
+    across all tenants. ``schema_name`` is the tenant discriminator: it is stamped
+    automatically on write from ``connection.schema_name`` (covers every write
+    path — all wedges and the app trail — without touching call sites). Any
+    audit-trail READ endpoint MUST filter by it, or it will leak every tenant's
+    rows; use :meth:`for_current_tenant` to do so safely. A denormalized string
+    (not an FK) so the immutable trail survives tenant deletion. Rows written
+    before this column existed carry an empty ``schema_name`` (unattributable —
+    cannot be inferred). See .gstack/security-reports (finding SYS-1).
     Never UPDATE or DELETE rows (append-only).
     """
 
     id = models.BigAutoField(primary_key=True)
+    schema_name = models.CharField(
+        "Schema do tenant",
+        max_length=63,  # Postgres identifier limit
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="Tenant que originou o evento; carimbado de connection no save. "
+        "Vazio = linha anterior à coluna (não atribuível).",
+    )
     user = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -672,15 +684,35 @@ class AuditLog(models.Model):
             models.Index(fields=["user", "created_at"]),
             models.Index(fields=["created_at"]),
             models.Index(fields=["action", "created_at"], name="core_auditlog_act_created_idx"),
+            models.Index(fields=["schema_name", "created_at"], name="core_auditlog_schema_idx"),
         ]
 
     def __str__(self):
         return f"{self.action} {self.resource_type}/{self.resource_id} by {self.user_id}"
 
+    @classmethod
+    def for_current_tenant(cls):
+        """AuditLog rows for the CURRENT tenant only (SYS-1).
+
+        The table is shared across all tenants, so a bare ``AuditLog.objects``
+        query returns every tenant's rows. Any read path that surfaces audit
+        entries to a tenant user MUST go through this to avoid cross-tenant
+        disclosure. The public schema sees nothing tenant-scoped here.
+        """
+        from django.db import connection
+
+        return cls.objects.filter(schema_name=getattr(connection, "schema_name", "") or "")
+
     def save(self, *args, **kwargs):
         # Enforce append-only: block updates
         if self.pk:
             raise ValueError("AuditLog entries are immutable.")
+        # Stamp the originating tenant (SYS-1) from the active connection unless an
+        # explicit value was set. One chokepoint covers all ~38 write sites.
+        if not self.schema_name:
+            from django.db import connection
+
+            self.schema_name = getattr(connection, "schema_name", "") or ""
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
