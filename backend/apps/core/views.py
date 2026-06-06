@@ -22,7 +22,17 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.views import TokenRefreshView as _BaseRefreshView
 
-from .models import AuditLog, Domain, FeatureFlag, Role, Tenant, TUSSSyncLog, User, UserInvitation
+from .models import (
+    AuditLog,
+    Domain,
+    FeatureFlag,
+    Role,
+    Tenant,
+    TUSSSyncLog,
+    User,
+    UserInvitation,
+    UserTenantMembership,
+)
 from .serializers import (
     ChangePasswordSerializer,
     HealthOSTokenObtainPairSerializer,
@@ -33,6 +43,7 @@ from .serializers import (
     UserDTOSerializer,
     UserSerializer,
 )
+from .tenant_auth import enforce_refresh_membership, login_allowed, tokens_for_user
 
 logger = logging.getLogger(__name__)
 
@@ -204,7 +215,7 @@ class SetPasswordView(APIView):
         invitation.consumed_at = timezone.now()
         invitation.save(update_fields=["consumed_at"])
 
-        refresh = RefreshToken.for_user(user)
+        refresh = tokens_for_user(user)
         return Response(
             {"access": str(refresh.access_token), "refresh": str(refresh)},
             status=200,
@@ -290,12 +301,24 @@ class LoginView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
+        # Tenant binding (Model B): the global user must be a member of the tenant
+        # this request was routed to. Return the GENERIC invalid-credentials error
+        # (not a distinct code) so a user at clinic B cannot tell "right password,
+        # wrong clinic" from "bad password" — no cross-tenant enumeration oracle.
+        if not login_allowed(user):
+            _increment_attempts(ip, email)
+            _write_audit(request, user, "login_denied_no_membership", resource_id=str(user.pk))
+            return Response(
+                {"error": {"code": "INVALID_CREDENTIALS", "message": "Credenciais inválidas."}},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
         # Success — clear attempts, issue tokens
         _clear_attempts(ip, email)
         user.last_login = timezone.now()
         user.save(update_fields=["last_login"])
 
-        refresh = RefreshToken.for_user(user)
+        refresh = tokens_for_user(user)
         refresh["email"] = user.email
         refresh["full_name"] = user.full_name
         refresh["role"] = user.role.name if user.role else None
@@ -354,9 +377,25 @@ class LogoutView(APIView):
 
 
 class TokenRefreshView(_BaseRefreshView):
-    """POST /api/v1/auth/refresh — wraps SimpleJWT with rotation."""
+    """POST /api/v1/auth/refresh — wraps SimpleJWT with rotation.
 
-    pass
+    SimpleJWT's refresh never loads the user, and ``token_blacklist`` tables are
+    per-schema, so without this guard a refresh token minted for clinic A could be
+    replayed at clinic B's domain to mint a fresh access token. We bind refresh to
+    the schema the token was issued for and re-check membership (gated by
+    ``ENFORCE_TENANT_MEMBERSHIP``).
+    """
+
+    def post(self, request, *args, **kwargs):
+        token_str = request.data.get("refresh")
+        if token_str:
+            try:
+                refresh = RefreshToken(token_str)
+            except TokenError:
+                # Let the parent serializer produce the canonical invalid-token 401.
+                return super().post(request, *args, **kwargs)
+            enforce_refresh_membership(refresh)
+        return super().post(request, *args, **kwargs)
 
 
 class ChangePasswordView(APIView):
@@ -530,6 +569,12 @@ class TenantRegistrationView(APIView):
                 "full_name": admin_user.full_name,
                 "role": admin_role.name,
             }
+
+        # Bind the admin user to the new tenant (Model B). User/Role/membership are
+        # all public-schema models, so this is created outside the schema_context.
+        UserTenantMembership.objects.create(
+            user=admin_user, tenant=tenant, role=admin_role, is_active=True
+        )
 
         return Response(
             {

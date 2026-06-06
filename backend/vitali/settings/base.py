@@ -332,6 +332,16 @@ ICP_BRASIL_ENFORCE_CHAIN = env.bool("ICP_BRASIL_ENFORCE_CHAIN", default=True)
 # docs/ICP_BRASIL.md.
 ICP_BRASIL_CHECK_REVOCATION = env.bool("ICP_BRASIL_CHECK_REVOCATION", default=False)
 
+# Tenant isolation (Model B). User/Role live in the public schema (apps.core is
+# SHARED_APPS) as one global registry; a user is bound to a tenant only via
+# UserTenantMembership. When True, TenantJWTAuthentication / the login + refresh
+# paths reject any user without an active membership for the current tenant,
+# closing the cross-tenant access hole. Default False for a safe two-step rollout:
+# R1 deploy + migrate + `backfill_tenant_memberships` + verify, THEN R2 flip this
+# env to True (no code deploy). Flipping it on BEFORE backfill locks out every
+# non-superuser. See docs/plans/TENANT-MEMBERSHIP.md.
+ENFORCE_TENANT_MEMBERSHIP = env.bool("ENFORCE_TENANT_MEMBERSHIP", default=False)
+
 # Per-request network timeout (seconds) for CRL/OCSP fetches when revocation
 # checking is enabled. Bounds how long sign() can block on a single fetch.
 ICP_BRASIL_REVOCATION_TIMEOUT = env.int("ICP_BRASIL_REVOCATION_TIMEOUT", default=10)
