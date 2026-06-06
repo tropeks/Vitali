@@ -120,6 +120,9 @@ def enforce_refresh_membership(refresh_token) -> None:
     except User.DoesNotExist:
         raise InvalidToken({"code": "USER_NOT_FOUND", "message": "Token inválido."}) from None
 
+    if not user.is_active:
+        raise InvalidToken({"code": "USER_INACTIVE", "message": "Conta desativada."})
+
     if schema == PUBLIC_SCHEMA:
         if user.is_superuser:
             return

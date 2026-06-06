@@ -10,6 +10,7 @@ from datetime import timedelta
 import jwt
 from django.conf import settings
 from django.core.cache import cache
+from django.db import connection
 from django.utils import timezone
 from django_tenants.utils import schema_context
 from rest_framework import generics, permissions, status
@@ -19,7 +20,6 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.views import TokenRefreshView as _BaseRefreshView
 
 from .models import (
@@ -35,7 +35,6 @@ from .models import (
 )
 from .serializers import (
     ChangePasswordSerializer,
-    HealthOSTokenObtainPairSerializer,
     LoginSerializer,
     RoleSerializer,
     TenantRegistrationSerializer,
@@ -143,6 +142,7 @@ def _create_invitation_for_user(user, *, requesting_user):
     token_hash = hashlib.sha256(token.encode()).hexdigest()
     invitation = UserInvitation.objects.create(
         user=user,
+        tenant=getattr(connection, "tenant", None),
         created_by=requesting_user,
         token_hash=token_hash,
         expires_at=expires_at,
@@ -215,7 +215,24 @@ class SetPasswordView(APIView):
         invitation.consumed_at = timezone.now()
         invitation.save(update_fields=["consumed_at"])
 
-        refresh = tokens_for_user(user)
+        # Accepting the invite IS the grant: bind the user to the inviting tenant
+        # (Model B) and mint the token stamped with THAT tenant's schema — regardless
+        # of which domain the accept request hit — so an invite for clinic A can't be
+        # consumed to reach clinic B, and the invited user isn't locked out once
+        # ENFORCE_TENANT_MEMBERSHIP is on. Legacy invites (tenant=None) keep the old
+        # behaviour (mint with the current schema, no membership).
+        invite_tenant = invitation.tenant
+        if invite_tenant is not None:
+            with schema_context(invite_tenant.schema_name):
+                UserTenantMembership.objects.get_or_create(
+                    user=user,
+                    tenant=invite_tenant,
+                    defaults={"role": user.role, "is_active": True},
+                )
+                refresh = tokens_for_user(user)
+        else:
+            refresh = tokens_for_user(user)
+
         return Response(
             {"access": str(refresh.access_token), "refresh": str(refresh)},
             status=200,
@@ -592,13 +609,6 @@ class TenantRegistrationView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
-
-
-# ─── Legacy JWT view ──────────────────────────────────────────────────────────
-
-
-class HealthOSTokenObtainPairView(TokenObtainPairView):
-    serializer_class = HealthOSTokenObtainPairSerializer  # type: ignore[assignment]
 
 
 # ─── User & Role views ────────────────────────────────────────────────────────
