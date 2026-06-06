@@ -687,11 +687,25 @@ class UserInvitation(models.Model):
     Single-use invitation token for the invite-email onboarding flow (S-076-NEW).
     token_hash stores SHA-256 of the JWT signature to allow validation without
     storing the raw token (defense in depth — leaked DB doesn't expose valid tokens).
-    Lives in tenant schema.
+
+    Lives in the PUBLIC schema (apps.core is SHARED_APPS) — global, not per-tenant.
+    ``tenant`` records which clinic the invite is for (captured at creation from the
+    inviting admin's tenant); accepting it grants a ``UserTenantMembership`` for that
+    tenant and binds the issued token to it, so an invite for clinic A cannot be
+    consumed to gain access to clinic B (Model B — see apps.core.tenant_auth).
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey("core.User", on_delete=models.CASCADE, related_name="invitations")
+    tenant = models.ForeignKey(
+        "core.Tenant",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="invitations",
+        verbose_name="Tenant",
+        help_text="Clínica do convite; null = convite legado anterior ao Model B.",
+    )
     created_by = models.ForeignKey(
         "core.User",
         on_delete=models.SET_NULL,

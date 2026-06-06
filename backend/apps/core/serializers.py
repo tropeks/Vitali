@@ -5,7 +5,6 @@ Core serializers for Vitali.
 import re
 
 from rest_framework import serializers
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from .models import FeatureFlag, Role, Tenant, User
 
@@ -81,18 +80,6 @@ class UserDTOSerializer(serializers.ModelSerializer):
 
 
 # ─── JWT ──────────────────────────────────────────────────────────────────────
-
-
-class HealthOSTokenObtainPairSerializer(TokenObtainPairSerializer):
-    """Custom JWT payload with user info (legacy — used by the token endpoint)."""
-
-    @classmethod
-    def get_token(cls, user):
-        token = super().get_token(user)
-        token["email"] = user.email
-        token["full_name"] = user.full_name
-        token["role"] = user.role.name if user.role else None
-        return token
 
 
 # ─── DPA (S-070) ─────────────────────────────────────────────────────────────

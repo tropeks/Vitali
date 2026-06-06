@@ -228,3 +228,87 @@ class BackfillTenantMembershipCommandTests(TenantTestCase):
         self.assertFalse(
             UserTenantMembership.objects.filter(user=self.user, tenant=self.tenant).exists()
         )
+
+
+@override_settings(CACHES=LOCMEM)
+class InvitationMembershipTests(TenantTestCase):
+    """Accepting an invitation grants membership for the inviting tenant and binds
+    the issued token to it (closes the SetPasswordView gap)."""
+
+    def setUp(self):
+        cache.clear()
+        self.tenant = self.__class__.tenant
+        self.role = Role.objects.create(name="medico", permissions=["emr.read"], is_system=True)
+        self.user = User.objects.create_user(
+            email="invitee@vitali.com", full_name="Invitee", password=PW, role=self.role
+        )
+
+    def _make_invitation(self, tenant):
+        import hashlib
+        from datetime import timedelta
+
+        import jwt
+        from django.conf import settings
+        from django.utils import timezone
+
+        from apps.core.models import UserInvitation
+
+        expires_at = timezone.now() + timedelta(hours=72)
+        token = jwt.encode(
+            {
+                "user_id": str(self.user.id),
+                "purpose": "password_set",
+                "exp": int(expires_at.timestamp()),
+                "jti": "t",
+            },
+            settings.SECRET_KEY,
+            algorithm="HS256",
+        )
+        UserInvitation.objects.create(
+            user=self.user,
+            tenant=tenant,
+            token_hash=hashlib.sha256(token.encode()).hexdigest(),
+            expires_at=expires_at,
+        )
+        return token
+
+    def test_accept_creates_membership_and_schema_bound_token(self):
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+
+        token = self._make_invitation(self.tenant)
+        client = APIClient()
+        client.defaults["SERVER_NAME"] = self.__class__.domain.domain
+        resp = client.post(
+            f"/api/v1/auth/set-password/{token}/",
+            {"password": "An0ther!Pass#2024"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        # Membership now exists for the inviting tenant…
+        self.assertTrue(
+            UserTenantMembership.objects.filter(
+                user=self.user, tenant=self.tenant, is_active=True
+            ).exists()
+        )
+        # …and the issued access token is stamped with that tenant's schema.
+        access = AccessToken(resp.json()["access"])
+        self.assertEqual(access[SCHEMA_CLAIM], self.tenant.schema_name)
+
+    @override_settings(ENFORCE_TENANT_MEMBERSHIP=True)
+    def test_invited_user_can_authenticate_after_accept_under_enforcement(self):
+        from rest_framework.test import APIClient
+
+        token = self._make_invitation(self.tenant)
+        client = APIClient()
+        client.defaults["SERVER_NAME"] = self.__class__.domain.domain
+        client.post(
+            f"/api/v1/auth/set-password/{token}/",
+            {"password": "An0ther!Pass#2024"},
+            format="json",
+        )
+        # The membership created at accept lets get_user pass under enforcement.
+        m = UserTenantMembership.objects.get(user=self.user, tenant=self.tenant)
+        self.assertTrue(m.is_active)
+        access = tokens_for_user(self.user).access_token
+        self.assertEqual(TenantJWTAuthentication().get_user(access).pk, self.user.pk)
