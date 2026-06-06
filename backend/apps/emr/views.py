@@ -793,14 +793,8 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def sign(self, request, pk=None):
         """POST /prescriptions/{id}/sign/ — assina a receita (requer emr.sign)."""
-        if not (
-            request.user.is_superuser
-            or (
-                hasattr(request.user, "role")
-                and request.user.role
-                and "emr.sign" in request.user.role.permissions
-            )
-        ):
+        _eff_role = request.user.effective_role()
+        if not (request.user.is_superuser or (_eff_role and "emr.sign" in _eff_role.permissions)):
             return Response(
                 {"detail": "Permissão emr.sign necessária para assinar receita."},
                 status=status.HTTP_403_FORBIDDEN,
