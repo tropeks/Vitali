@@ -338,7 +338,11 @@ class LoginView(APIView):
         refresh = tokens_for_user(user)
         refresh["email"] = user.email
         refresh["full_name"] = user.full_name
-        refresh["role"] = user.role.name if user.role else None
+        # Effective (per-tenant) role so the token claim matches the authorization
+        # actually in force for this tenant (Model B M2). Login runs in the tenant's
+        # schema context, so effective_role resolves the right membership role.
+        _eff_role = user.effective_role()
+        refresh["role"] = _eff_role.name if _eff_role else None
 
         _write_audit(request, user, "login_success", resource_id=str(user.pk))
 

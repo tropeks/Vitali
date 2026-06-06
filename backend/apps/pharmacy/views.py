@@ -460,7 +460,7 @@ class DispenseView(APIView):
         # Superuser bypass intentionally removed — ANVISA requires a named pharmacist record
         # for all controlled-substance dispensations regardless of account privilege.
         if drug.is_controlled:
-            role = getattr(request.user, "role", None)
+            role = request.user.effective_role()
             perms = role.permissions if role else []
             if "pharmacy.dispense_controlled" not in perms:
                 return Response(

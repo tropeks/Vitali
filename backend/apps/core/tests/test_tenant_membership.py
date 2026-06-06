@@ -312,3 +312,81 @@ class InvitationMembershipTests(TenantTestCase):
         self.assertTrue(m.is_active)
         access = tokens_for_user(self.user).access_token
         self.assertEqual(TenantJWTAuthentication().get_user(access).pk, self.user.pk)
+
+
+@override_settings(CACHES=LOCMEM)
+class EffectiveRoleTests(TenantTestCase):
+    """M2 — permission resolution uses the per-tenant membership role (gated by
+    ENFORCE_TENANT_MEMBERSHIP), falling back to the global User.role."""
+
+    def setUp(self):
+        cache.clear()
+        self.tenant = self.__class__.tenant
+        self.global_role = Role.objects.create(
+            name="recepcao", permissions=["schedule.read"], is_system=True
+        )
+        self.tenant_role = Role.objects.create(
+            name="admin", permissions=["schedule.read", "emr.sign"], is_system=True
+        )
+        self.user = User.objects.create_user(
+            email="multi@vitali.com", full_name="Multi", password=PW, role=self.global_role
+        )
+
+    def _fresh(self):
+        # Reload to drop the per-instance effective-role memo between assertions.
+        return User.objects.get(pk=self.user.pk)
+
+    @override_settings(ENFORCE_TENANT_MEMBERSHIP=False)
+    def test_flag_off_returns_global_role(self):
+        UserTenantMembership.objects.create(
+            user=self.user, tenant=self.tenant, role=self.tenant_role, is_active=True
+        )
+        self.assertEqual(self._fresh().effective_role().pk, self.global_role.pk)
+
+    @override_settings(ENFORCE_TENANT_MEMBERSHIP=True)
+    def test_membership_role_overrides_global(self):
+        UserTenantMembership.objects.create(
+            user=self.user, tenant=self.tenant, role=self.tenant_role, is_active=True
+        )
+        u = self._fresh()
+        self.assertEqual(u.effective_role().pk, self.tenant_role.pk)
+        # …and the permission check reflects it (emr.sign only on the tenant role).
+        self.assertTrue(u.has_role_permission("emr.sign"))
+
+    @override_settings(ENFORCE_TENANT_MEMBERSHIP=True)
+    def test_no_membership_falls_back_to_global(self):
+        u = self._fresh()
+        self.assertEqual(u.effective_role().pk, self.global_role.pk)
+        self.assertFalse(u.has_role_permission("emr.sign"))
+
+    @override_settings(ENFORCE_TENANT_MEMBERSHIP=True)
+    def test_membership_without_role_falls_back_to_global(self):
+        UserTenantMembership.objects.create(
+            user=self.user, tenant=self.tenant, role=None, is_active=True
+        )
+        self.assertEqual(self._fresh().effective_role().pk, self.global_role.pk)
+
+    @override_settings(ENFORCE_TENANT_MEMBERSHIP=True)
+    def test_inactive_membership_falls_back_to_global(self):
+        UserTenantMembership.objects.create(
+            user=self.user, tenant=self.tenant, role=self.tenant_role, is_active=False
+        )
+        self.assertEqual(self._fresh().effective_role().pk, self.global_role.pk)
+
+    @override_settings(ENFORCE_TENANT_MEMBERSHIP=True)
+    def test_effective_role_is_memoized_per_request(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        UserTenantMembership.objects.create(
+            user=self.user, tenant=self.tenant, role=self.tenant_role, is_active=True
+        )
+        u = self._fresh()
+        with CaptureQueriesContext(connection) as ctx:
+            u.effective_role()
+            u.effective_role()
+            u.effective_role()
+        membership_queries = [
+            q for q in ctx.captured_queries if "core_usertenantmembership" in q["sql"].lower()
+        ]
+        self.assertEqual(len(membership_queries), 1)

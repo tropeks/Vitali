@@ -532,11 +532,49 @@ class User(AbstractBaseUser, PermissionsMixin):
     def __str__(self):
         return f"{self.full_name} <{self.email}>"
 
+    def effective_role(self):
+        """Role governing this user IN THE CURRENT TENANT (Model B M2).
+
+        When ``ENFORCE_TENANT_MEMBERSHIP`` is on, resolves the active
+        ``UserTenantMembership.role`` for ``connection.tenant`` (per-tenant roles
+        for multi-clinic staff), falling back to the global ``self.role`` when
+        there is no tenant/membership or the membership records no role. When the
+        flag is off it is a no-op returning ``self.role`` — so role resolution only
+        becomes per-tenant at the same deliberate go-live flip as the rest of
+        Model B (no staleness/divergence before then). Memoized per request, keyed
+        by the current schema (a fresh ``User`` is loaded per request, and a schema
+        switch invalidates the key).
+        """
+        from django.conf import settings
+        from django.db import connection
+
+        if not getattr(settings, "ENFORCE_TENANT_MEMBERSHIP", False):
+            return self.role
+
+        schema = getattr(connection, "schema_name", None)
+        cache = self.__dict__.setdefault("_effective_role_cache", {})
+        if schema in cache:
+            return cache[schema]
+
+        role = self.role
+        tenant = getattr(connection, "tenant", None)
+        if tenant is not None:
+            membership = (
+                UserTenantMembership.objects.filter(user=self, tenant=tenant, is_active=True)
+                .select_related("role")
+                .first()
+            )
+            if membership is not None and membership.role_id is not None:
+                role = membership.role
+        cache[schema] = role
+        return role
+
     def has_role_permission(self, perm: str) -> bool:
-        """Check if the user's role grants a specific permission."""
+        """Check if the user's effective (per-tenant) role grants a permission."""
         if self.is_superuser:
             return True
-        return bool(self.role and self.role.has_permission(perm))
+        role = self.effective_role()
+        return bool(role and role.has_permission(perm))
 
 
 class UserTenantMembership(models.Model):

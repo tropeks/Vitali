@@ -140,3 +140,22 @@ multi-clínica. M1 fecha o furo de isolamento; M2 refina o modelo de permissão.
 - **Rollout:** R1 deploy (flag OFF) → migrate → `backfill_tenant_memberships` → revisar órfãos +
   `grant_tenant_membership` p/ quem falta → R2 `ENFORCE_TENANT_MEMBERSHIP=true` via env.
 - **M2 (follow-up):** resolução de permissão por `membership.role` (hoje via `user.role` global).
+
+## ✅ SHIPPED (M2 — per-membership role resolution, gated by ENFORCE_TENANT_MEMBERSHIP)
+- `User.effective_role()` — quando o flag está ON, resolve `UserTenantMembership.role`
+  ativo do `connection.tenant` (role por clínica p/ staff multi-tenant), com fallback ao
+  `User.role` global se não há tenant/membership ou a membership não tem role. Flag OFF →
+  no-op (retorna `User.role`), então a semântica de role-por-tenant só liga no MESMO flip
+  deliberado do resto do Model B — zero regressão/staleness antes disso. Memoizado por
+  request, keyed por schema. SEM migração (sem mudança de schema).
+- 4 sites de authz roteados via `effective_role()`: `User.has_role_permission`,
+  `HasPermission.has_permission`, o `emr.sign` inline (`emr/views.py`), e o gate de
+  dispensa de controlado (`pharmacy/views.py`, que mantém o NÃO-bypass de superuser ANVISA).
+  Claim `role` do JWT no login também passa a refletir o role efetivo (evita divergência UI).
+  Reads display-only (hr serializer) seguem no `User.role` global.
+- Testes: 6 novos (flag off→global; membership override; sem membership→global; membership
+  role null→global; membership inativa→global; memoização 1-query). Regressão dispensa/sign/
+  controlado/permissions: 74+61 passed. ruff + mypy limpos.
+- **Model B completo (M1+M1.1+M2).** To go live segue igual: backfill → revisar órfãos +
+  grant → `ENFORCE_TENANT_MEMBERSHIP=true`. Com o flag ON, admins podem dar role distinto por
+  clínica setando `UserTenantMembership.role` (UI de gestão de membership = follow-up futuro).

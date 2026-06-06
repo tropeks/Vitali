@@ -104,7 +104,9 @@ class HasPermission(BasePermission):
             return False
         if is_platform_admin(request.user):
             return True
-        role = getattr(request.user, "role", None)
+        # Effective (per-tenant) role under Model B; falls back to the global role
+        # when membership roles are not in effect. See User.effective_role.
+        role = request.user.effective_role()
         if not role:
             return False
         return self.permission_required in role.permissions
