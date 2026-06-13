@@ -13,7 +13,7 @@ Docker host / browser).
   emails per tenant before flipping `ENFORCE_TENANT_MEMBERSHIP`.
 - **MFA enrollment enforcement** — MFA now mandatory for `admin` / `medico` /
   `dentista` roles (configurable `MFA_REQUIRED_ROLES`) on top of staff/superuser,
-  with an enrollment grace window (`MFA_ENROLLMENT_GRACE_DAYS`, default 7) from
+  with an enrollment grace window (`MFA_GRACE_PERIOD_DAYS`, default 7) from
   account creation; past it, un-enrolled covered users get `403 mfa_enrollment_required`.
 - **CSP violation reporting** — CSP report-only now POSTs to a logged sink
   (`/api/v1/security/csp-report`); enforcing flip deferred pending clean logs +

@@ -19,7 +19,7 @@ PW = "Str0ng!Pass#2024"
 
 @override_settings(
     MFA_REQUIRED_ROLES={"admin", "medico", "dentista"},
-    MFA_ENROLLMENT_GRACE_DAYS=7,
+    MFA_GRACE_PERIOD_DAYS=7,
 )
 class MFARequiredForTests(TenantTestCase):
     def _user(self, *, role_name=None, is_staff=False, is_superuser=False):
@@ -51,7 +51,7 @@ class MFARequiredForTests(TenantTestCase):
         self.assertFalse(mfa_required_for(self._user()))
 
 
-@override_settings(MFA_ENROLLMENT_GRACE_DAYS=7)
+@override_settings(MFA_GRACE_PERIOD_DAYS=7)
 class MFAGraceTests(TenantTestCase):
     def _user(self):
         return User.objects.create_user(
@@ -70,7 +70,7 @@ class MFAGraceTests(TenantTestCase):
         user.refresh_from_db()
         self.assertTrue(mfa_enrollment_grace_expired(user))
 
-    @override_settings(MFA_ENROLLMENT_GRACE_DAYS=0)
+    @override_settings(MFA_GRACE_PERIOD_DAYS=0)
     def test_zero_grace_blocks_immediately(self):
         user = self._user()
         self.assertTrue(mfa_enrollment_grace_expired(user))

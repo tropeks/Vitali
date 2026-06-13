@@ -215,13 +215,13 @@ def mfa_required_for(user) -> bool:
 def mfa_enrollment_grace_expired(user) -> bool:
     """True if the user's enrollment grace window (from account creation) has passed.
 
-    Grace = settings.MFA_ENROLLMENT_GRACE_DAYS from ``user.created_at``. A user still
-    inside the window may operate without an enrolled device; past it, they are blocked
-    until they enrol. Missing ``created_at`` fails closed to "expired" so a sensitive
-    account is never left permanently un-enforced.
+    Grace = settings.MFA_GRACE_PERIOD_DAYS from ``user.created_at`` (the canonical,
+    hardened-to-7-days setting). A user still inside the window may operate without an
+    enrolled device; past it, they are blocked until they enrol. Missing ``created_at``
+    fails closed to "expired" so a sensitive account is never left un-enforced.
     """
     created = getattr(user, "created_at", None)
     if created is None:
         return True
-    grace_days = getattr(settings, "MFA_ENROLLMENT_GRACE_DAYS", 7)
+    grace_days = getattr(settings, "MFA_GRACE_PERIOD_DAYS", 7)
     return timezone.now() >= created + timedelta(days=grace_days)

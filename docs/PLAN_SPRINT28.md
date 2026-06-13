@@ -8,7 +8,7 @@
 > - S28-03 ⏳ go-live da flag em staging — documentado em `TENANT_MIGRATIONS.md`;
 >   execução exige staging.
 > - S28-04 ✅ MFA obrigatório para admin/médico/dentista + grace de enrolamento
->   (`MFA_REQUIRED_ROLES`, `MFA_ENROLLMENT_GRACE_DAYS`); testes unitários escritos.
+>   (`MFA_REQUIRED_ROLES`, `MFA_GRACE_PERIOD_DAYS`); testes unitários escritos.
 > - S28-05 ⚠️ PARCIAL: coletor de violações CSP (`report-uri`) entregue; **flip para
 >   enforcing NÃO feito** — Next.js exige nonce antes de remover inline; precisa QA de
 >   browser. Mantido report-only.

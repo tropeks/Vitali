@@ -292,11 +292,11 @@ MFA is mandatory for elevated/sensitive accounts:
 - **Who:** `is_staff` / `is_superuser`, plus any user whose role is in
   `MFA_REQUIRED_ROLES` (default `admin`, `medico`, `dentista`).
 - **Grace:** a covered user must enrol a TOTP device within
-  `MFA_ENROLLMENT_GRACE_DAYS` (default 7) of account creation. Inside the window
+  `MFA_GRACE_PERIOD_DAYS` (default 7) of account creation. Inside the window
   they can work while setting MFA up; past it, requests return `403`
   `mfa_enrollment_required` (redirect `/auth/mfa/setup`) until they enrol.
 - **Enrolled but unverified:** `403` `mfa_required` until they pass TOTP this session.
-- Tunable via env: `MFA_REQUIRED_ROLES`, `MFA_ENROLLMENT_GRACE_DAYS`. Set grace to `0`
+- Tunable via env: `MFA_REQUIRED_ROLES`, `MFA_GRACE_PERIOD_DAYS`. Set grace to `0`
   to require MFA immediately.
 
 Enforced in `apps.core.middleware.MFARequiredMiddleware`; logic in `apps.core.mfa`

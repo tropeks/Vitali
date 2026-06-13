@@ -196,7 +196,7 @@ class MFARequiredMiddleware:
       * No device enrolled:
           - within the enrollment grace window → allowed (new staff can work while
             they set MFA up);
-          - past the grace window (settings.MFA_ENROLLMENT_GRACE_DAYS from account
+          - past the grace window (settings.MFA_GRACE_PERIOD_DAYS from account
             creation) → 403 ``mfa_enrollment_required`` (must enrol now).
 
     Exempt paths: login, token refresh, and all /auth/mfa/* endpoints so users can
