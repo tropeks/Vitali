@@ -362,6 +362,16 @@ ICP_BRASIL_REVOCATION_TIMEOUT = env.int("ICP_BRASIL_REVOCATION_TIMEOUT", default
 # by failing the deploy if E2E_MODE=True AND DB-name does not end with '_test'.
 E2E_MODE = env.bool("E2E_MODE", default=False)
 
+# ─── OpenTelemetry (P2-03 / P2-01) ──────────────────────────────────────────
+# Default OFF: no opentelemetry package is imported unless OTEL_ENABLED=true.
+# When enabled, set OTEL_EXPORTER_OTLP_ENDPOINT to ship spans to a collector;
+# leave it empty to emit spans to stdout (ConsoleSpanExporter, useful for dev).
+# Instrumentation is bootstrapped by vitali/observability.py, called from wsgi.py
+# (web role) and celery.py worker_process_init (worker role).
+OTEL_ENABLED = env.bool("OTEL_ENABLED", default=False)
+OTEL_EXPORTER_OTLP_ENDPOINT = env.str("OTEL_EXPORTER_OTLP_ENDPOINT", default="")
+OTEL_SERVICE_NAME = env.str("OTEL_SERVICE_NAME", default="vitali-backend")
+
 # ─── Logging ──────────────────────────────────────────────────────────────────
 LOGGING = {
     "version": 1,

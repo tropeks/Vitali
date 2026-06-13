@@ -5,3 +5,6 @@ sentry-sdk==2.21
 whitenoise==6.9
 python-json-logger==2.0.7
 django-redis==5.4.0
+# OTel OTLP exporter — ships spans to a collector via gRPC (production only).
+# Requires OTEL_ENABLED=true and OTEL_EXPORTER_OTLP_ENDPOINT set.
+opentelemetry-exporter-otlp-proto-grpc==1.41.0
