@@ -342,6 +342,16 @@ ICP_BRASIL_CHECK_REVOCATION = env.bool("ICP_BRASIL_CHECK_REVOCATION", default=Fa
 # non-superuser. See docs/plans/TENANT-MEMBERSHIP.md.
 ENFORCE_TENANT_MEMBERSHIP = env.bool("ENFORCE_TENANT_MEMBERSHIP", default=False)
 
+# ─── MFA enrollment enforcement (S28-04) ──────────────────────────────────────
+# MFA is mandatory for elevated/sensitive roles. A user in one of these roles (or
+# is_staff/is_superuser) must enrol a TOTP device within the grace window measured
+# from account creation; after it expires they are blocked until they enrol. Set to
+# 0 to require MFA immediately. Role names match apps.core.permissions.DEFAULT_ROLES.
+MFA_REQUIRED_ROLES = set(
+    env.list("MFA_REQUIRED_ROLES", default=["admin", "medico", "dentista"])
+)
+MFA_ENROLLMENT_GRACE_DAYS = env.int("MFA_ENROLLMENT_GRACE_DAYS", default=7)
+
 # Per-request network timeout (seconds) for CRL/OCSP fetches when revocation
 # checking is enabled. Bounds how long sign() can block on a single fetch.
 ICP_BRASIL_REVOCATION_TIMEOUT = env.int("ICP_BRASIL_REVOCATION_TIMEOUT", default=10)

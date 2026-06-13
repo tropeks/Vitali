@@ -52,9 +52,15 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--dry-run", action="store_true", help="Report only; do not write.")
+        parser.add_argument(
+            "--report",
+            action="store_true",
+            help="List the affected user emails per tenant (verbose audit before flipping the flag).",
+        )
 
     def handle(self, *args, **opts):
         dry = opts["dry_run"]
+        report = opts["report"]
         Tenant = get_tenant_model()
         models = _tenant_app_models()
         self.stdout.write(
@@ -86,6 +92,10 @@ class Command(BaseCommand):
                 f"  {tenant.schema_name}: {len(user_ids)} referenced user(s), "
                 f"{len(existing)} already bound, {len(to_create)} to create."
             )
+            if report and to_create:
+                emails = User.objects.filter(pk__in=to_create).values_list("email", flat=True)
+                for email in sorted(emails):
+                    self.stdout.write(f"      + {email}")
             if not dry and to_create:
                 users = User.objects.filter(pk__in=to_create)
                 rows = [

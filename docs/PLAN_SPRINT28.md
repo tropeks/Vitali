@@ -1,5 +1,21 @@
 # Sprint 28: Tenant Enforcement + Security Hardening
 
+> **STATUS (2026-06-12): código entregue para S28-01, S28-04, S28-05 (sink) + testes;
+> verificação dependente de stack/browser/staging PENDENTE (host sem Docker).**
+> - S28-01 ✅ `backfill_tenant_memberships --report` (lista emails por tenant).
+> - S28-02 ⏳ enforcement já estava implementado e robusto (`tenant_auth.py`); falta
+>   rodar a suíte de regressão A↔B com pytest (precisa DB).
+> - S28-03 ⏳ go-live da flag em staging — documentado em `TENANT_MIGRATIONS.md`;
+>   execução exige staging.
+> - S28-04 ✅ MFA obrigatório para admin/médico/dentista + grace de enrolamento
+>   (`MFA_REQUIRED_ROLES`, `MFA_ENROLLMENT_GRACE_DAYS`); testes unitários escritos.
+> - S28-05 ⚠️ PARCIAL: coletor de violações CSP (`report-uri`) entregue; **flip para
+>   enforcing NÃO feito** — Next.js exige nonce antes de remover inline; precisa QA de
+>   browser. Mantido report-only.
+> - S28-06 ⏳ teste de regressão de segurança consolidado — pendente (precisa DB).
+> Verificação a rodar onde houver Docker: `pytest apps/core`, E2E com flag ON,
+> `npm run build`, e QA de browser para CSP.
+
 ## Context (ler antes de começar)
 
 - `docs/SECURITY.md`, `docs/TENANT_MIGRATIONS.md`

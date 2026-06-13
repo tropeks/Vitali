@@ -187,3 +187,23 @@ If the migration was catastrophic and affects all tenants, restore from the full
 ---
 
 *Vitali — docs/TENANT_MIGRATIONS.md*
+
+---
+
+## Go-live: enforcing tenant membership (S28)
+
+`ENFORCE_TENANT_MEMBERSHIP` flips permissive → enforced. Order matters — flipping
+before backfill locks out every non-superuser.
+
+1. **Audit** (no writes): `manage.py backfill_tenant_memberships --dry-run --report`
+   — lists, per tenant, the users that would be bound, plus active non-superusers
+   with no data footprint (these need an explicit `grant_tenant_membership`).
+2. **Backfill**: `manage.py backfill_tenant_memberships` (idempotent).
+3. **Grant** any orphaned-but-legitimate users explicitly.
+4. **Flip**: set `ENFORCE_TENANT_MEMBERSHIP=True` and recreate the app services
+   (no code deploy).
+5. **Verify**: a tenant-A user must get `403` `NO_TENANT_MEMBERSHIP` on tenant B;
+   run the E2E suite with the flag on.
+
+**Rollback** is instant and lossless: set `ENFORCE_TENANT_MEMBERSHIP=False` and
+recreate services — memberships remain in place, enforcement simply becomes a no-op.

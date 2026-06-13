@@ -185,14 +185,22 @@ _MFA_EXEMPT_PATHS = {
 
 class MFARequiredMiddleware:
     """
-    Blocks staff/superuser requests that lack the mfa_verified JWT claim.
+    Enforces MFA for elevated/sensitive accounts (S-062 + S28-04).
 
-    Regular users are not blocked — MFA is only enforced for elevated accounts
-    (is_staff or is_superuser). The JWT claim 'mfa_verified' is injected by
-    MFALoginView after successful TOTP verification.
+    MFA is mandatory for is_staff/is_superuser AND for users whose role is in
+    settings.MFA_REQUIRED_ROLES (admin / medico / dentista by default) — see
+    ``apps.core.mfa.mfa_required_for``. Regular users are never blocked.
 
-    Exempt paths: login, token refresh, and all /auth/mfa/* endpoints so users
-    can complete the MFA flow without an active MFA session.
+    For a covered user that has not passed MFA this session:
+      * Device enrolled, no ``mfa_verified`` claim → 403 ``mfa_required`` (verify).
+      * No device enrolled:
+          - within the enrollment grace window → allowed (new staff can work while
+            they set MFA up);
+          - past the grace window (settings.MFA_ENROLLMENT_GRACE_DAYS from account
+            creation) → 403 ``mfa_enrollment_required`` (must enrol now).
+
+    Exempt paths: login, token refresh, and all /auth/mfa/* endpoints so users can
+    complete setup/verification without an active MFA session.
     """
 
     def __init__(self, get_response):
@@ -200,28 +208,37 @@ class MFARequiredMiddleware:
 
     def __call__(self, request):
         user = getattr(request, "user", None)
-        if user and user.is_authenticated and (user.is_staff or user.is_superuser):
-            path = request.path_info
-            if not any(path.endswith(p) or path == p for p in _MFA_EXEMPT_PATHS):
-                # Check JWT claim
-                token_payload = getattr(request, "auth", None)
-                mfa_verified = False
-                if token_payload and hasattr(token_payload, "get"):
-                    mfa_verified = bool(token_payload.get("mfa_verified"))
-                elif isinstance(token_payload, dict):
-                    mfa_verified = bool(token_payload.get("mfa_verified"))
-                if not mfa_verified:
-                    from apps.core.models import TOTPDevice
+        if user and user.is_authenticated:
+            from apps.core.mfa import mfa_enrollment_grace_expired, mfa_required_for
 
-                    try:
-                        device = TOTPDevice.objects.get(user=user, is_active=True)
-                        _ = device  # MFA device exists — enforce the check
-                        return JsonResponse(
-                            {"detail": "MFA verification required.", "code": "mfa_required"},
-                            status=403,
-                        )
-                    except TOTPDevice.DoesNotExist:
-                        pass  # No device yet — don't block (grace period)
+            if mfa_required_for(user):
+                path = request.path_info
+                if not any(path.endswith(p) or path == p for p in _MFA_EXEMPT_PATHS):
+                    token_payload = getattr(request, "auth", None)
+                    mfa_verified = False
+                    if token_payload and hasattr(token_payload, "get"):
+                        mfa_verified = bool(token_payload.get("mfa_verified"))
+                    elif isinstance(token_payload, dict):
+                        mfa_verified = bool(token_payload.get("mfa_verified"))
+                    if not mfa_verified:
+                        from apps.core.models import TOTPDevice
+
+                        has_device = TOTPDevice.objects.filter(user=user, is_active=True).exists()
+                        if has_device:
+                            return JsonResponse(
+                                {"detail": "MFA verification required.", "code": "mfa_required"},
+                                status=403,
+                            )
+                        # No device — block only once the enrollment grace expired.
+                        if mfa_enrollment_grace_expired(user):
+                            return JsonResponse(
+                                {
+                                    "detail": "MFA enrollment required.",
+                                    "code": "mfa_enrollment_required",
+                                    "redirect": "/auth/mfa/setup",
+                                },
+                                status=403,
+                            )
         return self.get_response(request)
 
 

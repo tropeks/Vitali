@@ -282,3 +282,31 @@ validators now require them), and configure an offsite (S3) backup target.
 ---
 
 *Next: [EPICS_AND_ROADMAP.md](./EPICS_AND_ROADMAP.md)*
+
+---
+
+## MFA enrollment enforcement (S28-04)
+
+MFA is mandatory for elevated/sensitive accounts:
+
+- **Who:** `is_staff` / `is_superuser`, plus any user whose role is in
+  `MFA_REQUIRED_ROLES` (default `admin`, `medico`, `dentista`).
+- **Grace:** a covered user must enrol a TOTP device within
+  `MFA_ENROLLMENT_GRACE_DAYS` (default 7) of account creation. Inside the window
+  they can work while setting MFA up; past it, requests return `403`
+  `mfa_enrollment_required` (redirect `/auth/mfa/setup`) until they enrol.
+- **Enrolled but unverified:** `403` `mfa_required` until they pass TOTP this session.
+- Tunable via env: `MFA_REQUIRED_ROLES`, `MFA_ENROLLMENT_GRACE_DAYS`. Set grace to `0`
+  to require MFA immediately.
+
+Enforced in `apps.core.middleware.MFARequiredMiddleware`; logic in `apps.core.mfa`
+(`mfa_required_for`, `mfa_enrollment_grace_expired`).
+
+## CSP violation reporting (S28-05)
+
+CSP ships **report-only** with `report-uri /api/v1/security/csp-report`. The sink
+(`vitali/urls_public.py::csp_report`, unauthenticated, CSRF-exempt, logs to
+`vitali.security.csp`) collects violations so the policy can be promoted to enforcing
+data-driven. **Promotion to enforcing is gated** on: a clean violation log AND a
+browser QA pass — Next.js inline hydration scripts need nonce support before
+`'unsafe-inline'`/inline scripts can be dropped from `script-src`.

@@ -4,6 +4,23 @@ All notable changes to Vitali Health are documented here.
 
 ## [Unreleased]
 
+### Sprint 28 — Tenant Enforcement + Security Hardening (2026-06)
+
+Partial — see `docs/PLAN_SPRINT28.md` for per-item status (verification pending on a
+Docker host / browser).
+
+- **Backfill audit** — `backfill_tenant_memberships --report` lists affected user
+  emails per tenant before flipping `ENFORCE_TENANT_MEMBERSHIP`.
+- **MFA enrollment enforcement** — MFA now mandatory for `admin` / `medico` /
+  `dentista` roles (configurable `MFA_REQUIRED_ROLES`) on top of staff/superuser,
+  with an enrollment grace window (`MFA_ENROLLMENT_GRACE_DAYS`, default 7) from
+  account creation; past it, un-enrolled covered users get `403 mfa_enrollment_required`.
+- **CSP violation reporting** — CSP report-only now POSTs to a logged sink
+  (`/api/v1/security/csp-report`); enforcing flip deferred pending clean logs +
+  browser QA (Next.js nonce work first).
+- **Docs** — `SECURITY.md` (MFA/CSP), `TENANT_MIGRATIONS.md` (enforcement go-live +
+  instant rollback).
+
 ### Sprint 27 — Production Ops Foundation (2026-06)
 
 Infra hardening so a pilot clinic can run in real production. See

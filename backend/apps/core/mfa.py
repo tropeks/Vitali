@@ -192,3 +192,36 @@ def get_mfa_grace_expiry(user) -> datetime | None:
     except Exception:
         pass
     return None
+
+
+# ─── S28-04: MFA enrollment enforcement for sensitive roles ──────────────────
+
+
+def mfa_required_for(user) -> bool:
+    """True if MFA is mandatory for this user (elevated account or sensitive role).
+
+    Elevated = is_staff/is_superuser. Sensitive role = the user's global role name
+    is in settings.MFA_REQUIRED_ROLES (admin / medico / dentista by default). The
+    global ``user.role`` is used (not the tenant membership role) so the check is
+    safe to run in middleware without needing a resolved tenant context.
+    """
+    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        return True
+    role = getattr(user, "role", None)
+    required = getattr(settings, "MFA_REQUIRED_ROLES", set())
+    return bool(role and role.name in required)
+
+
+def mfa_enrollment_grace_expired(user) -> bool:
+    """True if the user's enrollment grace window (from account creation) has passed.
+
+    Grace = settings.MFA_ENROLLMENT_GRACE_DAYS from ``user.created_at``. A user still
+    inside the window may operate without an enrolled device; past it, they are blocked
+    until they enrol. Missing ``created_at`` fails closed to "expired" so a sensitive
+    account is never left permanently un-enforced.
+    """
+    created = getattr(user, "created_at", None)
+    if created is None:
+        return True
+    grace_days = getattr(settings, "MFA_ENROLLMENT_GRACE_DAYS", 7)
+    return timezone.now() >= created + timedelta(days=grace_days)
