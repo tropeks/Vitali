@@ -136,18 +136,21 @@ LOGGING = {
         "tenant_request": {
             "()": "apps.core.middleware.TenantRequestLogFilter",
         },
+        "otel_trace": {
+            "()": "apps.core.observability_logging.OTelTraceLogFilter",
+        },
     },
     "formatters": {
         "json": {
             "()": "pythonjsonlogger.jsonlogger.JsonFormatter",
-            "format": "%(asctime)s %(name)s %(levelname)s %(message)s %(tenant)s %(request_id)s",
+            "format": "%(asctime)s %(name)s %(levelname)s %(message)s %(tenant)s %(request_id)s %(otel_trace_id)s %(otel_span_id)s",
         },
     },
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
             "formatter": "json",
-            "filters": ["tenant_request"],
+            "filters": ["tenant_request", "otel_trace"],
         },
     },
     "root": {
