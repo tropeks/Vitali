@@ -6,47 +6,27 @@ Python/ORM layer.  QuerySet.update()/.delete() and raw SQL bypass the model's
 save()/delete() overrides, so a DB-level trigger is the primary enforcement
 mechanism (CFM Res. 1.821/2007).
 
-Uses TransactionTestCase because a RAISE EXCEPTION inside a trigger aborts the
-current transaction; a regular TestCase wraps everything in a single transaction
-and the whole test would become unrunnable after the first trigger fires.
-Each test that expects a trigger-raised exception wraps its DB call in
-transaction.atomic() to create a savepoint-backed sub-transaction, lets the
-exception abort only that sub-transaction, then rolls back to the savepoint —
-keeping the outer connection clean for subsequent tests.
+Uses django.test.TestCase (NOT TransactionTestCase) so that each test is
+wrapped in a transaction that is rolled back at the end — no TRUNCATE/flush is
+ever issued, which means the immutability trigger on TRUNCATE never fires during
+teardown.  This makes the suite-level behaviour identical to running the file in
+isolation, eliminating the fragile _BypassTriggers / session_replication_role
+hack that was needed when using TransactionTestCase.
 
-GOTCHA — TransactionTestCase teardown vs. TRUNCATE trigger:
-    Django's TransactionTestCase._post_teardown calls ``manage.py flush`` which
-    issues a single TRUNCATE covering all tables (including core_auditlog). Our
-    TRUNCATE trigger would block that.  We work around it by temporarily setting
-    the session replication role to 'replica' before the flush; that suppresses
-    all user-defined triggers for the duration of the flush, then restores the
-    role to 'origin'.  This is test-harness plumbing only — it has no effect on
-    the production database or on the trigger's enforcement in any real session.
+For the individual assertions that expect a trigger error: each operation is
+wrapped in ``transaction.atomic()`` which creates a savepoint.  When the trigger
+raises, only the savepoint is rolled back; the outer TestCase transaction
+survives and is reused by subsequent assertions.
+
+Postgres maps the trigger's RAISE EXCEPTION (ERRCODE='check_violation') via
+psycopg2 to one of IntegrityError / InternalError / ProgrammingError depending
+on the execution path — we catch all three for robustness.
 """
 
 from django.db import IntegrityError, InternalError, ProgrammingError, connection, transaction
-from django.test import TransactionTestCase
+from django.test import TestCase
 
 from apps.core.models import AuditLog
-
-
-class _BypassTriggers:
-    """Context manager: set session_replication_role=replica for the duration.
-
-    Postgres 'replica' role suppresses all user-defined triggers.  This is used
-    only in the test teardown (and pre-test cleanup) so that Django's TRUNCATE
-    flush can run without being blocked by the immutability trigger.  It has no
-    effect on production sessions, which always run as 'origin'.
-    """
-
-    def __enter__(self):
-        with connection.cursor() as cur:
-            cur.execute("SET session_replication_role = replica")
-        return self
-
-    def __exit__(self, *_):
-        with connection.cursor() as cur:
-            cur.execute("SET session_replication_role = origin")
 
 
 def _make_audit_log(**kwargs):
@@ -61,44 +41,8 @@ def _make_audit_log(**kwargs):
     return AuditLog.objects.create(**defaults)
 
 
-class AuditLogDbImmutableTests(TransactionTestCase):
+class AuditLogDbImmutableTests(TestCase):
     """Verify that UPDATE/DELETE on core_auditlog raise a DB-level error."""
-
-    # TransactionTestCase flushes the DB between tests (no transaction wrapping).
-    reset_sequences = True
-
-    # ------------------------------------------------------------------
-    # Setup/Teardown: bypass triggers so Django's flush (TRUNCATE) can run.
-    #
-    # Django's TransactionTestCase flushes the DB via TRUNCATE between tests.
-    # Our TRUNCATE trigger blocks that.  We work around it by:
-    #   1. In _pre_setup: delete any stale core_auditlog rows left over from a
-    #      previous interrupted run (trigger bypassed via session_replication_role).
-    #   2. In _post_teardown: set session_replication_role = replica (suppresses
-    #      all user triggers), call Django's normal flush, then restore.
-    # This is test-harness plumbing only; the trigger is fully active in all
-    # real (non-replica-role) sessions.
-    # ------------------------------------------------------------------
-
-    @classmethod
-    def _bypass_triggers(cls):
-        """Return a context manager that disables user triggers for the session."""
-        return _BypassTriggers()
-
-    def setUp(self):
-        # Delete any stale core_auditlog rows left from a previous run where
-        # _post_teardown failed (e.g. first run with --create-db).
-        with self._bypass_triggers():
-            with connection.cursor() as cursor:
-                cursor.execute("DELETE FROM core_auditlog")
-
-    def _post_teardown(self):
-        # Django's TransactionTestCase flushes the DB via TRUNCATE between tests.
-        # Our TRUNCATE trigger would block that.  Disable user triggers for this
-        # session before the flush, restore immediately after.
-        # session_replication_role = replica suppresses all user-defined triggers.
-        with self._bypass_triggers():
-            super()._post_teardown()
 
     def _assert_trigger_blocks(self, fn):
         """
@@ -106,12 +50,13 @@ class AuditLogDbImmutableTests(TransactionTestCase):
 
         Postgres RAISE EXCEPTION with ERRCODE='check_violation' is mapped by
         Django/psycopg2 as follows:
-          - In raw queries:  django.db.IntegrityError (check_violation → 23514)
+          - In raw queries:  django.db.IntegrityError (check_violation -> 23514)
           - In other paths:  InternalError or ProgrammingError
         We catch all three so the assertion is robust regardless of how Django
         wraps the underlying psycopg2 error.  The transaction.atomic() context
         creates a savepoint; the exception aborts only the sub-transaction and
-        rolls back to the savepoint, leaving the outer connection usable.
+        rolls back to the savepoint, leaving the outer TestCase transaction
+        intact for subsequent tests.
         """
         raised = False
         try:
