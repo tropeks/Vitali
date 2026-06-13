@@ -531,6 +531,19 @@ class TenantRegistrationView(APIView):
 
         data = serializer.validated_data
 
+        # Reject a duplicate admin email up front (User.email is globally unique in
+        # the public schema) so we never create a schema we'd just have to roll back.
+        if User.objects.filter(email=data["admin_email"]).exists():
+            return Response(
+                {
+                    "error": {
+                        "code": "ADMIN_EMAIL_TAKEN",
+                        "message": "Já existe um usuário com este e-mail.",
+                    }
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
         # 1. Create Tenant (auto_create_schema=True → creates the PG schema)
         tenant = Tenant(
             name=data["name"],
@@ -541,61 +554,81 @@ class TenantRegistrationView(APIView):
         )
         tenant.save()  # triggers schema creation
 
-        # 2. Create domain
-        host = request.get_host().split(":")[0]
-        # Use slug.localhost for dev, slug.vitali.com.br in production
-        if "localhost" in host or "127.0.0.1" in host:
-            domain_url = f"{tenant.slug}.localhost"
-        else:
-            base = host.split(".", 1)[-1] if "." in host else host
-            domain_url = f"{tenant.slug}.{base}"
+        # Everything after schema creation is wrapped so a partial failure rolls the
+        # WHOLE thing back (drop the schema), leaving no orphaned half-tenant. This is
+        # the reentrancy fix: a failed registration leaves zero state, so a retry is
+        # clean rather than colliding with leftovers (LabX anti-pattern A1).
+        try:
+            # 2. Create (or reuse) domain — idempotent so a retry doesn't 500 on a
+            #    leftover row.
+            host = request.get_host().split(":")[0]
+            if "localhost" in host or "127.0.0.1" in host:
+                domain_url = f"{tenant.slug}.localhost"
+            else:
+                base = host.split(".", 1)[-1] if "." in host else host
+                domain_url = f"{tenant.slug}.{base}"
 
-        domain = Domain.objects.create(
-            domain=domain_url,
-            tenant=tenant,
-            is_primary=True,
-        )
-
-        # 3. Inside the new schema: create admin Role + admin User
-        admin_user_data = {}
-        with schema_context(tenant.schema_name):
-            from .permissions import DEFAULT_ROLES
-
-            # Create all default roles
-            roles_created = {}
-            for role_name, perms in DEFAULT_ROLES.items():
-                role = Role.objects.create(
-                    name=role_name,
-                    permissions=perms,
-                    is_system=True,
-                )
-                roles_created[role_name] = role
-
-            admin_role = roles_created["admin"]
-
-            # Create admin user
-            admin_user = User(
-                email=data["admin_email"],
-                full_name=data["admin_full_name"],
-                role=admin_role,
-                is_active=True,
-                is_staff=True,
+            domain, _ = Domain.objects.get_or_create(
+                domain=domain_url,
+                defaults={"tenant": tenant, "is_primary": True},
             )
-            admin_user.set_password(data["admin_password"])
-            admin_user.save()
 
-            admin_user_data = {
-                "id": str(admin_user.pk),
-                "email": admin_user.email,
-                "full_name": admin_user.full_name,
-                "role": admin_role.name,
-            }
+            # 3. Inside the new schema: create admin Role + admin User (idempotent).
+            admin_user_data = {}
+            with schema_context(tenant.schema_name):
+                from .permissions import DEFAULT_ROLES
 
-        # Bind the admin user to the new tenant (Model B). User/Role/membership are
-        # all public-schema models, so this is created outside the schema_context.
-        UserTenantMembership.objects.create(
-            user=admin_user, tenant=tenant, role=admin_role, is_active=True
-        )
+                roles_created = {}
+                for role_name, perms in DEFAULT_ROLES.items():
+                    role, _ = Role.objects.get_or_create(
+                        name=role_name,
+                        defaults={"permissions": perms, "is_system": True},
+                    )
+                    roles_created[role_name] = role
+
+                admin_role = roles_created["admin"]
+
+                admin_user = User(
+                    email=data["admin_email"],
+                    full_name=data["admin_full_name"],
+                    role=admin_role,
+                    is_active=True,
+                    is_staff=True,
+                )
+                admin_user.set_password(data["admin_password"])
+                admin_user.save()
+
+                admin_user_data = {
+                    "id": str(admin_user.pk),
+                    "email": admin_user.email,
+                    "full_name": admin_user.full_name,
+                    "role": admin_role.name,
+                }
+
+            # Bind the admin user to the new tenant (Model B). User/Role/membership are
+            # all public-schema models, created outside the schema_context.
+            UserTenantMembership.objects.get_or_create(
+                user=admin_user,
+                tenant=tenant,
+                defaults={"role": admin_role, "is_active": True},
+            )
+        except Exception:
+            # Compensating rollback — drop the schema + tenant row so no orphan
+            # survives. force_drop because auto_drop_schema is off by default.
+            logger.exception("Tenant registration failed; rolling back %s", tenant.slug)
+            try:
+                tenant.delete(force_drop=True)
+            except Exception:
+                logger.exception("Rollback of tenant %s failed", tenant.slug)
+            return Response(
+                {
+                    "error": {
+                        "code": "TENANT_REGISTRATION_FAILED",
+                        "message": "Falha ao criar a clínica. Nenhum dado parcial foi mantido; tente novamente.",
+                    }
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
         return Response(
             {

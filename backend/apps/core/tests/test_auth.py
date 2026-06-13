@@ -338,3 +338,30 @@ class TenantRegistrationTestCase(TestCase):
         )
         self.assertEqual(resp.status_code, 400)
         self.assertIn("cnpj", resp.json()["error"]["details"])
+
+    def test_tenant_registration_duplicate_admin_email_409_no_orphan(self):
+        """A taken admin email is rejected up front (409) without creating a schema
+        — the reentrancy fix (LabX anti-pattern A1)."""
+        from apps.core.models import Tenant, User
+
+        User.objects.create_user(
+            email="taken@clinica.com", full_name="Existing", password="Str0ng!Admin#2024"
+        )
+        before = Tenant.objects.count()
+        with patch("django_tenants.utils.schema_context"):
+            resp = self.client.post(
+                self.url,
+                {
+                    "name": "Nova",
+                    "slug": "nova-clinica",
+                    "admin_email": "taken@clinica.com",
+                    "admin_full_name": "Admin",
+                    "admin_password": "Str0ng!Admin#2024",
+                },
+                format="json",
+            )
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(resp.json()["error"]["code"], "ADMIN_EMAIL_TAKEN")
+        # No tenant/schema was created for the rejected request.
+        self.assertEqual(Tenant.objects.count(), before)
+        self.assertFalse(Tenant.objects.filter(slug="nova-clinica").exists())
