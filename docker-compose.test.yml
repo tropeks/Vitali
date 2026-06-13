@@ -1,0 +1,7 @@
+# Test-only override: keep DB/cache internal (no host ports) so this stack can
+# coexist with other compose stacks on the same host (e.g. tcx using 6379).
+services:
+  redis:
+    ports: !reset []
+  postgres:
+    ports: !reset []
