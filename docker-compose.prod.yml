@@ -82,6 +82,8 @@ services:
     env_file: ${PROD_ENV_FILE:-/etc/vitali/secrets.env}
     environment:
       DJANGO_SETTINGS_MODULE: vitali.settings.production
+      VITALI_ROLE: worker
+      CELERY_DATABASE_URL: ${CELERY_DATABASE_URL}
     depends_on:
       postgres:
         condition: service_healthy
@@ -104,6 +106,8 @@ services:
     env_file: ${PROD_ENV_FILE:-/etc/vitali/secrets.env}
     environment:
       DJANGO_SETTINGS_MODULE: vitali.settings.production
+      VITALI_ROLE: beat
+      CELERY_DATABASE_URL: ${CELERY_DATABASE_URL}
     depends_on:
       postgres:
         condition: service_healthy

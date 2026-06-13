@@ -5,6 +5,10 @@ Kept in a standalone module so unit tests can import without triggering the
 full production settings load (which requires SECRET_KEY, ALLOWED_HOSTS, etc.).
 """
 
+# Valid values for DEPLOYMENT_PROFILE (P3-01). Air-gap is explicitly out of scope
+# for Romulo's cloud-only deployment model.
+DEPLOYMENT_PROFILE_CHOICES = ("pool", "dedicated")
+
 _FERNET_ZERO_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 
 # The default SECRET_KEY shipped in development.py — must never reach production.
@@ -152,4 +156,54 @@ def warn_if_missing_sentry(dsn: str) -> None:
             "Set SENTRY_DSN (and NEXT_PUBLIC_SENTRY_DSN on the frontend) to capture "
             "crashes. Ignore only if observability is handled some other way.",
             stacklevel=2,
+        )
+
+
+def assert_worker_database_separation(role: str, database_url: str, celery_database_url: str) -> None:
+    """Raise ImproperlyConfigured when a worker/beat process lacks a separate DB DSN.
+
+    The least-privilege boundary for Celery workers is the **database credential**,
+    not the encryption key — workers still require FIELD_ENCRYPTION_KEY because tasks
+    read and write encrypted EMR fields (CPF, etc.). The worker Postgres role should
+    have USAGE/SELECT/INSERT/UPDATE/DELETE across all tenant schemas (django-tenants
+    switches search_path at runtime) but must NOT be a superuser or hold DDL privileges.
+
+    Web role → always a no-op; this validator is a gate for worker|beat only.
+    """
+    if role not in ("worker", "beat"):
+        return
+
+    from django.core.exceptions import ImproperlyConfigured
+
+    if not celery_database_url or celery_database_url == database_url:
+        raise ImproperlyConfigured(
+            "Workers and beat processes must use a separate, less-privileged Postgres DSN. "
+            "Set CELERY_DATABASE_URL to a DSN for a dedicated Postgres role (e.g. "
+            "postgres://vitali_worker:...@postgres:5432/vitali) that holds "
+            "USAGE/SELECT/INSERT/UPDATE/DELETE on all tenant schemas but is NOT a superuser "
+            "and holds no DDL privileges. "
+            "CELERY_DATABASE_URL must be non-empty and distinct from the web tier's DATABASE_URL. "
+            "Note: workers STILL need FIELD_ENCRYPTION_KEY — the least-privilege boundary "
+            "is DB credentials, not the crypto key."
+        )
+
+
+def assert_deployment_profile(profile: str) -> None:
+    """Raise ImproperlyConfigured if *profile* is not a recognised deployment profile.
+
+    Valid choices are 'pool' (shared multi-tenant instance, the default) and
+    'dedicated' (single-tenant isolated instance, foundation for the Fase 3 Tenant
+    Operator). Air-gap is explicitly out of scope — Vitali is a cloud-only product
+    (Romulo's cloud). Any other value — including empty string — is rejected at boot
+    so misconfigured containers fail loudly rather than behaving unexpectedly.
+    """
+    from django.core.exceptions import ImproperlyConfigured
+
+    if profile not in DEPLOYMENT_PROFILE_CHOICES:
+        raise ImproperlyConfigured(
+            f"DEPLOYMENT_PROFILE must be one of {list(DEPLOYMENT_PROFILE_CHOICES)} "
+            f"(got {profile!r}). "
+            "'pool' = shared multi-tenant instance (default); "
+            "'dedicated' = single-tenant isolated instance (Fase 3 Tenant Operator). "
+            "Air-gap is out of scope — Vitali runs on Romulo's cloud only."
         )
