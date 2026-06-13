@@ -21,3 +21,6 @@ ruff==0.9
 mypy==1.15
 django-stubs==5.1
 djangorestframework-stubs==3.15
+
+# Import boundary enforcement (P1-01 — domain-independence contract)
+import-linter==2.1

@@ -1,0 +1,89 @@
+[importlinter]
+root_package = apps
+
+[importlinter:contract:domain-independence]
+name = Domain apps must not import from each other (cross-domain coupling)
+type = independence
+# Unmatched ignore expressions should not error — wildcards may cover future modules.
+unmatched_ignore_imports_alerting = none
+modules =
+    apps.emr
+    apps.billing
+    apps.pharmacy
+    apps.ai
+    apps.whatsapp
+    apps.hr
+    apps.signatures
+    apps.fhir
+    apps.imaging
+    apps.telemedicine
+    apps.patient_portal
+    apps.pharmacy_ai
+    apps.smart_scheduling
+    apps.triage
+    apps.mobile
+    apps.analytics
+
+# ─── BASELINE (pre-existing cross-app imports — do NOT add new ones) ──────────
+# These were grandfathered in on P1-01 (2026-06-13). Every pair here represents
+# existing coupling that must eventually be refactored toward apps.core or an
+# explicit service boundary. Adding new entries to this list is forbidden without
+# a documented ADR.
+#
+# ALSO included: edges from apps.core into domain apps that create transitive
+# paths (core is the permitted hub but also imports some domain models directly;
+# those graph edges are masked here so they don't create phantom transitive
+# violations between unrelated domain apps).
+ignore_imports =
+    # --- direct cross-domain baseline ---
+    # ai -> emr
+    apps.ai.** -> apps.emr.**
+    # analytics -> ai
+    apps.analytics.** -> apps.ai.**
+    # analytics -> billing
+    apps.analytics.** -> apps.billing.**
+    # analytics -> emr
+    apps.analytics.** -> apps.emr.**
+    # billing -> ai
+    apps.billing.** -> apps.ai.**
+    # billing -> emr
+    apps.billing.** -> apps.emr.**
+    # emr -> ai
+    apps.emr.** -> apps.ai.**
+    # emr -> pharmacy
+    apps.emr.** -> apps.pharmacy.**
+    # emr -> whatsapp
+    apps.emr.** -> apps.whatsapp.**
+    # fhir -> emr
+    apps.fhir.** -> apps.emr.**
+    # fhir -> pharmacy
+    apps.fhir.** -> apps.pharmacy.**
+    # hr -> emr
+    apps.hr.** -> apps.emr.**
+    # hr -> whatsapp
+    apps.hr.** -> apps.whatsapp.**
+    # imaging -> emr
+    apps.imaging.** -> apps.emr.**
+    # patient_portal -> emr
+    apps.patient_portal.** -> apps.emr.**
+    # pharmacy -> emr
+    apps.pharmacy.** -> apps.emr.**
+    # pharmacy_ai -> pharmacy
+    apps.pharmacy_ai.** -> apps.pharmacy.**
+    # smart_scheduling -> emr
+    apps.smart_scheduling.** -> apps.emr.**
+    # telemedicine -> emr
+    apps.telemedicine.** -> apps.emr.**
+    # triage -> emr
+    apps.triage.** -> apps.emr.**
+    # whatsapp -> emr
+    apps.whatsapp.** -> apps.emr.**
+
+    # --- core -> domain edges (mask transitive paths through the hub) ---
+    # core.signals, core.views_onboarding, core.views_platform import domain models;
+    # these are masked so that "domainA -> core -> domainB" is not reported as a
+    # direct domainA -> domainB violation.
+    apps.core.** -> apps.emr.**
+    apps.core.** -> apps.billing.**
+    apps.core.** -> apps.pharmacy.**
+    apps.core.** -> apps.hr.**

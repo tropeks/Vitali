@@ -40,6 +40,9 @@ jobs:
       - name: mypy
         run: mypy apps/ vitali/ --ignore-missing-imports
 
+      - name: Import boundary check (P1-01)
+        run: lint-imports --config .importlinter
+
   # ─── Backend: Tests ──────────────────────────────────────────────────────────
   backend-test:
     name: Backend — Tests
