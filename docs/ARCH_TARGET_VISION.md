@@ -164,14 +164,71 @@ defensável já no piloto:
 | Observabilidade | OTLP (P5) | tracing distribuído entre serviços |
 | Frota | — | control plane (provisão/upgrade/health/billing) |
 
-## 9. Perguntas em aberto
+## 9. Substrato de orquestração (decidido 2026-06-13)
 
-1. **BFP v1:** só agendamento + resultados (útil imediato) ou já com o motor de conversa
-   2-modos (diferencial, mais trabalho)?
-2. **Control plane online vs offline-first:** air-gap verdadeiro corta o control plane →
-   upgrade vira bundle assinado aplicado pelo TI do hospital. Aceitável, ou "air-gap" na
-   real é "rede deles com túnel de gestão controlado"?
-3. **Custo do dedicado:** instância dedicada barata o suficiente para hospital médio, ou só
-   para grandes (e médios ficam no pool)?
-4. **Engine de conversa:** biblioteca compartilhada com o Agenda_Studio ou reimplementar o
-   padrão no BFP (desacoplamento total)?
+**Tudo roda na cloud do Romulo** (sem on-prem no cliente, sem air-gap real). Dedicado =
+instância própria **na infra dele** (modelo Salesforce), no máximo CDN local. Princípio:
+**o melhor, não o mais fácil** — time enxuto alavancado por IA + automação declarativa.
+
+**Pilha-alvo (portável entre clouds — AWS/Oracle/MS no futuro):**
+- **Kubernetes** (gerenciado; um cluster para começar). Não amarrar a PaaS de uma cloud —
+  workloads k8s-native para escolher "o que roda onde" depois.
+- **IaC** (Terraform/OpenTofu) para os recursos de cloud.
+- **GitOps** (Argo CD ou Flux): cluster = espelho do Git. A IA propõe manifesto/PR, o
+  Romulo revisa e mergeia, o cluster converge sozinho — fluxo perfeito para "dirigir IA
+  como funcionários" com humano no portão.
+- **Tenant como CRD + Operator próprio:** criar um objeto `Tenant{cliente, tier, módulos}`
+  faz o operator **reconciliar a instância inteira** (namespace, DB, app, secrets, DNS,
+  certs) de forma **idempotente e reentrante**. É a correção do anti-padrão A1 do LabX
+  virada padrão de primeira classe (estado desejado no Git, convergência a cada boot,
+  auto-cura). É o coração do control plane e o maior alavancador da frota.
+- **Postgres como operator** (CloudNativePG): HA, backup e failover declarativos.
+- **OTLP/OpenTelemetry** desde já (P5).
+
+> Não montar k8s para a clínica #1. Caminho incremental: #1 = instância provisionada à mão;
+> 2–5 = provisão scriptada (control plane v0 = registry + script idempotente); muitos = o
+> operator/CRD vira produto. Substrato declarativo é o ALVO; o path é guiado por demanda.
+
+## 10. HA por tier (calibrado)
+
+- **Pool:** sem HA dedicada — multi-AZ + backups do Sprint 27 bastam.
+- **Dedicado:** **active-passive** com réplica de Postgres (via operator) + **load balancer
+  com health check** (ou DNS failover) apontando para o standby. Começar **multi-AZ numa
+  cloud** (failover automático seguro); **cross-region active-passive** é tier premium.
+- ⚠️ Evitar espelho síncrono cross-cloud no v1 — risco de split-brain. HA é declarativa via
+  o Postgres operator, não scripts manuais (anti A4).
+
+## 11. Unit economics (modelo)
+
+- **Pool amortiza:** N clínicas dividem app+DB; custo marginal de +1 ≈ centavos → preço
+  baixo, margem alta, máquina de volume.
+- **Dedicado tem piso:** cada cliente carrega o custo cheio (app + Postgres ×2 com HA +
+  redis + observabilidade) → piso mensal real (centenas de R$/mês conforme cloud).
+- **Regra de preço:** dedicado ≥ (custo de infra × fator HA) + uso (LLM, storage PACS) +
+  margem; tipicamente **3–5× o custo de infra**.
+- **Alavancas:** right-sizing agressivo, scale-to-zero/hibernação de dedicados ociosos,
+  custos de uso (IA/imagem) repassados ou por faixa. Pool = escala; dedicado = margem
+  premium **se precificado certo**. (Planilha de custo por instância quando a cloud for
+  escolhida.)
+
+## 12. Canal e financiamento (TCX)
+
+Sem pressa de prazo: o Vitali é projeto de longo prazo ("xodó"), **financiado pela receita
+do TCX**. Consequências: (a) construir **certo, não rápido** — investir nas fundações
+(operator, costuras, observabilidade), não em gambiarra; (b) cuidado com a armadilha do
+"sem prazo" (gold-plating eterno) → **sequenciar por fundação arquitetural, não por
+capricho de feature**; (c) **o TCX é o canal** — já atende clínicas, então as primeiras
+clínicas-piloto do Vitali saem da base do TCX (sem cold-start). A clínica #1 virá pelo TCX,
+no tempo certo.
+
+## 13. Perguntas remanescentes (não-bloqueantes)
+
+- **BFP v1:** começa só com agendamento + resultados + perfil em **modo scriptado**; IA é
+  fast-follow pago (recomendação registrada — confirmar na hora de planejar o BFP).
+- **Cloud específica e números de preço:** decidir quando for provisionar de verdade.
+- **Engine de conversa:** reimplementar o padrão no BFP (desacoplado); virar lib só se
+  surgir 3º consumidor.
+
+> Perguntas 2 (online/offline) e custo-base do dedicado já resolvidas: control plane
+> **online** (tudo na cloud do Romulo); dedicado por **tamanho/risco**, médios ficam no
+> pool até justificar.
