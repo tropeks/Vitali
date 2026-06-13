@@ -1,7 +1,12 @@
 # Vitali — Architecture Document
 
 > **Refs:** [PROJECT_BRIEF.md](./PROJECT_BRIEF.md) | [DATA_MODEL.md](./DATA_MODEL.md) |
-> [SECURITY.md](./SECURITY.md) | [API_SPEC.md](./API_SPEC.md)
+> [SECURITY.md](./SECURITY.md) | [API_SPEC.md](./API_SPEC.md) |
+> [ARCH_TARGET_VISION.md](./ARCH_TARGET_VISION.md)
+
+> **Fronteiras de domínio (P4):** ver [ARCH_SERVICE_LAYER.md](./ARCH_SERVICE_LAYER.md) —
+> contrato da camada de serviço, estado atual dos 16 apps, dívida de cross-imports
+> congelada e enforcement via import-linter (P1-01).
 
 ---
 
