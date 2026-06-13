@@ -288,4 +288,54 @@ docker compose -f docker-compose.staging.yml restart evolution-api
 
 ---
 
+## Monitoring & alerting
+
+| Tool | Where | What it watches | How to reach |
+|------|-------|-----------------|--------------|
+| **Sentry** | SaaS (`SENTRY_DSN`) | Backend + Celery exceptions, releases | sentry.io project dashboard |
+| **Flower** | `flower` service, `127.0.0.1:5555` | Celery tasks: active/queued, failures, retries | SSH tunnel: `ssh -L 5555:127.0.0.1:5555 host`; basic auth = `FLOWER_BASIC_AUTH` |
+| **Uptime Kuma** | `uptime-kuma` service, `127.0.0.1:3001` | External reachability of `/health/` + public frontend | SSH tunnel: `ssh -L 3001:127.0.0.1:3001 host`; configure monitors on first boot |
+
+**Recommended Sentry alert rules:** new issue → notify; error rate spike (>N/min)
+→ notify; failed Celery task → notify. Configure under the project's Alerts.
+
+**Retry a failed task** (id from Flower or logs):
+```bash
+docker compose exec celery-worker python -c "from vitali.celery import app; app.tasks['<name>'].apply_async(args=[...])"
+```
+
+## Disaster recovery (DR)
+
+Targets: **RPO 24h, RTO 4h**. Backups: daily 02:00 UTC, encrypted + offsite (see
+`docs/BACKUPS.md`). Always confirm the latest restore drill (`scripts/restore_test.sh`)
+was green before relying on a backup.
+
+### Scenario: host lost (VPS dead / unrecoverable)
+
+1. Provision a new host (Hetzner CX42 or equivalent), install Docker.
+2. Clone the repo to `/opt/vitali`; place `/etc/vitali/secrets.env` (from your vault).
+3. Pull the latest backup: `BACKUP_S3_BUCKET=… … bash scripts/restore_test.sh` first to
+   verify it restores, then restore for real into the prod Postgres volume.
+4. `docker compose -f docker-compose.prod.yml --env-file /etc/vitali/secrets.env up -d`.
+5. Re-issue TLS (`docs/TLS.md`), point DNS, run `scripts/smoke_test.sh`.
+
+### Scenario: DB corruption (host alive)
+
+1. Stop django + celery (keep postgres): `docker compose stop django celery-worker celery-beat`.
+2. Snapshot the current (corrupt) volume before touching it — never restore over the
+   only copy.
+3. Restore the latest good dump into a fresh DB (procedure in `docs/BACKUPS.md`).
+4. Restart app services; smoke test.
+
+### Scenario: secret leaked (e.g. SECRET_KEY / DB password)
+
+1. Rotate the leaked secret in `/etc/vitali/secrets.env` (`scripts/gen_secrets.sh` for
+   fresh values).
+2. **Never rotate `FIELD_ENCRYPTION_KEY` blindly** — rotating it without re-encrypting
+   makes existing PHI unreadable. Follow a key-rotation migration, not a swap.
+3. Recreate affected services; force-logout sessions if `SECRET_KEY` changed
+   (sessions/tokens become invalid automatically).
+
+---
+
 *Vitali — docs/RUNBOOK.md*

@@ -175,3 +175,57 @@ Apply these rules to the bucket prefix `vitali/`:
 For a clinic handling patient data under LGPD, S3 server-side encryption
 (SSE-S3 or SSE-KMS) and a separate AWS account for the backup bucket are
 strongly recommended to satisfy data isolation requirements.
+
+---
+
+## Offsite backups + at-rest encryption (production)
+
+`scripts/backup.sh` does encrypted, offsite uploads automatically when these envs
+are present (all optional — unset keeps the original local-only behaviour):
+
+| Env | Purpose |
+|-----|---------|
+| `BACKUP_ENCRYPTION_KEY` | GPG symmetric (AES256) passphrase. Dump is encrypted to `.dump.gpg` before leaving the box. |
+| `BACKUP_S3_BUCKET` | Destination bucket. Triggers upload of the (encrypted) artifact. |
+| `BACKUP_S3_ENDPOINT` | Custom endpoint for non-AWS (e.g. Backblaze B2 `https://s3.<region>.backblazeb2.com`). Omit for AWS. |
+| `BACKUP_S3_PREFIX` | Key prefix inside the bucket (default `vitali`). |
+| `BACKUP_S3_ACCESS_KEY` / `BACKUP_S3_SECRET_KEY` | S3 credentials. |
+
+The `db-backup` service in `docker-compose.prod.yml` installs `gpg` + `aws-cli`
+at startup and snapshots these envs into `/etc/backup.env` for the cron job. Upload
+failures exit non-zero and log `[backup] ERROR …` — they are never silent.
+
+**Generate the encryption key** with `scripts/gen_secrets.sh` and store it in an
+offline vault. Losing `BACKUP_ENCRYPTION_KEY` makes every encrypted dump
+unrecoverable — guard it like `FIELD_ENCRYPTION_KEY`.
+
+### Bucket lifecycle (configure on the provider)
+
+- Retain 30 daily + 12 monthly. Default local `BACKUP_KEEP_LAST=30` in prod.
+- AWS S3: transition to Glacier IR after 30 days, expire after 365.
+- Enable bucket versioning + SSE; use a separate account/project for backups (LGPD isolation).
+
+## Restore drill (proves backups are restorable)
+
+`scripts/restore_test.sh` pulls the most recent backup (local dir or S3), decrypts
+it if needed, restores into a throwaway ephemeral Postgres container, runs sanity
+checks (django_migrations count, tenants_tenant, schema count), and tears down.
+Never touches prod/staging DBs.
+
+```bash
+# Local volume:
+BACKUP_DIR=/var/lib/docker/volumes/vitali_backups/_data bash scripts/restore_test.sh
+# From S3 (encrypted):
+BACKUP_S3_BUCKET=my-bucket BACKUP_S3_ACCESS_KEY=… BACKUP_S3_SECRET_KEY=… \
+  BACKUP_ENCRYPTION_KEY=… bash scripts/restore_test.sh
+```
+
+Schedule it **weekly** on the host (cron or a systemd timer). A backup you have
+never restored is not a backup.
+
+### Recovery objectives
+
+- **RPO (max data loss): 24h** — backups run daily at 02:00 UTC.
+- **RTO (max downtime): 4h** — provision host, restore latest dump, smoke test.
+
+Tighter RPO requires WAL archiving / PITR (pgBackRest or RDS) — out of scope here.

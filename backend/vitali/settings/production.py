@@ -6,10 +6,12 @@ import environ
 
 from ._security_checks import (
     assert_field_encryption_key,
+    assert_optional_secret_not_placeholder,
     assert_postgres_password,
     assert_redis_password,
     assert_secret_key,
     assert_whatsapp_evolution_api_key,
+    warn_if_missing_sentry,
 )
 from .base import *  # noqa: F401, F403
 
@@ -32,12 +34,24 @@ assert_whatsapp_evolution_api_key(env("WHATSAPP_EVOLUTION_API_KEY", default=""))
 # LGPD-regulated PHI (CPF, etc.) is encrypted at rest with FIELD_ENCRYPTION_KEY.
 # Fail early if the all-zero dev placeholder from base.py is still in use.
 assert_field_encryption_key(FIELD_ENCRYPTION_KEY)  # noqa: F405
+
+# ─── Optional integrations — reject placeholders, allow empty (= disabled) ───
+# A payments token left at 'change-me' fails confusingly at runtime; catch it now.
+assert_optional_secret_not_placeholder("MP_ACCESS_TOKEN", env("MP_ACCESS_TOKEN", default=""))
+assert_optional_secret_not_placeholder("ASAAS_API_KEY", env("ASAAS_API_KEY", default=""))
+
+# ─── Observability — non-fatal nudge ─────────────────────────────────────────
+# Running prod without Sentry is allowed but almost always a mistake; warn loudly.
+warn_if_missing_sentry(env("SENTRY_DSN", default=""))
+
 del (
     assert_field_encryption_key,
+    assert_optional_secret_not_placeholder,
     assert_secret_key,
     assert_postgres_password,
     assert_redis_password,
     assert_whatsapp_evolution_api_key,
+    warn_if_missing_sentry,
 )
 
 ENVIRONMENT = env("ENVIRONMENT", default="production")

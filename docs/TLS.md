@@ -154,3 +154,46 @@ https://www.ssllabs.com/ssltest/
 *.crt
 *.pfx
 ```
+
+---
+
+## Option C — certbot in docker-compose.prod.yml (automatic renewal)
+
+`docker-compose.prod.yml` ships a `certbot` service that renews every 12h and an
+nginx that reloads every 6h to pick up renewed certs. Nginx serves the ACME
+HTTP-01 challenge from `/var/www/certbot` on plain `:80` (carved out of the HTTPS
+redirect in both `nginx.conf` and `ssl.conf`), so renewals need no downtime.
+
+**One-time initial issuance** (DNS A/AAAA already pointing at the host, ports 80/443 open):
+
+```bash
+# 1. Create the webroot the challenge is served from
+sudo mkdir -p /var/www/certbot
+
+# 2. Bring up nginx WITHOUT ssl.conf first (so :80 answers the challenge).
+#    Temporarily comment the ssl.conf mount + 443 port, then:
+GHCR_REPO=tropeks docker compose -f docker-compose.prod.yml --env-file /etc/vitali/secrets.env up -d nginx
+
+# 3. Issue the cert (replace domain + email):
+docker run --rm \
+  -v /etc/letsencrypt:/etc/letsencrypt \
+  -v /var/www/certbot:/var/www/certbot \
+  certbot/certbot certonly --webroot -w /var/www/certbot \
+  -d clinica.exemplo.com.br --email "$ACME_EMAIL" --agree-tos --no-eff-email
+
+# 4. Set TLS_LIVE_DIR in /etc/vitali/secrets.env:
+#    TLS_LIVE_DIR=/etc/letsencrypt/live/clinica.exemplo.com.br
+#    Re-enable the ssl.conf mount + 443 port, then bring the full stack up:
+GHCR_REPO=tropeks docker compose -f docker-compose.prod.yml --env-file /etc/vitali/secrets.env up -d
+```
+
+From here renewal is automatic. Verify with
+`docker compose -f docker-compose.prod.yml logs certbot`.
+
+## Alternative — Cloudflare Tunnel (no public ports)
+
+If the host has no public IP / open ports, run a `cloudflared` tunnel pointing at
+`http://nginx:80` and let Cloudflare terminate TLS at the edge. In that mode nginx
+stays HTTP-only (don't mount `ssl.conf`); set `SECURE_PROXY_SSL_HEADER` so Django
+trusts `X-Forwarded-Proto: https`. This is the same pattern used elsewhere in the
+homelab and avoids managing certs on the host entirely.

@@ -118,3 +118,38 @@ def assert_redis_password(password: str) -> None:
             "The current value is empty or an obvious placeholder (e.g. 'vitali', 'change-me'). "
             "Inject it via Docker secrets or your cloud secret manager — never commit it to .env."
         )
+
+
+def assert_optional_secret_not_placeholder(name: str, value: str) -> None:
+    """For secrets that are optional (a clinic may not use them) but must never be a
+    placeholder when present.
+
+    Empty → no-op (the feature is simply disabled). Non-empty placeholder → raise,
+    because a half-configured integration (e.g. a payments token left at 'change-me')
+    fails confusingly at runtime instead of loudly at boot.
+    """
+    from django.core.exceptions import ImproperlyConfigured
+
+    if value and value.lower().strip() in _OBVIOUS_PLACEHOLDERS:
+        raise ImproperlyConfigured(
+            f"{name} is set to an obvious placeholder. Either leave it empty to disable "
+            f"the integration, or set it to a real value. Never ship a placeholder."
+        )
+
+
+def warn_if_missing_sentry(dsn: str) -> None:
+    """Emit a non-fatal warning if SENTRY_DSN is empty in production.
+
+    Sentry is the only error/crash visibility in production; running without it is
+    allowed (e.g. an air-gapped pilot) but is almost always a misconfiguration, so we
+    surface it loudly without blocking boot.
+    """
+    if not dsn:
+        import warnings
+
+        warnings.warn(
+            "SENTRY_DSN is empty — production is running without error tracking. "
+            "Set SENTRY_DSN (and NEXT_PUBLIC_SENTRY_DSN on the frontend) to capture "
+            "crashes. Ignore only if observability is handled some other way.",
+            stacklevel=2,
+        )

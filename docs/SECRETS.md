@@ -89,3 +89,31 @@ platform's encrypted configuration store — never in a `.env` file checked into
 5. **Back up `FIELD_ENCRYPTION_KEY` securely.** Loss of this key makes all encrypted
    PHI columns permanently unreadable. Store a copy in an offline, access-controlled
    vault separate from the primary secret manager.
+
+---
+
+## Production secret flow (host-only)
+
+In production, secrets live **only on the host**, never in the repo:
+
+```bash
+bash scripts/gen_secrets.sh > /etc/vitali/secrets.env
+sudo chown root:root /etc/vitali/secrets.env && sudo chmod 600 /etc/vitali/secrets.env
+```
+
+`docker-compose.prod.yml` reads it via `--env-file /etc/vitali/secrets.env` (and
+`PROD_ENV_FILE`). `gen_secrets.sh` produces strong values for every required secret
+plus `BACKUP_ENCRYPTION_KEY` and `FLOWER_BASIC_AUTH`, and leaves commented slots for
+S3, Sentry, and payment keys.
+
+### Boot validation (extended)
+
+`vitali/settings/_security_checks.py` fails fast on empty/placeholder values for
+`SECRET_KEY`, `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `WHATSAPP_EVOLUTION_API_KEY`,
+`FIELD_ENCRYPTION_KEY`. Additionally:
+
+- `MP_ACCESS_TOKEN` / `ASAAS_API_KEY` — **rejected if set to a placeholder**, but
+  allowed empty (payments simply disabled). Prevents a half-configured integration
+  failing confusingly at runtime.
+- `SENTRY_DSN` — **non-fatal warning** if empty. Prod without error tracking is
+  allowed but flagged.

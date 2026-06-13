@@ -4,6 +4,29 @@ All notable changes to Vitali Health are documented here.
 
 ## [Unreleased]
 
+### Sprint 27 — Production Ops Foundation (2026-06)
+
+Infra hardening so a pilot clinic can run in real production. See
+`docs/PLAN_SPRINT27.md`.
+
+- **Offsite + encrypted backups** — `scripts/backup.sh` now optionally GPG-encrypts
+  (AES256) and uploads to any S3-compatible bucket (AWS / Backblaze B2) via
+  `BACKUP_ENCRYPTION_KEY` + `BACKUP_S3_*` envs; upload failures exit non-zero, never
+  silent. Local-only behaviour unchanged when envs are absent.
+- **Restore drill** — `scripts/restore_test.sh` restores the latest backup into a
+  throwaway ephemeral Postgres and runs sanity checks (migrations, tenants, schemas).
+  Documented RPO 24h / RTO 4h.
+- **Production compose** — `docker-compose.prod.yml`: nginx terminates TLS (:443)
+  with a certbot auto-renew service + ACME challenge carve-out in `nginx.conf` /
+  `ssl.conf`; db-backup on by default; Flower (Celery monitoring, basic auth) and
+  Uptime Kuma added.
+- **Secret hygiene** — `scripts/gen_secrets.sh` generates all required prod secrets;
+  boot checks extended to reject placeholder `MP_ACCESS_TOKEN` / `ASAAS_API_KEY`
+  (empty = disabled) and warn on empty `SENTRY_DSN`.
+- **Docs** — `BACKUPS.md` (offsite/restore/RPO-RTO), `TLS.md` (certbot-in-compose +
+  Cloudflare Tunnel), `SECRETS.md` (host-only prod flow), `RUNBOOK.md` (monitoring +
+  full DR runbook).
+
 ### AI-Native Interception Layer — 3 wedges (2026-06)
 
 Three AI-native **interception** wedges shipped this cycle, all on the shared
