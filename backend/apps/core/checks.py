@@ -1,10 +1,11 @@
 """
-Django system checks — fail the deploy if E2E_MODE is enabled outside a test DB.
+Django system checks — fail the deploy if E2E_MODE is enabled outside a test DB,
+or if ENFORCE_TENANT_MEMBERSHIP is disabled in production.
 Wired in apps/core/apps.py CoreConfig.ready().
 """
 
 from django.conf import settings
-from django.core.checks import Error, Warning, register
+from django.core.checks import Error, Tags, Warning, register
 
 
 @register()
@@ -45,6 +46,36 @@ def check_e2e_mode_only_on_test_db(app_configs, **kwargs):
                     "test SECRET_KEY (prefix with 'test-' or 'dev-')."
                 ),
                 id="core.W001",
+            )
+        )
+
+    return errors
+
+
+@register(Tags.security, deploy=True)
+def check_tenant_enforcement_in_production(app_configs, **kwargs):
+    """
+    Fail the deploy if ENFORCE_TENANT_MEMBERSHIP is False in production.
+
+    deploy=True: this check is skipped in normal `manage.py check` (dev/CI) and
+    only runs during `manage.py check --deploy`, so the dev suite is unaffected.
+    """
+    errors = []
+    environment = getattr(settings, "ENVIRONMENT", "")
+    if environment != "production":
+        return errors
+
+    enforce = getattr(settings, "ENFORCE_TENANT_MEMBERSHIP", False)
+    if enforce is not True:
+        errors.append(
+            Error(
+                "ENFORCE_TENANT_MEMBERSHIP deve ser True em produção.",
+                hint=(
+                    "Rode o management command backfill_tenant_memberships para popular "
+                    "a tabela de membros e em seguida ligue ENFORCE_TENANT_MEMBERSHIP=True "
+                    "na variável de ambiente do container de produção."
+                ),
+                id="core.E002",
             )
         )
 
