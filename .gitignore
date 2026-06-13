@@ -146,3 +146,4 @@ cache/
 # graphify knowledge-graph artifacts (generated)
 graphify-out/
 cache/
+.shrimp/
