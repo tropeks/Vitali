@@ -244,10 +244,69 @@ SESSION_ENGINE = "django.contrib.sessions.backends.cache"
 SESSION_CACHE_ALIAS = "default"
 
 # ─── Encryption (LGPD — campos sensíveis) ────────────────────────────────────
-FIELD_ENCRYPTION_KEY = env(
-    "FIELD_ENCRYPTION_KEY",
-    default="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+# Key precedence (highest wins):
+#   1. FIELD_ENCRYPTION_KEY_FILE — path to a runtime secret file (e.g. a Docker
+#      secret at /run/secrets/field_encryption_key, readable only by the web
+#      process). Preferred in production: the key is NOT an env var inherited by
+#      every child process or logged in /proc/<pid>/environ.
+#   2. FIELD_ENCRYPTION_KEY env var — dev/CI convenience; no file mount needed.
+#   3. All-zero _FERNET_ZERO_KEY placeholder — allows local migrations to boot;
+#      rejected by assert_field_encryption_key() in production.py.
+#
+# _secrets.py is the KMS/envelope seam: a future FIELD_ENCRYPTION_KMS_* provider
+# (AWS KMS, GCP CKMS, Vault) plugs in there without touching any call site.
+from ._secrets import resolve_field_encryption_key  # noqa: E402
+
+FIELD_ENCRYPTION_KEY = resolve_field_encryption_key(env)
+
+# ─── Roles / Celery least-privilege (P3-03) ──────────────────────────────────
+# VITALI_ROLE labels the process type; docker-compose.prod.yml sets it per service.
+# web (default) = Django/WSGI; worker = Celery worker; beat = Celery beat scheduler.
+#
+# IS_CELERY_WORKER drives the conditional DSN swap below and the core.E004 check.
+#
+# CELERY_DATABASE_URL — raw DSN string for the less-privileged Postgres role used
+# by worker/beat processes. Stored as a plain setting (not just inside DATABASES)
+# so that check_worker_least_privilege can compare it against DATABASE_URL without
+# inspecting the live DATABASES dict. Empty string = not set (dev/web default).
+#
+# Design choice: both DATABASE_URL and CELERY_DATABASE_URL are stored as plain
+# string settings so the check/validator can compare raw DSNs directly. This avoids
+# parsing the DATABASES dict and keeps the check free of django-tenants internals.
+#
+# Workers STILL require FIELD_ENCRYPTION_KEY — the least-privilege boundary is
+# DB credentials, not the crypto key (tasks read encrypted EMR fields).
+VITALI_ROLE = env.str("VITALI_ROLE", default="web")  # web | worker | beat
+IS_CELERY_WORKER = VITALI_ROLE in ("worker", "beat")
+
+# Raw DATABASE_URL string (mirrored from DATABASES default) — used by the check.
+DATABASE_URL = env.str(
+    "DATABASE_URL",
+    default="postgres://vitali:vitali@localhost:5435/vitali",
 )
+CELERY_DATABASE_URL = env.str("CELERY_DATABASE_URL", default="")
+
+# Apply the less-privileged DSN for worker/beat processes. env.db() injects an
+# ENGINE derived from the URL scheme (django.db.backends.postgresql), so we must
+# re-assert the django-tenants backend afterward — exactly as the default DB does
+# at line 129. Without this, workers lose per-schema search_path switching and
+# break multi-tenancy. Web tier is untouched (override is worker/beat-only).
+if IS_CELERY_WORKER and CELERY_DATABASE_URL:
+    DATABASES["default"].update(env.db("CELERY_DATABASE_URL"))
+    DATABASES["default"]["ENGINE"] = "django_tenants.postgresql_backend"
+
+# ─── Deployment profile (P3-01) ──────────────────────────────────────────────
+# pool      = shared multi-tenant instance (default); the standard Vitali SaaS model.
+# dedicated = single-tenant isolated instance; foundation for the Fase 3 Tenant
+#             Operator (dedicated infra per clinic). Air-gap is explicitly out of
+#             scope — Vitali is a cloud-only product (Romulo's cloud).
+# The validator runs at import time in ALL environments so a misconfigured
+# container fails loudly at boot rather than behaving unexpectedly at runtime.
+from ._security_checks import assert_deployment_profile  # noqa: E402
+
+DEPLOYMENT_PROFILE = env.str("DEPLOYMENT_PROFILE", default="pool")
+assert_deployment_profile(DEPLOYMENT_PROFILE)
+IS_DEDICATED_INSTANCE = DEPLOYMENT_PROFILE == "dedicated"
 
 # ─── AI / LLM ────────────────────────────────────────────────────────────────
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")

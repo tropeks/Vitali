@@ -56,13 +56,17 @@ Podem correr em paralelo à Fase 0; tornam a decomposição futura barata.
 - P2-03 [NOVO] Backend de tracing plugável (dev: console/Jaeger; prod: gerenciado), desligável.
 - **/cso** no fim.
 
-### SPRINT P3 — Perfil de implantação & cripto
-- P3-01 [NOVO] `DEPLOYMENT_PROFILE` (`pool`|`dedicated`) selecionando comportamento;
-  base para o operator depois. (Air-gap fica fora — tudo é cloud do Romulo.)
-- P3-02 [ADAPTAR] **Blast-radius da cripto**: `FIELD_ENCRYPTION_KEY` via secret de runtime
-  (não env legível por qualquer thread); preparar envelope/KMS. (P3)
-- P3-03 [ADAPTAR] Workers Celery com menos privilégio que o web (usuário/secret separados).
-- **/cso** no fim.
+### SPRINT P3 — Perfil de implantação & cripto ✅ (branch feat/sprint-p3-profile-crypto, testado; aguardando merge)
+- P3-01 [NOVO] ✅ `DEPLOYMENT_PROFILE` (`pool`|`dedicated`) + `IS_DEDICATED_INSTANCE`;
+  validado no boot (`assert_deployment_profile`) + system-check prod `core.E003`. Air-gap fora.
+- P3-02 [ADAPTAR] ✅ **Blast-radius da cripto**: `_secrets.py` `resolve_field_encryption_key`
+  com precedência `FIELD_ENCRYPTION_KEY_FILE` (secret de runtime) > env > placeholder; falha
+  loud se file ausente/vazio; é o seam único de KMS/envelope. Call sites intactos.
+- P3-03 [ADAPTAR] ✅ Workers Celery least-privilege: `VITALI_ROLE` + `CELERY_DATABASE_URL`
+  (DSN Postgres separado, preserva ENGINE django-tenants) + system-check prod `core.E004`.
+  Workers ainda precisam de `FIELD_ENCRYPTION_KEY` (fronteira = credencial do banco).
+- **/cso** ✅ (daily, diff): 0 findings ≥8/10. Auditoria Opus pegou e corrigiu bug crítico
+  de clobber do ENGINE django-tenants no override de DSN do worker. Regressão 529 verde.
 
 ## FASE 2 — BFP (Backend-For-Patient): 1ª extração
 
