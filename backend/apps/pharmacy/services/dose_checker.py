@@ -181,7 +181,7 @@ class DoseChecker:
         #    unbounded. Rule absent ≠ unsafe → NOT_APPLICABLE (but logged).
         #    Materialize the active rules ONCE: _select_rule iterates this list and
         #    the unmatched-path logic below reuses it — a single query total.
-        active_rules = list(formulary.dose_rules.filter(active=True))
+        active_rules = list(formulary.dose_rules.filter(active=True, validated=True))
         candidates = DoseChecker._matching_candidates(
             active_rules=active_rules,
             patient_age_days=patient_age_days,

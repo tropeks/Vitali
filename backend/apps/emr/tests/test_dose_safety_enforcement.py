@@ -50,6 +50,7 @@ def make_perkg_drug():
         max_per_kg=Decimal("1.0000"),
         absolute_max_dose=Decimal("50.0000"),
         active=True,
+        validated=True,
     )
     return drug
 
@@ -379,6 +380,7 @@ class TestWeightBandedGateBlocks(_EnforceBase):
             max_per_dose=Decimal("2"),
             absolute_max_dose=Decimal("2"),
             active=True,
+            validated=True,
         )
         # Patient with NO recorded weight.
         patient2 = Patient.objects.create(
@@ -433,6 +435,7 @@ class TestAdvisoryIdempotency(_EnforceBase):
             max_per_dose=Decimal("2"),
             absolute_max_dose=Decimal("2"),
             active=True,
+            validated=True,
         )
         # Fresh patient with a real date birth_date + a recorded weight, so the
         # direct service call (no API reload) resolves age/weight cleanly.
@@ -512,6 +515,7 @@ class TestAdvisoryIdempotency(_EnforceBase):
             max_per_dose=Decimal("2"),
             absolute_max_dose=Decimal("2"),
             active=True,
+            validated=True,
         )
         patient2 = Patient.objects.create(
             full_name="Adv DoseChg", birth_date=date(1990, 1, 1), gender="M", cpf="44455566677"
@@ -592,6 +596,7 @@ class TestBandGapAdvisory(_EnforceBase):
             max_per_dose=Decimal("2"),
             absolute_max_dose=Decimal("2"),
             active=True,
+            validated=True,
         )
         rx, _item = self._make_rx(dose=Decimal("7"), drug=drug)
         resp = self._sign(rx)
@@ -819,6 +824,7 @@ def make_advise_perkg_drug(name_suffix=""):
         absolute_max_dose=Decimal("50.0000"),
         enforcement="advise",
         active=True,
+        validated=True,
     )
     return drug
 
@@ -919,6 +925,7 @@ class TestDoseRoleOrchestration(_EnforceBase):
             absolute_max_dose=Decimal("2000.0000"),
             dose_role="maintenance",
             active=True,
+            validated=True,
         )
         # Loading band [25,30] mg/kg → 10 kg = [250,300]. abs cap 3000.
         DoseRule.objects.create(
@@ -930,6 +937,7 @@ class TestDoseRoleOrchestration(_EnforceBase):
             absolute_max_dose=Decimal("3000.0000"),
             dose_role="loading",
             active=True,
+            validated=True,
         )
         return drug
 

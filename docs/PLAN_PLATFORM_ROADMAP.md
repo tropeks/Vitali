@@ -25,9 +25,13 @@ Pré-requisito de tudo: o produto precisa estar sólido antes de virar plataform
 - **S27 Ops Foundation** — ✅ mergeado. Pendente: verificação prod no Docker (compose
   config, smoke, restore drill, boot-checks). [ADAPTAR: fechar dívida de verificação]
 - **S28 Tenant Enforcement + MFA** — ✅ mergeado e verificado (463 verde).
-- **S29 Data Curation Tooling** — [ADAPTAR] `import_tuss` já existe; núcleo = gating
-  `validated=True` no DoseChecker (repercute na suíte de dose) + importers de formulário/
-  alergia + UI de validação. Agora fazível com pytest no Docker.
+- **S29 Data Curation Tooling** — ✅ backend (branch feat/sprint-29-data-curation, testado;
+  aguardando merge). Gating `validated=True` no DoseChecker (regra não-validada → advisory,
+  nunca SAFE silencioso) + `import_formulary`/`import_allergen_classes`/`import_drug_interactions`
+  + `import_tuss --dry-run`/erros por linha. Migrations 0017–0019 (DoseRule.validated +
+  provenance + UniqueConstraint natural-key com bands age/weight). Guard multi-tenant nos
+  importers. Regressão 558 verde; /security-review 0 high-conf. **Pendente: UI de validação +
+  readiness dashboard (S29-05) = pass de frontend.**
 - **S30 Wedges Wave 1** (no-show, stockout, NEWS2) — [EXISTE engines] ligar flags + soak.
 - **S31 Wedges Wave 2** (dose, glosa, alergia, controlled) — depende de dados curados.
 - **S32 Compliance Pack GA** (assinatura ICP no fluxo, LGPD frontend, DPA/DPO).

@@ -134,6 +134,52 @@ class TestQuantityEscalation:
         assert SIGNAL_QUANTITY_ESCALATION not in _kinds(sig)
 
 
+class TestS2904ControlledConfigConfirmation:
+    """S29-04 confirmation tests: absent/present min_refill_interval_days
+    safe-degradation for the controlled-diversion engine.
+
+    Already-covered paths:
+      - min_refill_interval_days=None → refill_too_soon absent
+        (TestRefillTooSoon.test_inert_when_interval_unset)
+      - min_refill_interval_days=30 with early refill → signal fires
+        (TestRefillTooSoon.test_early_refill_different_prescription_flags)
+    New assertions:
+      - absent interval with a very recent same-drug/diff-Rx refill → the
+        signal is absent AND no interval number is fabricated in signal detail.
+      - present interval (30d) with a refill 5 days later → signal fires and
+        the configured value appears in the detail (confirming it's consumed).
+    """
+
+    def test_absent_min_refill_interval_degrades_to_advise_only(self):
+        """min_refill_interval_days=None → refill_too_soon never fires, even
+        when the refill gap is only 1 day. No invented interval in any signal
+        detail; the signals list contains no refill_too_soon entry."""
+        current = _rec(did="c", rx="rx2", days_ago=0)
+        prior = [_rec(did="a", rx="rx1", days_ago=1)]  # 1 day gap — very early
+        signals = check(current=current, history=prior, min_refill_interval_days=None)
+        kinds = _kinds(signals)
+        assert SIGNAL_REFILL_TOO_SOON not in kinds
+        # Confirm no signal carries a fabricated min_refill_interval_days value.
+        for s in signals:
+            assert "min_refill_interval_days" not in s.detail
+
+    def test_min_refill_interval_present_is_used(self):
+        """min_refill_interval_days=30 with a 5-day gap → refill_too_soon fires
+        and the configured interval (30) appears in the signal detail, confirming
+        the value is consumed rather than hard-coded or ignored."""
+        configured_interval = 30
+        current = _rec(did="c", rx="rx2", days_ago=0)
+        prior = [_rec(did="a", rx="rx1", days_ago=5)]  # 5-day gap < 30 → too soon
+        signals = check(
+            current=current, history=prior, min_refill_interval_days=configured_interval
+        )
+        assert SIGNAL_REFILL_TOO_SOON in _kinds(signals)
+        refill_signal = next(s for s in signals if s.kind == SIGNAL_REFILL_TOO_SOON)
+        # The configured interval is embedded in detail — it was used, not invented.
+        assert refill_signal.detail["min_refill_interval_days"] == configured_interval
+        assert refill_signal.detail["gap_days"] == 5
+
+
 class TestCombinedAndGuards:
     def test_no_history_no_signals(self):
         assert check(current=_rec(did="c"), history=[], min_refill_interval_days=30) == []

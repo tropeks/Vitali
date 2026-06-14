@@ -1,0 +1,4 @@
+# TEST FIXTURE — fabricated, not clinical truth
+ingredient_a,ingredient_b,severity,description
+fake-drug-a,fake-drug-b,advise,Good row for testing
+,fake-drug-c,advise,Bad row — ingredient_a is required

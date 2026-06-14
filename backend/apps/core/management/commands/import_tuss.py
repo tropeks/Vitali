@@ -93,6 +93,15 @@ class Command(BaseCommand):
             default=";",
             help="CSV column delimiter (default: ;)",
         )
+        parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            default=False,
+            help=(
+                "Validate and preview what would be imported without writing to the database. "
+                "All ORM work runs inside a transaction that is always rolled back."
+            ),
+        )
 
     def handle(self, *args, **options):
         csv_path = Path(options["file"])
@@ -103,20 +112,45 @@ class Command(BaseCommand):
         version = options["tuss_version"]
         delimiter = options["delimiter"]
         deactivate_old = options["deactivate_old"]
+        dry_run = options["dry_run"]
 
-        self.stdout.write(f"Importing TUSS from {csv_path} (version={version!r}) …")
+        self.stdout.write(
+            f"Importing TUSS from {csv_path} (version={version!r}, dry_run={dry_run}) …"
+        )
         _start_ms = int(time.time() * 1000)
 
         codes_in_file: set[str] = set()
         created = updated = skipped = 0
 
+        # Read all lines, keeping track of each line's 1-based physical index.
+        # Comment lines (starting with '#') and blank lines are filtered out for
+        # DictReader, but their physical line numbers are preserved so error
+        # messages reference the TRUE position in the file.
         with open(csv_path, encoding="utf-8-sig", newline="") as fh:
-            reader = csv.DictReader(fh, delimiter=delimiter)
-            # Normalise header names — ANS files vary slightly between versions
-            rows = list(reader)
+            all_lines = list(fh)
+
+        physical_lines = [
+            (phys_idx + 1, ln)
+            for phys_idx, ln in enumerate(all_lines)
+            if not ln.lstrip().startswith("#")
+        ]
+
+        if not physical_lines:
+            raise CommandError("CSV file is empty or contains only comments.")
+
+        kept_texts = [ln for _, ln in physical_lines]
+        reader = csv.DictReader(kept_texts, delimiter=delimiter)
+        # Normalise header names — ANS files vary slightly between versions
+        rows = list(reader)
 
         if not rows:
             raise CommandError("CSV file is empty or header is missing.")
+
+        def _phys(data_row_index: int) -> int:
+            kept_idx = data_row_index + 1  # +1 to skip the header kept line
+            if kept_idx < len(physical_lines):
+                return physical_lines[kept_idx][0]
+            return data_row_index + 2
 
         # Accept both exact ANS header names and common variants
         def _col(row: dict, *candidates: str) -> str:
@@ -169,6 +203,27 @@ class Command(BaseCommand):
                 pass
             return [c.strip().upper() for c in raw.replace(";", ",").split(",") if c.strip()]
 
+        # ── Per-line validation pass (collect ALL errors before committing) ──────
+        # Error messages report the TRUE physical line number in the file.
+        line_errors: list[str] = []
+        for data_idx, row in enumerate(rows):
+            phys_line = _phys(data_idx)
+            try:
+                code = _col(row, "CODIGO", "codigo", "Código", "code")
+            except CommandError as exc:
+                line_errors.append(f"  Line {phys_line}: {exc}")
+                continue
+            if not code:
+                line_errors.append(f"  Line {phys_line}: CODIGO is empty or blank")
+
+        if line_errors:
+            error_report = "\n".join(line_errors)
+            raise CommandError(
+                f"Import aborted — {len(line_errors)} error(s) found. "
+                f"No rows were committed.\n{error_report}"
+            )
+
+        # ── Database write pass (wrapped in a transaction) ────────────────────────
         with transaction.atomic():
             for row in rows:
                 code = _col(row, "CODIGO", "codigo", "Código", "code")
@@ -224,6 +279,19 @@ class Command(BaseCommand):
             if deactivate_old:
                 deactivated = TUSSCode.objects.exclude(code__in=codes_in_file).update(active=False)
                 self.stdout.write(f"  Deactivated {deactivated} codes not in file.")
+
+            if dry_run:
+                # Roll back everything — nothing persisted.
+                transaction.set_rollback(True)
+
+        if dry_run:
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"Dry run complete (no data written). "
+                    f"Would import: {created} created, {updated} updated, {skipped} skipped."
+                )
+            )
+            return
 
         # Update full-text search vectors for all imported codes
         self.stdout.write("Updating search vectors …")
