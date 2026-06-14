@@ -56,6 +56,7 @@ def make_per_kg_formulary():
         absolute_max_dose=PER_KG_ABS_MAX,
         max_per_day=PER_KG_MAX_DAILY,
         active=True,
+        validated=True,
     )
     return drug, formulary, rule
 
@@ -80,6 +81,7 @@ def make_fixed_formulary():
         max_per_dose=FIXED_MAX,
         absolute_max_dose=FIXED_ABS_MAX,
         active=True,
+        validated=True,
     )
     return drug, formulary, rule
 
@@ -327,6 +329,7 @@ class TestDoseCheckerDataAndApplicability(_Base):
             max_per_dose=Decimal("2"),
             absolute_max_dose=Decimal("2"),
             active=True,
+            validated=True,
         )
         v = DoseChecker.check(
             drug=drug,
@@ -423,6 +426,7 @@ class TestDoseCheckerWeightGateOnMissingWeight(_Base):
             max_per_dose=Decimal("2"),
             absolute_max_dose=Decimal("2"),
             active=True,
+            validated=True,
         )
         return drug
 
@@ -522,6 +526,7 @@ class TestDoseCheckerRuleSelection(_Base):
             max_per_dose=Decimal("20"),
             absolute_max_dose=Decimal("20"),
             active=True,
+            validated=True,
         )
         # Narrow rule: 3000–4000 days, band [1,2] — more specific, should win.
         DoseRule.objects.create(
@@ -534,6 +539,7 @@ class TestDoseCheckerRuleSelection(_Base):
             max_per_dose=Decimal("2"),
             absolute_max_dose=Decimal("2"),
             active=True,
+            validated=True,
         )
         # Patient 3650 days, dose 15 mg. Under broad band it's SAFE; under the
         # narrow (correct) band it's OUT_OF_RANGE. The narrow band must win.
@@ -553,7 +559,13 @@ class TestDoseCheckerRuleSelection(_Base):
 
     def test_tie_break_favors_stricter_lower_ceiling(self):
         """Two equally-specific rules (same spans, same route-rank) → the one with
-        the LOWER absolute_max_dose (stricter) must win, never an arbitrary UUID."""
+        the LOWER absolute_max_dose (stricter) must win, never an arbitrary UUID.
+
+        NOTE: The rules have DIFFERENT natural keys (different age bounds) but the
+        SAME age span (40000 days), so the specificity key produces a true tie
+        resolved by absolute_max_dose. This satisfies the doserule_natural_key
+        UniqueConstraint while still exercising the tie-break logic.
+        """
         from apps.pharmacy.models import DoseRule, Drug, MedicationFormulary
 
         drug = Drug.objects.create(name="FAKE-TieBreak", generic_name="fake_tie")
@@ -564,24 +576,31 @@ class TestDoseCheckerRuleSelection(_Base):
             route="PO",
             active=True,
         )
-        common = {
+        shared = {
             "formulary": formulary,
             "basis": "fixed",
             "dose_unit": "mg",
-            "age_min_days": 0,
-            "age_max_days": 40000,
             "min_per_dose": Decimal("1"),
             "max_per_dose": Decimal("100"),
             "route": "PO",
             "active": True,
+            "validated": True,
         }
-        # Looser rule (higher ceiling).
-        loose = DoseRule.objects.create(absolute_max_dose=Decimal("100"), **common)
-        # Stricter rule (lower ceiling) — must be selected on the tie.
-        strict = DoseRule.objects.create(absolute_max_dose=Decimal("50"), **common)
+        # Both rules have the SAME age span (40000 days) but DIFFERENT age bounds,
+        # so they have different natural keys (no UniqueConstraint violation) while
+        # still producing an equal specificity score for the span dimension.
+        # Patient age 3650 falls in both [0, 40000] and [1, 40001].
+        # Looser rule (higher ceiling, bounds 0–40000).
+        loose = DoseRule.objects.create(
+            age_min_days=0, age_max_days=40000, absolute_max_dose=Decimal("100"), **shared
+        )
+        # Stricter rule (lower ceiling, bounds 1–40001) — must be selected on the tie.
+        strict = DoseRule.objects.create(
+            age_min_days=1, age_max_days=40001, absolute_max_dose=Decimal("50"), **shared
+        )
 
         chosen = DoseChecker._select_rule(
-            active_rules=list(formulary.dose_rules.filter(active=True)),
+            active_rules=list(formulary.dose_rules.filter(active=True, validated=True)),
             formulary=formulary,
             patient_age_days=3650,
             weight_kg=None,
@@ -629,6 +648,7 @@ def _freq_banded_formulary():
         freq_min_per_day=1,
         freq_max_per_day=1,
         active=True,
+        validated=True,
     )
     traditional = DoseRule.objects.create(
         formulary=formulary,
@@ -640,6 +660,7 @@ def _freq_banded_formulary():
         freq_min_per_day=2,
         freq_max_per_day=4,
         active=True,
+        validated=True,
     )
     return drug, formulary, extended, traditional
 
@@ -715,6 +736,7 @@ def _loading_maintenance_formulary():
         absolute_max_dose=Decimal("2000.0000"),
         dose_role="maintenance",
         active=True,
+        validated=True,
     )
     loading = DoseRule.objects.create(
         formulary=formulary,
@@ -725,6 +747,7 @@ def _loading_maintenance_formulary():
         absolute_max_dose=Decimal("3000.0000"),
         dose_role="loading",
         active=True,
+        validated=True,
     )
     return drug, formulary, maintenance, loading
 
@@ -796,6 +819,7 @@ def _advise_formulary(enforcement="advise"):
         absolute_max_dose=Decimal("50.0000"),
         enforcement=enforcement,
         active=True,
+        validated=True,
     )
     return drug
 
@@ -875,6 +899,7 @@ class TestDoseCheckerV2ReviewFixes(_Base):
             freq_min_per_day=1,
             freq_max_per_day=4,
             active=True,
+            validated=True,
         )
         # Narrower (freq 2–2) but LOOSER: wide band + ceiling 500.
         narrow_loose = DoseRule.objects.create(
@@ -887,6 +912,7 @@ class TestDoseCheckerV2ReviewFixes(_Base):
             freq_min_per_day=2,
             freq_max_per_day=2,
             active=True,
+            validated=True,
         )
         # 10 kg, freq 2: both match; narrow_loose wins the band (freq span 0),
         # but the enforced ceiling = min(50, 500) = 50. dose 100 sits inside
@@ -942,3 +968,98 @@ class TestDoseEngineV2BackwardCompat(_Base):
         v = self.check_perkg(drug, dose=Decimal("40"), weight=Decimal("10"))
         self.assertEqual(v.verdict, Verdict.OUT_OF_RANGE)
         self.assertEqual(v.enforcement, "block")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# S29-02: validated=True gate. A DoseRule only enforces when validated=True.
+# Illustrative numbers — NOT clinical truth.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestDoseCheckerValidatedGate(_Base):
+    """The DoseChecker must ignore DoseRules with validated=False.
+
+    A rule that is active=True but validated=False is inert: the engine treats
+    it as if it does not exist. Only after a human pharmacist sets validated=True
+    does the rule participate in dose enforcement.
+    """
+
+    def _make_gated_formulary(self, *, validated: bool):
+        """ILLUSTRATIVE formulary + fixed rule. NOT clinical."""
+        from apps.pharmacy.models import DoseRule, Drug, MedicationFormulary
+
+        drug = Drug.objects.create(name="FAKE-GatedDrug", generic_name="fake_gated")
+        formulary = MedicationFormulary.objects.create(
+            drug=drug,
+            strength_value=Decimal("10.000"),
+            strength_unit="mg",
+            route="IV",
+            active=True,
+        )
+        DoseRule.objects.create(
+            formulary=formulary,
+            basis="fixed",
+            dose_unit="mg",
+            min_per_dose=Decimal("5.0000"),
+            max_per_dose=Decimal("15.0000"),
+            absolute_max_dose=Decimal("15.0000"),
+            active=True,
+            validated=validated,
+        )
+        return drug
+
+    def test_non_validated_rule_is_ignored_by_checker(self):
+        """Key gating proof (S29-02):
+
+        1. A DoseRule with active=True, validated=False covering this patient
+           must NOT enforce — the checker returns NOT_APPLICABLE (no active
+           validated rules), never SAFE or OUT_OF_RANGE.
+        2. After the same rule is set validated=True and saved, an in-range
+           dose must return SAFE — the gate is now open.
+        """
+        from apps.pharmacy.models import DoseRule
+
+        # Phase 1: rule exists but is NOT validated → invisible to the checker.
+        drug = self._make_gated_formulary(validated=False)
+        v_before = DoseChecker.check(
+            drug=drug,
+            dose_amount=Decimal("10"),  # in-range (band [5,15])
+            dose_unit="mg",
+            route="IV",
+            frequency_per_day=None,
+            patient_age_days=3650,
+            weight_kg=None,
+            weight_recorded_at=self.fresh,
+            now=self.now,
+            weight_staleness_days=90,
+        )
+        # With no validated rules the engine sees an empty active-rules list →
+        # NOT_APPLICABLE (advisory gap), never a false SAFE.
+        self.assertEqual(
+            v_before.verdict,
+            Verdict.NOT_APPLICABLE,
+            f"Expected NOT_APPLICABLE for unvalidated rule, got {v_before.verdict}: {v_before.reason}",
+        )
+
+        # Phase 2: pharmacist validates the rule → it must now enforce.
+        rule = DoseRule.objects.get(formulary__drug=drug)
+        rule.validated = True
+        rule.save(update_fields=["validated"])
+
+        v_after = DoseChecker.check(
+            drug=drug,
+            dose_amount=Decimal("10"),  # same in-range dose
+            dose_unit="mg",
+            route="IV",
+            frequency_per_day=None,
+            patient_age_days=3650,
+            weight_kg=None,
+            weight_recorded_at=self.fresh,
+            now=self.now,
+            weight_staleness_days=90,
+        )
+        self.assertEqual(
+            v_after.verdict,
+            Verdict.SAFE,
+            f"Expected SAFE after validation, got {v_after.verdict}: {v_after.reason}",
+        )

@@ -1,0 +1,6 @@
+# TEST FIXTURE — fabricated, not clinical truth
+# Two rules for the same drug/route/basis/dose_role/freq but different age bands.
+# Used by test_import_supports_age_banded_rules and test_reimport_with_existing_banded_rules_is_idempotent.
+drug_name,drug_generic,strength_value,strength_unit,route,basis,dose_unit,min_per_dose,max_per_dose,absolute_max_dose,min_per_kg,max_per_kg,dose_role,freq_min_per_day,freq_max_per_day,age_min_days,age_max_days,weight_min_kg,weight_max_kg
+FAKE-BandedDrug,fake_banded,10.000,mg,IV,fixed,mg,1.0000,5.0000,5.0000,,,maintenance,,,0,365,,
+FAKE-BandedDrug,fake_banded,10.000,mg,IV,fixed,mg,5.0000,20.0000,20.0000,,,maintenance,,,366,6570,,

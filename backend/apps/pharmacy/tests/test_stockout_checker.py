@@ -197,5 +197,63 @@ class TestStockoutCheckerRisk(unittest.TestCase):
         self.assertEqual(v.kind, KIND_NOT_APPLICABLE)
 
 
+class TestS2904SupplyConfigConfirmation(unittest.TestCase):
+    """S29-04 confirmation tests: absent/present supply config safe-degradation.
+
+    These assert the behaviour already documented in the module docstring and
+    exercised indirectly by existing tests, but are named explicitly so the
+    S29-04 audit trail is unambiguous.
+
+    Already-covered paths this class intentionally duplicates for clarity:
+      - velocity=None → not_applicable  (TestStockoutCheckerInert)
+      - lead_time_days=None → not_applicable  (TestStockoutCheckerInert)
+    New assertions not present elsewhere:
+      - combined absent config (lead_time=None, safety_stock=None,
+        reorder_point=None, with a real velocity) → not_applicable, no block,
+        no fabricated number in days_to_stockout / predicted_date.
+      - lead_time_days present (non-None) → verdict reflects configured value.
+    """
+
+    def test_absent_lead_time_degrades_to_advise_only_never_blocks(self):
+        """With lead_time_days=None (all other config also absent), the engine
+        must return not_applicable — no block severity, no fabricated lead-time
+        number, no days_to_stockout, no predicted_date."""
+        v = StockoutChecker.check(
+            current_balance=Decimal("50"),
+            daily_velocity=Decimal("5"),  # real velocity — inert guard is lead_time
+            lead_time_days=None,
+            safety_stock=None,
+            reorder_point=None,
+            now=NOW,
+        )
+        self.assertEqual(v.kind, KIND_NOT_APPLICABLE)
+        self.assertIsNone(v.severity)                  # no advise, no block
+        self.assertNotEqual(v.severity, "block")       # explicit never-block guard
+        self.assertIsNone(v.days_to_stockout)          # no fabricated number
+        self.assertIsNone(v.predicted_date)            # no fabricated date
+
+    def test_lead_time_config_present_is_used(self):
+        """With lead_time_days=7 and a balance that runs out in 5 days, the
+        engine must detect a breach (5 <= 7) and return stockout_risk with
+        severity=advise — confirming the configured value is consumed, not
+        hard-coded or ignored."""
+        configured_lead = 7
+        v = StockoutChecker.check(
+            current_balance=Decimal("20"),
+            daily_velocity=Decimal("4"),  # 20/4 = 5 days runway < lead 7 → risk
+            lead_time_days=configured_lead,
+            safety_stock=None,
+            reorder_point=None,
+            now=NOW,
+        )
+        self.assertEqual(v.kind, KIND_STOCKOUT_RISK)
+        self.assertEqual(v.severity, SEVERITY_ADVISE)  # advise, never block
+        self.assertNotEqual(v.severity, "block")
+        # The configured lead time appears in the reason — it was consumed.
+        self.assertIn(str(configured_lead), v.reason)
+        self.assertIsNotNone(v.days_to_stockout)
+        self.assertIsNotNone(v.predicted_date)
+
+
 if __name__ == "__main__":
     unittest.main()

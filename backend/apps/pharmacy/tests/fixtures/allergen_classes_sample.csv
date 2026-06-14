@@ -1,0 +1,4 @@
+# TEST FIXTURE — fabricated, not clinical truth
+name,members,description
+FAKE-BetaLactams,"[""fake-penicillin"", ""fake-amoxicillin""]",Fabricated cross-reactivity class for testing
+FAKE-Sulfonamides,"[""fake-sulfamethoxazole"", ""fake-sulfadiazine""]",Fabricated cross-reactivity class for testing

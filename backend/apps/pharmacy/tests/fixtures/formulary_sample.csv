@@ -1,0 +1,5 @@
+# TEST FIXTURE — fabricated, not clinical truth
+drug_name,drug_generic,strength_value,strength_unit,route,basis,dose_unit,min_per_dose,max_per_dose,absolute_max_dose,min_per_kg,max_per_kg,dose_role,freq_min_per_day,freq_max_per_day,age_min_days,age_max_days,weight_min_kg,weight_max_kg
+FAKE-ImportDrugA,fake_import_a,10.000,mg,IV,fixed,mg,5.0000,15.0000,15.0000,,,,,,,,,
+FAKE-ImportDrugB,fake_import_b,5.000,mg,PO,fixed,mg,2.5000,10.0000,10.0000,,,,,,,,,
+FAKE-ImportDrugC,fake_import_c,1.000,mg,IV,fixed,mg,0.5000,2.0000,2.0000,,,,,,,,,

@@ -1,0 +1,5 @@
+# TEST FIXTURE — fabricated, not clinical truth
+CODIGO;DESCRICAO;GRUPO;SUBGRUPO
+10101010;FAKE-Consulta basica;procedimento;clinica
+20202020;FAKE-Exame de sangue;exame;laboratorio
+30303030;FAKE-Raio-x torax;imagem;radiologia

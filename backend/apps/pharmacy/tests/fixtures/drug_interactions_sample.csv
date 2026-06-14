@@ -1,0 +1,4 @@
+# TEST FIXTURE — fabricated, not clinical truth
+ingredient_a,ingredient_b,severity,description
+fake-warfarin,fake-aspirin,advise,Fabricated interaction for testing
+fake-metformin,fake-iodine,contraindicated,Fabricated interaction for testing

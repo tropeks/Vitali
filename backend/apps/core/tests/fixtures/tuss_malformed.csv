@@ -1,0 +1,4 @@
+# TEST FIXTURE — fabricated, not clinical truth
+CODIGO;DESCRICAO;GRUPO;SUBGRUPO
+10101010;FAKE-Consulta basica;procedimento;clinica
+;FAKE-Row with missing code;procedimento;clinica

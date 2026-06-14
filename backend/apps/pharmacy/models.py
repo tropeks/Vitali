@@ -169,6 +169,9 @@ class AllergenClass(models.Model):
     members = models.JSONField(default=list, blank=True)
     description = models.TextField(blank=True)
     active = models.BooleanField(default=True, db_index=True)
+    # Provenance of imported reference data (loader source + version). Additive, blank default.
+    source = models.CharField(max_length=200, blank=True)
+    version = models.CharField(max_length=40, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -204,6 +207,9 @@ class DrugInteraction(models.Model):
     severity = models.CharField(max_length=20, choices=Severity.choices, default=Severity.ADVISE)
     description = models.TextField(blank=True)
     active = models.BooleanField(default=True, db_index=True)
+    # Provenance of imported reference data (loader source + version). Additive, blank default.
+    source = models.CharField(max_length=200, blank=True)
+    version = models.CharField(max_length=40, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -979,6 +985,19 @@ class DoseRule(models.Model):
         ),
     )
     active = models.BooleanField(default=True, db_index=True)
+    # Validation gate — a DoseRule enforces ONLY when validated=True (human pharmacist
+    # sign-off required). Default False = inert until a pharmacist explicitly validates
+    # via the UI. The DoseChecker ignores rules with validated=False so that imported
+    # or draft rules never silently enforce before clinical review.
+    validated = models.BooleanField(default=False, db_index=True)
+    validated_by = models.ForeignKey(
+        "core.User",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    validated_at = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(
         blank=True, help_text="Clinical citation / source for this rule (e.g. reference, dataset)."
     )
@@ -989,6 +1008,30 @@ class DoseRule(models.Model):
         ordering = ["formulary__drug__name", "age_min_days"]
         verbose_name = "Dose Rule"
         verbose_name_plural = "Dose Rules"
+        constraints = [
+            # Full natural-key uniqueness for the upsert in import_formulary.
+            # nulls_distinct=False ensures that NULL band values compare equal,
+            # so two rules that are identical except for both having NULL in the
+            # same band column are treated as the same row (not as two distinct
+            # rows — Postgres legacy UNIQUE treats NULL as distinct).
+            # Requires Django 5.0+ + PostgreSQL 15+; both in use (Django 5.2, PG 16).
+            models.UniqueConstraint(
+                fields=[
+                    "formulary",
+                    "basis",
+                    "dose_role",
+                    "route",
+                    "freq_min_per_day",
+                    "freq_max_per_day",
+                    "age_min_days",
+                    "age_max_days",
+                    "weight_min_kg",
+                    "weight_max_kg",
+                ],
+                name="doserule_natural_key",
+                nulls_distinct=False,
+            ),
+        ]
 
     def clean(self):
         """

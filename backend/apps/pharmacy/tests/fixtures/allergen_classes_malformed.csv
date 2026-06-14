@@ -1,0 +1,4 @@
+# TEST FIXTURE — fabricated, not clinical truth
+name,members,description
+FAKE-GoodClass,"[""fake-a""]",Good row for testing
+,bad-missing-name,Bad row — name is required
