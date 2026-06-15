@@ -52,6 +52,42 @@ const response = {
       flywheel: { outcome_counts: null, graded_count: 0 },
       engine: 'deterministic',
     },
+    {
+      key: 'dose_safety',
+      enabled: false,
+      alert_count: 0,
+      acknowledged_count: 0,
+      override_rate: null,
+      flywheel: { outcome_counts: null, graded_count: 0 },
+      engine: 'deterministic',
+    },
+    {
+      key: 'allergy_safety',
+      enabled: false,
+      alert_count: 0,
+      acknowledged_count: 0,
+      override_rate: null,
+      flywheel: { outcome_counts: null, graded_count: 0 },
+      engine: 'deterministic',
+    },
+    {
+      key: 'glosa_safety',
+      enabled: false,
+      alert_count: 0,
+      acknowledged_count: 0,
+      override_rate: null,
+      flywheel: { outcome_counts: null, graded_count: 0 },
+      engine: 'deterministic',
+    },
+    {
+      key: 'controlled_safety',
+      enabled: false,
+      alert_count: 0,
+      acknowledged_count: 0,
+      override_rate: null,
+      flywheel: { outcome_counts: {}, graded_count: 0 },
+      engine: 'deterministic',
+    },
   ],
 }
 
@@ -67,13 +103,17 @@ beforeEach(() => {
 })
 
 describe('WedgeTelemetryPage', () => {
-  it('renders the three wedge cards', async () => {
+  it('renders all seven wedge cards', async () => {
     render(<WedgeTelemetryPage />)
     await waitFor(() => {
       expect(screen.getByText('Risco de Falta')).toBeInTheDocument()
     })
     expect(screen.getByText('Risco de Ruptura')).toBeInTheDocument()
     expect(screen.getByText('Deterioração Clínica')).toBeInTheDocument()
+    expect(screen.getByText('Segurança de Dose')).toBeInTheDocument()
+    expect(screen.getByText('Alergia / Interação')).toBeInTheDocument()
+    expect(screen.getByText('Prevenção de Glosa')).toBeInTheDocument()
+    expect(screen.getByText('Controlados (Desvio)')).toBeInTheDocument()
   })
 
   it('shows the enabled badge state per wedge', async () => {
@@ -81,9 +121,9 @@ describe('WedgeTelemetryPage', () => {
     await waitFor(() => {
       expect(screen.getByText('Risco de Falta')).toBeInTheDocument()
     })
-    // 2 wedges enabled → 2 "Ativo" badges; 1 disabled → 1 "Inativo".
+    // 2 wedges enabled (no_show + deterioration); 5 disabled (Wave-1 stockout + 4 Wave-2).
     expect(screen.getAllByText('Ativo')).toHaveLength(2)
-    expect(screen.getAllByText('Inativo')).toHaveLength(1)
+    expect(screen.getAllByText('Inativo')).toHaveLength(5)
   })
 
   it('renders the override rate as a percentage', async () => {
@@ -93,8 +133,8 @@ describe('WedgeTelemetryPage', () => {
     })
     // no_show override_rate 0.5 → 50%
     expect(screen.getByText('50%')).toBeInTheDocument()
-    // deterioration override_rate null → em dash
-    expect(screen.getByText('—')).toBeInTheDocument()
+    // 5 wedges have override_rate null → 5 em dashes
+    expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(1)
   })
 
   it('renders flywheel outcome counts', async () => {

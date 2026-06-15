@@ -12,18 +12,22 @@ from decimal import Decimal
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from apps.billing.models import GlosaSafetyAlert, InsuranceProvider, TISSGuide
 from apps.core.models import AuditLog, FeatureFlag, Role, User
 from apps.core.permissions import DEFAULT_ROLES
 from apps.emr.models import (
+    AISafetyAlert,
     Appointment,
     DeteriorationAlert,
     Encounter,
     NoShowRisk,
     Patient,
+    Prescription,
+    PrescriptionItem,
     Professional,
     VitalSigns,
 )
-from apps.pharmacy.models import Drug, StockAlert
+from apps.pharmacy.models import ControlledAlert, Dispensation, Drug, StockAlert
 from apps.test_utils import TenantTestCase
 
 URL = "/api/v1/wedge-telemetry/"
@@ -126,9 +130,93 @@ class _Base(TenantTestCase):
             message="NEWS2 7",
         )
 
+    def _ai_safety_alert(self, *, alert_type, status="flagged"):
+        self._slot += 1
+        patient = Patient.objects.create(
+            full_name=f"Safety Patient {self._slot}",
+            birth_date="1985-01-01",
+            gender="F",
+            cpf=f"7770000{self._slot:04d}",
+        )
+        enc = Encounter.objects.create(patient=patient, professional=self.prof)
+        rx = Prescription.objects.create(encounter=enc, patient=patient, prescriber=self.prof)
+        drug = Drug.objects.create(name=f"Drug Safety {self._slot}")
+        item = PrescriptionItem.objects.create(
+            prescription=rx, drug=drug, quantity=1, unit_of_measure="un"
+        )
+        return AISafetyAlert.objects.create(
+            prescription_item=item,
+            alert_type=alert_type,
+            source="engine",
+            severity="caution",
+            message=f"{alert_type} alert",
+            status=status,
+        )
+
+    def _glosa_safety_alert(self, *, status="flagged"):
+        self._slot += 1
+        patient = Patient.objects.create(
+            full_name=f"Glosa Patient {self._slot}",
+            birth_date="1985-01-01",
+            gender="M",
+            cpf=f"8880000{self._slot:04d}",
+        )
+        enc = Encounter.objects.create(patient=patient, professional=self.prof)
+        provider = InsuranceProvider.objects.create(
+            name=f"Provider {self._slot}", ans_code=f"{self._slot:06d}"
+        )
+        guide = TISSGuide.objects.create(
+            guide_type="sadt",
+            encounter=enc,
+            patient=patient,
+            provider=provider,
+            insured_card_number=f"000000{self._slot:05d}",
+            competency="2026-06",
+            status="pending",
+        )
+        return GlosaSafetyAlert.objects.create(
+            guide=guide,
+            check_code="incomplete",
+            severity="advise",
+            source="engine",
+            message="glosa alert",
+            status=status,
+        )
+
+    def _controlled_safety_alert(self, *, status="open", outcome="pending"):
+        self._slot += 1
+        patient = Patient.objects.create(
+            full_name=f"Controlled Patient {self._slot}",
+            birth_date="1985-01-01",
+            gender="M",
+            cpf=f"9990000{self._slot:04d}",
+        )
+        drug = Drug.objects.create(name=f"Drug Controlled {self._slot}")
+        enc = Encounter.objects.create(patient=patient, professional=self.prof)
+        rx = Prescription.objects.create(encounter=enc, patient=patient, prescriber=self.prof)
+        item = PrescriptionItem.objects.create(
+            prescription=rx, drug=drug, quantity=1, unit_of_measure="un"
+        )
+        disp = Dispensation.objects.create(
+            prescription=rx,
+            prescription_item=item,
+            patient=patient,
+            dispensed_by=self.user,
+        )
+        return ControlledAlert.objects.create(
+            dispensation=disp,
+            patient=patient,
+            drug=drug,
+            signal_kind="refill_too_soon",
+            detail={},
+            status=status,
+            outcome=outcome,
+            engine_version="controlled-c1",
+        )
+
 
 class TestWedgeTelemetry(_Base):
-    def test_returns_three_wedges(self):
+    def test_returns_seven_wedges(self):
         self._set_flag("no_show_prediction", True)
         self._set_flag("stockout_safety", True)
         self._no_show()
@@ -137,11 +225,22 @@ class TestWedgeTelemetry(_Base):
 
         body = self._client().get(URL).json()
         keys = [w["key"] for w in body["wedges"]]
-        assert keys == ["no_show_prediction", "stockout_safety", "deterioration_safety"]
+        assert keys == [
+            "no_show_prediction",
+            "stockout_safety",
+            "deterioration_safety",
+            "dose_safety",
+            "allergy_safety",
+            "glosa_safety",
+            "controlled_safety",
+        ]
         by_key = {w["key"]: w for w in body["wedges"]}
         assert by_key["no_show_prediction"]["alert_count"] == 1
         assert by_key["stockout_safety"]["alert_count"] == 1
         assert by_key["deterioration_safety"]["alert_count"] == 1
+        # Wave-2 wedges: no alerts seeded above — count must be 0.
+        for wkey in ("dose_safety", "allergy_safety", "glosa_safety", "controlled_safety"):
+            assert by_key[wkey]["alert_count"] == 0
         # Flag state is reflected per wedge.
         assert by_key["no_show_prediction"]["enabled"] is True
         assert by_key["deterioration_safety"]["enabled"] is False
@@ -238,3 +337,77 @@ class TestWedgeTelemetry(_Base):
         c.defaults["SERVER_NAME"] = self.__class__.domain.domain
         resp = c.get(URL)
         assert resp.status_code in (401, 403)
+
+
+class TestWaveTwoWedges(_Base):
+    """S31-05 — Wave-2 wedges appear in the telemetry endpoint."""
+
+    def test_dose_safety_alert_counted(self):
+        """engine-source dose AISafetyAlert increments the dose_safety wedge count."""
+        self._ai_safety_alert(alert_type="dose")
+        body = self._client().get(URL).json()
+        dose = next(w for w in body["wedges"] if w["key"] == "dose_safety")
+        assert dose["alert_count"] == 1
+        assert dose["acknowledged_count"] == 0
+        # override_rate = 0 acks / 1 alert = 0.0
+        assert dose["override_rate"] == 0.0
+
+    def test_allergy_safety_llm_rows_excluded(self):
+        """allergy wedge counts only source=engine rows; LLM rows are ignored."""
+        self._ai_safety_alert(alert_type="allergy")
+        # Create an LLM-source row for the same alert_type — must NOT be counted.
+        slot_patient = Patient.objects.create(
+            full_name="LLM Patient",
+            birth_date="1985-01-01",
+            gender="F",
+            cpf="66600000099",
+        )
+        enc = Encounter.objects.create(patient=slot_patient, professional=self.prof)
+        rx = Prescription.objects.create(
+            encounter=enc, patient=slot_patient, prescriber=self.prof
+        )
+        drug = Drug.objects.create(name="Drug LLM")
+        item = PrescriptionItem.objects.create(
+            prescription=rx, drug=drug, quantity=1, unit_of_measure="un"
+        )
+        AISafetyAlert.objects.create(
+            prescription_item=item,
+            alert_type="allergy",
+            source="llm",
+            severity="caution",
+            message="llm allergy explanation",
+        )
+
+        body = self._client().get(URL).json()
+        allergy = next(w for w in body["wedges"] if w["key"] == "allergy_safety")
+        assert allergy["alert_count"] == 1, "LLM row must not be counted in allergy_safety"
+
+    def test_glosa_safety_counted_no_outcome(self):
+        """GlosaSafetyAlert increments glosa_safety; outcome_counts is null (was_denied ≠ TextChoices)."""
+        self._glosa_safety_alert()
+        body = self._client().get(URL).json()
+        glosa = next(w for w in body["wedges"] if w["key"] == "glosa_safety")
+        assert glosa["alert_count"] == 1
+        assert glosa["flywheel"]["outcome_counts"] is None
+
+    def test_controlled_safety_outcome_counts(self):
+        """ControlledAlert has an outcome field; outcome_counts reflects the distribution."""
+        self._controlled_safety_alert(outcome="true_positive")
+        self._controlled_safety_alert(outcome="false_positive")
+        self._controlled_safety_alert(outcome="false_positive")
+        body = self._client().get(URL).json()
+        ctrl = next(w for w in body["wedges"] if w["key"] == "controlled_safety")
+        assert ctrl["alert_count"] == 3
+        counts = ctrl["flywheel"]["outcome_counts"]
+        assert counts["true_positive"] == 1
+        assert counts["false_positive"] == 2
+
+    def test_wave_two_override_rate(self):
+        """Acknowledged Wave-2 alerts drive the override_rate correctly."""
+        self._ai_safety_alert(alert_type="dose", status="flagged")
+        self._ai_safety_alert(alert_type="dose", status="acknowledged")
+        body = self._client().get(URL).json()
+        dose = next(w for w in body["wedges"] if w["key"] == "dose_safety")
+        assert dose["alert_count"] == 2
+        assert dose["acknowledged_count"] == 1
+        assert dose["override_rate"] == 0.5
