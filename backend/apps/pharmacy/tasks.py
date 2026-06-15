@@ -129,6 +129,29 @@ def _check_min_stock_alerts_for_tenant(schema_name: str):
     logger.info("check_min_stock_alerts: %d items written to %s", len(items), key)
 
 
+@shared_task(name="pharmacy.evaluate_stockout")
+def evaluate_stockout():
+    """Stockout-prediction wedge S2 — nightly proactive evaluation across every tenant.
+
+    Thin wrapper around the ``evaluate_stockout`` management command, fanned out
+    over all tenants via ``tenant_context`` (Celery beat fires in the public
+    schema). No-op per tenant when the ``stockout_safety`` flag is OFF (the
+    service guards this internally). Registered nightly at 02:30 UTC via the
+    PeriodicTask in pharmacy migration 0020; also runnable by hand as
+    ``manage.py evaluate_stockout``.
+    """
+    from django.core.management import call_command
+    from django_tenants.utils import tenant_context
+
+    Tenant = get_tenant_model()
+    for tenant in Tenant.objects.exclude(schema_name="public"):
+        try:
+            with tenant_context(tenant):
+                call_command("evaluate_stockout")
+        except Exception:
+            logger.exception("evaluate_stockout failed for tenant %s", tenant.schema_name)
+
+
 @shared_task(name="pharmacy.grade_stockout_predictions")
 def grade_stockout_predictions():
     """Stockout-prediction wedge S4 — nightly flywheel.

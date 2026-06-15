@@ -1,6 +1,13 @@
 from django.contrib import admin
 
-from .models import Allergy, MedicalHistory, Patient, Professional
+from .models import Allergy, EscalationConfig, MedicalHistory, Patient, Professional
+
+
+@admin.register(EscalationConfig)
+class EscalationConfigAdmin(admin.ModelAdmin):
+    list_display = ["__str__", "is_active", "min_severity", "created_at"]
+    list_filter = ["is_active", "min_severity"]
+    readonly_fields = ["id", "created_at", "updated_at"]
 
 
 class AllergyInline(admin.TabularInline):

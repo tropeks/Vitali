@@ -265,6 +265,114 @@ controlled med). Risk derived from dispensation history; no invented data.
 
 ---
 
+## Wave 1 staging go-live (S30)
+
+Sprints S30 enables the three wedges that require **no curated external data**:
+`no_show_prediction`, `stockout_safety`, and `deterioration_safety`. These should
+be validated in staging for at least one nightly cycle before any production flip.
+
+### Enable per wedge
+
+For each tenant targeted for staging validation:
+
+```python
+# Django shell / management command (run inside the tenant's schema)
+from apps.core.models import FeatureFlag
+from django.db import connection
+
+# Replace 'clinic_a' with the tenant schema name
+with connection.cursor() as c:
+    c.execute("SET search_path TO clinic_a")
+
+FeatureFlag.objects.update_or_create(
+    tenant=<tenant>,
+    module_key="no_show_prediction",   # or stockout_safety / deterioration_safety
+    defaults={"is_enabled": True}
+)
+```
+
+### Beat jobs (must be running)
+
+| Time (UTC) | Task name | Wedge |
+|---|---|---|
+| 02:00 | `emr.evaluate_no_show` | No-show (proactive scoring) |
+| 02:30 | `pharmacy.evaluate_stockout` | Stockout (proactive evaluation) — **new in S30** |
+| 03:00 | `pharmacy.grade_stockout_predictions` | Stockout (flywheel grading) |
+| 03:30 | `emr.grade_no_show_predictions` | No-show (flywheel grading) |
+| *signal* | *(real-time on VitalSigns save)* | Deterioration — no beat job needed |
+
+All jobs are registered as `PeriodicTask` rows in `django_celery_beat` via migrations;
+the Celery beat daemon must be running for them to fire.
+
+### Required per-wedge configuration
+
+- **No-show**: no config required. The wedge is inert per patient until ≥5 terminal
+  appointments accrue (the engine's minimum-history guard). Sensible defaults apply.
+- **Stockout**: requires `lead_time_days` to be set on each `Drug` / `Material` to be
+  monitored. Without it the engine is inert for that product (never alerts, never
+  blocks). No fictional default is supplied — the hospital pharmacy sets the real value.
+- **Deterioration**: base alerting works with no config. For escalation-severity
+  notifications, create an `EscalationConfig` row per tenant (admin or shell):
+  ```python
+  from apps.emr.models import EscalationConfig
+  EscalationConfig.objects.create(
+      is_active=True,
+      notify_emails=["duty.nurse@hospital.com"],
+      min_severity="escalation",   # default — only HIGH band alerts route
+  )
+  ```
+  Without an `EscalationConfig`, escalation alerts are still raised and audited;
+  only the notification delivery step is skipped (silent fail-safe).
+
+### Verify after first nightly cycle
+
+1. Check the telemetry panel: `GET /api/v1/wedge-telemetry/?days=1` (or the
+   frontend page at `/wedges/telemetry`). Non-null `alert_count` after the beat
+   jobs ran = the wedge is live and scoring.
+2. Check the wedge surfaces:
+   - No-show: `/faltas` — open risks with band/score
+   - Stockout: `/farmacia/risco-estoque` — open stockout_risk alerts
+   - Deterioration: `/deterioracao` — open alerts (fires live on every vitals save)
+3. Confirm flywheel: `AuditLog` rows with `action` matching `*_raised` /
+   `*_graded` / `deterioration_escalation_routed` (if config active).
+
+### Kill switch
+
+The **single instant kill** is flipping the tenant `FeatureFlag` to `is_enabled=False`:
+
+```python
+FeatureFlag.objects.filter(
+    tenant=<tenant>, module_key="no_show_prediction"
+).update(is_enabled=False)
+```
+
+Effect is immediate — every service's `is_enabled()` re-checks on each call.
+Existing alert rows are **NOT deleted** (intentional: preserves the flywheel record
+and the clinical audit trail). Grading tasks self-quiesce (they only grade rows that
+already exist, so with no new alerts there is nothing new to grade).
+
+For a **full nightly-job halt** (e.g. maintenance window), disable the
+`PeriodicTask` rows in Django admin → `django_celery_beat` → Periodic tasks, or:
+
+```python
+from django_celery_beat.models import PeriodicTask
+PeriodicTask.objects.filter(
+    name__in=["emr.evaluate_no_show", "pharmacy.evaluate_stockout",
+               "pharmacy.grade_stockout_predictions", "emr.grade_no_show_predictions"]
+).update(enabled=False)
+```
+
+### Staging soak checklist
+
+- [ ] Enable each flag for 1 staging tenant
+- [ ] Wait for one full nightly beat cycle (check Celery logs for 02:00–03:30 UTC window)
+- [ ] Verify telemetry panel shows `alert_count > 0` for no-show and stockout
+- [ ] Verify deterioration alerts fire in real-time when vitals are entered
+- [ ] Review `override_rate` in telemetry — if >50% in first cycle, review alert thresholds
+- [ ] Confirm flywheel `graded_count > 0` for no-show and stockout the morning after
+
+---
+
 ## Honesty contract
 
 - All seven flags ship **OFF**. No wedge is live or enabled by default.
