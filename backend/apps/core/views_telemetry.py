@@ -28,9 +28,10 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.billing.models import GlosaSafetyAlert
 from apps.core.models import AuditLog, FeatureFlag
-from apps.emr.models import DeteriorationAlert, NoShowRisk
-from apps.pharmacy.models import StockAlert
+from apps.emr.models import AISafetyAlert, DeteriorationAlert, NoShowRisk
+from apps.pharmacy.models import ControlledAlert, StockAlert
 
 DEFAULT_WINDOW_DAYS = 30
 
@@ -62,6 +63,41 @@ WEDGES: list[dict] = [
         "audit_prefix": "deterioration_alert",
         # DeteriorationAlert has no ``outcome`` field — never invent one.
         "has_outcome": False,
+    },
+    # ── Wave 2 (data-dependent; inert until feature flag enabled per tenant) ───
+    {
+        "key": "dose_safety",
+        "model": AISafetyAlert,
+        # source=engine rows are the deterministic verdict; source=llm rows are
+        # LLM-explainer siblings and must not double-count the alert.
+        "filters": {"alert_type": "dose", "source": "engine"},
+        "audit_prefix": "dose_safety",
+        # AISafetyAlert has no ``outcome`` TextChoices field.
+        "has_outcome": False,
+    },
+    {
+        "key": "allergy_safety",
+        "model": AISafetyAlert,
+        "filters": {"alert_type": "allergy", "source": "engine"},
+        "audit_prefix": "allergy_safety",
+        "has_outcome": False,
+    },
+    {
+        "key": "glosa_safety",
+        "model": GlosaSafetyAlert,
+        "filters": {"source": "engine"},
+        "audit_prefix": "glosa_safety",
+        # GlosaSafetyAlert uses ``was_denied`` (BooleanField), not a TextChoices
+        # outcome field — never fabricate outcome_counts.
+        "has_outcome": False,
+    },
+    {
+        "key": "controlled_safety",
+        "model": ControlledAlert,
+        "filters": {},
+        "audit_prefix": "controlled_safety",
+        # ControlledAlert.outcome has TextChoices (pending/true_positive/false_positive).
+        "has_outcome": True,
     },
 ]
 

@@ -12,6 +12,10 @@ const WEDGE_LABELS: Record<string, string> = {
   no_show_prediction: 'Risco de Falta',
   stockout_safety: 'Risco de Ruptura',
   deterioration_safety: 'Deterioração Clínica',
+  dose_safety: 'Segurança de Dose',
+  allergy_safety: 'Alergia / Interação',
+  glosa_safety: 'Prevenção de Glosa',
+  controlled_safety: 'Controlados (Desvio)',
 }
 
 function wedgeLabel(key: string): string {
@@ -137,7 +141,7 @@ export default function WedgeTelemetryPage() {
 
       {loading && (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3" data-testid="telemetry-skeleton">
-          {[0, 1, 2].map((i) => (
+          {[0, 1, 2, 3, 4, 5, 6].map((i) => (
             <div
               key={i}
               className="bg-white rounded-lg border border-slate-200 p-5 animate-pulse h-48"
