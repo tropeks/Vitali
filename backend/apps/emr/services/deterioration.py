@@ -198,6 +198,13 @@ class DeteriorationService:
                 action = "deterioration_alert_raised"
 
             self._audit(action, vs, result, severity, alert_id=alert.id)
+
+        # Route escalation notifications AFTER the atomic block commits so that
+        # any routing failure cannot roll back the alert or its audit row.
+        if action in ("deterioration_alert_raised", "deterioration_alert_escalated"):
+            from apps.emr.services.escalation import EscalationRouter
+            EscalationRouter().route(alert, requesting_user=self.requesting_user)
+
         return alert
 
     @staticmethod

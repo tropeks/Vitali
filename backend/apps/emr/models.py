@@ -845,6 +845,46 @@ class DeteriorationAlert(models.Model):
         )
 
 
+# ─── S30-03: Escalation routing config (per-tenant) ──────────────────────────
+
+
+class EscalationConfig(models.Model):
+    """Per-tenant operator config for escalation-severity deterioration alerts.
+
+    Controls who is notified when a DeteriorationAlert of severity ESCALATION
+    is raised. NEVER blocks clinical flow — the router is always fail-safe.
+    One active config per tenant is the expected usage; service reads .first().
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    is_active = models.BooleanField(default=True)
+    notify_emails = models.JSONField(
+        default=list,
+        help_text="Lista de e-mails notificados em escalamentos (formato JSON).",
+    )
+    notify_role = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="Chave de papel opcional (ex: 'nurse_coordinator') resolvida em runtime.",
+    )
+    min_severity = models.CharField(
+        max_length=12,
+        choices=DeteriorationAlert.Severity.choices,
+        default=DeteriorationAlert.Severity.ESCALATION,
+        help_text="Severidade mínima para acionar o roteamento.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Configuração de escalonamento"
+        verbose_name_plural = "Configurações de escalonamento"
+
+    def __str__(self):
+        status = "ativa" if self.is_active else "inativa"
+        return f"EscalationConfig ({status}, {len(self.notify_emails)} e-mail(s))"
+
+
 # ─── S-064: AI CID-10 Suggestion ─────────────────────────────────────────────
 
 

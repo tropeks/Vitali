@@ -13,6 +13,7 @@ from .views_mfa import (
 )
 from .views_onboarding import OnboardingView
 from .views_platform import TenantSubscriptionView
+from .views_telemetry import WedgeTelemetryView
 from .views_test_helpers import IssueInvitationTokenView
 
 app_name = "core"
@@ -50,6 +51,8 @@ urlpatterns = [
     path("subscription/", TenantSubscriptionView.as_view(), name="tenant-subscription"),
     # Onboarding checklist
     path("onboarding/", OnboardingView.as_view(), name="onboarding"),
+    # Wedge operational telemetry (S30-04)
+    path("wedge-telemetry/", WedgeTelemetryView.as_view(), name="wedge-telemetry"),
     # AI: TUSS sync status (admin-only)
     path("ai/tuss-sync-status/", views.TUSSSyncStatusView.as_view(), name="tuss-sync-status"),
     # DPA (S-070)

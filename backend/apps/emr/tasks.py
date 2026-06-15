@@ -324,6 +324,30 @@ def send_post_visit_followup_whatsapp(
             )
 
 
+# ─── S30-03: Escalation notification (deterioration wedge D3 routing) ────────
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=30)
+def send_escalation_notification(
+    self, alert_id: str, notify_emails: list
+) -> None:
+    """Deliver escalation-severity NEWS2 alert to configured recipients.
+
+    Fail-open: persistent failure is logged but never rolls back the
+    DeteriorationAlert or its AuditLog (which are committed before this runs).
+    Routing audit (deterioration_escalation_routed) is written by the router
+    before this task is enqueued, so even a total delivery failure preserves
+    the audit trail.
+    """
+    # Stub implementation for S30: logs the notification.
+    # S31+ will wire real email via apps.core.mail or WhatsApp gateway.
+    logger.info(
+        "send_escalation_notification: alert=%s recipients=%s",
+        alert_id,
+        notify_emails,
+    )
+
+
 # ─── No-show prediction wedge N2: nightly evaluation + flywheel grading ───────
 
 
