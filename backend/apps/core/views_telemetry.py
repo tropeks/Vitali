@@ -30,6 +30,7 @@ from rest_framework.views import APIView
 
 from apps.billing.models import GlosaSafetyAlert
 from apps.core.models import AuditLog, FeatureFlag
+from apps.core.permissions import HasPermission
 from apps.emr.models import AISafetyAlert, DeteriorationAlert, NoShowRisk
 from apps.pharmacy.models import ControlledAlert, StockAlert
 
@@ -106,12 +107,12 @@ class WedgeTelemetryView(APIView):
     """GET /api/v1/wedge-telemetry/?days=30 — per-wedge operational metrics.
 
     Read-only. Returns one entry per wedge with alert/ack counts, override rate,
-    and the flywheel (outcome distribution + graded-event count). Authentication
-    is required; no per-wedge permission floor since this is aggregate
-    observability, not patient/inventory data.
+    and the flywheel (outcome distribution + graded-event count). Requires
+    ``reports.read`` — aggregate operational data is management/admin territory,
+    not something every clinical role should see.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasPermission("reports.read")]
 
     def get(self, request):
         days = self._parse_days(request.query_params.get("days"))

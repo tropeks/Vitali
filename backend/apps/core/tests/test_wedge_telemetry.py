@@ -39,7 +39,10 @@ class _Base(TenantTestCase):
         self.now = timezone.now()
         self._slot = 0
 
-        role = Role.objects.create(name="medico_wt", permissions=DEFAULT_ROLES["medico"])
+        role = Role.objects.create(
+            name="medico_wt",
+            permissions=DEFAULT_ROLES["medico"] + ["reports.read"],
+        )
         self.user = User.objects.create_user(email="wt@t.com", password="pw", role=role)
         self.prof = Professional.objects.create(
             user=self.user, council_type="CRM", council_number="9", council_state="SP"
@@ -337,6 +340,18 @@ class TestWedgeTelemetry(_Base):
         c.defaults["SERVER_NAME"] = self.__class__.domain.domain
         resp = c.get(URL)
         assert resp.status_code in (401, 403)
+
+    def test_requires_reports_read_permission(self):
+        # A user whose role lacks reports.read must receive 403.
+        restricted_role = Role.objects.create(
+            name="medico_no_reports",
+            permissions=[p for p in DEFAULT_ROLES["medico"] if p != "reports.read"],
+        )
+        restricted_user = User.objects.create_user(
+            email="restricted@t.com", password="pw", role=restricted_role
+        )
+        resp = self._client(user=restricted_user).get(URL)
+        assert resp.status_code == 403
 
 
 class TestWaveTwoWedges(_Base):
