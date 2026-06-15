@@ -83,6 +83,9 @@ const NAV_ITEMS: NavItem[] = [
       { label: "WhatsApp", href: "/configuracoes/whatsapp" },
       { label: "Inteligência Artificial", href: "/configuracoes/ai" },
       { label: "Profissionais", href: "/configuracoes/profissionais" },
+      { label: "Formulário (doses)", href: "/configuracoes/farmacia/formulario" },
+      { label: "Interações", href: "/configuracoes/farmacia/interacoes" },
+      { label: "Suprimentos", href: "/configuracoes/farmacia/suprimentos" },
     ],
   },
 ];
