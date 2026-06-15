@@ -16,10 +16,13 @@ from apps.core.models import AuditLog
 from apps.core.permissions import HasPermission, ModuleRequiredPermission
 
 from .models import (
+    AllergenClass,
     ControlledAlert,
     Dispensation,
     DispensationLot,
+    DoseRule,
     Drug,
+    DrugInteraction,
     Material,
     PurchaseOrder,
     PurchaseOrderItem,
@@ -29,8 +32,11 @@ from .models import (
     Supplier,
 )
 from .serializers import (
+    AllergenClassSerializer,
     DispensationSerializer,
     DispenseRequestSerializer,
+    DoseRuleSerializer,
+    DrugInteractionSerializer,
     DrugSerializer,
     MaterialSerializer,
     POReceiveSerializer,
@@ -774,6 +780,290 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
             PurchaseOrderSerializer(po).data,
             status=status.HTTP_200_OK,
         )
+
+
+# ─── S29-02: DoseRule Curation endpoint ──────────────────────────────────────
+
+
+class DoseRuleViewSet(viewsets.ReadOnlyModelViewSet):
+    """Read-only list of DoseRule entries with a pharmacist-only `validate` action.
+
+    INVIOLABLE: `validated` is NEVER writable through this viewset's serializer.
+    The ONLY mutation path is through the `validate` action below.
+    """
+
+    serializer_class = DoseRuleSerializer
+
+    def get_queryset(self):
+        qs = DoseRule.objects.select_related("formulary__drug", "validated_by")
+        validated = self.request.query_params.get("validated")
+        if validated == "true":
+            qs = qs.filter(validated=True)
+        elif validated == "false":
+            qs = qs.filter(validated=False)
+        return qs
+
+    def get_permissions(self):
+        if self.action == "validate":
+            return [
+                IsAuthenticated(),
+                _PHARMACY_MODULE,
+                HasPermission("pharmacy.catalog_manage"),
+            ]
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission("pharmacy.read")]
+
+    @action(detail=True, methods=["post"], url_path="validate")
+    def validate(self, request, pk=None):
+        """POST /pharmacy/dose-rules/{id}/validate/ — pharmacist sign-off on a DoseRule.
+
+        Sets validated=True, validated_by=request.user, validated_at=now() and
+        writes an AuditLog row with action="dose_rule_validated". Returns 409 if
+        the rule is already validated.
+        """
+        rule = self.get_object()
+
+        if rule.validated:
+            return Response(
+                {"detail": "Esta regra já foi validada."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        rule.validated = True
+        rule.validated_by = request.user
+        rule.validated_at = timezone.now()
+        rule.save(update_fields=["validated", "validated_by", "validated_at"])
+
+        log_audit(
+            request,
+            "dose_rule_validated",
+            "DoseRule",
+            rule.id,
+            new_data={"validated_by": request.user.email},
+        )
+
+        return Response(self.get_serializer(rule).data)
+
+
+# ─── S29-03: AllergenClass & DrugInteraction Curation endpoints ───────────────
+
+
+class AllergenClassViewSet(viewsets.ReadOnlyModelViewSet):
+    """Read-only list of AllergenClass entries with a pharmacist-only `set-active` action.
+
+    INVIOLABLE: `active` is NEVER writable through this viewset's serializer.
+    The ONLY mutation path is through the `set_active` action below.
+    """
+
+    serializer_class = AllergenClassSerializer
+    queryset = AllergenClass.objects.all()
+
+    def get_permissions(self):
+        if self.action == "set_active":
+            return [
+                IsAuthenticated(),
+                _PHARMACY_MODULE,
+                HasPermission("pharmacy.catalog_manage"),
+            ]
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission("pharmacy.read")]
+
+    @action(detail=True, methods=["post"], url_path="set-active")
+    def set_active(self, request, pk=None):
+        """POST /pharmacy/allergen-classes/{id}/set-active/ — toggle active flag.
+
+        Body: {"active": bool}. Returns 400 if key is missing.
+        Writes AuditLog with action="allergen_class_set_active".
+        """
+        if "active" not in request.data:
+            return Response(
+                {"detail": "'active' key is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not isinstance(request.data["active"], bool):
+            return Response(
+                {"detail": "'active' deve ser um booleano JSON (true ou false)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        obj = self.get_object()
+        obj.active = request.data["active"]
+        obj.save(update_fields=["active"])
+
+        log_audit(
+            request,
+            "allergen_class_set_active",
+            "AllergenClass",
+            obj.id,
+            new_data={"active": obj.active},
+        )
+
+        return Response(self.get_serializer(obj).data)
+
+
+class DrugInteractionViewSet(viewsets.ReadOnlyModelViewSet):
+    """Read-only list of DrugInteraction entries with a pharmacist-only `set-active` action.
+
+    INVIOLABLE: `active` is NEVER writable through this viewset's serializer.
+    The ONLY mutation path is through the `set_active` action below.
+    """
+
+    serializer_class = DrugInteractionSerializer
+    queryset = DrugInteraction.objects.all()
+
+    def get_permissions(self):
+        if self.action == "set_active":
+            return [
+                IsAuthenticated(),
+                _PHARMACY_MODULE,
+                HasPermission("pharmacy.catalog_manage"),
+            ]
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission("pharmacy.read")]
+
+    @action(detail=True, methods=["post"], url_path="set-active")
+    def set_active(self, request, pk=None):
+        """POST /pharmacy/drug-interactions/{id}/set-active/ — toggle active flag.
+
+        Body: {"active": bool}. Returns 400 if key is missing.
+        Writes AuditLog with action="drug_interaction_set_active".
+        """
+        if "active" not in request.data:
+            return Response(
+                {"detail": "'active' key is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not isinstance(request.data["active"], bool):
+            return Response(
+                {"detail": "'active' deve ser um booleano JSON (true ou false)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        obj = self.get_object()
+        obj.active = request.data["active"]
+        obj.save(update_fields=["active"])
+
+        log_audit(
+            request,
+            "drug_interaction_set_active",
+            "DrugInteraction",
+            obj.id,
+            new_data={"active": obj.active},
+        )
+
+        return Response(self.get_serializer(obj).data)
+
+
+# ─── S29-05: Curation Readiness dashboard ────────────────────────────────────
+
+
+class CurationReadinessView(APIView):
+    """GET /pharmacy/curation/readiness/ — per-wedge data-readiness shape.
+
+    Returns a fully-derived readiness summary for the S29-05 dashboard.
+    Frontend does ZERO math — all counts and strings are computed here.
+    """
+
+    def get_permissions(self):
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission("pharmacy.read")]
+
+    def get(self, request):
+        # ── Dose wedge ────────────────────────────────────────────────────────
+        dose_total = DoseRule.objects.filter(active=True).count()
+        dose_ready = DoseRule.objects.filter(active=True, validated=True).count()
+        if dose_total == 0:
+            dose_blockers = []
+            dose_text = "Nenhuma regra de dose cadastrada."
+        elif dose_ready == dose_total:
+            dose_blockers = []
+            dose_text = f"Todas as {dose_total} regras de dose estão validadas."
+        else:
+            pending = dose_total - dose_ready
+            dose_blockers = [f"{pending} regra(s) de dose aguardando validação"]
+            dose_text = ""
+
+        # ── Allergy wedge ─────────────────────────────────────────────────────
+        allergy_total = AllergenClass.objects.count()
+        allergy_ready = AllergenClass.objects.filter(active=True).count()
+        if allergy_total == 0:
+            allergy_blockers = []
+            allergy_text = "Nenhuma classe de alérgenos cadastrada."
+        elif allergy_ready == allergy_total:
+            allergy_blockers = []
+            allergy_text = f"Todas as {allergy_total} classes de alérgenos estão ativas."
+        else:
+            inactive = allergy_total - allergy_ready
+            allergy_blockers = [f"{inactive} classe(s) de alérgenos inativa(s)"]
+            allergy_text = ""
+
+        # ── Interaction wedge ─────────────────────────────────────────────────
+        interaction_total = DrugInteraction.objects.count()
+        interaction_ready = DrugInteraction.objects.filter(active=True).count()
+        if interaction_total == 0:
+            interaction_blockers = []
+            interaction_text = "Nenhuma interação medicamentosa cadastrada."
+        elif interaction_ready == interaction_total:
+            interaction_blockers = []
+            interaction_text = f"Todas as {interaction_total} interações estão ativas."
+        else:
+            inactive_i = interaction_total - interaction_ready
+            interaction_blockers = [f"{inactive_i} interação(ões) inativa(s)"]
+            interaction_text = ""
+
+        # ── Supply wedge ──────────────────────────────────────────────────────
+        drug_total = Drug.objects.filter(is_active=True).count()
+        material_total = Material.objects.filter(is_active=True).count()
+        supply_total = drug_total + material_total
+
+        drug_ready = Drug.objects.filter(is_active=True, reorder_point__isnull=False).count()
+        material_ready = Material.objects.filter(is_active=True, reorder_point__isnull=False).count()
+        supply_ready = drug_ready + material_ready
+
+        if supply_total == 0:
+            supply_blockers = []
+            supply_text = "Nenhum item de suprimento cadastrado."
+        elif supply_ready == supply_total:
+            supply_blockers = []
+            supply_text = f"Todos os {supply_total} itens têm parâmetros de suprimento."
+        else:
+            unconfigured = supply_total - supply_ready
+            supply_blockers = [f"{unconfigured} item(ns) sem ponto de reposição configurado"]
+            supply_text = ""
+
+        wedges = [
+            {
+                "key": "dose",
+                "label": "Doses (formulário)",
+                "total": dose_total,
+                "ready_count": dose_ready,
+                "blockers": dose_blockers,
+                "ready_text": dose_text,
+            },
+            {
+                "key": "allergy",
+                "label": "Reatividade cruzada",
+                "total": allergy_total,
+                "ready_count": allergy_ready,
+                "blockers": allergy_blockers,
+                "ready_text": allergy_text,
+            },
+            {
+                "key": "interaction",
+                "label": "Interações medicamentosas",
+                "total": interaction_total,
+                "ready_count": interaction_ready,
+                "blockers": interaction_blockers,
+                "ready_text": interaction_text,
+            },
+            {
+                "key": "supply",
+                "label": "Suprimentos",
+                "total": supply_total,
+                "ready_count": supply_ready,
+                "blockers": supply_blockers,
+                "ready_text": supply_text,
+            },
+        ]
+        return Response({"wedges": wedges})
 
 
 # ─── Controlled-diversion wedge PR C3: compliance surface ─────────────────────

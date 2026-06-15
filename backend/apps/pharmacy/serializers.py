@@ -3,9 +3,12 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from .models import (
+    AllergenClass,
     Dispensation,
     DispensationLot,
+    DoseRule,
     Drug,
+    DrugInteraction,
     Material,
     PurchaseOrder,
     PurchaseOrderItem,
@@ -35,8 +38,12 @@ class DrugSerializer(serializers.ModelSerializer):
             "controlled_class",
             "controlled_class_display",
             "is_controlled",
+            "min_refill_interval_days",
             "is_active",
             "notes",
+            "lead_time_days",
+            "safety_stock",
+            "reorder_point",
             "created_at",
             "updated_at",
         ]
@@ -54,6 +61,9 @@ class MaterialSerializer(serializers.ModelSerializer):
             "unit_of_measure",
             "is_active",
             "notes",
+            "lead_time_days",
+            "safety_stock",
+            "reorder_point",
             "created_at",
             "updated_at",
         ]
@@ -295,6 +305,97 @@ class POReceiveItemSerializer(serializers.Serializer):
     )
     lot_number = serializers.CharField(required=False, allow_blank=True, default="")
     expiry_date = serializers.DateField(required=False, allow_null=True, default=None)
+
+
+# ─── S29-02: DoseRule Curation ────────────────────────────────────────────────
+
+
+class DoseRuleSerializer(serializers.ModelSerializer):
+    """Read-only serializer for DoseRule curation list.
+
+    INVIOLABLE: `validated` is exposed as read-only here. The only mutation path
+    is through the DoseRuleViewSet.validate action — never through serializer writes.
+    """
+
+    drug_name = serializers.CharField(source="formulary.drug.name", read_only=True)
+    validated_by = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DoseRule
+        fields = [
+            "id",
+            "drug_name",
+            "basis",
+            "dose_unit",
+            "min_per_kg",
+            "max_per_kg",
+            "min_per_dose",
+            "max_per_dose",
+            "absolute_max_dose",
+            "active",
+            "validated",
+            "validated_by",
+            "validated_at",
+        ]
+        # All fields are read-only — this serializer is never used for writes.
+        read_only_fields = fields
+
+    def get_validated_by(self, obj):
+        if obj.validated_by_id is None:
+            return None
+        user = obj.validated_by
+        full_name = getattr(user, "full_name", None) or getattr(user, "get_full_name", lambda: None)()
+        return full_name or user.email
+
+
+# ─── S29-03: AllergenClass & DrugInteraction Curation ────────────────────────
+
+
+class AllergenClassSerializer(serializers.ModelSerializer):
+    """Read-only serializer for AllergenClass curation list.
+
+    INVIOLABLE: `active` is exposed as read-only here. The only mutation path is
+    through the AllergenClassViewSet.set_active action — never through serializer writes.
+    """
+
+    class Meta:
+        model = AllergenClass
+        fields = [
+            "id",
+            "name",
+            "members",
+            "description",
+            "active",
+            "source",
+            "version",
+        ]
+        # All fields are read-only — this serializer is never used for writes.
+        read_only_fields = fields
+
+
+class DrugInteractionSerializer(serializers.ModelSerializer):
+    """Read-only serializer for DrugInteraction curation list.
+
+    INVIOLABLE: `active` is exposed as read-only here. The only mutation path is
+    through the DrugInteractionViewSet.set_active action — never through serializer writes.
+    """
+
+    severity_display = serializers.CharField(source="get_severity_display", read_only=True)
+
+    class Meta:
+        model = DrugInteraction
+        fields = [
+            "id",
+            "ingredient_a",
+            "ingredient_b",
+            "severity",
+            "severity_display",
+            "active",
+            "source",
+            "version",
+        ]
+        # All fields are read-only — this serializer is never used for writes.
+        read_only_fields = fields
 
 
 class POReceiveSerializer(serializers.Serializer):

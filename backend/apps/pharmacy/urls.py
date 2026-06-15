@@ -4,9 +4,13 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     AcknowledgeControlledAlertView,
     AcknowledgeStockAlertView,
+    AllergenClassViewSet,
     ControlledAlertsView,
+    CurationReadinessView,
     DispensationViewSet,
     DispenseView,
+    DoseRuleViewSet,
+    DrugInteractionViewSet,
     DrugViewSet,
     MaterialViewSet,
     PurchaseOrderViewSet,
@@ -21,6 +25,9 @@ from .views import (
 router = DefaultRouter()
 router.register(r"drugs", DrugViewSet, basename="drug")
 router.register(r"materials", MaterialViewSet, basename="material")
+router.register(r"dose-rules", DoseRuleViewSet, basename="dose-rule")
+router.register(r"allergen-classes", AllergenClassViewSet, basename="allergen-class")
+router.register(r"drug-interactions", DrugInteractionViewSet, basename="drug-interaction")
 router.register(r"stock/items", StockItemViewSet, basename="stockitem")
 router.register(r"stock/movements", StockMovementViewSet, basename="stockmovement")
 router.register(r"dispensations", DispensationViewSet, basename="dispensation")
@@ -40,6 +47,12 @@ urlpatterns = [
         "pharmacy/stock-alerts/<uuid:alert_id>/acknowledge/",
         AcknowledgeStockAlertView.as_view(),
         name="stock-alert-acknowledge",
+    ),
+    # S29-05: Curation readiness dashboard.
+    path(
+        "pharmacy/curation/readiness/",
+        CurationReadinessView.as_view(),
+        name="curation-readiness",
     ),
     # Controlled-diversion wedge C3: compliance surface + ack.
     path("pharmacy/controlled/alerts/", ControlledAlertsView.as_view(), name="controlled-alerts"),

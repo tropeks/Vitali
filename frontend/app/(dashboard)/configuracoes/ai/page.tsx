@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Bot } from 'lucide-react';
 import { getAccessToken } from '@/lib/auth';
 import { DPASignModal } from '@/components/settings/DPASignModal';
-import { PageShell, StatusBadge } from '@/components/shared';
+import { PageShell, StatusBadge, ReadinessPanel } from '@/components/shared';
 import { getDpaStatusMeta } from '@/lib/operational-ui';
 
 interface DPAStatus {
@@ -13,6 +13,15 @@ interface DPAStatus {
   signed_by_name: string | null;
   ai_scribe_enabled: boolean;
   current_user_can_sign: boolean;
+}
+
+interface ReadinessWedge {
+  key: string;
+  label: string;
+  total: number;
+  ready_count: number;
+  blockers: string[];
+  ready_text: string;
 }
 
 function formatDate(dateStr: string | null): string {
@@ -27,6 +36,7 @@ export default function AISettingsPage() {
   const [signing, setSigning] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [wedges, setWedges] = useState<ReadinessWedge[]>([]);
 
   const canSign = status?.current_user_can_sign ?? false;
 
@@ -47,8 +57,24 @@ export default function AISettingsPage() {
     }
   }
 
+  async function fetchReadiness() {
+    const token = getAccessToken();
+    try {
+      const res = await fetch('/api/v1/pharmacy/curation/readiness/', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        const data: { wedges: ReadinessWedge[] } = await res.json();
+        setWedges(data.wedges ?? []);
+      }
+    } catch {
+      // ignore — show nothing
+    }
+  }
+
   useEffect(() => {
     fetchStatus();
+    fetchReadiness();
   }, []);
 
   async function handleSign() {
@@ -173,6 +199,33 @@ export default function AISettingsPage() {
             </div>
           </section>
         )}
+
+        {/* ── Prontidão de curadoria de dados ── */}
+        <section className="rounded-lg border border-slate-200 bg-white">
+          <div className="border-b border-slate-100 px-4 py-3">
+            <h2 className="text-base font-semibold text-slate-900">
+              Prontidão de curadoria de dados
+            </h2>
+          </div>
+          <div className="p-4 space-y-4">
+            {wedges.length === 0 ? (
+              <p className="text-sm text-slate-500">Nenhum dado de prontidão disponível.</p>
+            ) : (
+              wedges.map((w) => (
+                <div key={w.key} className="space-y-1">
+                  <ReadinessPanel
+                    title={w.label}
+                    blockers={w.blockers}
+                    readyText={w.ready_text}
+                  />
+                  <p className="text-xs text-slate-500 pl-1">
+                    {w.ready_count}/{w.total} prontos
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
 
         {showModal && (
           <DPASignModal
