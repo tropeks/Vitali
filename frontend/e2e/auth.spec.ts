@@ -65,10 +65,10 @@ test.describe('Cookie Consent Banner', () => {
     await page.addInitScript(() => window.localStorage.clear());
     await page.goto('/login');
 
-    const bannerText = page.locator('text=Nós usamos cookies para melhorar sua experiência');
+    const bannerText = page.locator('text=cookies estritamente necessários');
     await expect(bannerText).toBeVisible();
 
-    const acceptButton = page.getByRole('button', { name: 'Aceitar' });
+    const acceptButton = page.getByRole('button', { name: 'Ciente e de acordo' });
     await expect(acceptButton).toBeVisible();
 
     await acceptButton.click();

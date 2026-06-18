@@ -68,6 +68,11 @@ test.describe('Clinical journey', () => {
   test('patient registration to signed encounter and timeline', async ({ page, request }) => {
     test.setTimeout(180_000);
 
+    // Pre-accept the LGPD cookie banner. It renders as a fixed bottom-0 z-50
+    // overlay (added in S32) and otherwise covers bottom-anchored submit buttons
+    // like "Cadastrar paciente", intercepting the click so navigation never fires.
+    await page.addInitScript(() => window.localStorage.setItem('vitali_cookie_consent', 'true'));
+
     const timestamp = Date.now();
     const patientName = `Paciente Jornada ${timestamp}`;
     const patientCpf = generateValidCpf(timestamp);
