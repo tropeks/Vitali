@@ -86,6 +86,7 @@ const NAV_ITEMS: NavItem[] = [
       { label: "Formulário (doses)", href: "/configuracoes/farmacia/formulario" },
       { label: "Interações", href: "/configuracoes/farmacia/interacoes" },
       { label: "Suprimentos", href: "/configuracoes/farmacia/suprimentos" },
+      { label: "Privacidade (LGPD)", href: "/configuracoes/privacidade" },
     ],
   },
 ];

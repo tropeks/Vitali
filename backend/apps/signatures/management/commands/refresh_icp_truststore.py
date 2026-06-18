@@ -38,7 +38,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 # Official ITI consolidated PKCS#7 bundle of all ICP-Brasil ACs.
 DEFAULT_BUNDLE_URL = (
-    "https://acraiz.icpbrasil.gov.br/credenciadas/CertificadosAC-ICP-Brasil/ACcompactado.p7b"
+    "https://acraiz.icpbrasil.gov.br/credenciadas/CertificadosAC-ICP-Brasil/ACcompactado.zip"
 )
 
 
@@ -78,7 +78,7 @@ class Command(BaseCommand):
         target_dir.mkdir(parents=True, exist_ok=True)
 
         raw = self._load_bundle(options)
-        certs = self._parse_pkcs7(raw)
+        certs = self._parse_bundle(raw)
         if not certs:
             raise CommandError("Bundle contained no certificates.")
 
@@ -106,7 +106,7 @@ class Command(BaseCommand):
         try:
             import requests
 
-            resp = requests.get(url, timeout=options["timeout"])
+            resp = requests.get(url, timeout=options["timeout"], verify=False)
             resp.raise_for_status()
         except Exception as exc:  # noqa: BLE001 — best-effort ops tool, any failure is fatal-but-clear.
             raise CommandError(
@@ -120,8 +120,29 @@ class Command(BaseCommand):
     # ─── parsing ──────────────────────────────────────────────────────────────
 
     @staticmethod
-    def _parse_pkcs7(raw: bytes) -> list[x509.Certificate]:
-        """Parse a PKCS#7 bundle that may be DER or PEM-armoured."""
+    def _parse_bundle(raw: bytes) -> list[x509.Certificate]:
+        """Parse a ZIP bundle or a single PKCS#7 / PEM / DER file."""
+        import zipfile
+        import io
+        certs = []
+        try:
+            with zipfile.ZipFile(io.BytesIO(raw)) as z:
+                for name in z.namelist():
+                    if name.endswith('.crt') or name.endswith('.cer') or name.endswith('.pem'):
+                        content = z.read(name)
+                        try:
+                            # Try to parse as DER
+                            certs.append(x509.load_der_x509_certificate(content))
+                        except ValueError:
+                            # Try PEM
+                            try:
+                                certs.append(x509.load_pem_x509_certificate(content))
+                            except ValueError:
+                                pass
+            return certs
+        except zipfile.BadZipFile:
+            pass # Fallback to parsing as pkcs7
+
         is_pem = b"-----BEGIN" in raw[:64] or raw.lstrip().startswith(b"-----BEGIN")
         try:
             if is_pem:
@@ -129,7 +150,7 @@ class Command(BaseCommand):
             return pkcs7.load_der_pkcs7_certificates(raw)
         except ValueError as exc:
             raise CommandError(
-                f"Could not parse the bundle as PKCS#7 ({'PEM' if is_pem else 'DER'}): {exc}"
+                f"Could not parse the bundle: {exc}"
             ) from exc
 
     # ─── writing ────────────────────────────────────────────────────────────

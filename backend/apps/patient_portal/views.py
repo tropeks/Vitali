@@ -27,6 +27,10 @@ from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from django.http import HttpResponse
+from django.template.loader import render_to_string
+from apps.core.models import AuditLog
+
 from apps.core.permissions import HasPermission, ModuleRequiredPermission
 from apps.emr.models import Allergy, Appointment, Encounter, Prescription
 
@@ -230,3 +234,60 @@ class MeAllergiesView(_SelfView):
         patient = self._patient(request)
         qs = Allergy.objects.filter(patient=patient).order_by("-created_at")
         return Response(PortalAllergySerializer(qs, many=True).data)
+
+
+class MeExportView(_SelfView):
+    def get(self, request):
+        patient = self._patient(request)
+        export_format = request.query_params.get("export_format", "json")
+        
+        patient_data = PortalPatientSerializer(patient).data
+        appointments = PortalAppointmentSerializer(Appointment.objects.filter(patient=patient).order_by("-start_time")[:100], many=True).data
+        encounters = PortalEncounterSerializer(Encounter.objects.filter(patient=patient, status="signed").order_by("-encounter_date")[:100], many=True).data
+        prescriptions = PortalPrescriptionSerializer(Prescription.objects.filter(patient=patient, status__in=["signed", "partially_dispensed", "dispensed"]).order_by("-created_at")[:100], many=True).data
+        allergies = PortalAllergySerializer(Allergy.objects.filter(patient=patient).order_by("-created_at"), many=True).data
+        
+        data = {
+            "patient": patient_data,
+            "appointments": appointments,
+            "encounters": encounters,
+            "prescriptions": prescriptions,
+            "allergies": allergies,
+        }
+        
+        if export_format == "json":
+            return Response(data)
+        elif export_format == "pdf":
+            html_string = render_to_string("patient_portal/export.html", {"data": data})
+            try:
+                from weasyprint import HTML
+                pdf_bytes = HTML(string=html_string).write_pdf()
+                response = HttpResponse(pdf_bytes, content_type='application/pdf')
+                response['Content-Disposition'] = f'attachment; filename="patient_export_{patient.id}.pdf"'
+                return response
+            except ImportError:
+                return Response({"detail": "Gerador de PDF indisponível."}, status=status.HTTP_501_NOT_IMPLEMENTED)
+        else:
+            return Response({"detail": "Formato inválido."}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class MeDeletionRequestView(_SelfView):
+    def post(self, request):
+        patient = self._patient(request)
+        reason = request.data.get("reason", "")
+        
+        AuditLog.objects.create(
+            user=request.user,
+            action="patient_deletion_requested",
+            resource_type="Patient",
+            resource_id=str(patient.id),
+            old_data={},
+            new_data={
+                "reason": reason,
+                "note": "Retenção legal de 20 anos se aplica. Nenhuma exclusão física realizada."
+            }
+        )
+        return Response(
+            {"detail": "Solicitação registrada com sucesso. A retenção legal de 20 anos se aplica."},
+            status=status.HTTP_200_OK
+        )
