@@ -29,7 +29,7 @@ Após concluir o assistente, sua agenda já está pronta para uso.
 
 ---
 
-## 2. Gerenciamento de Pacientes
+## 2. Recepção — Gerenciamento de Pacientes
 
 Acesse **Pacientes** no menu lateral.
 
@@ -47,7 +47,7 @@ Clique no nome do paciente para acessar o prontuário completo, incluindo histó
 
 ---
 
-## 3. Agenda e Consultas
+## 3. Recepção — Agenda e Consultas
 
 Acesse **Agenda** no menu lateral.
 
@@ -63,15 +63,15 @@ Acesse **Agenda** no menu lateral.
 ### Alterar status da consulta
 Clique na consulta e use os botões de ação:
 - **Confirmar** — paciente confirmou presença
-- **Aguardando** — paciente chegou na clínica
-- **Iniciar** — consulta em andamento
-- **Concluir** — consulta finalizada
+- **Aguardando** — paciente chegou na clínica (pronto para atendimento)
+- **Iniciar** — consulta em andamento (feito pelo médico)
+- **Concluir** — consulta finalizada (feito pelo médico)
 - **Não compareceu** — paciente faltou
 - **Cancelar** — consulta cancelada
 
 ---
 
-## 4. Pagamentos via PIX
+## 4. Recepção / Admin — Pagamentos via PIX
 
 Acesse a consulta agendada e clique em **Cobrar via PIX**.
 
@@ -89,7 +89,7 @@ O PIX expira em 30 minutos por padrão. Clique em **Gerar novo PIX** para recria
 
 ---
 
-## 5. Prontuário Eletrônico (EMR)
+## 5. Médico — Prontuário Eletrônico (EMR)
 
 Acesse **Consultas** no menu lateral durante ou após o atendimento.
 
@@ -110,7 +110,7 @@ Use a aba **Encaminhamentos** para registrar referências a especialistas ou exa
 
 ---
 
-## 6. Faturamento e TISS
+## 6. Faturamento — TISS e Glosas
 
 Acesse **Faturamento** no menu lateral.
 
@@ -129,7 +129,7 @@ Gerencie glosas recebidas em **Glosas**. Para cada glosa, você pode registrar r
 
 ---
 
-## 7. Farmácia / Estoque
+## 7. Farmácia — Estoque e Dispensação
 
 Acesse **Farmácia** no menu lateral.
 
@@ -139,7 +139,8 @@ Acesse **Farmácia** no menu lateral.
 - O sistema alerta quando o estoque está abaixo do mínimo configurado
 
 ### Dispensação
-Ao concluir uma prescrição eletrônica, o sistema solicita a confirmação da dispensação (saída do estoque).
+Ao concluir uma prescrição eletrônica (feita pelo médico), a farmácia é notificada. Confirme a dispensação no sistema para dar a saída do estoque.
+
 
 ---
 
