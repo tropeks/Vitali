@@ -543,7 +543,9 @@ class Prescription(models.Model):
         self.status = "signed"
         self.is_icp_brasil = is_icp_brasil
         self.signature_hash = signature_hash
-        self.save(update_fields=["signed_at", "signed_by", "status", "is_icp_brasil", "signature_hash"])
+        self.save(
+            update_fields=["signed_at", "signed_by", "status", "is_icp_brasil", "signature_hash"]
+        )
 
     def __str__(self):
         return f"Receita {self.id} — {self.patient} ({self.get_status_display()})"

@@ -75,6 +75,7 @@ class EscalationRouter:
             return
         try:
             from apps.emr.tasks import send_escalation_notification
+
             send_escalation_notification.delay(
                 alert_id=str(alert.pk),
                 notify_emails=config.notify_emails,
