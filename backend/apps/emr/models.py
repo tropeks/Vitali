@@ -356,6 +356,8 @@ class Encounter(models.Model):
         blank=True,
         related_name="signed_encounters",
     )
+    signature_hash = models.CharField(max_length=128, blank=True)
+    is_icp_brasil = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -464,15 +466,19 @@ class ClinicalDocument(models.Model):
         blank=True,
         related_name="signed_documents",
     )
+    signature_hash = models.CharField(max_length=128, blank=True)
+    is_icp_brasil = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["-created_at"]
 
-    def sign(self, user):
+    def sign(self, user, is_icp_brasil=False, signature_hash=""):
         self.signed_at = timezone.now()
         self.signed_by = user
-        self.save(update_fields=["signed_at", "signed_by"])
+        self.is_icp_brasil = is_icp_brasil
+        self.signature_hash = signature_hash
+        self.save(update_fields=["signed_at", "signed_by", "is_icp_brasil", "signature_hash"])
 
     @property
     def is_signed(self):
@@ -514,6 +520,8 @@ class Prescription(models.Model):
         blank=True,
         related_name="signed_prescriptions",
     )
+    signature_hash = models.CharField(max_length=128, blank=True)
+    is_icp_brasil = models.BooleanField(default=False)
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -529,11 +537,13 @@ class Prescription(models.Model):
     def is_signed(self):
         return self.signed_at is not None
 
-    def sign(self, user):
+    def sign(self, user, is_icp_brasil=False, signature_hash=""):
         self.signed_at = timezone.now()
         self.signed_by = user
         self.status = "signed"
-        self.save(update_fields=["signed_at", "signed_by", "status"])
+        self.is_icp_brasil = is_icp_brasil
+        self.signature_hash = signature_hash
+        self.save(update_fields=["signed_at", "signed_by", "status", "is_icp_brasil", "signature_hash"])
 
     def __str__(self):
         return f"Receita {self.id} — {self.patient} ({self.get_status_display()})"

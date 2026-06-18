@@ -59,7 +59,12 @@ class EncounterSigningService:
         self.requesting_user = requesting_user
         self.correlation_id = str(uuid4())
 
-    def sign(self, encounter: Encounter) -> Encounter:
+    def sign(
+        self,
+        encounter: Encounter,
+        pkcs12_b64: str | None = None,
+        pkcs12_password: str | None = None,
+    ) -> Encounter:
         """
         Sign the encounter + cascade. Caller has already verified status==open.
         Raises ValueError if already signed (defensive — view should pre-check).
@@ -73,11 +78,33 @@ class EncounterSigningService:
         if encounter.status != "open":
             raise ValueError("Apenas consultas abertas podem ser assinadas.")
 
+        from apps.emr.services.icp_brasil_integration import sign_with_icp_brasil
+        import json
+        
+        # Serialize the encounter for signing
+        doc_content = json.dumps({
+            "encounter_id": str(encounter.id),
+            "patient_id": str(encounter.patient_id),
+            "professional_id": str(encounter.professional_id),
+            "chief_complaint": encounter.chief_complaint,
+        }, sort_keys=True).encode("utf-8")
+        
+        is_icp, sig_hash = sign_with_icp_brasil(
+            user=self.requesting_user,
+            document_type="encounter",
+            document_id=str(encounter.id),
+            document_content=doc_content,
+            pkcs12_b64=pkcs12_b64,
+            pkcs12_password=pkcs12_password
+        )
+
         with transaction.atomic():
             encounter.status = "signed"
             encounter.signed_at = timezone.now()
             encounter.signed_by = self.requesting_user
-            encounter.save(update_fields=["status", "signed_at", "signed_by", "updated_at"])
+            encounter.is_icp_brasil = is_icp
+            encounter.signature_hash = sig_hash
+            encounter.save(update_fields=["status", "signed_at", "signed_by", "is_icp_brasil", "signature_hash", "updated_at"])
 
             self._audit(
                 "encounter_signed",

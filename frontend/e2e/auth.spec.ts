@@ -58,3 +58,24 @@ test.describe('Auth gate', () => {
     await expect(page).toHaveURL(/\/login\?next=%2Fdashboard/);
   });
 });
+
+test.describe('Cookie Consent Banner', () => {
+  test('displays cookie banner and saves consent', async ({ page }) => {
+    // Clear localStorage to ensure banner shows up
+    await page.addInitScript(() => window.localStorage.clear());
+    await page.goto('/login');
+
+    const bannerText = page.locator('text=Nós usamos cookies para melhorar sua experiência');
+    await expect(bannerText).toBeVisible();
+
+    const acceptButton = page.getByRole('button', { name: 'Aceitar' });
+    await expect(acceptButton).toBeVisible();
+
+    await acceptButton.click();
+    await expect(bannerText).toBeHidden();
+
+    // Verify localStorage was set
+    const consent = await page.evaluate(() => localStorage.getItem('vitali_cookie_consent'));
+    expect(consent).toBe('true');
+  });
+});

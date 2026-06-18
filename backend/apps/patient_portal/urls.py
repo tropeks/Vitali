@@ -10,6 +10,8 @@ from .views import (
     MeEncountersView,
     MePrescriptionsView,
     MeView,
+    MeExportView,
+    MeDeletionRequestView,
 )
 
 urlpatterns = [
@@ -38,4 +40,6 @@ urlpatterns = [
         name="portal-me-rx",
     ),
     path("portal/me/allergies/", MeAllergiesView.as_view(), name="portal-me-allergies"),
+    path("portal/me/export/", MeExportView.as_view(), name="portal-me-export"),
+    path("portal/me/delete-request/", MeDeletionRequestView.as_view(), name="portal-me-delete"),
 ]

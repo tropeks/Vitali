@@ -581,7 +581,11 @@ class EncounterViewSet(AuditReadMixin, viewsets.ModelViewSet):
         from apps.emr.services.encounter_signing import EncounterSigningService
 
         service = EncounterSigningService(requesting_user=request.user)
-        service.sign(encounter)
+        service.sign(
+            encounter,
+            pkcs12_b64=request.data.get("pkcs12_b64"),
+            pkcs12_password=request.data.get("pkcs12_password"),
+        )
         return Response(EncounterSerializer(encounter).data)
 
     @staticmethod
@@ -738,10 +742,21 @@ class ClinicalDocumentViewSet(viewsets.ModelViewSet):
         doc = self.get_object()
         if doc.is_signed:
             return Response(
-                {"error": {"code": "ALREADY_SIGNED", "message": "Documento já está assinado."}},
-                status=400,
+                {"error": "Documento já assinado."}, status=status.HTTP_409_CONFLICT
             )
-        doc.sign(request.user)
+
+        from apps.emr.services.icp_brasil_integration import sign_with_icp_brasil
+
+        is_icp, sig_hash = sign_with_icp_brasil(
+            user=request.user,
+            document_type="custom",
+            document_id=str(doc.id),
+            document_content=doc.content.encode("utf-8") if doc.content else b"",
+            pkcs12_b64=request.data.get("pkcs12_b64"),
+            pkcs12_password=request.data.get("pkcs12_password"),
+        )
+        doc.sign(request.user, is_icp_brasil=is_icp, signature_hash=sig_hash)
+
         log_audit(
             request,
             "document_sign",
@@ -841,7 +856,26 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_409_CONFLICT,
                 )
 
-            locked_rx.sign(request.user)
+            from apps.emr.services.icp_brasil_integration import sign_with_icp_brasil
+            import json
+
+            # Serialize prescription to sign
+            doc_content = json.dumps({
+                "prescription_id": str(locked_rx.id),
+                "patient_id": str(locked_rx.patient_id),
+                "notes": locked_rx.notes,
+            }, sort_keys=True).encode("utf-8")
+
+            is_icp, sig_hash = sign_with_icp_brasil(
+                user=request.user,
+                document_type="prescription",
+                document_id=str(locked_rx.id),
+                document_content=doc_content,
+                pkcs12_b64=request.data.get("pkcs12_b64"),
+                pkcs12_password=request.data.get("pkcs12_password"),
+            )
+            locked_rx.sign(request.user, is_icp_brasil=is_icp, signature_hash=sig_hash)
+
             log_audit(
                 request,
                 "prescription_sign",

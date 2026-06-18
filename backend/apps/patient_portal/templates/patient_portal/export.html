@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Exportação de Dados do Paciente</title>
+    <style>
+        body { font-family: sans-serif; font-size: 12px; }
+        h1, h2 { color: #333; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        th, td { border: 1px solid #ccc; padding: 5px; text-align: left; }
+        th { background-color: #f9f9f9; }
+    </style>
+</head>
+<body>
+    <h1>Dados do Paciente</h1>
+    <p><strong>Nome:</strong> {{ data.patient.full_name }}</p>
+    <p><strong>CPF:</strong> {{ data.patient.cpf }}</p>
+    <p><strong>Nascimento:</strong> {{ data.patient.birth_date }}</p>
+
+    <h2>Alergias</h2>
+    <table>
+        <tr><th>Alergia</th><th>Severidade</th><th>Data</th></tr>
+        {% for a in data.allergies %}
+        <tr><td>{{ a.allergen_name }}</td><td>{{ a.severity }}</td><td>{{ a.created_at }}</td></tr>
+        {% endfor %}
+    </table>
+
+    <h2>Consultas (Appointments)</h2>
+    <table>
+        <tr><th>Início</th><th>Fim</th><th>Status</th></tr>
+        {% for appt in data.appointments %}
+        <tr><td>{{ appt.start_time }}</td><td>{{ appt.end_time }}</td><td>{{ appt.status }}</td></tr>
+        {% endfor %}
+    </table>
+
+    <h2>Atendimentos (Encounters)</h2>
+    <table>
+        <tr><th>Data</th><th>Tipo</th><th>Status</th></tr>
+        {% for enc in data.encounters %}
+        <tr><td>{{ enc.encounter_date }}</td><td>{{ enc.encounter_type }}</td><td>{{ enc.status }}</td></tr>
+        {% endfor %}
+    </table>
+
+    <h2>Receitas (Prescriptions)</h2>
+    <table>
+        <tr><th>ID</th><th>Status</th><th>Data</th></tr>
+        {% for rx in data.prescriptions %}
+        <tr><td>{{ rx.id }}</td><td>{{ rx.status }}</td><td>{{ rx.created_at }}</td></tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
