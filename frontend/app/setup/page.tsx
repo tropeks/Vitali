@@ -1,37 +1,27 @@
 'use client'
 
-import { useState } from 'react'
-import { CheckCircle, ChevronRight, ChevronLeft, Building2, User, Clock, CreditCard, Rocket } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { CheckCircle, ChevronRight, ChevronLeft, User, Clock, Rocket } from 'lucide-react'
+import { trackPilotEvent } from '@/lib/analytics'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface WizardData {
-  // Step 1: Clinic
-  clinic_name: string
-  clinic_phone: string
-  clinic_address: string
-  // Step 2: Professional
-  full_name: string
+  // Step 1: Professional
   council_type: string
   council_number: string
   council_state: string
   specialty: string
-  // Step 3: Schedule
+  // Step 2: Schedule
   working_days: number[]
   work_start: string
   work_end: string
   lunch_start: string
   lunch_end: string
   slot_duration_minutes: number
-  // Step 4: PIX (Asaas)
-  asaas_api_key: string
 }
 
 const INITIAL: WizardData = {
-  clinic_name: '',
-  clinic_phone: '',
-  clinic_address: '',
-  full_name: '',
   council_type: 'CRM',
   council_number: '',
   council_state: 'SP',
@@ -42,7 +32,6 @@ const INITIAL: WizardData = {
   lunch_start: '12:00',
   lunch_end: '13:00',
   slot_duration_minutes: 30,
-  asaas_api_key: '',
 }
 
 const COUNCIL_TYPES = ['CRM', 'CRO', 'CRN', 'CREF', 'CRP', 'CFO', 'COREN']
@@ -60,52 +49,9 @@ const SLOT_OPTIONS = [15, 20, 30, 45, 60]
 
 // ─── Step components ──────────────────────────────────────────────────────────
 
-function StepClinic({ data, onChange }: { data: WizardData; onChange: (d: Partial<WizardData>) => void }) {
-  return (
-    <div className="space-y-4">
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">Nome da Clínica *</label>
-        <input
-          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          placeholder="Ex: Clínica Saúde & Vida"
-          value={data.clinic_name}
-          onChange={(e) => onChange({ clinic_name: e.target.value })}
-        />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">Telefone</label>
-        <input
-          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          placeholder="(11) 99999-9999"
-          value={data.clinic_phone}
-          onChange={(e) => onChange({ clinic_phone: e.target.value })}
-        />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">Endereço</label>
-        <input
-          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          placeholder="Rua, número, bairro, cidade — UF"
-          value={data.clinic_address}
-          onChange={(e) => onChange({ clinic_address: e.target.value })}
-        />
-      </div>
-    </div>
-  )
-}
-
 function StepProfessional({ data, onChange }: { data: WizardData; onChange: (d: Partial<WizardData>) => void }) {
   return (
     <div className="space-y-4">
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">Nome completo *</label>
-        <input
-          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          placeholder="Dr. João da Silva"
-          value={data.full_name}
-          onChange={(e) => onChange({ full_name: e.target.value })}
-        />
-      </div>
       <div className="grid grid-cols-3 gap-3">
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">Conselho *</label>
@@ -242,31 +188,7 @@ function StepSchedule({ data, onChange }: { data: WizardData; onChange: (d: Part
   )
 }
 
-function StepPIX({ data, onChange }: { data: WizardData; onChange: (d: Partial<WizardData>) => void }) {
-  return (
-    <div className="space-y-5">
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
-        <p className="font-medium mb-1">Configuração opcional</p>
-        <p>Para receber pagamentos via PIX, você precisa de uma conta Asaas. Acesse <strong>sandbox.asaas.com</strong> para criar uma conta de teste e obter a chave de API.</p>
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">Chave de API Asaas</label>
-        <input
-          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-          placeholder="$aact_..."
-          value={data.asaas_api_key}
-          onChange={(e) => onChange({ asaas_api_key: e.target.value })}
-        />
-        <p className="text-xs text-slate-400 mt-1">
-          Chaves sandbox começam com $aact_ — produção com $act_.
-          Você pode pular esta etapa e configurar depois em Configurações.
-        </p>
-      </div>
-    </div>
-  )
-}
-
-function StepComplete({ clinicName }: { clinicName: string }) {
+function StepComplete() {
   return (
     <div className="text-center space-y-5 py-4">
       <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
@@ -274,7 +196,7 @@ function StepComplete({ clinicName }: { clinicName: string }) {
       </div>
       <div>
         <h3 className="text-xl font-semibold text-slate-900">
-          {clinicName || 'Clínica'} está pronta!
+          Tudo pronto!
         </h3>
         <p className="text-slate-500 mt-2 text-sm">
           A configuração inicial foi concluída. Você pode editar qualquer informação em Configurações a qualquer momento.
@@ -303,10 +225,8 @@ function StepComplete({ clinicName }: { clinicName: string }) {
 // ─── Wizard shell ─────────────────────────────────────────────────────────────
 
 const STEPS = [
-  { icon: Building2, label: 'Clínica' },
   { icon: User, label: 'Profissional' },
   { icon: Clock, label: 'Agenda' },
-  { icon: CreditCard, label: 'PIX' },
   { icon: CheckCircle, label: 'Concluído' },
 ]
 
@@ -316,20 +236,24 @@ export default function SetupWizardPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  useEffect(() => {
+    trackPilotEvent('wizard_started')
+  }, [])
+
   const update = (patch: Partial<WizardData>) => setData((d) => ({ ...d, ...patch }))
 
   const canNext = () => {
-    if (step === 0) return data.clinic_name.trim().length > 0
-    if (step === 1) return data.full_name.trim().length > 0 && data.council_number.trim().length > 0
+    if (step === 0) return data.council_number.trim().length > 0
     return true
   }
 
   const handleNext = async () => {
-    if (step === 3) {
-      // Step 4 → submit to backend
+    if (step === 1) {
+      // Step 2 → submit to backend
       await submit()
     } else {
       setStep((s) => s + 1)
+      trackPilotEvent('wizard_step_completed', { step })
     }
   }
 
@@ -342,7 +266,6 @@ export default function SetupWizardPage() {
         council_number: data.council_number,
         council_state: data.council_state,
         specialty: data.specialty,
-        full_name: data.full_name,
         working_days: data.working_days,
         work_start: data.work_start,
         work_end: data.work_end,
@@ -359,9 +282,17 @@ export default function SetupWizardPage() {
         const body = await r.json().catch(() => ({}))
         throw new Error(JSON.stringify(body))
       }
-      setStep(4)
+      
+      trackPilotEvent('wizard_completed', { 
+        council_type: data.council_type,
+        working_days_count: data.working_days.length,
+        slot_duration: data.slot_duration_minutes 
+      })
+      
+      setStep(2)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Erro ao salvar configurações.')
+      trackPilotEvent('wizard_error', { error: e instanceof Error ? e.message : 'Unknown' })
     } finally {
       setSaving(false)
     }
@@ -404,11 +335,9 @@ export default function SetupWizardPage() {
 
         {/* Step content */}
         <div className="px-8 py-6">
-          {step === 0 && <StepClinic data={data} onChange={update} />}
-          {step === 1 && <StepProfessional data={data} onChange={update} />}
-          {step === 2 && <StepSchedule data={data} onChange={update} />}
-          {step === 3 && <StepPIX data={data} onChange={update} />}
-          {step === 4 && <StepComplete clinicName={data.clinic_name} />}
+          {step === 0 && <StepProfessional data={data} onChange={update} />}
+          {step === 1 && <StepSchedule data={data} onChange={update} />}
+          {step === 2 && <StepComplete />}
 
           {error && (
             <p className="mt-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
@@ -418,7 +347,7 @@ export default function SetupWizardPage() {
         </div>
 
         {/* Navigation */}
-        {step < 4 && (
+        {step < 2 && (
           <div className="px-8 pb-6 flex items-center justify-between">
             <button
               onClick={() => setStep((s) => Math.max(0, s - 1))}
@@ -433,7 +362,7 @@ export default function SetupWizardPage() {
               disabled={!canNext() || saving}
               className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 disabled:opacity-50"
             >
-              {saving ? 'Salvando...' : step === 3 ? 'Concluir' : 'Próximo'}
+              {saving ? 'Salvando...' : step === 1 ? 'Concluir' : 'Próximo'}
               {!saving && <ChevronRight size={16} />}
             </button>
           </div>
@@ -442,3 +371,4 @@ export default function SetupWizardPage() {
     </div>
   )
 }
+
