@@ -44,53 +44,62 @@ const DAYS = [
 ]
 const SLOT_OPTIONS = [15, 20, 30, 45, 60]
 
+// ─── Shared UI Components ─────────────────────────────────────────────────────
+
+const inputClasses = "w-full px-2 py-1.5 bg-[#E8EDF2] border-transparent rounded-md text-xs shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#0066A1]/50 transition-all h-8 text-[#24292F]"
+const labelClasses = "block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide"
+
 // ─── Step components ──────────────────────────────────────────────────────────
 
 function StepProfessional({ data, onChange }: { data: WizardData; onChange: (d: Partial<WizardData>) => void }) {
   return (
-    <div className="space-y-3">
-      <div className="bg-[#E6F0F9] px-3 py-1.5 border-l-4 border-[#0066A1]">
-        <h3 className="text-sm font-bold text-[#0066A1]">Informações do Corpo Clínico</h3>
+    <div className="space-y-4">
+      <div className="flex items-center gap-2 mb-4">
+        <div className="w-1.5 h-4 bg-[#0066A1] rounded-full shadow-[0_0_6px_rgba(0,102,161,0.4)]"></div>
+        <h3 className="text-sm font-bold text-[#1f2937]">Informações do Corpo Clínico</h3>
       </div>
-      <div className="grid grid-cols-12 gap-3 px-2">
-        <div className="col-span-3">
-          <label className="block text-xs font-semibold text-[#24292F] mb-1">Conselho *</label>
-          <select
-            className="w-full px-2 py-1 border border-[#D0D7DE] rounded-sm text-xs focus:outline-none focus:border-[#0066A1] bg-white h-7"
-            value={data.council_type}
-            onChange={(e) => onChange({ council_type: e.target.value })}
-          >
-            {COUNCIL_TYPES.map((c) => <option key={c}>{c}</option>)}
-          </select>
+      
+      <div className="bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] space-y-4 border border-white">
+        <div className="grid grid-cols-12 gap-4">
+          <div className="col-span-3">
+            <label className={labelClasses}>Conselho *</label>
+            <select
+              className={inputClasses}
+              value={data.council_type}
+              onChange={(e) => onChange({ council_type: e.target.value })}
+            >
+              {COUNCIL_TYPES.map((c) => <option key={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="col-span-6">
+            <label className={labelClasses}>Número de Registro *</label>
+            <input
+              className={inputClasses}
+              placeholder="Ex: 123456"
+              value={data.council_number}
+              onChange={(e) => onChange({ council_number: e.target.value })}
+            />
+          </div>
+          <div className="col-span-3">
+            <label className={labelClasses}>UF *</label>
+            <select
+              className={inputClasses}
+              value={data.council_state}
+              onChange={(e) => onChange({ council_state: e.target.value })}
+            >
+              {BR_STATES.map((s) => <option key={s}>{s}</option>)}
+            </select>
+          </div>
         </div>
-        <div className="col-span-6">
-          <label className="block text-xs font-semibold text-[#24292F] mb-1">Número de Registro *</label>
+        <div>
+          <label className={labelClasses}>Especialidade Principal</label>
           <input
-            className="w-full px-2 py-1 border border-[#D0D7DE] rounded-sm text-xs focus:outline-none focus:border-[#0066A1] h-7"
-            placeholder="Ex: 123456"
-            value={data.council_number}
-            onChange={(e) => onChange({ council_number: e.target.value })}
+            className={inputClasses}
+            placeholder="Ex: Clínica Médica, Cardiologia"
+            value={data.specialty}
+            onChange={(e) => onChange({ specialty: e.target.value })}
           />
         </div>
-        <div className="col-span-3">
-          <label className="block text-xs font-semibold text-[#24292F] mb-1">UF *</label>
-          <select
-            className="w-full px-2 py-1 border border-[#D0D7DE] rounded-sm text-xs focus:outline-none focus:border-[#0066A1] bg-white h-7"
-            value={data.council_state}
-            onChange={(e) => onChange({ council_state: e.target.value })}
-          >
-            {BR_STATES.map((s) => <option key={s}>{s}</option>)}
-          </select>
-        </div>
-      </div>
-      <div className="px-2 pb-2">
-        <label className="block text-xs font-semibold text-[#24292F] mb-1">Especialidade Principal</label>
-        <input
-          className="w-full px-2 py-1 border border-[#D0D7DE] rounded-sm text-xs focus:outline-none focus:border-[#0066A1] h-7"
-          placeholder="Ex: Clínica Médica, Cardiologia"
-          value={data.specialty}
-          onChange={(e) => onChange({ specialty: e.target.value })}
-        />
       </div>
     </div>
   )
@@ -105,86 +114,89 @@ function StepSchedule({ data, onChange }: { data: WizardData; onChange: (d: Part
 
   return (
     <div className="space-y-4">
-      <div className="bg-[#E6F0F9] px-3 py-1.5 border-l-4 border-[#0066A1]">
-        <h3 className="text-sm font-bold text-[#0066A1]">Configuração de Agenda e Turnos</h3>
+      <div className="flex items-center gap-2 mb-4">
+        <div className="w-1.5 h-4 bg-[#0066A1] rounded-full shadow-[0_0_6px_rgba(0,102,161,0.4)]"></div>
+        <h3 className="text-sm font-bold text-[#1f2937]">Configuração de Agenda e Turnos</h3>
       </div>
       
-      <div className="px-2">
-        <label className="block text-xs font-semibold text-[#24292F] mb-1">Dias de Atendimento</label>
-        <div className="flex gap-1">
-          {DAYS.map((d) => (
-            <button
-              key={d.value}
-              type="button"
-              onClick={() => toggleDay(d.value)}
-              className={`px-3 py-1 text-xs border rounded-sm font-semibold transition-colors ${
-                data.working_days.includes(d.value)
-                  ? 'bg-[#0066A1] text-white border-[#004b7a]'
-                  : 'bg-[#F4F6F8] text-[#57606A] border-[#D0D7DE] hover:bg-[#EAECEF]'
-              }`}
-            >
-              {d.label}
-            </button>
-          ))}
+      <div className="bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] space-y-5 border border-white">
+        <div>
+          <label className={labelClasses}>Dias de Atendimento</label>
+          <div className="flex gap-2 flex-wrap">
+            {DAYS.map((d) => (
+              <button
+                key={d.value}
+                type="button"
+                onClick={() => toggleDay(d.value)}
+                className={`px-4 py-1.5 text-xs rounded-lg font-bold transition-all ${
+                  data.working_days.includes(d.value)
+                    ? 'bg-gradient-to-b from-[#0066A1] to-[#005282] text-white shadow-[0_2px_6px_rgba(0,102,161,0.3)] border-t border-[#3385b5]'
+                    : 'bg-[#E8EDF2] text-[#57606A] shadow-[inset_0_1px_1px_rgba(255,255,255,0.5),_0_2px_4px_rgba(0,0,0,0.05)] hover:bg-[#dfe5ea]'
+                }`}
+              >
+                {d.label}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
 
-      <div className="grid grid-cols-4 gap-3 px-2">
-        <div>
-          <label className="block text-xs font-semibold text-[#24292F] mb-1">Início Expediente</label>
-          <input
-            type="time"
-            className="w-full px-2 py-1 border border-[#D0D7DE] rounded-sm text-xs focus:outline-none focus:border-[#0066A1] h-7"
-            value={data.work_start}
-            onChange={(e) => onChange({ work_start: e.target.value })}
-          />
+        <div className="grid grid-cols-4 gap-4">
+          <div>
+            <label className={labelClasses}>Início Expediente</label>
+            <input
+              type="time"
+              className={inputClasses}
+              value={data.work_start}
+              onChange={(e) => onChange({ work_start: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className={labelClasses}>Início Pausa</label>
+            <input
+              type="time"
+              className={inputClasses}
+              value={data.lunch_start}
+              onChange={(e) => onChange({ lunch_start: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className={labelClasses}>Fim Pausa</label>
+            <input
+              type="time"
+              className={inputClasses}
+              value={data.lunch_end}
+              onChange={(e) => onChange({ lunch_end: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className={labelClasses}>Fim Expediente</label>
+            <input
+              type="time"
+              className={inputClasses}
+              value={data.work_end}
+              onChange={(e) => onChange({ work_end: e.target.value })}
+            />
+          </div>
         </div>
-        <div>
-          <label className="block text-xs font-semibold text-[#24292F] mb-1">Início Pausa</label>
-          <input
-            type="time"
-            className="w-full px-2 py-1 border border-[#D0D7DE] rounded-sm text-xs focus:outline-none focus:border-[#0066A1] h-7"
-            value={data.lunch_start}
-            onChange={(e) => onChange({ lunch_start: e.target.value })}
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-[#24292F] mb-1">Fim Pausa</label>
-          <input
-            type="time"
-            className="w-full px-2 py-1 border border-[#D0D7DE] rounded-sm text-xs focus:outline-none focus:border-[#0066A1] h-7"
-            value={data.lunch_end}
-            onChange={(e) => onChange({ lunch_end: e.target.value })}
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-[#24292F] mb-1">Fim Expediente</label>
-          <input
-            type="time"
-            className="w-full px-2 py-1 border border-[#D0D7DE] rounded-sm text-xs focus:outline-none focus:border-[#0066A1] h-7"
-            value={data.work_end}
-            onChange={(e) => onChange({ work_end: e.target.value })}
-          />
-        </div>
-      </div>
 
-      <div className="px-2 pb-2">
-        <label className="block text-xs font-semibold text-[#24292F] mb-1">Duração Padrão do Encaixe (Slots)</label>
-        <div className="flex gap-1">
-          {SLOT_OPTIONS.map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => onChange({ slot_duration_minutes: s })}
-              className={`px-3 py-1 text-xs border rounded-sm font-semibold transition-colors ${
-                data.slot_duration_minutes === s
-                  ? 'bg-[#0066A1] text-white border-[#004b7a]'
-                  : 'bg-[#F4F6F8] text-[#57606A] border-[#D0D7DE] hover:bg-[#EAECEF]'
-              }`}
-            >
-              {s} min
-            </button>
-          ))}
+        <div>
+          <label className={labelClasses}>Duração Padrão do Encaixe (Slots)</label>
+          <div className="flex gap-2 flex-wrap">
+            {SLOT_OPTIONS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => onChange({ slot_duration_minutes: s })}
+                className={`px-4 py-1.5 text-xs rounded-lg font-bold transition-all ${
+                  data.slot_duration_minutes === s
+                    ? 'bg-gradient-to-b from-[#0066A1] to-[#005282] text-white shadow-[0_2px_6px_rgba(0,102,161,0.3)] border-t border-[#3385b5]'
+                    : 'bg-[#E8EDF2] text-[#57606A] shadow-[inset_0_1px_1px_rgba(255,255,255,0.5),_0_2px_4px_rgba(0,0,0,0.05)] hover:bg-[#dfe5ea]'
+                }`}
+              >
+                {s} min
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -193,25 +205,31 @@ function StepSchedule({ data, onChange }: { data: WizardData; onChange: (d: Part
 
 function StepComplete() {
   return (
-    <div className="space-y-4 px-2 pb-2">
-      <div className="bg-[#E6F0F9] px-3 py-1.5 border-l-4 border-[#0066A1] mb-4">
-        <h3 className="text-sm font-bold text-[#0066A1]">Provisionamento Concluído</h3>
+    <div className="space-y-4">
+      <div className="flex items-center gap-2 mb-4">
+        <div className="w-1.5 h-4 bg-[#2DA44E] rounded-full shadow-[0_0_6px_rgba(45,164,78,0.4)]"></div>
+        <h3 className="text-sm font-bold text-[#1f2937]">Provisionamento Concluído</h3>
       </div>
-      <p className="text-sm text-[#24292F] font-semibold">
-        A parametrização inicial da clínica foi registrada com sucesso no banco de dados.
-      </p>
-      <div className="bg-[#F8FAFC] border border-[#D0D7DE] rounded-sm p-3 mt-2">
-        <h4 className="text-xs font-bold text-[#57606A] uppercase mb-2">Próximas Ações Requeridas</h4>
-        <ul className="text-xs text-[#24292F] space-y-1.5 list-disc list-inside">
-          <li>Acessar o módulo de <strong>Agenda</strong> para cadastrar os primeiros horários.</li>
-          <li>Iniciar o cadastro de <strong>Pacientes</strong> via módulo de Recepção.</li>
-          <li>Revisar integrações no menu <strong>Configurações (F12)</strong>.</li>
-        </ul>
+      
+      <div className="bg-[#F4F7FA] p-5 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white">
+        <p className="text-sm text-[#24292F] font-semibold mb-4">
+          A parametrização inicial da clínica foi registrada com sucesso no banco de dados corporativo.
+        </p>
+        
+        <div className="bg-[#E8EDF2] rounded-lg p-4 shadow-[inset_0_2px_4px_rgba(0,0,0,0.04)]">
+          <h4 className="text-xs font-bold text-[#57606A] uppercase tracking-wide mb-3">Próximas Ações Requeridas</h4>
+          <ul className="text-xs text-[#24292F] space-y-2 list-disc list-inside">
+            <li>Acessar o módulo de <strong>Agenda</strong> para cadastrar os primeiros horários.</li>
+            <li>Iniciar o cadastro de <strong>Pacientes</strong> via módulo de Recepção.</li>
+            <li>Revisar integrações no menu <strong>Configurações (F12)</strong>.</li>
+          </ul>
+        </div>
       </div>
-      <div className="pt-2">
+      
+      <div className="pt-2 text-right">
         <a
           href="/dashboard"
-          className="inline-block px-4 py-1.5 bg-[#0066A1] text-white text-xs font-bold rounded-sm border border-[#004b7a] hover:bg-[#004b7a]"
+          className="inline-block px-6 py-2 bg-gradient-to-b from-[#2DA44E] to-[#248f42] text-white text-xs font-bold rounded-lg border-t border-[#4ac26c] shadow-[0_3px_8px_rgba(45,164,78,0.3)] hover:shadow-[0_4px_12px_rgba(45,164,78,0.4)] transition-all"
         >
           Acessar Workspace Principal
         </a>
@@ -278,37 +296,49 @@ export default function SetupWizardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#E5E5E5] font-sans flex items-start justify-center pt-10 px-4">
-      <div className="bg-white border border-[#B0B0B0] w-full max-w-3xl shadow-sm rounded-sm overflow-hidden flex flex-col">
+    <div className="min-h-screen bg-[#DFE5EB] font-sans flex items-center justify-center p-4">
+      
+      {/* Neumorphic Main Container */}
+      <div className="bg-[#EBF0F5] w-full max-w-4xl rounded-2xl shadow-[0_10px_30px_rgba(0,0,0,0.1),_inset_0_2px_4px_rgba(255,255,255,0.8)] overflow-hidden flex flex-col border border-white/50">
         
-        {/* Title Bar - Windows/Enterprise feel */}
-        <div className="bg-[#0066A1] px-4 py-1.5 flex justify-between items-center border-b border-[#004b7a]">
-          <span className="text-white text-sm font-bold tracking-wide">Vitali EMR - Setup Wizard</span>
-          <span className="text-[#99C2E1] text-xs font-mono">v2.1.0</span>
+        {/* Header - Soft Corporate Blue */}
+        <div className="bg-[#EBF0F5] px-6 py-4 flex justify-between items-center border-b border-[#D0D7DE]/50 shadow-[0_2px_10px_rgba(0,0,0,0.02)] z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#0066A1] to-[#004b7a] shadow-[0_2px_8px_rgba(0,102,161,0.4)] flex items-center justify-center text-white font-bold text-xs">
+              V
+            </div>
+            <div>
+              <h1 className="text-[#1f2937] text-sm font-bold tracking-wide">Vitali EMR Solutions</h1>
+              <h2 className="text-[#57606A] text-[10px] font-semibold uppercase tracking-wider">Setup Initialization</h2>
+            </div>
+          </div>
+          <span className="px-2 py-1 bg-[#E8EDF2] text-[#57606A] rounded-md text-[10px] font-bold shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)]">v2.1.0</span>
         </div>
 
-        <div className="flex flex-1">
-          {/* Left Sidebar Steps */}
-          <div className="w-56 bg-[#F4F6F8] border-r border-[#D0D7DE] shrink-0 hidden sm:block">
-            <div className="p-3 border-b border-[#D0D7DE]">
-              <span className="text-xs font-bold text-[#57606A] uppercase tracking-wider">Etapas de Setup</span>
-            </div>
-            <div className="py-2">
+        <div className="flex flex-1 min-h-[400px]">
+          {/* Left Sidebar Steps - Neumorphic raised pills */}
+          <div className="w-64 bg-[#EBF0F5] p-6 shrink-0 hidden sm:block border-r border-[#D0D7DE]/40">
+            <div className="space-y-3">
               {STEPS.map((label, i) => {
                 const done = i < step
                 const active = i === step
                 return (
                   <div
                     key={i}
-                    className={`px-4 py-2 text-xs font-semibold flex items-center gap-2 border-l-4 ${
+                    className={`px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-3 transition-all ${
                       active
-                        ? 'border-[#0066A1] bg-white text-[#0066A1]'
+                        ? 'bg-[#F4F7FA] text-[#0066A1] shadow-[inset_0_2px_4px_rgba(255,255,255,0.8),_0_4px_10px_rgba(0,0,0,0.04)] border border-white'
                         : done
-                        ? 'border-[#2DA44E] text-[#24292F]'
-                        : 'border-transparent text-[#57606A]'
+                        ? 'text-[#57606A] opacity-70'
+                        : 'text-[#8C959F] opacity-50'
                     }`}
                   >
-                    {done ? <span className="text-[#2DA44E] font-bold">✓</span> : <span className="w-2" />}
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] ${
+                      active ? 'bg-[#0066A1] text-white shadow-[0_2px_6px_rgba(0,102,161,0.3)]' : 
+                      done ? 'bg-[#2DA44E] text-white' : 'bg-[#D0D7DE] text-white'
+                    }`}>
+                      {done ? '✓' : i + 1}
+                    </div>
                     {label}
                   </div>
                 )
@@ -317,35 +347,35 @@ export default function SetupWizardPage() {
           </div>
 
           {/* Main Content Area */}
-          <div className="flex-1 flex flex-col bg-white">
-            <div className="flex-1 p-4">
+          <div className="flex-1 flex flex-col bg-[#F8FAFC] shadow-[inset_4px_0_12px_rgba(0,0,0,0.02)]">
+            <div className="flex-1 p-8">
               {step === 0 && <StepProfessional data={data} onChange={update} />}
               {step === 1 && <StepSchedule data={data} onChange={update} />}
               {step === 2 && <StepComplete />}
 
               {error && (
-                <div className="mt-4 px-3 py-2 bg-[#FFEBE9] border border-[#FF8182] text-[#CF222E] text-xs font-semibold rounded-sm">
-                  Falha no sistema: {error}
+                <div className="mt-6 px-4 py-3 bg-[#FFEBE9] border border-[#FF8182]/50 shadow-[inset_0_2px_4px_rgba(255,255,255,0.5),_0_2px_8px_rgba(207,34,46,0.1)] text-[#CF222E] text-xs font-bold rounded-xl">
+                  Falha de Sistema: {error}
                 </div>
               )}
             </div>
 
-            {/* Footer Action Bar */}
+            {/* Footer Action Bar - Neumorphic elevated */}
             {step < 2 && (
-              <div className="bg-[#F8FAFC] border-t border-[#D0D7DE] px-4 py-2 flex justify-between items-center">
+              <div className="bg-[#F4F7FA] border-t border-white px-8 py-5 flex justify-between items-center shadow-[0_-4px_15px_rgba(0,0,0,0.02)] z-10">
                 <button
                   onClick={() => setStep((s) => Math.max(0, s - 1))}
                   disabled={step === 0}
-                  className="px-4 py-1 text-xs font-semibold text-[#24292F] bg-[#F4F6F8] border border-[#D0D7DE] rounded-sm hover:bg-[#EAECEF] disabled:opacity-40"
+                  className="px-5 py-2 text-xs font-bold text-[#57606A] bg-[#E8EDF2] rounded-lg shadow-[inset_0_1px_1px_rgba(255,255,255,0.5),_0_2px_5px_rgba(0,0,0,0.05)] hover:bg-[#dfe5ea] disabled:opacity-40 transition-all"
                 >
-                  &larr; Voltar
+                  Voltar
                 </button>
                 <button
                   onClick={handleNext}
                   disabled={!canNext() || saving}
-                  className="px-6 py-1 text-xs font-bold text-white bg-[#0066A1] border border-[#004b7a] rounded-sm hover:bg-[#004b7a] disabled:opacity-50 min-w-[100px]"
+                  className="px-8 py-2 text-xs font-bold text-white bg-gradient-to-b from-[#0066A1] to-[#005282] rounded-lg border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] disabled:opacity-50 transition-all min-w-[120px]"
                 >
-                  {saving ? 'Processando...' : step === 1 ? 'Finalizar Setup' : 'Avançar \u2192'}
+                  {saving ? 'Processando...' : step === 1 ? 'Finalizar Setup' : 'Avançar'}
                 </button>
               </div>
             )}
