@@ -97,7 +97,7 @@ export default function StockItemDetailPage() {
     } finally { setSaving(false) }
   }
 
-  if (loading) return <p className="text-sm text-slate-500">Carregando...</p>
+  if (loading) return <p className="text-sm text-[#8C959F]">Carregando...</p>
   if (!item) return <p className="text-sm text-red-600">Lote não encontrado.</p>
 
   const itemName = item.drug_name || item.material_name || '—'
@@ -109,12 +109,12 @@ export default function StockItemDetailPage() {
         <div>
           <button
             onClick={() => router.push('/farmacia/stock')}
-            className="text-sm text-slate-500 hover:text-slate-700 mb-2 flex items-center gap-1"
+            className="text-sm text-[#8C959F] hover:text-[#57606A] mb-2 flex items-center gap-1"
           >
             ← Estoque
           </button>
-          <h1 className="text-2xl font-semibold text-slate-900">{itemName}</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Lote: <span className="font-mono">{item.lot_number || '—'}</span></p>
+          <h1 className="text-2xl font-semibold text-[#24292F]">{itemName}</h1>
+          <p className="text-sm text-[#8C959F] mt-0.5">Lote: <span className="font-mono">{item.lot_number || '—'}</span></p>
           <div className="flex gap-2 mt-1">
             {item.is_expired && (
               <span className="px-2 py-0.5 text-xs font-medium rounded bg-red-100 text-red-700">Vencido</span>
@@ -139,22 +139,22 @@ export default function StockItemDetailPage() {
           { label: 'Estoque mínimo', value: item.min_stock },
           { label: 'Validade', value: expiryFmt, highlight: item.is_expired },
         ].map(({ label, value, highlight }) => (
-          <div key={label} className={`bg-white border rounded-lg p-4 ${highlight ? 'border-red-200' : 'border-slate-200'}`}>
-            <p className="text-xs font-medium text-slate-500">{label}</p>
-            <p className={`text-2xl font-semibold mt-1 ${highlight ? 'text-red-600' : 'text-slate-900'}`}>{value}</p>
+          <div key={label} className={`bg-[#F4F7FA] border rounded-lg p-4 ${highlight ? 'border-red-200' : 'border-slate-200'}`}>
+            <p className="text-xs font-medium text-[#8C959F]">{label}</p>
+            <p className={`text-2xl font-semibold mt-1 ${highlight ? 'text-red-600' : 'text-[#24292F]'}`}>{value}</p>
           </div>
         ))}
       </div>
 
       {/* Adjust form */}
       {showAdjust && (
-        <div className="bg-white border border-slate-200 rounded-lg p-6 space-y-4">
-          <h3 className="font-medium text-slate-900">Ajuste de estoque</h3>
-          <p className="text-sm text-slate-500">Use valores positivos para entradas e negativos para saídas.</p>
+        <div className="bg-[#F4F7FA] border border-slate-200 rounded-lg p-4 space-y-4">
+          <h3 className="font-medium text-[#24292F]">Ajuste de estoque</h3>
+          <p className="text-sm text-[#8C959F]">Use valores positivos para entradas e negativos para saídas.</p>
           {error && <p className="text-sm text-red-600">{error}</p>}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Quantidade *</label>
+              <label className="block text-xs font-medium text-[#57606A] mb-1">Quantidade *</label>
               <input
                 type="number"
                 step="0.001"
@@ -165,7 +165,7 @@ export default function StockItemDetailPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Motivo</label>
+              <label className="block text-xs font-medium text-[#57606A] mb-1">Motivo</label>
               <input
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                 placeholder="ex: Contagem de inventário"
@@ -178,13 +178,13 @@ export default function StockItemDetailPage() {
             <button
               onClick={handleAdjust}
               disabled={saving || !adjustQty}
-              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              className="px-4 py-2 bg-gradient-to-b from-[#0066A1] to-[#005282] border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] text-white text-sm font-medium rounded-lg hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] disabled:opacity-50"
             >
               {saving ? 'Salvando...' : 'Confirmar ajuste'}
             </button>
             <button
               onClick={() => { setShowAdjust(false); setError('') }}
-              className="px-4 py-2 text-sm text-slate-600 hover:text-slate-900"
+              className="px-4 py-2 text-sm text-[#57606A] hover:text-[#24292F]"
             >
               Cancelar
             </button>
@@ -193,33 +193,33 @@ export default function StockItemDetailPage() {
       )}
 
       {/* Movement history */}
-      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
-          <h3 className="text-sm font-medium text-slate-700">Histórico de movimentos</h3>
+      <div className="bg-[#F4F7FA] border border-slate-200 rounded-lg overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-100 bg-[#F4F7FA]">
+          <h3 className="text-sm font-medium text-[#57606A]">Histórico de movimentos</h3>
         </div>
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-100">
               {['Data', 'Tipo', 'Quantidade', 'Referência', 'Usuário'].map(h => (
-                <th key={h} className="text-left px-4 py-3 font-medium text-slate-600">{h}</th>
+                <th key={h} className="text-left px-4 py-3 font-medium text-[#57606A]">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {movements.length === 0 && (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-400">Nenhum movimento registrado</td></tr>
+              <tr><td colSpan={5} className="px-4 py-3 text-center text-slate-400">Nenhum movimento registrado</td></tr>
             )}
             {movements.map(mv => {
               const qty = parseFloat(mv.quantity)
               return (
-                <tr key={mv.id} className="border-b border-slate-50 hover:bg-slate-50">
-                  <td className="px-4 py-3 text-slate-500 text-xs">{new Date(mv.created_at).toLocaleDateString('pt-BR')}</td>
-                  <td className="px-4 py-3 text-slate-700">{mv.movement_type_display}</td>
+                <tr key={mv.id} className="border-b border-slate-50 hover:bg-[#F4F7FA]">
+                  <td className="px-4 py-3 text-[#8C959F] text-xs">{new Date(mv.created_at).toLocaleDateString('pt-BR')}</td>
+                  <td className="px-4 py-3 text-[#57606A]">{mv.movement_type_display}</td>
                   <td className={`px-4 py-3 font-mono font-semibold ${qty > 0 ? 'text-green-600' : 'text-red-600'}`}>
                     {qty > 0 ? '+' : ''}{mv.quantity}
                   </td>
-                  <td className="px-4 py-3 text-slate-500 text-xs font-mono truncate max-w-[120px]">{mv.reference || mv.notes || '—'}</td>
-                  <td className="px-4 py-3 text-slate-500">{mv.performed_by_name || '—'}</td>
+                  <td className="px-4 py-3 text-[#8C959F] text-xs font-mono truncate max-w-[120px]">{mv.reference || mv.notes || '—'}</td>
+                  <td className="px-4 py-3 text-[#8C959F]">{mv.performed_by_name || '—'}</td>
                 </tr>
               )
             })}

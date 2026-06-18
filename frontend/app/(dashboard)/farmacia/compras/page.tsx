@@ -28,7 +28,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const STATUS_BADGE: Record<string, string> = {
-  draft: 'bg-slate-100 text-slate-600',
+  draft: 'bg-[#DFE5EB] text-[#57606A]',
   sent: 'bg-blue-100 text-blue-700',
   partial: 'bg-yellow-100 text-yellow-700',
   received: 'bg-green-100 text-green-700',
@@ -39,7 +39,7 @@ function StatusBadge({ status }: { status: string }) {
   return (
     <span
       className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-        STATUS_BADGE[status] ?? 'bg-slate-100 text-slate-600'
+        STATUS_BADGE[status] ?? 'bg-[#DFE5EB] text-[#57606A]'
       }`}
     >
       {STATUS_LABELS[status] ?? status}
@@ -110,10 +110,10 @@ export default function ComprasPage() {
     <div className="space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <h2 className="text-lg font-semibold text-slate-900">Ordens de Compra</h2>
+        <h2 className="text-lg font-semibold text-[#24292F]">Ordens de Compra</h2>
         <button
           onClick={() => router.push('/farmacia/compras/nova')}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-b from-[#0066A1] to-[#005282] border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] text-white text-sm font-medium rounded-lg hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] transition-colors"
         >
           <Plus size={16} />
           Nova Ordem
@@ -121,10 +121,10 @@ export default function ComprasPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-4 items-start bg-white border border-slate-200 rounded-lg p-4">
+      <div className="flex flex-wrap gap-4 items-start bg-[#F4F7FA] border border-slate-200 rounded-lg p-4">
         {/* Supplier dropdown */}
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-slate-500">Fornecedor</label>
+          <label className="text-xs font-medium text-[#8C959F]">Fornecedor</label>
           <select
             value={supplierFilter}
             onChange={(e) => setSupplierFilter(e.target.value)}
@@ -141,12 +141,12 @@ export default function ComprasPage() {
 
         {/* Status multi-select */}
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-slate-500">Status</label>
+          <label className="text-xs font-medium text-[#8C959F]">Status</label>
           <div className="flex flex-wrap gap-2">
             {STATUS_OPTIONS.map((opt) => (
               <label
                 key={opt.value}
-                className="flex items-center gap-1.5 text-sm text-slate-600 cursor-pointer"
+                className="flex items-center gap-1.5 text-sm text-[#57606A] cursor-pointer"
               >
                 <input
                   type="checkbox"
@@ -168,14 +168,14 @@ export default function ComprasPage() {
       {/* Desktop table */}
       {!loading && (
         <>
-          <div className="hidden sm:block bg-white rounded-lg border border-slate-200 overflow-x-auto">
+          <div className="hidden sm:block bg-[#F4F7FA] rounded-lg border border-slate-200 overflow-x-auto">
             <table className="w-full text-sm min-w-[600px]">
               <thead>
-                <tr className="border-b border-slate-100 bg-slate-50">
+                <tr className="border-b border-slate-100 bg-[#F4F7FA]">
                   {['Fornecedor', 'Data Prevista', 'Itens', 'Status', 'Atualizado'].map((h) => (
                     <th
                       key={h}
-                      className="text-left px-4 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide"
+                      className="text-left px-4 py-3 text-xs font-medium text-[#8C959F] uppercase tracking-wide"
                     >
                       {h}
                     </th>
@@ -193,12 +193,12 @@ export default function ComprasPage() {
                 {filtered.map((o) => (
                   <tr
                     key={o.id}
-                    className="border-b border-slate-50 hover:bg-slate-50 cursor-pointer"
+                    className="border-b border-slate-50 hover:bg-[#F4F7FA] cursor-pointer"
                     onClick={() => router.push(`/farmacia/compras/${o.id}`)}
                   >
-                    <td className="px-4 py-3 font-medium text-slate-900">{o.supplier_name}</td>
-                    <td className="px-4 py-3 text-slate-600">{formatDate(o.expected_date)}</td>
-                    <td className="px-4 py-3 text-slate-600">{o.item_count}</td>
+                    <td className="px-4 py-3 font-medium text-[#24292F]">{o.supplier_name}</td>
+                    <td className="px-4 py-3 text-[#57606A]">{formatDate(o.expected_date)}</td>
+                    <td className="px-4 py-3 text-[#57606A]">{o.item_count}</td>
                     <td className="px-4 py-3">
                       <StatusBadge status={o.status} />
                     </td>
@@ -212,7 +212,7 @@ export default function ComprasPage() {
           {/* Mobile card layout */}
           <div className="sm:hidden space-y-3">
             {filtered.length === 0 && (
-              <p className="text-sm text-slate-400 text-center py-8">
+              <p className="text-sm text-slate-400 text-center py-3">
                 Nenhuma ordem de compra encontrada.
               </p>
             )}
@@ -220,13 +220,13 @@ export default function ComprasPage() {
               <button
                 key={o.id}
                 onClick={() => router.push(`/farmacia/compras/${o.id}`)}
-                className="w-full text-left bg-white rounded-lg border border-slate-200 p-4 space-y-2 hover:bg-slate-50 transition-colors"
+                className="w-full text-left bg-[#F4F7FA] rounded-lg border border-slate-200 p-4 space-y-2 hover:bg-[#F4F7FA] transition-colors"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <p className="font-medium text-slate-900 truncate">{o.supplier_name}</p>
+                  <p className="font-medium text-[#24292F] truncate">{o.supplier_name}</p>
                   <StatusBadge status={o.status} />
                 </div>
-                <div className="flex gap-4 text-xs text-slate-500">
+                <div className="flex gap-4 text-xs text-[#8C959F]">
                   <span>Previsto: {formatDate(o.expected_date)}</span>
                   <span>{o.item_count} {o.item_count === 1 ? 'item' : 'itens'}</span>
                 </div>

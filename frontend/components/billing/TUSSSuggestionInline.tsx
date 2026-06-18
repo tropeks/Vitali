@@ -182,7 +182,7 @@ export default function TUSSSuggestionInline({ description, guideType = '', onSe
         <button
           type="button"
           disabled
-          className="px-2.5 py-1 text-xs font-medium border border-slate-200 text-slate-400 bg-slate-50 rounded-full cursor-default"
+          className="px-2.5 py-1 text-xs font-medium border border-slate-200 text-slate-400 bg-[#F4F7FA] rounded-full cursor-default"
           aria-label="IA indisponível — use busca manual"
         >
           IA indisponível — use busca manual
@@ -191,7 +191,7 @@ export default function TUSSSuggestionInline({ description, guideType = '', onSe
 
       {/* Overwrite confirmation */}
       {pendingSelect && (
-        <div className="mt-1.5 flex items-center gap-2 text-xs text-slate-600 bg-yellow-50 border border-yellow-200 rounded-lg px-2.5 py-1.5">
+        <div className="mt-1.5 flex items-center gap-2 text-xs text-[#57606A] bg-yellow-50 border border-yellow-200 rounded-lg px-2.5 py-1.5">
           <span>Substituir código selecionado?</span>
           <button
             type="button"

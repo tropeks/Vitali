@@ -23,19 +23,19 @@ export default function PortalEncountersPage() {
       renderRow={(e) => (
         <div className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm font-semibold text-slate-900">
+            <p className="text-sm font-semibold text-[#24292F]">
               {formatDateTimeBR(e.encounter_date)}
             </p>
             <StatusBadge meta={resolveBadgeMeta(PORTAL_ENCOUNTER_STATUS, e.status)} />
           </div>
           {e.chief_complaint && (
-            <p className="text-xs text-slate-600">
-              <span className="font-medium text-slate-500">Motivo:</span>{" "}
+            <p className="text-xs text-[#57606A]">
+              <span className="font-medium text-[#8C959F]">Motivo:</span>{" "}
               {e.chief_complaint}
             </p>
           )}
           {e.signed_at && (
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-[#8C959F]">
               Assinado em {formatDateTimeBR(e.signed_at)}
             </p>
           )}

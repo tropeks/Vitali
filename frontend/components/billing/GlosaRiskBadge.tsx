@@ -146,8 +146,8 @@ export default function GlosaRiskBadge({
   if (state.kind === 'loading') {
     return (
       <div className="mt-1 flex items-center gap-1">
-        <div className="h-5 w-20 bg-slate-100 rounded-full animate-pulse" />
-        <div className="h-5 w-32 bg-slate-100 rounded-full animate-pulse opacity-60" />
+        <div className="h-5 w-20 bg-[#DFE5EB] rounded-full animate-pulse" />
+        <div className="h-5 w-32 bg-[#DFE5EB] rounded-full animate-pulse opacity-60" />
       </div>
     );
   }
@@ -155,7 +155,7 @@ export default function GlosaRiskBadge({
   if (state.kind === 'degraded') {
     return (
       <div className="mt-1">
-        <span className="inline-flex items-center px-2 py-0.5 text-xs border border-slate-200 bg-slate-50 text-slate-400 rounded-full">
+        <span className="inline-flex items-center px-2 py-0.5 text-xs border border-slate-200 bg-[#F4F7FA] text-slate-400 rounded-full">
           Previsão de glosa indisponível
         </span>
       </div>
@@ -189,7 +189,7 @@ export default function GlosaRiskBadge({
         <div
           id={tooltipId}
           role="tooltip"
-          className="absolute z-50 left-0 top-6 w-64 bg-slate-900 text-white text-xs rounded-lg px-3 py-2 shadow-lg"
+          className="absolute z-50 left-0 top-6 w-64 bg-slate-900 text-white text-xs rounded-lg px-3 py-2 shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)]"
         >
           <p>{data.risk_reason}</p>
           {data.risk_code && (

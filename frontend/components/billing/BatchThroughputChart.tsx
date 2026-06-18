@@ -24,7 +24,7 @@ interface Props {
 export default function BatchThroughputChart({ data }: Props) {
   if (data.every(b => b.created_count === 0 && b.closed_count === 0)) {
     return (
-      <p className="text-sm text-slate-400 text-center py-6">Sem dados para o período</p>
+      <p className="text-sm text-slate-400 text-center py-3">Sem dados para o período</p>
     );
   }
 

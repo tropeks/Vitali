@@ -51,26 +51,26 @@ export default function PortalLoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-12">
+    <div className="flex min-h-screen items-center justify-center bg-[#F4F7FA] px-4 py-12">
       <div className="w-full max-w-md">
         <div className="mb-6 text-center">
-          <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600 text-white">
+          <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-b from-[#0066A1] to-[#005282] border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] text-white">
             <Heart size={26} fill="currentColor" />
           </div>
-          <h1 className="mt-4 text-2xl font-semibold text-slate-900">
+          <h1 className="mt-4 text-2xl font-semibold text-[#24292F]">
             Portal do Paciente
           </h1>
-          <p className="mt-1 text-sm text-slate-600">Acesse seu acompanhamento na Vitali.</p>
+          <p className="mt-1 text-sm text-[#57606A]">Acesse seu acompanhamento na Vitali.</p>
         </div>
 
         <form
           onSubmit={onSubmit}
-          className="space-y-4 rounded-lg border border-slate-200 bg-white p-6"
+          className="space-y-4 rounded-lg border border-slate-200 bg-[#F4F7FA] p-4"
         >
           <div>
             <label
               htmlFor="email"
-              className="text-xs font-semibold uppercase tracking-wide text-slate-500"
+              className="text-xs font-semibold uppercase tracking-wide text-[#8C959F]"
             >
               E-mail
             </label>
@@ -89,7 +89,7 @@ export default function PortalLoginPage() {
           <div>
             <label
               htmlFor="password"
-              className="text-xs font-semibold uppercase tracking-wide text-slate-500"
+              className="text-xs font-semibold uppercase tracking-wide text-[#8C959F]"
             >
               Senha
             </label>
@@ -107,7 +107,7 @@ export default function PortalLoginPage() {
               <button
                 type="button"
                 onClick={() => setShowPassword((s) => !s)}
-                className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-slate-700"
+                className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-[#57606A]"
                 aria-label={showPassword ? "Esconder senha" : "Mostrar senha"}
               >
                 {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -127,13 +127,13 @@ export default function PortalLoginPage() {
           <button
             type="submit"
             disabled={submitting || !email || !password}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-[#0066A1] to-[#005282] border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {submitting && <Loader2 size={16} className="animate-spin" />}
             Entrar
           </button>
 
-          <p className="pt-2 text-center text-xs text-slate-500">
+          <p className="pt-2 text-center text-xs text-[#8C959F]">
             Recebeu um convite por e-mail ou WhatsApp?{" "}
             <Link
               href="/portal/activate"

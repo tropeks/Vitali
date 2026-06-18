@@ -35,8 +35,8 @@ function fmtCurrency(val: any) {
 function Field({ label, value }: { label: string; value: any }) {
   return (
     <div>
-      <dt className="text-xs font-medium text-slate-500 uppercase tracking-wide">{label}</dt>
-      <dd className="mt-0.5 text-sm text-slate-900">{value ?? '—'}</dd>
+      <dt className="text-xs font-medium text-[#8C959F] uppercase tracking-wide">{label}</dt>
+      <dd className="mt-0.5 text-sm text-[#24292F]">{value ?? '—'}</dd>
     </div>
   );
 }
@@ -167,10 +167,10 @@ export default function BatchDetailPage() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="h-8 w-48 bg-slate-100 rounded animate-pulse" />
-        <div className="bg-white rounded-lg border border-slate-200 p-6 space-y-4">
+        <div className="h-8 w-48 bg-[#DFE5EB] rounded animate-pulse" />
+        <div className="bg-[#F4F7FA] rounded-lg border border-slate-200 p-4 space-y-4">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="h-5 bg-slate-100 rounded animate-pulse w-3/4" />
+            <div key={i} className="h-5 bg-[#DFE5EB] rounded animate-pulse w-3/4" />
           ))}
         </div>
       </div>
@@ -180,7 +180,7 @@ export default function BatchDetailPage() {
   if (error && !batch) {
     return (
       <div className="space-y-4">
-        <button onClick={() => router.back()} className="text-sm text-slate-500 hover:text-slate-700">← Voltar</button>
+        <button onClick={() => router.back()} className="text-sm text-[#8C959F] hover:text-[#57606A]">← Voltar</button>
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">{error}</div>
       </div>
     );
@@ -203,12 +203,12 @@ export default function BatchDetailPage() {
         />
       )}
       <div className="flex items-center gap-3 flex-wrap">
-        <button onClick={() => router.back()} className="text-slate-400 hover:text-slate-600 text-sm">← Voltar</button>
-        <h1 className="text-2xl font-semibold text-slate-900">
+        <button onClick={() => router.back()} className="text-slate-400 hover:text-[#57606A] text-sm">← Voltar</button>
+        <h1 className="text-2xl font-semibold text-[#24292F]">
           Lote {batch?.batch_number ?? batch?.id}
         </h1>
         {batch?.status && (
-          <span className={`inline-flex px-3 py-1 rounded-full text-sm font-medium ${STATUS_BADGE[batch.status] ?? 'bg-slate-100 text-slate-600'}`}>
+          <span className={`inline-flex px-3 py-1 rounded-full text-sm font-medium ${STATUS_BADGE[batch.status] ?? 'bg-[#DFE5EB] text-[#57606A]'}`}>
             {STATUS_LABEL[batch.status] ?? batch.status}
           </span>
         )}
@@ -234,8 +234,8 @@ export default function BatchDetailPage() {
       )}
 
       {/* Batch info */}
-      <div className="bg-white rounded-lg border border-slate-200 p-6">
-        <h2 className="font-semibold text-slate-900 mb-4">Dados do Lote</h2>
+      <div className="bg-[#F4F7FA] rounded-lg border border-slate-200 p-4">
+        <h2 className="font-semibold text-[#24292F] mb-4">Dados do Lote</h2>
         <dl className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
           <Field label="Nº do Lote" value={batch?.batch_number} />
           <Field label="Operadora" value={batch?.provider_name ?? batch?.provider} />
@@ -248,15 +248,15 @@ export default function BatchDetailPage() {
 
       {/* Guides in batch */}
       {batch?.guides && batch.guides.length > 0 && (
-        <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100">
-            <h2 className="font-semibold text-slate-900">Guias no Lote</h2>
+        <div className="bg-[#F4F7FA] rounded-lg border border-slate-200 overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-100">
+            <h2 className="font-semibold text-[#24292F]">Guias no Lote</h2>
           </div>
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-b border-slate-100">
+            <thead className="bg-[#F4F7FA] border-b border-slate-100">
               <tr>
                 {['Nº Guia', 'Paciente', 'Valor', 'Status'].map(h => (
-                  <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                  <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-[#8C959F] uppercase tracking-wide">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -267,11 +267,11 @@ export default function BatchDetailPage() {
                   className="hover:bg-blue-50 cursor-pointer transition-colors"
                   onClick={() => router.push(`/billing/guides/${g.id}`)}
                 >
-                  <td className="px-4 py-3 font-mono text-slate-700">{g.guide_number ?? g.id}</td>
-                  <td className="px-4 py-3 text-slate-900">{g.patient_name ?? g.patient ?? '—'}</td>
-                  <td className="px-4 py-3 text-slate-700">{fmtCurrency(g.total_value)}</td>
+                  <td className="px-4 py-3 font-mono text-[#57606A]">{g.guide_number ?? g.id}</td>
+                  <td className="px-4 py-3 text-[#24292F]">{g.patient_name ?? g.patient ?? '—'}</td>
+                  <td className="px-4 py-3 text-[#57606A]">{fmtCurrency(g.total_value)}</td>
                   <td className="px-4 py-3">
-                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[g.status] ?? 'bg-slate-100 text-slate-600'}`}>
+                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[g.status] ?? 'bg-[#DFE5EB] text-[#57606A]'}`}>
                       {STATUS_LABEL[g.status] ?? g.status}
                     </span>
                   </td>
@@ -288,7 +288,7 @@ export default function BatchDetailPage() {
           <button
             onClick={closeBatch}
             disabled={busy}
-            className="bg-yellow-500 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-yellow-600 disabled:opacity-50"
+            className="bg-yellow-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-yellow-600 disabled:opacity-50"
           >
             {busy ? 'Fechando...' : 'Fechar Lote'}
           </button>
@@ -297,7 +297,7 @@ export default function BatchDetailPage() {
           <button
             onClick={exportXml}
             disabled={busy}
-            className="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+            className="bg-gradient-to-b from-[#0066A1] to-[#005282] border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] text-white px-4 py-2 rounded-lg text-sm font-medium hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] disabled:opacity-50"
           >
             {busy ? 'Gerando...' : 'Exportar XML'}
           </button>
@@ -318,7 +318,7 @@ export default function BatchDetailPage() {
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={busy}
-              className="bg-slate-700 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-slate-800 disabled:opacity-50"
+              className="bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800 disabled:opacity-50"
             >
               {busy ? 'Enviando...' : 'Upload Retorno'}
             </button>

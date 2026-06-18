@@ -53,7 +53,7 @@ function SectionError({ onRetry }: { onRetry: () => void }) {
 function ChartSkeleton({ height = 240 }: { height?: number }) {
   return (
     <div
-      className="animate-pulse bg-slate-100 rounded-lg"
+      className="animate-pulse bg-[#DFE5EB] rounded-lg"
       style={{ height }}
       aria-hidden="true"
     />
@@ -81,8 +81,8 @@ function PeriodToggle({
           onClick={() => onChange(o.months)}
           className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
             value === o.months
-              ? 'bg-blue-600 text-white'
-              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+              ? 'bg-gradient-to-b from-[#0066A1] to-[#005282] border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] text-white'
+              : 'bg-[#F4F7FA] border border-slate-200 text-[#57606A] hover:bg-[#F4F7FA]'
           }`}
         >
           {o.label}
@@ -143,8 +143,8 @@ export default function BillingAnalyticsPage() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Inteligência de Faturamento</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Análise de receita, glosas e lotes TISS</p>
+          <h1 className="text-2xl font-semibold text-[#24292F]">Inteligência de Faturamento</h1>
+          <p className="text-sm text-[#8C959F] mt-0.5">Análise de receita, glosas e lotes TISS</p>
         </div>
         <PeriodToggle value={months} onChange={setMonths} />
       </div>
@@ -153,7 +153,7 @@ export default function BillingAnalyticsPage() {
       {isLoading(overview) ? (
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
           {[...Array(4)].map((_, i) => (
-            <div key={i} className="animate-pulse bg-slate-100 rounded-lg h-24" />
+            <div key={i} className="animate-pulse bg-[#DFE5EB] rounded-lg h-24" />
           ))}
         </div>
       ) : overview.status === 'error' ? (
@@ -186,8 +186,8 @@ export default function BillingAnalyticsPage() {
       ) : null}
 
       {/* Denial by Insurer — 2nd (actionable) */}
-      <div className="bg-white rounded-lg border border-slate-200 p-5">
-        <h2 className="text-sm font-semibold text-slate-700 mb-4">Glosa por Convênio</h2>
+      <div className="bg-[#F4F7FA] rounded-lg border border-slate-200 p-4">
+        <h2 className="text-sm font-semibold text-[#57606A] mb-4">Glosa por Convênio</h2>
         <p className="text-xs text-slate-400 mb-3">Top 5 por valor glosado · mínimo 10 guias</p>
         {isLoading(denial) ? (
           <ChartSkeleton height={220} />
@@ -196,13 +196,13 @@ export default function BillingAnalyticsPage() {
         ) : denial.data && denial.data.length > 0 ? (
           <DenialByInsurerChart data={denial.data} />
         ) : (
-          <p className="text-sm text-slate-400 text-center py-6">Sem dados para o período</p>
+          <p className="text-sm text-slate-400 text-center py-3">Sem dados para o período</p>
         )}
       </div>
 
       {/* Revenue Trend — 3rd (contextual) */}
-      <div className="bg-white rounded-lg border border-slate-200 p-5">
-        <h2 className="text-sm font-semibold text-slate-700 mb-4">Tendência de Receita</h2>
+      <div className="bg-[#F4F7FA] rounded-lg border border-slate-200 p-4">
+        <h2 className="text-sm font-semibold text-[#57606A] mb-4">Tendência de Receita</h2>
         {isLoading(revenue) ? (
           <ChartSkeleton />
         ) : revenue.status === 'error' ? (
@@ -213,8 +213,8 @@ export default function BillingAnalyticsPage() {
       </div>
 
       {/* Batch Throughput */}
-      <div className="bg-white rounded-lg border border-slate-200 p-5">
-        <h2 className="text-sm font-semibold text-slate-700 mb-4">Throughput de Lotes</h2>
+      <div className="bg-[#F4F7FA] rounded-lg border border-slate-200 p-4">
+        <h2 className="text-sm font-semibold text-[#57606A] mb-4">Throughput de Lotes</h2>
         {isLoading(throughput) ? (
           <ChartSkeleton height={220} />
         ) : throughput.status === 'error' ? (
@@ -225,8 +225,8 @@ export default function BillingAnalyticsPage() {
       </div>
 
       {/* Glosa AI Accuracy — 5th */}
-      <div className="bg-white rounded-lg border border-slate-200 p-5">
-        <h2 className="text-sm font-semibold text-slate-700 mb-1">Precisão da IA de Glosa</h2>
+      <div className="bg-[#F4F7FA] rounded-lg border border-slate-200 p-4">
+        <h2 className="text-sm font-semibold text-[#57606A] mb-1">Precisão da IA de Glosa</h2>
         <p className="text-xs text-slate-400 mb-4">Previsões com resultado confirmado pelo retorno</p>
         {isLoading(accuracy) ? (
           <ChartSkeleton height={120} />

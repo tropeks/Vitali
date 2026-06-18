@@ -54,7 +54,7 @@ export default function DenialByInsurerChart({ data }: Props) {
 
   if (chartData.length === 0) {
     return (
-      <p className="text-sm text-slate-400 text-center py-6">Sem dados para o período</p>
+      <p className="text-sm text-slate-400 text-center py-3">Sem dados para o período</p>
     );
   }
 

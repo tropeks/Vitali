@@ -71,85 +71,85 @@ function LoginContent() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-[#DFE5EB] flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-600 mb-4">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-b from-[#0066A1] to-[#005282] shadow-[0_3px_10px_rgba(0,102,161,0.3)] border-t border-[#3385b5] mb-4">
             <span className="text-white font-bold text-2xl">V</span>
           </div>
-          <h1 className="text-2xl font-bold text-white">Vitali</h1>
-          <p className="text-slate-400 text-sm mt-1">Plataforma Hospitalar</p>
+          <h1 className="text-2xl font-bold text-[#1f2937]">Vitali</h1>
+          <p className="text-[#57606A] text-sm mt-1">Plataforma Hospitalar</p>
         </div>
 
         {/* Card */}
-        <div className="bg-white/5 backdrop-blur border border-white/10 rounded-2xl p-8 shadow-2xl">
-          <h2 className="text-lg font-semibold text-white mb-6">Acesse sua conta</h2>
+        <div className="bg-[#EBF0F5] border border-white rounded-2xl p-8 shadow-[0_20px_50px_rgba(0,0,0,0.2),_inset_0_2px_4px_rgba(255,255,255,0.8)]">
+          <h2 className="text-lg font-semibold text-[#1f2937] mb-6">Acesse sua conta</h2>
 
           {/* Lockout banner */}
           {lockoutSeconds !== null && (
-            <div className="mb-4 p-3 bg-red-900/40 border border-red-500/50 rounded-lg flex items-start gap-2">
-              <AlertCircle className="text-red-400 mt-0.5 shrink-0" size={16} />
-              <p className="text-red-300 text-sm">
+            <div className="mb-4 p-3 bg-[#CF222E]/10 border border-[#CF222E]/20 rounded-lg flex items-start gap-2">
+              <AlertCircle className="text-[#CF222E] mt-0.5 shrink-0" size={16} />
+              <p className="text-[#CF222E] text-xs font-medium">
                 Conta bloqueada temporariamente.{" "}
-                <span className="font-medium">Tente novamente em {Math.ceil(lockoutSeconds / 60)} min.</span>
+                <span className="font-bold">Tente novamente em {Math.ceil(lockoutSeconds / 60)} min.</span>
               </p>
             </div>
           )}
 
           {/* Generic error */}
           {apiError && !lockoutSeconds && (
-            <div className="mb-4 p-3 bg-red-900/40 border border-red-500/50 rounded-lg flex items-start gap-2">
-              <AlertCircle className="text-red-400 mt-0.5 shrink-0" size={16} />
-              <p className="text-red-300 text-sm">{apiError}</p>
+            <div className="mb-4 p-3 bg-[#CF222E]/10 border border-[#CF222E]/20 rounded-lg flex items-start gap-2">
+              <AlertCircle className="text-[#CF222E] mt-0.5 shrink-0" size={16} />
+              <p className="text-[#CF222E] text-xs font-medium">{apiError}</p>
             </div>
           )}
 
           <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
             {/* Email */}
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">
+              <label className="block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide">
                 E-mail
               </label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8C959F]" size={16} />
                 <input
                   {...register("email")}
                   type="email"
                   autoComplete="email"
                   placeholder="seu@email.com"
-                  className="w-full bg-white/5 border border-white/10 text-white placeholder-slate-500 rounded-lg py-2.5 pl-9 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                  className="w-full pl-9 pr-4 py-1.5 bg-[#E8EDF2] border-transparent rounded-md text-xs shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#0066A1]/50 transition-all h-8 text-[#24292F] placeholder-[#8C959F]"
                 />
               </div>
               {errors.email && (
-                <p className="mt-1 text-xs text-red-400">{errors.email.message}</p>
+                <p className="mt-1 text-xs text-[#CF222E] font-medium">{errors.email.message}</p>
               )}
             </div>
 
             {/* Password */}
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">
+              <label className="block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide">
                 Senha
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8C959F]" size={16} />
                 <input
                   {...register("password")}
                   type={showPassword ? "text" : "password"}
                   autoComplete="current-password"
                   placeholder="••••••••"
-                  className="w-full bg-white/5 border border-white/10 text-white placeholder-slate-500 rounded-lg py-2.5 pl-9 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                  className="w-full pl-9 pr-10 py-1.5 bg-[#E8EDF2] border-transparent rounded-md text-xs shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#0066A1]/50 transition-all h-8 text-[#24292F] placeholder-[#8C959F]"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8C959F] hover:text-[#57606A]"
                 >
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
               {errors.password && (
-                <p className="mt-1 text-xs text-red-400">{errors.password.message}</p>
+                <p className="mt-1 text-xs text-[#CF222E] font-medium">{errors.password.message}</p>
               )}
             </div>
 
@@ -157,7 +157,7 @@ function LoginContent() {
             <button
               type="submit"
               disabled={isSubmitting || lockoutSeconds !== null}
-              className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:cursor-not-allowed text-white font-medium rounded-lg py-2.5 text-sm transition flex items-center justify-center gap-2 mt-2"
+              className="w-full px-6 py-2 text-xs font-bold text-white bg-gradient-to-b from-[#0066A1] to-[#005282] rounded-lg border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-4"
             >
               {isSubmitting ? (
                 <>
@@ -171,7 +171,7 @@ function LoginContent() {
           </form>
         </div>
 
-        <p className="text-center text-slate-500 text-xs mt-6">
+        <p className="text-center text-[#8C959F] text-xs mt-6">
           Vitali © {new Date().getFullYear()} — Todos os direitos reservados
         </p>
       </div>

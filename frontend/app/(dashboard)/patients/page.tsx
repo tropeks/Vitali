@@ -133,7 +133,7 @@ export default function PatientsPage() {
         </div>
         <button
           onClick={() => router.push('/patients/new')}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="inline-flex items-center justify-center gap-2 px-6 py-2 text-xs font-bold text-white bg-gradient-to-b from-[#0066A1] to-[#005282] rounded-lg border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] transition-all"
         >
           <Plus size={16} />
           Novo paciente
@@ -141,29 +141,29 @@ export default function PatientsPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <div className="bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white">
+          <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">
             <Users size={14} />
             Total
           </div>
           <p className="mt-2 text-2xl font-bold text-slate-900">{count}</p>
         </div>
-        <div className="rounded-lg border border-green-200 bg-green-50 p-4">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-green-700">
+        <div className="bg-[#eefcf1] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white">
+          <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-green-700">
             <UserRound size={14} />
             Ativos na lista
           </div>
           <p className="mt-2 text-2xl font-bold text-green-700">{summary.active}</p>
         </div>
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-red-700">
+        <div className="bg-[#fef2f2] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white">
+          <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-red-700">
             <ShieldAlert size={14} />
             Com alergia
           </div>
           <p className="mt-2 text-2xl font-bold text-red-700">{summary.withAllergies}</p>
         </div>
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <div className="bg-[#E8EDF2] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white">
+          <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">
             <FileText size={14} />
             Inativos
           </div>
@@ -171,17 +171,17 @@ export default function PatientsPage() {
         </div>
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white p-3">
+      <div>
         <label htmlFor="patient-search" className="sr-only">
           Buscar paciente
         </label>
-        <div className="flex items-center gap-3">
-          <Search size={18} className="shrink-0 text-slate-400" />
+        <div className="relative">
+          <Search size={14} className="absolute left-2.5 top-2 text-slate-400" />
           <input
             id="patient-search"
             type="text"
             placeholder="Buscar paciente, prontuário ou contato"
-            className="min-w-0 flex-1 border-0 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:ring-0"
+            className="w-full pl-8 pr-2 py-1.5 bg-[#E8EDF2] border-transparent rounded-md text-xs shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#0066A1]/50 transition-all h-8 text-[#24292F]"
             value={search}
             onChange={(e) => {
               setSearch(e.target.value)
@@ -227,7 +227,7 @@ export default function PatientsPage() {
                     {!hasSearch && (
                       <button
                         onClick={() => router.push('/patients/new')}
-                        className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                        className="mt-4 inline-flex items-center gap-2 px-6 py-2 text-xs font-bold text-white bg-gradient-to-b from-[#0066A1] to-[#005282] rounded-lg border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] transition-all"
                       >
                         <Plus size={16} />
                         Novo paciente

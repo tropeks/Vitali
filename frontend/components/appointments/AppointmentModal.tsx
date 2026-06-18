@@ -188,7 +188,7 @@ export default function AppointmentModal({
         <form onSubmit={handleSubmit} className="px-6 py-4 space-y-4">
           {/* Patient search */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Paciente</label>
+            <label className="block block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide mb-1">Paciente</label>
             {selectedPatient ? (
               <div className="flex items-center justify-between px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm">
                 <span className="font-medium text-blue-900">{selectedPatient.full_name}</span>
@@ -239,7 +239,7 @@ export default function AppointmentModal({
 
           {/* Professional */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Profissional</label>
+            <label className="block block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide mb-1">Profissional</label>
             <select
               className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={selectedProfId}
@@ -256,7 +256,7 @@ export default function AppointmentModal({
 
           {/* Date */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Data</label>
+            <label className="block block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide mb-1">Data</label>
             <input
               type="date"
               className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -269,7 +269,7 @@ export default function AppointmentModal({
           {/* Available slots */}
           {selectedProfId && date && (
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Horário</label>
+              <label className="block block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide mb-1">Horário</label>
               {slotsLoading ? (
                 <div className="text-sm text-slate-400">Carregando horários...</div>
               ) : slots.length === 0 ? (
@@ -320,7 +320,7 @@ export default function AppointmentModal({
 
           {/* Type */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Tipo</label>
+            <label className="block block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide mb-1">Tipo</label>
             <select
               className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={type}
@@ -334,7 +334,7 @@ export default function AppointmentModal({
 
           {/* Notes */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Observações</label>
+            <label className="block block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide mb-1">Observações</label>
             <textarea
               rows={2}
               className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"

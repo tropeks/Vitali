@@ -72,7 +72,7 @@ export default function MaterialDetailPage() {
     if (res.ok || res.status === 204) router.push('/farmacia/catalog')
   }
 
-  if (loading) return <p className="text-sm text-slate-500">Carregando...</p>
+  if (loading) return <p className="text-sm text-[#8C959F]">Carregando...</p>
   if (!material) return <p className="text-sm text-red-600">Material não encontrado.</p>
 
   return (
@@ -81,13 +81,13 @@ export default function MaterialDetailPage() {
         <div>
           <button
             onClick={() => router.push('/farmacia/catalog')}
-            className="text-sm text-slate-500 hover:text-slate-700 mb-2 flex items-center gap-1"
+            className="text-sm text-[#8C959F] hover:text-[#57606A] mb-2 flex items-center gap-1"
           >
             ← Catálogo
           </button>
-          <h1 className="text-2xl font-semibold text-slate-900">{material.name}</h1>
+          <h1 className="text-2xl font-semibold text-[#24292F]">{material.name}</h1>
           {!material.is_active && (
-            <span className="mt-1 inline-block px-2 py-0.5 text-xs font-medium rounded bg-slate-100 text-slate-500">Inativo</span>
+            <span className="mt-1 inline-block px-2 py-0.5 text-xs font-medium rounded bg-[#DFE5EB] text-[#8C959F]">Inativo</span>
           )}
         </div>
         <div className="flex gap-2">
@@ -113,13 +113,13 @@ export default function MaterialDetailPage() {
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-b from-[#0066A1] to-[#005282] border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] rounded-lg hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] disabled:opacity-50"
               >
                 {saving ? 'Salvando...' : 'Salvar'}
               </button>
               <button
                 onClick={() => { setEditing(false); setForm(material) }}
-                className="px-4 py-2 text-sm text-slate-600 hover:text-slate-900"
+                className="px-4 py-2 text-sm text-[#57606A] hover:text-[#24292F]"
               >
                 Cancelar
               </button>
@@ -130,7 +130,7 @@ export default function MaterialDetailPage() {
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
-      <div className="bg-white border border-slate-200 rounded-lg p-6">
+      <div className="bg-[#F4F7FA] border border-slate-200 rounded-lg p-4">
         {!editing ? (
           <div className="grid grid-cols-2 gap-6">
             {[
@@ -141,13 +141,13 @@ export default function MaterialDetailPage() {
               ['Observações', material.notes],
             ].map(([label, value]) => (
               <div key={label}>
-                <p className="text-xs font-medium text-slate-500 mb-0.5">{label}</p>
-                <p className="text-sm text-slate-900">{value || '—'}</p>
+                <p className="text-xs font-medium text-[#8C959F] mb-0.5">{label}</p>
+                <p className="text-sm text-[#24292F]">{value || '—'}</p>
               </div>
             ))}
             <div>
-              <p className="text-xs font-medium text-slate-500 mb-0.5">Última atualização</p>
-              <p className="text-sm text-slate-500">{new Date(material.updated_at).toLocaleDateString('pt-BR')}</p>
+              <p className="text-xs font-medium text-[#8C959F] mb-0.5">Última atualização</p>
+              <p className="text-sm text-[#8C959F]">{new Date(material.updated_at).toLocaleDateString('pt-BR')}</p>
             </div>
           </div>
         ) : (
@@ -159,7 +159,7 @@ export default function MaterialDetailPage() {
               { label: 'Código de barras', key: 'barcode' },
             ].map(({ label, key }) => (
               <div key={key}>
-                <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
+                <label className="block text-xs font-medium text-[#57606A] mb-1">{label}</label>
                 <input
                   className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                   value={(form as any)[key] ?? ''}
@@ -168,7 +168,7 @@ export default function MaterialDetailPage() {
               </div>
             ))}
             <div className="col-span-2">
-              <label className="block text-xs font-medium text-slate-600 mb-1">Observações</label>
+              <label className="block text-xs font-medium text-[#57606A] mb-1">Observações</label>
               <textarea
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                 rows={3}

@@ -31,7 +31,7 @@ export function CookieBanner() {
       <div className="pr-4 pb-1 sm:pb-0 shrink-0">
         <button
           onClick={acceptCookies}
-          className="px-6 py-1 bg-[#0066A1] hover:bg-[#004b7a] text-white border border-[#004b7a] rounded-sm font-semibold transition-colors"
+          className="px-4 py-1 bg-[#0066A1] hover:bg-[#004b7a] text-white border border-[#004b7a] rounded-sm font-semibold transition-colors"
         >
           Ciente e de acordo
         </button>

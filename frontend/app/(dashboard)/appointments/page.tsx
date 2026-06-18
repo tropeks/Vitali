@@ -397,7 +397,7 @@ export default function AppointmentsPage() {
             <button
               disabled={disabled}
               onClick={() => setPixAppt(appt)}
-              className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-40"
+              className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1 block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide hover:bg-slate-200 disabled:opacity-40"
             >
               <CircleDollarSign size={12} />
               PIX
@@ -444,7 +444,7 @@ export default function AppointmentsPage() {
             <button onClick={prevWeek} className="p-2 text-slate-600 hover:bg-slate-50" title="Semana anterior">
               <ChevronLeft size={16} />
             </button>
-            <button onClick={goToday} className="px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+            <button onClick={goToday} className="px-3 py-2 block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide hover:bg-slate-50">
               {weekLabel}
             </button>
             <button onClick={nextWeek} className="p-2 text-slate-600 hover:bg-slate-50" title="Próxima semana">
@@ -454,7 +454,7 @@ export default function AppointmentsPage() {
 
           <button
             onClick={() => router.push('/waiting-room')}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            className="inline-flex items-center gap-2 px-4 py-1.5 text-xs rounded-lg font-bold bg-[#E8EDF2] text-[#57606A] shadow-[inset_0_1px_1px_rgba(255,255,255,0.5),_0_2px_4px_rgba(0,0,0,0.05)] hover:bg-[#dfe5ea] transition-all "
           >
             <ListChecks size={16} />
             Sala de espera
@@ -462,7 +462,7 @@ export default function AppointmentsPage() {
 
           <button
             onClick={() => fetchAppointments()}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            className="inline-flex items-center gap-2 px-4 py-1.5 text-xs rounded-lg font-bold bg-[#E8EDF2] text-[#57606A] shadow-[inset_0_1px_1px_rgba(255,255,255,0.5),_0_2px_4px_rgba(0,0,0,0.05)] hover:bg-[#dfe5ea] transition-all "
           >
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
             Atualizar
@@ -470,7 +470,7 @@ export default function AppointmentsPage() {
 
           <button
             onClick={() => { setModalPrefill({}); setShowModal(true) }}
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            className="inline-flex items-center gap-2 px-6 py-2 text-xs font-bold text-white bg-gradient-to-b from-[#0066A1] to-[#005282] rounded-lg border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] transition-all"
           >
             <Plus size={16} />
             Agendar
@@ -628,7 +628,7 @@ export default function AppointmentsPage() {
                     <button
                       disabled={disabled}
                       onClick={() => setPixAppt(appt)}
-                      className="inline-flex items-center justify-center gap-1 rounded-lg bg-slate-100 px-2 py-2 text-xs font-semibold text-slate-700 disabled:opacity-40"
+                      className="inline-flex items-center justify-center gap-1 rounded-lg bg-slate-100 px-2 py-2 block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide disabled:opacity-40"
                     >
                       <CircleDollarSign size={13} />
                       PIX
@@ -649,7 +649,7 @@ export default function AppointmentsPage() {
         </section>
 
         <aside className="space-y-4">
-          <section className="rounded-lg border border-slate-200 bg-white p-4">
+          <section className=" bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white ">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
               <Clock size={16} className="text-blue-600" />
               Próxima ação
@@ -669,7 +669,7 @@ export default function AppointmentsPage() {
                   <button
                     disabled={isUpdating(nextAction) || Boolean(nextAction.arrived_at) || nextAction.status === 'in_progress'}
                     onClick={() => runAppointmentAction(nextAction, 'check-in')}
-                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-40"
+                    className="inline-flex items-center justify-center gap-2    disabled:opacity-40 px-6 py-2 text-xs font-bold text-white bg-gradient-to-b from-[#0066A1] to-[#005282] rounded-lg border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] transition-all"
                   >
                     <UserCheck size={15} />
                     Registrar chegada
@@ -691,7 +691,7 @@ export default function AppointmentsPage() {
             )}
           </section>
 
-          <section className="rounded-lg border border-slate-200 bg-white p-4">
+          <section className=" bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white ">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
               <AlertTriangle size={16} className="text-red-600" />
               Atritos do dia

@@ -25,10 +25,10 @@ export default function PortalPrescriptionsPage() {
         <div className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold text-slate-900">
+              <p className="text-sm font-semibold text-[#24292F]">
                 Receita #{rx.id.slice(0, 8)}
               </p>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-[#8C959F]">
                 {rx.signed_at
                   ? `Assinada em ${formatDateTimeBR(rx.signed_at)}`
                   : `Criada em ${formatDateTimeBR(rx.created_at)}`}
@@ -37,8 +37,8 @@ export default function PortalPrescriptionsPage() {
             <StatusBadge meta={resolveBadgeMeta(PORTAL_PRESCRIPTION_STATUS, rx.status)} />
           </div>
           {rx.notes && (
-            <p className="text-xs text-slate-600">
-              <span className="font-medium text-slate-500">Observações:</span>{" "}
+            <p className="text-xs text-[#57606A]">
+              <span className="font-medium text-[#8C959F]">Observações:</span>{" "}
               {rx.notes}
             </p>
           )}

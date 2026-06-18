@@ -5,7 +5,7 @@ import type { ReactNode } from 'react'
  *
  * - `workbench`  — focused form / order-entry flows. Content is capped at
  *   1500px and centred so dense forms stay readable on ultrawide monitors.
- *   Owns its own `bg-slate-50` and vertical rhythm (`space-y-4`).
+ *   Owns its own `bg-[#F4F7FA]` and vertical rhythm (`space-y-4`).
  * - `operational` — queue / table-heavy dashboards. Full-bleed to maximise
  *   dense-table real estate, looser rhythm (`space-y-5`).
  *
@@ -22,7 +22,7 @@ interface PageShellProps {
 export default function PageShell({ variant, children, className = '' }: PageShellProps) {
   if (variant === 'workbench') {
     return (
-      <div className="min-h-full bg-slate-50">
+      <div className="min-h-full bg-[#F4F7FA]">
         <div className={`mx-auto max-w-[1500px] space-y-4 ${className}`.trim()}>{children}</div>
       </div>
     )

@@ -43,7 +43,7 @@ export default function PortalProfilePage() {
     load();
   }, []);
 
-  if (loading) return <p className="text-sm text-slate-500">Carregando…</p>;
+  if (loading) return <p className="text-sm text-[#8C959F]">Carregando…</p>;
   if (error)
     return (
       <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
@@ -55,15 +55,15 @@ export default function PortalProfilePage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Meu perfil</h1>
-        <p className="mt-1 text-sm text-slate-600">
+        <h1 className="text-2xl font-semibold text-[#24292F]">Meu perfil</h1>
+        <p className="mt-1 text-sm text-[#57606A]">
           Para corrigir qualquer informação, fale com a recepção da clínica.
         </p>
       </div>
 
-      <section className="rounded-lg border border-slate-200 bg-white">
+      <section className="rounded-lg border border-slate-200 bg-[#F4F7FA]">
         <div className="border-b border-slate-100 px-4 py-3">
-          <h2 className="text-base font-semibold text-slate-900">Dados pessoais</h2>
+          <h2 className="text-base font-semibold text-[#24292F]">Dados pessoais</h2>
         </div>
         <dl className="divide-y divide-slate-100">
           <Row label="Nome" value={patient.full_name} />
@@ -76,9 +76,9 @@ export default function PortalProfilePage() {
         </dl>
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white">
+      <section className="rounded-lg border border-slate-200 bg-[#F4F7FA]">
         <div className="border-b border-slate-100 px-4 py-3">
-          <h2 className="text-base font-semibold text-slate-900">Contato</h2>
+          <h2 className="text-base font-semibold text-[#24292F]">Contato</h2>
         </div>
         <dl className="divide-y divide-slate-100">
           <Row label="E-mail" value={patient.email || "—"} />
@@ -101,10 +101,10 @@ function Row({
 }) {
   return (
     <div className="flex items-center justify-between gap-3 px-4 py-3">
-      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+      <dt className="text-xs font-semibold uppercase tracking-wide text-[#8C959F]">
         {label}
       </dt>
-      <dd className={`text-sm text-slate-900 ${mono ? "font-mono" : ""}`}>{value}</dd>
+      <dd className={`text-sm text-[#24292F] ${mono ? "font-mono" : ""}`}>{value}</dd>
     </div>
   );
 }

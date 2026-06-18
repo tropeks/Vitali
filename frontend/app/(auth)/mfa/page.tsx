@@ -106,28 +106,28 @@ function MFALoginContent() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-[#DFE5EB] flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-600 mb-4">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-b from-[#0066A1] to-[#005282] shadow-[0_3px_10px_rgba(0,102,161,0.3)] border-t border-[#3385b5] mb-4">
             <ShieldCheck className="text-white" size={28} />
           </div>
-          <h1 className="text-2xl font-bold text-white">Autenticação de Dois Fatores</h1>
-          <p className="text-slate-400 text-sm mt-1">Digite o código gerado pelo seu app autenticador</p>
+          <h1 className="text-2xl font-bold text-[#1f2937]">Autenticação de Dois Fatores</h1>
+          <p className="text-[#57606A] text-sm mt-1">Digite o código gerado pelo seu app autenticador</p>
         </div>
 
-        <div className="bg-white/5 backdrop-blur border border-white/10 rounded-2xl p-8 shadow-2xl">
+        <div className="bg-[#EBF0F5] border border-white rounded-2xl p-8 shadow-[0_20px_50px_rgba(0,0,0,0.2),_inset_0_2px_4px_rgba(255,255,255,0.8)]">
           {!useBackup ? (
             <>
-              <p className="text-slate-300 text-sm text-center mb-6">
+              <p className="text-[#57606A] text-sm text-center mb-6">
                 O código muda a cada 30 segundos
               </p>
 
               {error && (
-                <div className="mb-4 p-3 bg-red-900/40 border border-red-500/50 rounded-lg flex items-center gap-2">
-                  <AlertCircle className="text-red-400 shrink-0" size={16} />
-                  <p className="text-red-300 text-sm">{error}</p>
+                <div className="mb-4 p-3 bg-[#CF222E]/10 border border-[#CF222E]/20 rounded-lg flex items-center gap-2">
+                  <AlertCircle className="text-[#CF222E] shrink-0" size={16} />
+                  <p className="text-[#CF222E] text-xs font-medium">{error}</p>
                 </div>
               )}
 
@@ -148,35 +148,35 @@ function MFALoginContent() {
                     onKeyDown={e => handleDigitKeyDown(i, e)}
                     disabled={submitting}
                     aria-label={`Dígito ${i + 1} do código TOTP`}
-                    className="w-11 h-14 text-center text-xl font-mono font-bold text-white bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 transition"
+                    className="w-11 h-14 text-center text-xl font-mono font-bold text-[#24292F] bg-[#E8EDF2] border-transparent rounded-lg shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#0066A1]/50 disabled:opacity-50 transition"
                   />
                 ))}
               </div>
 
               {submitting && (
                 <div className="flex justify-center mb-4">
-                  <Loader2 size={20} className="animate-spin text-blue-400" />
+                  <Loader2 size={20} className="animate-spin text-[#0066A1]" />
                 </div>
               )}
 
               <button
                 type="button"
                 onClick={() => { setUseBackup(true); setError(null); }}
-                className="w-full text-center text-sm text-slate-400 hover:text-slate-200 transition mt-2"
+                className="w-full text-center text-xs font-bold text-[#57606A] hover:text-[#1f2937] transition mt-2"
               >
                 Usar código de backup
               </button>
             </>
           ) : (
             <>
-              <p className="text-slate-300 text-sm text-center mb-6">
+              <p className="text-[#57606A] text-sm text-center mb-6">
                 Digite um dos seus códigos de backup de 8 caracteres
               </p>
 
               {error && (
-                <div className="mb-4 p-3 bg-red-900/40 border border-red-500/50 rounded-lg flex items-center gap-2">
-                  <AlertCircle className="text-red-400 shrink-0" size={16} />
-                  <p className="text-red-300 text-sm">{error}</p>
+                <div className="mb-4 p-3 bg-[#CF222E]/10 border border-[#CF222E]/20 rounded-lg flex items-center gap-2">
+                  <AlertCircle className="text-[#CF222E] shrink-0" size={16} />
+                  <p className="text-[#CF222E] text-xs font-medium">{error}</p>
                 </div>
               )}
 
@@ -187,12 +187,12 @@ function MFALoginContent() {
                   onChange={e => setBackupCode(e.target.value)}
                   placeholder="XXXX-XXXX"
                   autoFocus
-                  className="w-full bg-white/5 border border-white/10 text-white placeholder-slate-500 rounded-lg py-2.5 px-4 text-sm font-mono tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2.5 bg-[#E8EDF2] border-transparent rounded-md text-sm font-mono tracking-widest text-center shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#0066A1]/50 transition-all text-[#24292F] placeholder-[#8C959F]"
                 />
                 <button
                   type="submit"
                   disabled={submitting || !backupCode.trim()}
-                  className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:cursor-not-allowed text-white font-medium rounded-lg py-2.5 text-sm transition flex items-center justify-center gap-2"
+                  className="w-full px-6 py-2 text-xs font-bold text-white bg-gradient-to-b from-[#0066A1] to-[#005282] rounded-lg border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {submitting ? <Loader2 size={16} className="animate-spin" /> : null}
                   Verificar Código de Backup
@@ -202,7 +202,7 @@ function MFALoginContent() {
               <button
                 type="button"
                 onClick={() => { setUseBackup(false); setError(null); setBackupCode(""); }}
-                className="w-full text-center text-sm text-slate-400 hover:text-slate-200 transition mt-4"
+                className="w-full text-center text-xs font-bold text-[#57606A] hover:text-[#1f2937] transition mt-4"
               >
                 ← Usar código TOTP
               </button>

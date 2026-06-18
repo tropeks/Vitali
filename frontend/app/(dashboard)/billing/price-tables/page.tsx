@@ -39,20 +39,20 @@ export default function PriceTablesPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Tabelas de Preços</h1>
-        <p className="text-sm text-slate-500 mt-1">{tables.length} tabela{tables.length !== 1 ? 's' : ''}</p>
+        <h1 className="text-2xl font-semibold text-[#24292F]">Tabelas de Preços</h1>
+        <p className="text-sm text-[#8C959F] mt-1">{tables.length} tabela{tables.length !== 1 ? 's' : ''}</p>
       </div>
 
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">{error}</div>
       )}
 
-      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+      <div className="bg-[#F4F7FA] rounded-lg border border-slate-200 overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-slate-50 border-b border-slate-100">
+          <thead className="bg-[#F4F7FA] border-b border-slate-100">
             <tr>
               {['Operadora', 'Nome', 'Válida De', 'Válida Até', 'Itens', 'Status'].map(h => (
-                <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-[#8C959F] uppercase tracking-wide">{h}</th>
               ))}
             </tr>
           </thead>
@@ -62,7 +62,7 @@ export default function PriceTablesPage() {
                 <tr key={i}>
                   {Array.from({ length: 6 }).map((_, j) => (
                     <td key={j} className="px-4 py-3">
-                      <div className="h-4 bg-slate-100 rounded animate-pulse" />
+                      <div className="h-4 bg-[#DFE5EB] rounded animate-pulse" />
                     </td>
                   ))}
                 </tr>
@@ -79,14 +79,14 @@ export default function PriceTablesPage() {
             ) : tables.map(t => {
               const active = isActive(t);
               return (
-                <tr key={t.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3 text-slate-900 font-medium">{t.provider_name ?? t.provider ?? '—'}</td>
+                <tr key={t.id} className="hover:bg-[#F4F7FA] transition-colors">
+                  <td className="px-4 py-3 text-[#24292F] font-medium">{t.provider_name ?? t.provider ?? '—'}</td>
                   <td className="px-4 py-3 text-slate-800">{t.name ?? t.nome ?? '—'}</td>
-                  <td className="px-4 py-3 text-slate-600">{fmtDate(t.valid_from)}</td>
-                  <td className="px-4 py-3 text-slate-600">{fmtDate(t.valid_until)}</td>
-                  <td className="px-4 py-3 text-slate-600">{t.item_count ?? t.items_count ?? '—'}</td>
+                  <td className="px-4 py-3 text-[#57606A]">{fmtDate(t.valid_from)}</td>
+                  <td className="px-4 py-3 text-[#57606A]">{fmtDate(t.valid_until)}</td>
+                  <td className="px-4 py-3 text-[#57606A]">{t.item_count ?? t.items_count ?? '—'}</td>
                   <td className="px-4 py-3">
-                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${active ? 'bg-green-100 text-green-700' : 'bg-[#DFE5EB] text-[#8C959F]'}`}>
                       {active ? 'Ativa' : 'Inativa'}
                     </span>
                   </td>

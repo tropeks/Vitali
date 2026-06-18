@@ -19,7 +19,7 @@ export default function ReadinessPanel({
   const ready = blockers.length === 0
   return (
     <div className="rounded-lg border border-slate-200 p-3">
-      <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-900">
+      <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-[#24292F]">
         <Search size={15} />
         {title}
       </div>

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { getAccessToken } from '@/lib/auth';
 
 const STATUS_BADGE: Record<string, string> = {
-  draft: 'bg-slate-100 text-slate-600',
+  draft: 'bg-[#DFE5EB] text-[#57606A]',
   pending: 'bg-yellow-100 text-yellow-700',
   submitted: 'bg-blue-100 text-blue-700',
   paid: 'bg-green-100 text-green-700',
@@ -65,12 +65,12 @@ export default function GuidesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Guias TISS</h1>
-          <p className="text-sm text-slate-500 mt-1">{count} guia{count !== 1 ? 's' : ''}</p>
+          <h1 className="text-2xl font-semibold text-[#24292F]">Guias TISS</h1>
+          <p className="text-sm text-[#8C959F] mt-1">{count} guia{count !== 1 ? 's' : ''}</p>
         </div>
         <button
           onClick={() => router.push('/billing/guides/new')}
-          className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"
+          className="px-4 py-2 bg-gradient-to-b from-[#0066A1] to-[#005282] border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] text-white text-sm font-medium rounded-lg hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)]"
         >
           + Nova Guia
         </button>
@@ -105,7 +105,7 @@ export default function GuidesPage() {
         {(statusFilter || search) && (
           <button
             onClick={() => { setStatusFilter(''); setSearch(''); }}
-            className="text-sm text-slate-500 hover:text-slate-700 underline"
+            className="text-sm text-[#8C959F] hover:text-[#57606A] underline"
           >
             Limpar filtros
           </button>
@@ -113,12 +113,12 @@ export default function GuidesPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+      <div className="bg-[#F4F7FA] rounded-lg border border-slate-200 overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-slate-50 border-b border-slate-100">
+          <thead className="bg-[#F4F7FA] border-b border-slate-100">
             <tr>
               {['Nº Guia', 'Paciente', 'Operadora', 'Competência', 'Valor', 'Status', ''].map(h => (
-                <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-[#8C959F] uppercase tracking-wide">{h}</th>
               ))}
             </tr>
           </thead>
@@ -128,7 +128,7 @@ export default function GuidesPage() {
                 <tr key={i}>
                   {Array.from({ length: 7 }).map((_, j) => (
                     <td key={j} className="px-4 py-3">
-                      <div className="h-4 bg-slate-100 rounded animate-pulse" />
+                      <div className="h-4 bg-[#DFE5EB] rounded animate-pulse" />
                     </td>
                   ))}
                 </tr>
@@ -141,20 +141,20 @@ export default function GuidesPage() {
               </tr>
             ) : guides.map(g => (
               <tr key={g.id} className="hover:bg-blue-50 transition-colors">
-                <td className="px-4 py-3 font-mono text-slate-700">{g.guide_number ?? g.id}</td>
-                <td className="px-4 py-3 text-slate-900 font-medium">{g.patient_name ?? g.patient ?? '—'}</td>
-                <td className="px-4 py-3 text-slate-600">{g.provider_name ?? '—'}</td>
-                <td className="px-4 py-3 text-slate-600">{g.competency ?? '—'}</td>
-                <td className="px-4 py-3 text-slate-700">{fmtCurrency(g.total_value)}</td>
+                <td className="px-4 py-3 font-mono text-[#57606A]">{g.guide_number ?? g.id}</td>
+                <td className="px-4 py-3 text-[#24292F] font-medium">{g.patient_name ?? g.patient ?? '—'}</td>
+                <td className="px-4 py-3 text-[#57606A]">{g.provider_name ?? '—'}</td>
+                <td className="px-4 py-3 text-[#57606A]">{g.competency ?? '—'}</td>
+                <td className="px-4 py-3 text-[#57606A]">{fmtCurrency(g.total_value)}</td>
                 <td className="px-4 py-3">
-                  <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[g.status] ?? 'bg-slate-100 text-slate-600'}`}>
+                  <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[g.status] ?? 'bg-[#DFE5EB] text-[#57606A]'}`}>
                     {STATUS_LABEL[g.status] ?? g.status}
                   </span>
                 </td>
                 <td className="px-4 py-3">
                   <button
                     onClick={() => router.push(`/billing/guides/${g.id}`)}
-                    className="text-blue-600 hover:underline text-xs"
+                    className="text-[#0066A1] hover:underline text-xs"
                   >
                     Ver
                   </button>

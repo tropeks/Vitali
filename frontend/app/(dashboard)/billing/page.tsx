@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { getAccessToken, UserDTO } from '@/lib/auth';
 
 const STATUS_BADGE: Record<string, string> = {
-  draft: 'bg-slate-100 text-slate-600',
+  draft: 'bg-[#DFE5EB] text-[#57606A]',
   pending: 'bg-yellow-100 text-yellow-700',
   submitted: 'bg-blue-100 text-blue-700',
   paid: 'bg-green-100 text-green-700',
@@ -59,7 +59,7 @@ function TUSSSyncStatusBadge({ syncStatus }: { syncStatus: any }) {
   const isStale = ageDays != null && ageDays > 7;
   const badgeClass = isStale
     ? 'bg-orange-50 border-orange-300 text-orange-700'
-    : 'bg-slate-50 border-slate-200 text-slate-500';
+    : 'bg-[#F4F7FA] border-slate-200 text-[#8C959F]';
 
   return (
     <span
@@ -106,7 +106,7 @@ export default function BillingOverviewPage() {
   const denied = guides.filter(g => g.status === 'denied').length;
 
   const kpis = [
-    { label: 'Guias este Mês', value: total, color: 'text-blue-600' },
+    { label: 'Guias este Mês', value: total, color: 'text-[#0066A1]' },
     { label: 'Guias Enviadas', value: submitted, color: 'text-green-600' },
     { label: 'Aguardando Envio', value: awaiting, color: 'text-yellow-600' },
     { label: 'Glosas', value: denied, color: 'text-red-600' },
@@ -115,9 +115,9 @@ export default function BillingOverviewPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Faturamento</h1>
+        <h1 className="text-2xl font-semibold text-[#24292F]">Faturamento</h1>
         <div className="flex items-center gap-2 mt-1">
-          <p className="text-sm text-slate-500 capitalize">{currentMonthLabel()}</p>
+          <p className="text-sm text-[#8C959F] capitalize">{currentMonthLabel()}</p>
           <TUSSSyncStatusBadge syncStatus={syncStatus} />
         </div>
       </div>
@@ -129,10 +129,10 @@ export default function BillingOverviewPage() {
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {kpis.map(k => (
-          <div key={k.label} className="bg-white rounded-lg border border-slate-200 p-5">
-            <p className="text-sm text-slate-500">{k.label}</p>
+          <div key={k.label} className="bg-[#F4F7FA] rounded-lg border border-slate-200 p-4">
+            <p className="text-sm text-[#8C959F]">{k.label}</p>
             {loading
-              ? <div className="h-8 w-16 mt-2 bg-slate-100 rounded animate-pulse" />
+              ? <div className="h-8 w-16 mt-2 bg-[#DFE5EB] rounded animate-pulse" />
               : <p className={`text-3xl font-semibold mt-1 ${k.color}`}>{k.value}</p>
             }
           </div>
@@ -140,21 +140,21 @@ export default function BillingOverviewPage() {
       </div>
 
       {/* Recent Guides */}
-      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-          <h2 className="font-semibold text-slate-900">Guias Recentes</h2>
+      <div className="bg-[#F4F7FA] rounded-lg border border-slate-200 overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+          <h2 className="font-semibold text-[#24292F]">Guias Recentes</h2>
           <button
             onClick={() => router.push('/billing/guides')}
-            className="text-sm text-blue-600 hover:underline"
+            className="text-sm text-[#0066A1] hover:underline"
           >
             Ver todas
           </button>
         </div>
         <table className="w-full text-sm">
-          <thead className="bg-slate-50 border-b border-slate-100">
+          <thead className="bg-[#F4F7FA] border-b border-slate-100">
             <tr>
               {['Nº da Guia', 'Paciente', 'Operadora', 'Competência', 'Valor', 'Status'].map(h => (
-                <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-[#8C959F] uppercase tracking-wide">{h}</th>
               ))}
             </tr>
           </thead>
@@ -164,7 +164,7 @@ export default function BillingOverviewPage() {
                 <tr key={i}>
                   {Array.from({ length: 6 }).map((_, j) => (
                     <td key={j} className="px-4 py-3">
-                      <div className="h-4 bg-slate-100 rounded animate-pulse" />
+                      <div className="h-4 bg-[#DFE5EB] rounded animate-pulse" />
                     </td>
                   ))}
                 </tr>
@@ -181,13 +181,13 @@ export default function BillingOverviewPage() {
                 className="hover:bg-blue-50 cursor-pointer transition-colors"
                 onClick={() => router.push(`/billing/guides/${g.id}`)}
               >
-                <td className="px-4 py-3 font-mono text-slate-700">{g.guide_number ?? g.id}</td>
-                <td className="px-4 py-3 text-slate-900">{g.patient_name ?? g.patient ?? '—'}</td>
-                <td className="px-4 py-3 text-slate-600">{g.provider_name ?? '—'}</td>
-                <td className="px-4 py-3 text-slate-600">{g.competency ?? '—'}</td>
-                <td className="px-4 py-3 text-slate-700">{fmtCurrency(g.total_value)}</td>
+                <td className="px-4 py-3 font-mono text-[#57606A]">{g.guide_number ?? g.id}</td>
+                <td className="px-4 py-3 text-[#24292F]">{g.patient_name ?? g.patient ?? '—'}</td>
+                <td className="px-4 py-3 text-[#57606A]">{g.provider_name ?? '—'}</td>
+                <td className="px-4 py-3 text-[#57606A]">{g.competency ?? '—'}</td>
+                <td className="px-4 py-3 text-[#57606A]">{fmtCurrency(g.total_value)}</td>
                 <td className="px-4 py-3">
-                  <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[g.status] ?? 'bg-slate-100 text-slate-600'}`}>
+                  <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[g.status] ?? 'bg-[#DFE5EB] text-[#57606A]'}`}>
                     {STATUS_LABEL[g.status] ?? g.status}
                   </span>
                 </td>
@@ -198,12 +198,12 @@ export default function BillingOverviewPage() {
       </div>
 
       {/* Open Batches */}
-      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-          <h2 className="font-semibold text-slate-900">Lotes Abertos</h2>
+      <div className="bg-[#F4F7FA] rounded-lg border border-slate-200 overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+          <h2 className="font-semibold text-[#24292F]">Lotes Abertos</h2>
           <button
             onClick={() => router.push('/billing/batches')}
-            className="text-sm text-blue-600 hover:underline"
+            className="text-sm text-[#0066A1] hover:underline"
           >
             Ver todos
           </button>
@@ -211,24 +211,24 @@ export default function BillingOverviewPage() {
         {loading ? (
           <div className="p-4 space-y-2">
             {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="h-10 bg-slate-100 rounded animate-pulse" />
+              <div key={i} className="h-10 bg-[#DFE5EB] rounded animate-pulse" />
             ))}
           </div>
         ) : batches.length === 0 ? (
-          <p className="px-5 py-8 text-sm text-center text-slate-400">Nenhum lote aberto</p>
+          <p className="px-4 py-3 text-sm text-center text-slate-400">Nenhum lote aberto</p>
         ) : (
           <ul className="divide-y divide-slate-50">
             {batches.map(b => (
               <li
                 key={b.id}
-                className="flex items-center justify-between px-5 py-3 hover:bg-blue-50 cursor-pointer transition-colors"
+                className="flex items-center justify-between px-4 py-3 hover:bg-blue-50 cursor-pointer transition-colors"
                 onClick={() => router.push(`/billing/batches/${b.id}`)}
               >
                 <div>
-                  <span className="font-medium text-slate-900 text-sm">Lote {b.batch_number}</span>
-                  <span className="ml-2 text-xs text-slate-500">{b.provider_name ?? '—'}</span>
+                  <span className="font-medium text-[#24292F] text-sm">Lote {b.batch_number}</span>
+                  <span className="ml-2 text-xs text-[#8C959F]">{b.provider_name ?? '—'}</span>
                 </div>
-                <div className="flex items-center gap-4 text-xs text-slate-500">
+                <div className="flex items-center gap-4 text-xs text-[#8C959F]">
                   <span>{b.guide_count ?? 0} guia(s)</span>
                   {b.closed_at && <span>Fechado {new Date(b.closed_at).toLocaleDateString('pt-BR')}</span>}
                 </div>

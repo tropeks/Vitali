@@ -23,10 +23,10 @@ export default function PortalAppointmentsPage() {
       renderRow={(a) => (
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold text-slate-900">
+            <p className="text-sm font-semibold text-[#24292F]">
               {formatDateTimeBR(a.start_time)}
             </p>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-[#8C959F]">
               Tipo: {a.type || "consulta"}
             </p>
           </div>
