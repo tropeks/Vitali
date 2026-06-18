@@ -338,4 +338,10 @@ was green before relying on a backup.
 
 ---
 
+## Wedge Activation
+
+For instructions on activating Wedges (Pilot), please see the [Wedge Activation Runbook](WEDGE_ACTIVATION.md).
+
+---
+
 *Vitali — docs/RUNBOOK.md*
