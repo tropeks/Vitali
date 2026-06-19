@@ -14,7 +14,10 @@ import { test as base, expect } from '@playwright/test';
  * navigating (see auth.spec.ts › Cookie Consent Banner).
  */
 export const test = base.extend({
-  page: async ({ page }, use) => {
+  // Param is named `runTest` (not the conventional `use`) to avoid eslint's
+  // react-hooks/rules-of-hooks false positive — it reads `use(...)` inside a
+  // function named `page` as the React `use` hook.
+  page: async ({ page }, runTest) => {
     await page.addInitScript(() => {
       try {
         window.localStorage.setItem('vitali_cookie_consent', 'true');
@@ -22,7 +25,7 @@ export const test = base.extend({
         /* localStorage unavailable in this context — best-effort suppression */
       }
     });
-    await use(page);
+    await runTest(page);
   },
 });
 
