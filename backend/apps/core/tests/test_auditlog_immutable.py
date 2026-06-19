@@ -66,8 +66,7 @@ class AuditLogDbImmutableTests(TestCase):
             raised = True
         self.assertTrue(
             raised,
-            "Expected a DB-level error from the immutability trigger, but no "
-            "exception was raised.",
+            "Expected a DB-level error from the immutability trigger, but no exception was raised.",
         )
 
     # ------------------------------------------------------------------
@@ -85,7 +84,9 @@ class AuditLogDbImmutableTests(TestCase):
 
     def test_db_update_raises(self):
         """QuerySet.update() must be rejected by the DB trigger."""
-        log = _make_audit_log(action="view_record", resource_type="encounter", resource_id="upd-001")
+        log = _make_audit_log(
+            action="view_record", resource_type="encounter", resource_id="upd-001"
+        )
         pk = log.pk
 
         def do_update():

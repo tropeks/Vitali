@@ -8,7 +8,8 @@
  * the patient timeline points back to the signed encounter.
  */
 
-import { test, expect, type APIResponse, type Page } from '@playwright/test';
+import { type APIResponse, type Page } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL || 'admin@test.com';
 const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD || 'AdminPass1!';
