@@ -1,0 +1,50 @@
+{
+  "common": {
+    "appName": "Vitali",
+    "tagline": "Plataforma Hospitalar"
+  },
+  "cookieBanner": {
+    "noticeLabel": "Aviso de Privacidade:",
+    "body": "Este sistema EMR utiliza cookies estritamente necessários para autenticação e auditoria clínica. Ao continuar, você concorda com a nossa <policy>Política de Privacidade</policy>.",
+    "accept": "Ciente e de acordo"
+  },
+  "login": {
+    "heading": "Acesse sua conta",
+    "emailLabel": "E-mail",
+    "passwordLabel": "Senha",
+    "emailPlaceholder": "seu@email.com",
+    "signIn": "Entrar",
+    "signingIn": "Entrando…",
+    "lockedTitle": "Conta bloqueada temporariamente.",
+    "lockedRetry": "Tente novamente em {minutes} min.",
+    "genericError": "Erro ao fazer login.",
+    "emailInvalid": "E-mail inválido",
+    "passwordRequired": "Senha obrigatória",
+    "rights": "Vitali © {year} — Todos os direitos reservados"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "patients": "Pacientes",
+    "agenda": "Agenda",
+    "waitingRoom": "Sala de Espera",
+    "encounters": "Consultas",
+    "deterioration": "Deterioração",
+    "absences": "Faltas",
+    "pharmacy": "Farmácia",
+    "pharmacyCockpit": "Cockpit",
+    "pharmacyDispense": "Dispensar",
+    "pharmacyStock": "Estoque",
+    "pharmacyCatalog": "Catálogo",
+    "pharmacyPurchases": "Compras",
+    "billing": "Faturamento",
+    "billingAnalytics": "Análise",
+    "settings": "Configurações",
+    "logout": "Sair",
+    "notifications": "Notificações"
+  },
+  "language": {
+    "label": "Idioma",
+    "description": "Escolha o idioma da interface.",
+    "updating": "Atualizando…"
+  }
+}
