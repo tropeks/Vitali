@@ -1,15 +1,18 @@
 import os
 from io import StringIO
+
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from apps.test_utils import TenantTestCase
+
+from apps.core.models import Role, User
 from apps.hr.models import Employee
-from apps.core.models import User, Role
+from apps.test_utils import TenantTestCase
+
 
 class TestImportProfessionals(TenantTestCase):
     def setUp(self):
         super().setUp()
-        r = Role.objects.create(name="medico")
+        Role.objects.create(name="medico")
         self.csv_content = "email;nome;cargo;data_contratacao;conselho;numero_conselho;uf_conselho\nteste1@example.com;Medico A;medico;2024-01-01;CRM;12345;SP\n"
         self.csv_file = "/tmp/" + self.tenant.schema_name + "_test_prof.csv"
         with open(self.csv_file, "w") as f:
@@ -26,8 +29,11 @@ class TestImportProfessionals(TenantTestCase):
         if not User.objects.filter(email="admin@example.com").exists():
             u = User.objects.create(email="admin@example.com", full_name="Admin")
             from apps.core.models import UserTenantMembership
+
             UserTenantMembership.objects.create(user=u, tenant=self.tenant)
-        call_command("import_professionals", file=self.csv_file, tenant=self.tenant.schema_name, stdout=out)
+        call_command(
+            "import_professionals", file=self.csv_file, tenant=self.tenant.schema_name, stdout=out
+        )
         self.assertIn("Done: 1 created", out.getvalue())
         self.assertEqual(Employee.objects.count(), 1)
         e = Employee.objects.first()

@@ -15,7 +15,7 @@ from decimal import Decimal
 from django.utils import timezone
 
 from apps.core.models import FeatureFlag
-from apps.pharmacy.models import Drug, Material, StockAlert, StockItem, StockMovement
+from apps.pharmacy.models import Drug, StockAlert, StockItem, StockMovement
 from apps.pharmacy.services.stockout_safety import StockoutService
 from apps.test_utils import TenantTestCase
 
@@ -45,9 +45,7 @@ class EvaluateStockoutTaskTests(TenantTestCase):
             )
 
     def _receive(self, item, qty):
-        StockMovement.objects.create(
-            stock_item=item, movement_type="entry", quantity=Decimal(qty)
-        )
+        StockMovement.objects.create(stock_item=item, movement_type="entry", quantity=Decimal(qty))
 
     def test_evaluate_all_without_lead_time_is_graceful(self):
         """Drug with no lead_time_days → engine inert → no StockAlert, no exception."""
