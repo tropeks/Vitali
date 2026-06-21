@@ -129,7 +129,9 @@ class TestReferenceCurationAPI(TenantTestCase):
 
     def test_interaction_set_active_toggle(self):
         """POST set-active {"active": false} → 200; refresh active=False; AuditLog written."""
-        interaction = _make_drug_interaction(ingredient_a="captopril", ingredient_b="espironolactona")
+        interaction = _make_drug_interaction(
+            ingredient_a="captopril", ingredient_b="espironolactona"
+        )
 
         resp = self._client(self.farmaceutico).post(
             f"/api/v1/pharmacy/drug-interactions/{interaction.id}/set-active/",
@@ -186,7 +188,9 @@ class TestReferenceCurationAPI(TenantTestCase):
         self.assertEqual(resp.status_code, 400)
 
         allergen.refresh_from_db()
-        self.assertTrue(allergen.active, "active must NOT have been changed by a non-boolean payload")
+        self.assertTrue(
+            allergen.active, "active must NOT have been changed by a non-boolean payload"
+        )
 
     def test_set_active_non_boolean_400_interaction(self):
         """POST set-active with {"active": "false"} (string) → 400; active was NOT changed."""

@@ -1015,7 +1015,9 @@ class CurationReadinessView(APIView):
         supply_total = drug_total + material_total
 
         drug_ready = Drug.objects.filter(is_active=True, reorder_point__isnull=False).count()
-        material_ready = Material.objects.filter(is_active=True, reorder_point__isnull=False).count()
+        material_ready = Material.objects.filter(
+            is_active=True, reorder_point__isnull=False
+        ).count()
         supply_ready = drug_ready + material_ready
 
         if supply_total == 0:

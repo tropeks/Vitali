@@ -44,14 +44,10 @@ class TestStockoutFlywheelFullCycle(TenantTestCase):
         return StockItem.objects.create(drug=drug, lot_number=lot, quantity=Decimal("0"))
 
     def _receive(self, item, qty):
-        StockMovement(
-            stock_item=item, movement_type="entry", quantity=Decimal(qty)
-        ).save()
+        StockMovement(stock_item=item, movement_type="entry", quantity=Decimal(qty)).save()
 
     def _dispense(self, item, qty):
-        StockMovement(
-            stock_item=item, movement_type="dispense", quantity=-Decimal(qty)
-        ).save()
+        StockMovement(stock_item=item, movement_type="dispense", quantity=-Decimal(qty)).save()
 
     def test_stockout_flywheel_full_cycle(self):
         """flag ON → drug with lead_time + velocity → evaluate_all → StockAlert(open,
@@ -94,9 +90,7 @@ class TestStockoutFlywheelFullCycle(TenantTestCase):
         svc = StockoutService(requesting_user=self.user)
         svc.evaluate_all(now=self.now)
 
-        alert = StockAlert.objects.filter(
-            drug=drug, kind=StockAlert.Kind.STOCKOUT_RISK
-        ).first()
+        alert = StockAlert.objects.filter(drug=drug, kind=StockAlert.Kind.STOCKOUT_RISK).first()
         assert alert is not None, "evaluate_all must create a stockout_risk alert"
         assert alert.status == StockAlert.Status.OPEN
         assert alert.outcome == StockAlert.Outcome.PENDING

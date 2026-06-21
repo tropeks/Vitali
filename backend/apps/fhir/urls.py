@@ -6,6 +6,12 @@ from .views import (
     CapabilityStatementView,
     ConditionReadView,
     ConditionSearchView,
+    CoverageReadView,
+    CoverageSearchView,
+    DiagnosticReportReadView,
+    DiagnosticReportSearchView,
+    DocumentReferenceReadView,
+    DocumentReferenceSearchView,
     EncounterReadView,
     EncounterSearchView,
     MedicationRequestReadView,
@@ -19,6 +25,7 @@ from .views import (
     ServiceRequestReadView,
     ServiceRequestSearchView,
 )
+from .views_smart import AuthorizeView, SmartConfigurationView, TokenView
 
 urlpatterns = [
     path("fhir/metadata", CapabilityStatementView.as_view(), name="fhir-metadata"),
@@ -94,4 +101,44 @@ urlpatterns = [
         ServiceRequestReadView.as_view(),
         name="fhir-service-request-read",
     ),
+    path(
+        "fhir/DocumentReference/",
+        DocumentReferenceSearchView.as_view(),
+        name="fhir-document-reference-search",
+    ),
+    path(
+        "fhir/DocumentReference/<uuid:document_reference_id>/",
+        DocumentReferenceReadView.as_view(),
+        name="fhir-document-reference-read",
+    ),
+    path(
+        "fhir/DiagnosticReport/",
+        DiagnosticReportSearchView.as_view(),
+        name="fhir-diagnostic-report-search",
+    ),
+    path(
+        "fhir/DiagnosticReport/<uuid:diagnostic_report_id>/",
+        DiagnosticReportReadView.as_view(),
+        name="fhir-diagnostic-report-read",
+    ),
+    path(
+        "fhir/Coverage/",
+        CoverageSearchView.as_view(),
+        name="fhir-coverage-search",
+    ),
+    path(
+        # PatientInsurance uses an integer PK (unlike the UUID-keyed clinical
+        # models), so Coverage ids are integers.
+        "fhir/Coverage/<int:coverage_id>/",
+        CoverageReadView.as_view(),
+        name="fhir-coverage-read",
+    ),
+    # ─── SMART-on-FHIR / OAuth2 ──────────────────────────────────────────────
+    path(
+        "fhir/.well-known/smart-configuration",
+        SmartConfigurationView.as_view(),
+        name="fhir-smart-configuration",
+    ),
+    path("fhir/auth/authorize", AuthorizeView.as_view(), name="fhir-smart-authorize"),
+    path("fhir/auth/token", TokenView.as_view(), name="fhir-smart-token"),
 ]

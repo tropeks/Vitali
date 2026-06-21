@@ -62,7 +62,12 @@ class TestSupplyConfigFields(TenantTestCase):
         results = resp.data.get("results", resp.data)
         self.assertTrue(len(results) >= 1, "Expected at least one drug in list")
         row = results[0]
-        for field in ("lead_time_days", "safety_stock", "reorder_point", "min_refill_interval_days"):
+        for field in (
+            "lead_time_days",
+            "safety_stock",
+            "reorder_point",
+            "min_refill_interval_days",
+        ):
             self.assertIn(field, row, f"Field '{field}' missing from drug list response")
 
     def test_drug_patch_sets_reorder_point(self):
