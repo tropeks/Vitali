@@ -4,22 +4,25 @@ All endpoints gated with IsPlatformAdmin (requires is_superuser).
 These models live in the public schema — no schema switching needed.
 """
 
+import hmac
 import logging
 import time
 from typing import Any
 
+from django.conf import settings
 from django.db import connection, transaction
 from rest_framework import generics, status
-from rest_framework.permissions import IsAdminUser, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .constants import ALLOWED_MODULE_KEYS
-from .models import FeatureFlag, Plan, Subscription, Tenant
+from .models import FeatureFlag, Plan, Subscription, Tenant, User
 from .permissions import IsPlatformAdmin
 from .serializers_platform import (
     PlanSerializer,
     SubscriptionSerializer,
+    TenantAdminSerializer,
     TenantSubscriptionSerializer,
 )
 
@@ -371,3 +374,138 @@ class TenantSubscriptionView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         return Response(TenantSubscriptionSerializer(subscription).data)
+
+
+# ─── S-132: Self-serve admin panel + subscription billing ─────────────────────
+
+
+class TenantAdminListView(APIView):
+    """
+    GET /api/v1/platform/tenants/
+
+    Admin panel listing of clinics with lifecycle status + subscription summary.
+    Supports ``?status=pending|trial|active|suspended|cancelled`` filtering and
+    always returns per-status counts so the UI can render tabs without a second
+    request. Platform admin only.
+    """
+
+    permission_classes = _PLATFORM_PERMS
+
+    def get(self, request):
+        qs = (
+            Tenant.objects.exclude(schema_name="public")
+            .select_related("subscription", "subscription__plan")
+            .order_by("-created_at")
+        )
+
+        counts = {value: 0 for value, _ in Tenant.Status.choices}
+        for value in qs.values_list("status", flat=True):
+            if value in counts:
+                counts[value] += 1
+        counts["total"] = sum(c for k, c in counts.items() if k != "total")
+
+        status_filter = request.query_params.get("status", "").strip().lower()
+        valid_statuses = {value for value, _ in Tenant.Status.choices}
+        if status_filter and status_filter in valid_statuses:
+            qs = qs.filter(status=status_filter)
+
+        return Response({"counts": counts, "results": TenantAdminSerializer(qs, many=True).data})
+
+
+class ResendWelcomeView(APIView):
+    """
+    POST /api/v1/platform/tenants/{id}/resend-welcome/
+
+    Re-issues the owner's set-password welcome email — for tenants stuck in
+    PENDING because the original email bounced or was lost. Platform admin only.
+    """
+
+    permission_classes = _PLATFORM_PERMS
+
+    def post(self, request, pk):
+        try:
+            tenant = Tenant.objects.get(pk=pk)
+        except Tenant.DoesNotExist:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        owner = self._resolve_owner(tenant)
+        if owner is None:
+            return Response(
+                {"detail": "Nenhum usuário owner encontrado para esta clínica."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        from .services.invitations import issue_password_set_invitation
+
+        issue_password_set_invitation(owner, tenant=tenant, created_by=request.user)
+        logger.info(
+            "platform.resend_welcome by=%s tenant=%s owner=%s",
+            request.user.email,
+            tenant.schema_name,
+            owner.email,
+        )
+        return Response({"detail": "E-mail de boas-vindas reenviado.", "owner_email": owner.email})
+
+    def _resolve_owner(self, tenant) -> User | None:
+        """The clinic owner = the admin-role member bound to this tenant."""
+        memberships = tenant.user_memberships.filter(is_active=True).select_related("user", "role")
+        admin_membership = memberships.filter(role__name="admin").first() or memberships.first()
+        return admin_membership.user if admin_membership else None
+
+
+class SubscriptionWebhookView(APIView):
+    """
+    POST /api/v1/public/billing/subscription-webhook/
+
+    Asaas posts recurring-subscription payment events here. On the first
+    confirmed/received payment we flip the tenant TRIAL → ACTIVE. Public
+    endpoint — secured by the shared ``asaas-access-token`` header.
+
+    Tenant/Subscription live in the public schema, so no schema switching is
+    needed to resolve the tenant. Always returns 200 (except auth) to stop
+    Asaas retry storms; idempotent on duplicate delivery.
+    """
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    _ACTIVATING_EVENTS = {"PAYMENT_RECEIVED", "PAYMENT_CONFIRMED"}
+
+    def post(self, request):
+        token = request.headers.get("asaas-access-token", "")
+        expected = getattr(settings, "ASAAS_WEBHOOK_TOKEN", "")
+        if not expected or not hmac.compare_digest(token.encode(), expected.encode()):
+            logger.warning(
+                "subscription.webhook.invalid_token ip=%s", request.META.get("REMOTE_ADDR")
+            )
+            return Response({"status": "ok"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        event = request.data.get("event", "")
+        payment = request.data.get("payment", {}) or {}
+        asaas_subscription_id = payment.get("subscription", "")
+        if event not in self._ACTIVATING_EVENTS or not asaas_subscription_id:
+            return Response({"status": "ok"})
+
+        with transaction.atomic():
+            try:
+                subscription = Subscription.objects.select_for_update().get(
+                    asaas_subscription_id=asaas_subscription_id
+                )
+            except Subscription.DoesNotExist:
+                logger.warning("subscription.webhook.unknown sub=%s", asaas_subscription_id)
+                return Response({"status": "ok"})
+
+            tenant = subscription.tenant
+            if tenant.status != Tenant.Status.ACTIVE:
+                tenant.status = Tenant.Status.ACTIVE
+                tenant.save(update_fields=["status", "updated_at"])
+            if subscription.status != Subscription.Status.ACTIVE:
+                subscription.status = Subscription.Status.ACTIVE
+                subscription.save(update_fields=["status"])
+
+        logger.info(
+            "subscription.webhook.activated tenant=%s sub=%s",
+            tenant.schema_name,
+            asaas_subscription_id,
+        )
+        return Response({"status": "ok"})

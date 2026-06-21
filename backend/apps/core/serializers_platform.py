@@ -7,7 +7,46 @@ Used only by /api/v1/platform/* endpoints (IsPlatformAdmin gate).
 from rest_framework import serializers
 
 from .constants import ALLOWED_MODULE_KEYS
-from .models import Plan, PlanModule, Subscription
+from .models import Plan, PlanModule, Subscription, Tenant
+
+
+class TenantAdminSerializer(serializers.ModelSerializer):
+    """Admin tenant-list row (S-132): lifecycle + subscription at a glance."""
+
+    subscription_status = serializers.SerializerMethodField()
+    plan_name = serializers.SerializerMethodField()
+    has_billing = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Tenant
+        fields = (
+            "id",
+            "name",
+            "slug",
+            "cnpj",
+            "status",
+            "trial_ends_at",
+            "created_at",
+            "subscription_status",
+            "plan_name",
+            "has_billing",
+        )
+        read_only_fields = fields
+
+    def _subscription(self, obj):
+        return getattr(obj, "subscription", None)
+
+    def get_subscription_status(self, obj):
+        sub = self._subscription(obj)
+        return sub.status if sub else None
+
+    def get_plan_name(self, obj):
+        sub = self._subscription(obj)
+        return sub.plan.name if sub else None
+
+    def get_has_billing(self, obj):
+        sub = self._subscription(obj)
+        return bool(sub and sub.asaas_subscription_id)
 
 
 class PlanModuleSerializer(serializers.ModelSerializer):
