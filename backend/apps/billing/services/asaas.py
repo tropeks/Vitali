@@ -122,6 +122,56 @@ class AsaasService:
         data = self._request("POST", "/customers", json=payload)
         return data["id"]
 
+    def create_clinic_customer(self, *, name: str, email: str, cnpj: str = "", external_ref: str = "") -> str:
+        """
+        Create an Asaas customer for a CLINIC (tenant-level subscription billing).
+
+        Unlike the patient flow, the CNPJ is the clinic's public business
+        registration (not personal PHI), so it is safe and useful to send for
+        invoicing. Returns the Asaas customer_id.
+        """
+        payload: dict = {
+            "name": name,
+            "email": email,
+            "notificationDisabled": False,
+        }
+        if cnpj:
+            payload["cpfCnpj"] = "".join(ch for ch in cnpj if ch.isdigit())
+        if external_ref:
+            payload["externalReference"] = external_ref
+        data = self._request("POST", "/customers", json=payload)
+        return data["id"]
+
+    def create_subscription(
+        self,
+        *,
+        customer_id: str,
+        value: Decimal,
+        next_due_date: str,
+        description: str = "",
+        external_ref: str = "",
+        billing_type: str = "BOLETO",
+    ) -> dict:
+        """
+        Create a monthly recurring subscription in Asaas.
+
+        ``next_due_date`` is an ISO ``YYYY-MM-DD`` string (typically the trial end
+        date, so the first charge lands when the trial expires). Returns the raw
+        Asaas subscription payload; callers persist ``id`` as
+        ``Subscription.asaas_subscription_id``.
+        """
+        payload = {
+            "customer": customer_id,
+            "billingType": billing_type,
+            "value": float(value),
+            "nextDueDate": next_due_date,
+            "cycle": "MONTHLY",
+            "description": description or "Assinatura Vitali",
+        }
+        if external_ref:
+            payload["externalReference"] = external_ref
+        return self._request("POST", "/subscriptions", json=payload)
+
     def create_pix_charge(self, appointment, amount: Decimal) -> dict:
         """
         Create a PIX charge for an appointment.

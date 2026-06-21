@@ -34,6 +34,9 @@ class Tenant(TenantMixin, models.Model):
     """
 
     class Status(models.TextChoices):
+        # Self-serve signup: tenant provisioned but owner has not yet activated
+        # (welcome link unconsumed) or post-provisioning steps need ops attention.
+        PENDING = "pending", "Pendente"
         TRIAL = "trial", "Trial"
         ACTIVE = "active", "Ativo"
         SUSPENDED = "suspended", "Suspenso"
@@ -137,6 +140,16 @@ class Subscription(models.Model):
     )
     current_period_start = models.DateField("Início do período")
     current_period_end = models.DateField("Fim do período")
+    # Asaas recurring-billing linkage (S-132 self-serve). Populated best-effort
+    # at signup; the subscription webhook resolves a tenant via these IDs to flip
+    # Tenant.status TRIAL → ACTIVE on first confirmed payment. Blank when the
+    # gateway was unavailable at signup — ops can retry without data loss.
+    asaas_customer_id = models.CharField(
+        "Asaas Customer ID", max_length=100, blank=True, default="", db_index=True
+    )
+    asaas_subscription_id = models.CharField(
+        "Asaas Subscription ID", max_length=100, blank=True, default="", db_index=True
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
