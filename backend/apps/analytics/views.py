@@ -119,6 +119,12 @@ class OverviewView(APIView):
         wait_avg = wait_qs["avg"]
         wait_time_avg_min = round(wait_avg.total_seconds() / 60, 1) if wait_avg else None
 
+        # Fill rate (occupancy): booked slots / scheduling capacity over [since, today].
+        # Capacity is derived from the active ScheduleConfig agendas (issue #133). The KPI
+        # stays hidden (null) until a tenant configures schedules, so it auto-activates
+        # per tenant once Schedule + TimeSlot capacity exists — no engineering flip needed.
+        fill_rate, fill_rate_capacity, fill_rate_booked = self._fill_rate(appts, since, today)
+
         return Response(
             {
                 "period": period,
@@ -136,8 +142,37 @@ class OverviewView(APIView):
                 "encounters_signed": encounters_signed,
                 "revenue": revenue,
                 "wait_time_avg_min": wait_time_avg_min,
+                "fill_rate": fill_rate,
+                "fill_rate_capacity": fill_rate_capacity,
+                "fill_rate_booked": fill_rate_booked,
             }
         )
+
+    @staticmethod
+    def _fill_rate(appts, since: date, end: date):
+        """Return (fill_rate_pct, capacity, booked) for the period [since, end] inclusive.
+
+        ``fill_rate`` is ``None`` when no active agenda capacity exists, which keeps the
+        dashboard KPI hidden for tenants that have not configured schedules yet. A booked
+        slot is any appointment occupying it (every status except ``cancelled``); the ratio
+        is capped at 100% to stay sane under overbooking.
+        """
+        try:
+            from apps.emr.models import ScheduleConfig
+            from apps.whatsapp.slot_service import count_slots_for_config
+
+            capacity = sum(
+                count_slots_for_config(cfg, since, end)
+                for cfg in ScheduleConfig.objects.filter(is_active=True)
+            )
+            if capacity <= 0:
+                return None, 0, 0
+
+            booked = appts.filter(start_time__date__lte=end).exclude(status="cancelled").count()
+            fill_rate = round(min(booked / capacity, 1.0) * 100, 1)
+            return fill_rate, capacity, booked
+        except Exception:
+            return None, 0, 0
 
 
 class AppointmentsByDayView(APIView):

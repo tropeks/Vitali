@@ -1,9 +1,12 @@
 import os
 from io import StringIO
+
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from apps.test_utils import TenantTestCase
+
 from apps.emr.models import Patient
+from apps.test_utils import TenantTestCase
+
 
 class TestImportPatients(TenantTestCase):
     def setUp(self):
@@ -20,7 +23,9 @@ class TestImportPatients(TenantTestCase):
 
     def test_import_patients_success(self):
         out = StringIO()
-        call_command("import_patients", file=self.csv_file, tenant=self.tenant.schema_name, stdout=out)
+        call_command(
+            "import_patients", file=self.csv_file, tenant=self.tenant.schema_name, stdout=out
+        )
         self.assertIn("Done: 2 created", out.getvalue())
         p = Patient.objects.all()
         cpfs = [x.cpf for x in p]
@@ -28,9 +33,13 @@ class TestImportPatients(TenantTestCase):
         self.assertIn("22222222222", cpfs)
 
     def test_import_patients_update(self):
-        Patient.objects.create(cpf="11111111111", full_name="Old Name", birth_date="1990-01-01", gender="M")
+        Patient.objects.create(
+            cpf="11111111111", full_name="Old Name", birth_date="1990-01-01", gender="M"
+        )
         out = StringIO()
-        call_command("import_patients", file=self.csv_file, tenant=self.tenant.schema_name, stdout=out)
+        call_command(
+            "import_patients", file=self.csv_file, tenant=self.tenant.schema_name, stdout=out
+        )
         self.assertIn("1 created, 1 updated", out.getvalue())
         p = [x for x in Patient.objects.all() if x.cpf == "11111111111"][0]
         self.assertEqual(p.full_name, "Joao Silva")

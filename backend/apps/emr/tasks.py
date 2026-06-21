@@ -328,9 +328,7 @@ def send_post_visit_followup_whatsapp(
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=30)
-def send_escalation_notification(
-    self, alert_id: str, notify_emails: list
-) -> None:
+def send_escalation_notification(self, alert_id: str, notify_emails: list) -> None:
     """Deliver escalation-severity NEWS2 alert to configured recipients.
 
     Fail-open: persistent failure is logged but never rolls back the
