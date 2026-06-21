@@ -28,10 +28,14 @@ ANS glosa-code mapping (see ``apps.billing.models.GLOSA_REASON_CODES``):
   * incomplete (missing beneficiary data) → "05" (Inconsistência nos dados do
     beneficiário). Confident for card/competency; CID-10 absence is also a
     beneficiary/clinical-data inconsistency, mapped here too.
-  * duplicate → "99" (Outro). ⚠️ The ANS TISS reason table HAS no single fixed
-    code for "procedimento já apresentado" in this codebase's GLOSA_REASON_CODES
-    set; left as "99/outro" for the faturista/pharmacist to confirm the exact
-    operator-specific code.
+  * duplicate → "1702" (Cobrança de procedimento em duplicidade). The cross-guide
+    duplicate check fires when the same TUSS procedure was already PRESENTED to the
+    payer on another active guide of the same encounter. "1702" is the ANS TISS 4.01
+    Tabela 38 (Terminologia de mensagens) standard code for procedure-level duplicate
+    billing — the closest authoritative match for "procedimento já apresentado". The
+    guide-level variant is "1308" (Guia já apresentada); "1807" (Procedimentos médicos
+    duplicados) is the specialty-specific variant. We map to the item-level "1702"
+    because this alert is per-procedure (guide_item is set), not per-guide.
   * stale_price → "" (blank). A snapshot-vs-current divergence is an internal
     caution, not (yet) a denial reason emitted to the operator — no ANS code.
   * quantity_exceeds → "" (blank). The line quantity exceeds the contract's
@@ -52,10 +56,14 @@ from decimal import Decimal
 
 # ── ANS glosa-code mapping (single source of truth) ───────────────────────────
 # Keys mirror GlosaSafetyAlert.CheckCode values. See module docstring for the
-# confidence notes; "99" and "" are the unsure/not-applicable cases.
+# confidence notes; "" marks the cases with no operator-facing ANS reason.
 ANS_CODE_NOT_IN_TABLE = "01"  # Procedimento não coberto
 ANS_CODE_INCOMPLETE = "05"  # Inconsistência nos dados do beneficiário
-ANS_CODE_DUPLICATE = "99"  # Outro — TODO confirm operator-specific "já apresentado" code
+# ANS TISS 4.01 Tabela 38: "Cobrança de procedimento em duplicidade". Item-level
+# duplicate code (this alert is per-procedure). Must stay in sync with the entry
+# added to apps.billing.models.GLOSA_REASON_CODES so the retorno parser round-trips
+# an inbound "1702" instead of downgrading it to "99".
+ANS_CODE_DUPLICATE = "1702"
 ANS_CODE_STALE_PRICE = ""  # internal caution, no operator-facing ANS reason
 ANS_CODE_TABLE_UNRESOLVED = ""  # coverage not verified — internal caution, no ANS reason
 # Clinical-incompatibility ANS reason codes (glosa wedge G3b).

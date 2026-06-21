@@ -12,6 +12,7 @@ from unittest import TestCase
 from apps.billing.services.glosa_checker import (
     ANS_CODE_AGE_INCOMPAT,
     ANS_CODE_AUTHORIZATION_MISSING,
+    ANS_CODE_DUPLICATE,
     ANS_CODE_INCOMPLETE,
     ANS_CODE_NOT_IN_TABLE,
     ANS_CODE_QUANTITY_EXCEEDS,
@@ -62,6 +63,14 @@ class GlosaCheckerTests(TestCase):
         dup = next(f for f in findings if f.check_code == "duplicate")
         self.assertEqual(dup.guide_item_id, 1)
         self.assertIn("10101012", dup.message)
+
+    def test_duplicate_maps_to_ans_tiss_duplicate_code(self):
+        # Regression (issue #127): the duplicate finding must carry the ANS TISS
+        # 4.01 Tabela 38 duplicate-billing code "1702", never the generic "99".
+        findings = GlosaChecker.check(guide_ctx=_ctx(items=[_item(duplicate=True)]))
+        dup = next(f for f in findings if f.check_code == "duplicate")
+        self.assertEqual(dup.ans_glosa_code, ANS_CODE_DUPLICATE)
+        self.assertEqual(dup.ans_glosa_code, "1702")
 
     def test_not_in_table_fires_block(self):
         findings = GlosaChecker.check(
