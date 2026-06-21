@@ -4,6 +4,7 @@ Core serializers for Vitali.
 
 import re
 
+from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from .models import FeatureFlag, Role, Tenant, User
@@ -128,11 +129,13 @@ class TenantRegistrationSerializer(serializers.Serializer):
         value = value.lower().strip()
         if not re.match(r"^[a-z0-9][a-z0-9\-]{1,61}[a-z0-9]$", value):
             raise serializers.ValidationError(
-                "Slug deve conter apenas letras minúsculas, números e hífens "
-                "(2–63 caracteres, não pode começar ou terminar com hífen)."
+                _(
+                    "Slug deve conter apenas letras minúsculas, números e hífens "
+                    "(2–63 caracteres, não pode começar ou terminar com hífen)."
+                )
             )
         if Tenant.objects.filter(slug=value).exists():
-            raise serializers.ValidationError("Este slug já está em uso.")
+            raise serializers.ValidationError(_("Este slug já está em uso."))
         return value
 
     def validate_cnpj(self, value: str) -> str:
@@ -140,11 +143,11 @@ class TenantRegistrationSerializer(serializers.Serializer):
             return value
         digits = re.sub(r"\D", "", value)
         if len(digits) != 14:
-            raise serializers.ValidationError("CNPJ deve conter 14 dígitos.")
+            raise serializers.ValidationError(_("CNPJ deve conter 14 dígitos."))
         if len(set(digits)) == 1:
-            raise serializers.ValidationError("CNPJ inválido.")
+            raise serializers.ValidationError(_("CNPJ inválido."))
         if not _cnpj_valid(digits):
-            raise serializers.ValidationError("CNPJ inválido.")
+            raise serializers.ValidationError(_("CNPJ inválido."))
         # Format: XX.XXX.XXX/XXXX-XX
         return f"{digits[:2]}.{digits[2:5]}.{digits[5:8]}/{digits[8:12]}-{digits[12:]}"
 
@@ -171,15 +174,15 @@ def _cnpj_valid(digits: str) -> bool:
 def _validate_strong_password(value: str):
     """Enforce: min 12 chars, uppercase, lowercase, digit, special char."""
     if len(value) < 12:
-        raise serializers.ValidationError("Senha deve ter no mínimo 12 caracteres.")
+        raise serializers.ValidationError(_("Senha deve ter no mínimo 12 caracteres."))
     if not re.search(r"[A-Z]", value):
-        raise serializers.ValidationError("Senha deve conter pelo menos uma letra maiúscula.")
+        raise serializers.ValidationError(_("Senha deve conter pelo menos uma letra maiúscula."))
     if not re.search(r"[a-z]", value):
-        raise serializers.ValidationError("Senha deve conter pelo menos uma letra minúscula.")
+        raise serializers.ValidationError(_("Senha deve conter pelo menos uma letra minúscula."))
     if not re.search(r"\d", value):
-        raise serializers.ValidationError("Senha deve conter pelo menos um número.")
+        raise serializers.ValidationError(_("Senha deve conter pelo menos um número."))
     if not re.search(r"[^A-Za-z0-9]", value):
-        raise serializers.ValidationError("Senha deve conter pelo menos um caractere especial.")
+        raise serializers.ValidationError(_("Senha deve conter pelo menos um caractere especial."))
 
 
 # ─── Auth ─────────────────────────────────────────────────────────────────────

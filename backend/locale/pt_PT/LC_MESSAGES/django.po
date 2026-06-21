@@ -1,0 +1,117 @@
+# Vitali translation catalog.
+# This file is distributed under the same license as the Vitali package.
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: Vitali 1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-06-21 09:03-0300\n"
+"PO-Revision-Date: 2026-06-21 09:00+0000\n"
+"Last-Translator: Vitali i18n <i18n@vitali.local>\n"
+"Language-Team: Português (Portugal)\n"
+"Language: pt-PT\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: apps/core/admin.py:84
+msgid "Dados pessoais"
+msgstr "Dados pessoais"
+
+#: apps/core/admin.py:85
+msgid "Acesso"
+msgstr "Acesso"
+
+#: apps/core/admin.py:86
+msgid "Datas"
+msgstr "Datas"
+
+#: apps/core/serializers.py:133
+msgid ""
+"Slug deve conter apenas letras minúsculas, números e hífens (2–63 "
+"caracteres, não pode começar ou terminar com hífen)."
+msgstr ""
+"O identificador deve conter apenas letras minúsculas, números e hífenes "
+"(2–63 caracteres, não pode começar ou terminar com hífen)."
+
+#: apps/core/serializers.py:138
+msgid "Este slug já está em uso."
+msgstr "Este identificador já está em utilização."
+
+#: apps/core/serializers.py:146
+msgid "CNPJ deve conter 14 dígitos."
+msgstr "O NIPC deve conter 14 dígitos."
+
+#: apps/core/serializers.py:148 apps/core/serializers.py:150
+msgid "CNPJ inválido."
+msgstr "NIPC inválido."
+
+#: apps/core/serializers.py:177
+msgid "Senha deve ter no mínimo 12 caracteres."
+msgstr "A palavra-passe deve ter no mínimo 12 caracteres."
+
+#: apps/core/serializers.py:179
+msgid "Senha deve conter pelo menos uma letra maiúscula."
+msgstr "A palavra-passe deve conter pelo menos uma letra maiúscula."
+
+#: apps/core/serializers.py:181
+msgid "Senha deve conter pelo menos uma letra minúscula."
+msgstr "A palavra-passe deve conter pelo menos uma letra minúscula."
+
+#: apps/core/serializers.py:183
+msgid "Senha deve conter pelo menos um número."
+msgstr "A palavra-passe deve conter pelo menos um número."
+
+#: apps/core/serializers.py:185
+msgid "Senha deve conter pelo menos um caractere especial."
+msgstr "A palavra-passe deve conter pelo menos um carácter especial."
+
+#: apps/core/views.py:270 apps/core/views.py:435 apps/core/views.py:526
+msgid "Dados inválidos."
+msgstr "Dados inválidos."
+
+#: apps/core/views.py:288
+msgid "Conta temporariamente bloqueada por excesso de tentativas."
+msgstr "Conta temporariamente bloqueada por excesso de tentativas."
+
+#: apps/core/views.py:302 apps/core/views.py:310 apps/core/views.py:330
+msgid "Credenciais inválidas."
+msgstr "Credenciais inválidas."
+
+#: apps/core/views.py:318
+msgid "Conta desativada."
+msgstr "Conta desativada."
+
+#: apps/core/views.py:385
+msgid "refresh token obrigatório."
+msgstr "token de atualização obrigatório."
+
+#: apps/core/views.py:398
+msgid "Logout realizado com sucesso."
+msgstr "Sessão terminada com sucesso."
+
+#: apps/core/views.py:445
+msgid "Senha atual incorreta."
+msgstr "Palavra-passe atual incorreta."
+
+#: apps/core/views.py:454
+msgid "Senha alterada com sucesso."
+msgstr "Palavra-passe alterada com sucesso."
+
+#: apps/core/views.py:498
+msgid "Unsupported language code."
+msgstr "Código de idioma não suportado."
+
+#: apps/core/views.py:542
+msgid "Já existe um usuário com este e-mail."
+msgstr "Já existe um utilizador com este e-mail."
+
+#: apps/core/views.py:628
+msgid ""
+"Falha ao criar a clínica. Nenhum dado parcial foi mantido; tente novamente."
+msgstr ""
+"Falha ao criar a clínica. Nenhum dado parcial foi mantido; tente novamente."
+
+#: apps/core/views.py:721
+msgid "Forbidden."
+msgstr "Acesso proibido."
