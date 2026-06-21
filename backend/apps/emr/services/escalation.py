@@ -19,7 +19,7 @@ from apps.emr.models import DeteriorationAlert, EscalationConfig
 logger = logging.getLogger(__name__)
 
 # Severity ranking for threshold comparison.
-_SEVERITY_ORDER = {
+_SEVERITY_ORDER: dict[str, int] = {
     DeteriorationAlert.Severity.ADVISE: 0,
     DeteriorationAlert.Severity.ESCALATION: 1,
 }

@@ -112,7 +112,7 @@ class WedgeTelemetryView(APIView):
     not something every clinical role should see.
     """
 
-    permission_classes = [IsAuthenticated, HasPermission("reports.read")]
+    permission_classes = [IsAuthenticated, HasPermission("reports.read")]  # type: ignore[list-item]
 
     def get(self, request):
         days = self._parse_days(request.query_params.get("days"))
