@@ -226,18 +226,27 @@ class CoverageTest(_FhirCaseBase):
 class SearchsetPagingTest(_FhirCaseBase):
     """End-to-end paging behaviour on a real search endpoint (Patient)."""
 
+    # FastTenantTestCase reuses one schema for the whole session, so the
+    # Patient table may hold rows created by sibling test classes (encounters
+    # PROTECT their patients, so they can't all be cleaned). Tag this fixture
+    # with a unique name and scope every search to it via ?name=, so the
+    # paging assertions count exactly these five rows regardless of leakage —
+    # the same discriminating-filter pattern the rest of the FHIR suite uses
+    # for deterministic totals.
+    NAME_TAG = "PagingSubject"
+
     def setUp(self):
         super().setUp()
         for i in range(5):
             Patient.objects.create(
-                full_name=f"Paciente {i:02d}",
+                full_name=f"{self.NAME_TAG} {i:02d}",
                 cpf=f"1234567890{i}",
                 birth_date=date(1980, 1, 1),
                 gender="O",
             )
 
     def test_first_page_has_next_link_and_header(self):
-        resp = self.client.get(PATIENT_SEARCH, {"_count": 2, "_offset": 0})
+        resp = self.client.get(PATIENT_SEARCH, {"name": self.NAME_TAG, "_count": 2, "_offset": 0})
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data["total"], 5)
         self.assertEqual(len(resp.data["entry"]), 2)
@@ -249,14 +258,14 @@ class SearchsetPagingTest(_FhirCaseBase):
         self.assertIn('rel="next"', resp["Link"])
 
     def test_offset_window_returns_disjoint_pages(self):
-        page1 = self.client.get(PATIENT_SEARCH, {"_count": 2, "_offset": 0})
-        page2 = self.client.get(PATIENT_SEARCH, {"_count": 2, "_offset": 2})
+        page1 = self.client.get(PATIENT_SEARCH, {"name": self.NAME_TAG, "_count": 2, "_offset": 0})
+        page2 = self.client.get(PATIENT_SEARCH, {"name": self.NAME_TAG, "_count": 2, "_offset": 2})
         ids1 = {e["resource"]["id"] for e in page1.data["entry"]}
         ids2 = {e["resource"]["id"] for e in page2.data["entry"]}
         self.assertEqual(ids1 & ids2, set())
 
     def test_last_page_has_no_next(self):
-        resp = self.client.get(PATIENT_SEARCH, {"_count": 2, "_offset": 4})
+        resp = self.client.get(PATIENT_SEARCH, {"name": self.NAME_TAG, "_count": 2, "_offset": 4})
         rels = {link["relation"] for link in resp.data["link"]}
         self.assertNotIn("next", rels)
         self.assertIn("previous", rels)
