@@ -19,8 +19,11 @@ class DrugForecastView(APIView):
     """
     GET /api/v1/pharmacy/forecast/?drug=<id>&window_days=30&target_days=60
 
-    Returns a rolling-window demand forecast for one drug. See
-    `apps.pharmacy_ai.services.forecast` for the underlying math.
+    Returns a demand forecast for one drug. The payload carries both the
+    arithmetic baseline and, when enough history exists, a learned seasonal
+    model (Holt-Winters) selected via a hold-out MAPE back-test — see the
+    `model` / `*_model` / `accuracy` fields and
+    `apps.pharmacy_ai.services.forecast` for details (issue #131).
     """
 
     def get_permissions(self):
