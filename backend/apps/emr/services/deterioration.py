@@ -203,6 +203,7 @@ class DeteriorationService:
         # any routing failure cannot roll back the alert or its audit row.
         if action in ("deterioration_alert_raised", "deterioration_alert_escalated"):
             from apps.emr.services.escalation import EscalationRouter
+
             EscalationRouter().route(alert, requesting_user=self.requesting_user)
 
         return alert

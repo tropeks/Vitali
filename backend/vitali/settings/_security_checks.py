@@ -159,7 +159,9 @@ def warn_if_missing_sentry(dsn: str) -> None:
         )
 
 
-def assert_worker_database_separation(role: str, database_url: str, celery_database_url: str) -> None:
+def assert_worker_database_separation(
+    role: str, database_url: str, celery_database_url: str
+) -> None:
     """Raise ImproperlyConfigured when a worker/beat process lacks a separate DB DSN.
 
     The least-privilege boundary for Celery workers is the **database credential**,
