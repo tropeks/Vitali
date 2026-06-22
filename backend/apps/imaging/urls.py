@@ -2,6 +2,7 @@ from django.urls import path
 
 from .views import (
     OrthancSyncTriggerView,
+    OrthancWebhookView,
     StudyDetailView,
     StudyListCreateView,
     StudyOrthancBackfillView,
@@ -9,6 +10,11 @@ from .views import (
 
 urlpatterns = [
     path("imaging/studies/", StudyListCreateView.as_view(), name="imaging-study-list"),
+    path(
+        "imaging/orthanc/webhook/",
+        OrthancWebhookView.as_view(),
+        name="imaging-orthanc-webhook",
+    ),
     path(
         "imaging/studies/<uuid:study_id>/",
         StudyDetailView.as_view(),
