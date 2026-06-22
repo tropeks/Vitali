@@ -1,9 +1,12 @@
 import os
 from io import StringIO
+
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from apps.test_utils import TenantTestCase
+
 from apps.billing.models import InsuranceProvider
+from apps.test_utils import TenantTestCase
+
 
 class TestImportInsurances(TenantTestCase):
     def setUp(self):

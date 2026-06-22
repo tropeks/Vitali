@@ -17,7 +17,6 @@ import sys
 
 from django.test import TestCase, override_settings
 
-
 # ---------------------------------------------------------------------------
 # Helpers — reset state between test runs
 # ---------------------------------------------------------------------------
@@ -122,23 +121,15 @@ class OtelGateOnTests(TestCase):
     @classmethod
     def setUpClass(cls):
         # Skip the entire class if the OTel SDK is not installed.
-        pytest_importorskip = None
-        try:
-            import pytest
-
-            pytest_importorskip = pytest.importorskip
-        except ImportError:
-            pass
-
         try:
             import opentelemetry  # noqa: F401
-        except ImportError:
+        except ImportError as exc:
             import unittest
 
             raise unittest.SkipTest(
                 "opentelemetry SDK not installed — OTel ON tests skipped. "
                 "Rebuild the image after adding requirements to run these."
-            )
+            ) from exc
 
         super().setUpClass()
 
@@ -197,6 +188,7 @@ class OtelGateOnTests(TestCase):
         from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
             InMemorySpanExporter,
         )
+
         from vitali.observability import PHIScrubbingSpanProcessor
 
         exporter = InMemorySpanExporter()
@@ -264,6 +256,7 @@ class OtelGateOnTests(TestCase):
         Console exporter must never run in production.
         """
         from django.core.exceptions import ImproperlyConfigured
+
         from vitali.observability import setup_observability
 
         with self.assertRaises(ImproperlyConfigured):
@@ -285,9 +278,7 @@ class OtelGateOnTests(TestCase):
         (which is already covered by test_spans_generated_when_enabled and
         would pollute test isolation if called repeatedly).
         """
-        from django.conf import settings as django_settings
         from django.core.exceptions import ImproperlyConfigured
-        from opentelemetry.sdk.trace.export import ConsoleSpanExporter
 
         # Re-implement only the guard logic from setup_observability so we
         # exercise the decision point without side-effectful instrumentation.

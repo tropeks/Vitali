@@ -122,8 +122,8 @@ class Command(BaseCommand):
     @staticmethod
     def _parse_bundle(raw: bytes) -> list[x509.Certificate]:
         """Parse a ZIP bundle or a single PKCS#7 / PEM / DER file."""
-        import zipfile
         import io
+        import zipfile
         certs = []
         try:
             with zipfile.ZipFile(io.BytesIO(raw)) as z:

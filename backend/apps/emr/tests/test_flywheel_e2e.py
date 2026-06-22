@@ -25,7 +25,6 @@ from apps.emr.services.deterioration import DeteriorationService
 from apps.emr.services.no_show import NoShowService
 from apps.test_utils import TenantTestCase
 
-
 # ─── No-show flywheel ─────────────────────────────────────────────────────────
 
 

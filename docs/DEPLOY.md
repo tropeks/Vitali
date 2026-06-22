@@ -59,6 +59,63 @@ Subsequent deploys are handled automatically by `.github/workflows/deploy-stagin
 
 ---
 
+## Release Pipeline — Semver Tag Deploy (staging → prod)
+
+Tagged releases run an end-to-end deploy with **zero manual SSH** via
+`.github/workflows/release-deploy.yml`. Pushing a `v*.*.*` tag:
+
+```bash
+git tag v1.4.0
+git push origin v1.4.0
+```
+
+triggers, in order:
+
+1. **build-and-push** — builds the backend + frontend images and pushes them to
+   GHCR tagged with both the semver (`v1.4.0`) and the commit SHA (`sha-<sha>`).
+   Always runs, so released images land in GHCR even before any host is wired up.
+2. **deploy-staging** — pulls `IMAGE_TAG=v1.4.0` on the staging host, rolls the
+   stack, runs migrations + `collectstatic`, and runs `smoke_test.sh`. On failure
+   it auto-rolls-back to the previously running images (aliased `:rollback`).
+3. **deploy-production** — same flow against the production host using
+   `docker-compose.prod.yml`, **gated behind manual approval** (see below).
+
+The deploy jobs are dormant until their host is provisioned: set the repo
+variables `STAGING_ENABLED` / `PROD_ENABLED` to `"true"` (Settings → Secrets and
+variables → Actions → Variables) to enable each one.
+
+### Manual approval for production
+
+Production promotion is gated by a GitHub **Environment**, not a code change:
+
+1. Settings → Environments → **production** → add **Required reviewers**.
+2. When a release reaches `deploy-production`, GitHub pauses the job and requests
+   approval from a reviewer before any step runs. This is the "prod via aprovação
+   manual" gate — no SSH, no manual `docker` commands.
+
+### Release secrets & variables
+
+In addition to the staging secrets above, the `production` environment needs:
+
+| Secret | Purpose |
+|--------|---------|
+| `PROD_SSH_KEY` | Private key for SSH to the production server |
+| `PROD_HOST` | Production server IP or hostname |
+| `PROD_USER` | SSH username |
+| `PROD_BASE_URL` | Full URL for smoke tests (e.g. `https://vitali.com.br`) |
+
+| Repo variable | Purpose |
+|---------------|---------|
+| `STAGING_ENABLED` | `"true"` enables the staging deploy job |
+| `PROD_ENABLED` | `"true"` enables the production deploy job |
+
+Both hosts must already be logged in to GHCR (`docker login ghcr.io`) and have the
+repo checked out at `/opt/vitali` with their env files in place
+(`.env.staging` for staging, `/etc/vitali/secrets.env` for prod — see
+[SECRETS.md](./SECRETS.md)).
+
+---
+
 ## Environment Variables
 
 All variables must be set in `.env.staging` (and GitHub Secrets for the CI pipeline).
