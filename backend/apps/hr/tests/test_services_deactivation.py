@@ -14,7 +14,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.core.models import AuditLog, Role, User
-from apps.emr.models import Professional
+from apps.emr.models import Professional, ScheduleConfig
 from apps.hr.models import Employee
 from apps.hr.services import EmployeeDeactivationService
 from apps.test_utils import TenantTestCase
@@ -198,6 +198,98 @@ class TestEmployeeDeactivationService(TenantTestCase):
         # All three share the same correlation_id
         assert token_log.new_data["correlation_id"] == cid
         assert prof_log.new_data["correlation_id"] == cid
+
+    # ── 5. Schedule removed from the booking agenda ──────────────────────────
+
+    def test_deactivate_flips_schedule_config_inactive(self):
+        """Clinical deactivation flips ScheduleConfig.is_active off so the
+        professional drops out of the booking agenda (F-15 acceptance criterion)."""
+        user = _make_user("sched.deact@example.com", role=_medico_role())
+        employee = _make_employee(user)
+        professional = _make_professional(user)
+        config = ScheduleConfig.objects.create(professional=professional, working_days=[0, 1])
+
+        result = self.service.deactivate(employee, requesting_user=self.requester)
+
+        config.refresh_from_db()
+        assert config.is_active is False
+        assert result["schedule_deactivated"] is True
+
+    # ── 6. Signal-triggered cascade (F-15, issue #128) ───────────────────────
+
+    def test_signal_fires_cascade_on_status_flip_to_terminated(self):
+        """Flipping employment_status->terminated via a plain save() (no service
+        call, no DELETE endpoint) must run the full cascade via the post_save
+        signal: User deactivated, refresh tokens revoked, Professional and its
+        ScheduleConfig deactivated, and the audit chain written."""
+        user = _make_user("signal.deact@example.com", role=_medico_role())
+        employee = _make_employee(user)
+        professional = _make_professional(user)
+        config = ScheduleConfig.objects.create(professional=professional, working_days=[0, 1, 2])
+        RefreshToken.for_user(user)  # something to blacklist
+
+        employee.employment_status = "terminated"
+        employee.save()
+
+        user.refresh_from_db()
+        employee.refresh_from_db()
+        professional.refresh_from_db()
+        config.refresh_from_db()
+        assert user.is_active is False
+        assert employee.terminated_at is not None
+        assert professional.is_active is False
+        assert config.is_active is False
+        # Cascade audit written even though there is no requesting_user.
+        assert AuditLog.objects.filter(
+            resource_id=str(employee.id), action="employee_terminated"
+        ).exists()
+        assert AuditLog.objects.filter(resource_id=str(user.id), action="tokens_revoked").exists()
+
+    def test_signal_cascade_is_idempotent(self):
+        """Re-saving an already-terminated employee does not re-run the cascade
+        (no duplicate AuditLog entries)."""
+        user = _make_user("idem.deact@example.com", role=_admin_role())
+        employee = _make_employee(user)
+
+        employee.employment_status = "terminated"
+        employee.save()
+        first_count = AuditLog.objects.filter(resource_id=str(employee.id)).count()
+
+        employee.save()  # already terminated → signal must no-op
+        second_count = AuditLog.objects.filter(resource_id=str(employee.id)).count()
+        assert second_count == first_count
+
+    def test_service_path_emits_no_duplicate_audit_from_signal(self):
+        """Going through the service still yields exactly one of each audit entry —
+        the re-entrancy guard stops the signal from doubling them."""
+        user = _make_user("guard.deact@example.com", role=_admin_role())
+        employee = _make_employee(user)
+
+        self.service.deactivate(employee, requesting_user=self.requester)
+
+        assert (
+            AuditLog.objects.filter(
+                resource_id=str(employee.id), action="employee_terminated"
+            ).count()
+            == 1
+        )
+        assert (
+            AuditLog.objects.filter(resource_id=str(user.id), action="tokens_revoked").count() == 1
+        )
+
+    def test_signal_ignored_on_status_flip_to_active(self):
+        """A transition to a non-terminated status must not trigger the cascade."""
+        user = _make_user("active.flip@example.com", role=_admin_role())
+        employee = _make_employee(user, employment_status="leave")
+
+        employee.employment_status = "active"
+        employee.save()
+
+        user.refresh_from_db()
+        assert user.is_active is True
+        assert not AuditLog.objects.filter(
+            resource_id=str(employee.id), action="employee_terminated"
+        ).exists()
 
 
 class TestEmployeeDeactivationView(TenantTestCase):
