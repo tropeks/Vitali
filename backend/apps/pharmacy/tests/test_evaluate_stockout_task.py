@@ -15,7 +15,7 @@ from decimal import Decimal
 from django.utils import timezone
 
 from apps.core.models import FeatureFlag
-from apps.pharmacy.models import Drug, Material, StockAlert, StockItem, StockMovement
+from apps.pharmacy.models import Drug, StockAlert, StockItem, StockMovement
 from apps.pharmacy.services.stockout_safety import StockoutService
 from apps.test_utils import TenantTestCase
 

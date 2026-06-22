@@ -16,8 +16,6 @@ Run: docker compose exec -T django pytest apps/emr/tests/test_escalation_routing
 from decimal import Decimal
 from unittest.mock import patch
 
-from django.utils import timezone
-
 from apps.core.models import AuditLog, FeatureFlag, User
 from apps.emr.models import DeteriorationAlert, EscalationConfig, Patient, Professional
 from apps.emr.services.deterioration import DeteriorationService

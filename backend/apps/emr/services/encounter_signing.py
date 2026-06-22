@@ -78,9 +78,10 @@ class EncounterSigningService:
         if encounter.status != "open":
             raise ValueError("Apenas consultas abertas podem ser assinadas.")
 
-        from apps.emr.services.icp_brasil_integration import sign_with_icp_brasil
         import json
-        
+
+        from apps.emr.services.icp_brasil_integration import sign_with_icp_brasil
+
         # Serialize the encounter for signing
         doc_content = json.dumps({
             "encounter_id": str(encounter.id),
@@ -88,7 +89,7 @@ class EncounterSigningService:
             "professional_id": str(encounter.professional_id),
             "chief_complaint": encounter.chief_complaint,
         }, sort_keys=True).encode("utf-8")
-        
+
         is_icp, sig_hash = sign_with_icp_brasil(
             user=self.requesting_user,
             document_type="encounter",

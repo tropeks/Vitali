@@ -19,7 +19,6 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 from django_tenants.utils import schema_context
 
-
 SCHEMA = "sandbox"
 DOMAIN = "sandbox.localhost"
 USER_EMAIL = "sandbox@vitali.dev"
@@ -155,7 +154,7 @@ class Command(BaseCommand):
         return Encounter.objects.create(patient=patient, professional=prof)
 
     def _make_prescription(self, patient, prof):
-        from apps.emr.models import Encounter, Prescription
+        from apps.emr.models import Prescription
         enc = self._make_encounter(patient, prof)
         return Prescription.objects.create(encounter=enc, patient=patient, prescriber=prof)
 
@@ -186,7 +185,7 @@ class Command(BaseCommand):
         # Fixed anchor so re-runs don't generate overlapping slots on the same professional.
         # Slots are 1 h apart (appointment duration 30 min) → no overlaps ever.
         import datetime as _dt
-        anchor = _dt.datetime(2027, 1, 10, 8, 0, 0, tzinfo=_dt.timezone.utc)
+        anchor = _dt.datetime(2027, 1, 10, 8, 0, 0, tzinfo=_dt.UTC)
         specs = [
             ("0.80", "high", "open", "pending"),
             ("0.75", "high", "acknowledged", "intercepted"),

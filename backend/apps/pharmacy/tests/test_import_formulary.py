@@ -10,7 +10,6 @@ import os
 from decimal import Decimal
 
 from django.core.management import CommandError, call_command
-from django.db import connection
 
 from apps.pharmacy.models import DoseRule, Drug, MedicationFormulary
 from apps.test_utils import TenantTestCase

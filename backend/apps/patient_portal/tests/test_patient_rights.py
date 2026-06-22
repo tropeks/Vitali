@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from rest_framework.test import APIClient
-from apps.core.models import FeatureFlag, Role, User, AuditLog
+
+from apps.core.models import AuditLog, FeatureFlag, Role, User
 from apps.emr.models import Patient
 from apps.patient_portal.models import PatientPortalAccess
 from apps.test_utils import TenantTestCase

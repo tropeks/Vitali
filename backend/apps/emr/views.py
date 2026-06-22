@@ -856,8 +856,9 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_409_CONFLICT,
                 )
 
-            from apps.emr.services.icp_brasil_integration import sign_with_icp_brasil
             import json
+
+            from apps.emr.services.icp_brasil_integration import sign_with_icp_brasil
 
             # Serialize prescription to sign
             doc_content = json.dumps({

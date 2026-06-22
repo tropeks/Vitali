@@ -1,11 +1,10 @@
 import csv
 import logging
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
-from django_tenants.utils import schema_context
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +78,7 @@ class Command(BaseCommand):
             from apps.emr.models import Patient
             with transaction.atomic():
                 existing_patients = {p.cpf: p for p in Patient.objects.all() if p.cpf}
-                
+
                 for row in rows:
                     cpf = (row.get("cpf") or row.get("CPF")).strip()
                     full_name = (row.get("full_name") or row.get("nome") or row.get("nome_completo")).strip()

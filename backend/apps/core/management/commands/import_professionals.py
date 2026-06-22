@@ -4,7 +4,6 @@ from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
-from django_tenants.utils import schema_context
 
 logger = logging.getLogger(__name__)
 
@@ -82,8 +81,8 @@ class Command(BaseCommand):
             except AttributeError:
                 admin_user = User.objects.first()
 
-            from apps.hr.services import EmployeeOnboardingService
             from apps.hr.models import Employee
+            from apps.hr.services import EmployeeOnboardingService
 
             with transaction.atomic():
                 for row in rows:
@@ -99,12 +98,12 @@ class Command(BaseCommand):
                     specialty = (row.get("specialty") or row.get("especialidade") or "").strip()
 
                     user_exists = User.objects.filter(email=email).first()
-                    
+
                     if user_exists:
                         # Idempotent: user exists
                         # Ensure tenant membership
                         UserTenantMembership.objects.get_or_create(user=user_exists, tenant=tenant)
-                        
+
                         # Try to update Employee
                         emp = Employee.objects.filter(user=user_exists).first()
                         if emp:
@@ -134,7 +133,7 @@ class Command(BaseCommand):
                             UserTenantMembership.objects.get_or_create(user=employee.user, tenant=tenant)
                             created += 1
                         except Exception as e:
-                            raise CommandError(f"Failed to onboard {email}: {e}")
+                            raise CommandError(f"Failed to onboard {email}: {e}") from e
 
                 if dry_run:
                     transaction.set_rollback(True)

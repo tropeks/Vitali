@@ -223,23 +223,24 @@ class TestEncounterSigningService(TenantTestCase):
     def test_sign_encounter_with_valid_pfx_stores_digital_signature(self):
         """Encounter with valid certificate creates DigitalSignature and sets is_icp_brasil=True."""
         import base64
-        from apps.signatures.tests.test_icp_brasil_signer import _make_self_signed_pkcs12
+
         from apps.signatures.models import DigitalSignature
+        from apps.signatures.tests.test_icp_brasil_signer import _make_self_signed_pkcs12
 
         pfx, cert, _ = _make_self_signed_pkcs12(subject_cn="Dr. Test")
         pfx_b64 = base64.b64encode(pfx).decode("ascii")
 
         encounter = _make_encounter(self.patient, self.professional)
         service = EncounterSigningService(requesting_user=self.requester)
-        
+
         with patch(_TASK_PATCH):
             result = service.sign(encounter, pkcs12_b64=pfx_b64, pkcs12_password="test-pass")
-            
+
         self.assertEqual(result.status, "signed")
         # Since it's a self-signed cert, is_icp_brasil is False
         self.assertFalse(result.is_icp_brasil)
         self.assertNotEqual(result.signature_hash, "")
-        
+
         sig = DigitalSignature.objects.filter(document_type="encounter", document_id=str(encounter.id)).first()
         self.assertIsNotNone(sig)
         self.assertEqual(sig.document_hash_hex, result.signature_hash)
@@ -250,13 +251,13 @@ class TestEncounterSigningService(TenantTestCase):
 
         encounter = _make_encounter(self.patient, self.professional)
         service = EncounterSigningService(requesting_user=self.requester)
-        
+
         with patch(_TASK_PATCH):
             result = service.sign(encounter, pkcs12_b64="invalid_base64", pkcs12_password="wrong")
-            
+
         self.assertEqual(result.status, "signed")
         self.assertFalse(result.is_icp_brasil)
         self.assertEqual(result.signature_hash, "")
-        
+
         sig = DigitalSignature.objects.filter(document_type="encounter", document_id=str(encounter.id)).first()
         self.assertIsNone(sig)

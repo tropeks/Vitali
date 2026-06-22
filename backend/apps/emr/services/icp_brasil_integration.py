@@ -1,9 +1,7 @@
-import json
 import logging
-from typing import Tuple, Optional
 
-from apps.signatures.services.icp_brasil import ICPBrasilSigner, ICPBrasilSignerError
 from apps.signatures.models import DigitalSignature
+from apps.signatures.services.icp_brasil import ICPBrasilSigner, ICPBrasilSignerError
 
 logger = logging.getLogger(__name__)
 
@@ -12,9 +10,9 @@ def sign_with_icp_brasil(
     document_type: str,
     document_id: str,
     document_content: bytes,
-    pkcs12_b64: Optional[str],
-    pkcs12_password: Optional[str]
-) -> Tuple[bool, str]:
+    pkcs12_b64: str | None,
+    pkcs12_password: str | None
+) -> tuple[bool, str]:
     """
     Tries to sign the document with ICP-Brasil.
     Returns (is_icp_brasil, signature_hash).
