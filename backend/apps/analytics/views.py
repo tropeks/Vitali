@@ -563,8 +563,30 @@ class GlosaAccuracyView(APIView):
     def get(self, request):
         from apps.ai.models import GlosaPrediction
 
+        # ── Multi-item guide filter (#126) ────────────────────────────────────
+        # `was_denied` is the per-prediction ground-truth label backfilled by
+        # retorno_parser. For a DENIED guide that carries more than one item,
+        # TISS 4.01.00 retornos frequently express the denial only at guide
+        # level (<glosasGuia> / flat <glosas>) with no per-procedure context,
+        # so the parser cannot attribute the denial to a specific item and the
+        # label cannot be trusted for any single line of that guide. Including
+        # such guides would smear one guide-level denial across every item's
+        # label and corrupt accuracy/precision/recall.
+        #
+        # We therefore restrict the metric to SINGLE-ITEM guides, where a guide
+        # denial unambiguously maps to its one item and `was_denied` is sound.
+        #
+        # LIMITATION / when to remove this filter: TISS 4.02.00+ introduces
+        # reliable item-level denial codes (negativa por item). Once retornos
+        # carry per-item denial reasons end-to-end, multi-item guides can be
+        # labelled per line and included here — drop the `guide__in` filter and
+        # label items directly from item-level glosas instead.
+        single_item_guides = (
+            TISSGuide.objects.annotate(_n_items=Count("items")).filter(_n_items=1).values("pk")
+        )
+
         rows = (
-            GlosaPrediction.objects.filter(guide__isnull=False)
+            GlosaPrediction.objects.filter(guide__isnull=False, guide__in=single_item_guides)
             .values("insurer_ans_code")
             .annotate(
                 total=Count("id", filter=Q(was_denied__isnull=False)),
