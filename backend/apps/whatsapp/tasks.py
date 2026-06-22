@@ -376,3 +376,78 @@ def send_post_opt_in_welcome(self, contact_id: str, correlation_id: str | None =
                 contact_id,
                 exc_info=True,
             )
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def send_opt_in_invitation(self, contact_id: str, correlation_id: str | None = None) -> None:
+    """F-04 (E-013): proactively send the welcome + LGPD opt-in request.
+
+    Fired from the patient-registration cascade when a brand-new WhatsAppContact
+    is created and the tenant has the ``whatsapp`` module enabled. Reuses the same
+    LGPD consent copy the FSM shows on first inbound contact, and parks the
+    contact in ``PENDING_OPTIN`` so the patient's reply ("sim"/"aceito"/"1") is
+    interpreted directly as opt-in.
+
+    Fail-open (mirrors send_post_opt_in_welcome): a messaging failure must never
+    roll back patient registration. On exhausted retries an
+    ``opt_in_invitation_failed`` AuditLog is written instead of raising.
+
+    No-op when the contact has already opted in or previously opted out — a prior
+    consent decision is honoured and never re-prompted.
+    """
+    from celery.exceptions import MaxRetriesExceededError
+
+    from apps.core.models import AuditLog
+    from apps.whatsapp.fsm import LGPD_CONSENT_MSG
+    from apps.whatsapp.gateway import get_gateway
+    from apps.whatsapp.models import ConversationSession, WhatsAppContact
+
+    try:
+        contact = WhatsAppContact.objects.select_related("patient").get(id=contact_id)
+    except WhatsAppContact.DoesNotExist:
+        logger.error("send_opt_in_invitation: contact %s not found", contact_id)
+        return
+
+    if contact.opt_in or contact.opt_out_at is not None:
+        # Consent already decided — never re-prompt.
+        return
+
+    patient_name = contact.patient.full_name if contact.patient else None
+    greeting = f"Olá {patient_name}! 👋\n\n" if patient_name else ""
+    text = greeting + LGPD_CONSENT_MSG
+
+    try:
+        gateway = get_gateway()
+        gateway.send_text(contact.phone, text)
+        # Park the contact in PENDING_OPTIN so the reply opts them in directly.
+        session, _ = ConversationSession.get_or_create_for_contact(contact)
+        session.state = "PENDING_OPTIN"
+        session.expires_at = timezone.now() + timedelta(minutes=30)
+        session.save(update_fields=["state", "expires_at", "updated_at"])
+        AuditLog.objects.create(
+            user=None,
+            action="opt_in_invitation_sent",
+            resource_type="whatsapp_contact",
+            resource_id=str(contact_id),
+            new_data={"phone": contact.phone, "correlation_id": correlation_id},
+        )
+    except Exception as exc:
+        try:
+            raise self.retry(exc=exc) from exc
+        except MaxRetriesExceededError:
+            AuditLog.objects.create(
+                user=None,
+                action="opt_in_invitation_failed",
+                resource_type="whatsapp_contact",
+                resource_id=str(contact_id),
+                new_data={
+                    "reason": "max_retries_exceeded",
+                    "error": str(exc)[:200],
+                    "correlation_id": correlation_id,
+                },
+            )
+            logger.error(
+                "send_opt_in_invitation: persistent failure for contact %s",
+                contact_id,
+                exc_info=True,
+            )
