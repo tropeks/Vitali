@@ -51,6 +51,13 @@ GLOSA_REASON_CODES = [
     ("03", "Incompatibilidade de idade"),
     ("04", "Prazo de carência"),
     ("05", "Inconsistência nos dados do beneficiário"),
+    # ANS TISS 4.01 — Tabela 38 (Terminologia de mensagens: glosas, negativas e
+    # outras). "1702" is the standard procedure-level duplicate-billing reason
+    # ("Cobrança de procedimento em duplicidade"); it is what the deterministic
+    # duplicate check maps to (see GlosaChecker.ANS_CODE_DUPLICATE) and what the
+    # retorno parser must recognise instead of downgrading an inbound duplicate
+    # glosa to the generic "99".
+    ("1702", "Cobrança de procedimento em duplicidade"),
     ("99", "Outro"),
 ]
 
