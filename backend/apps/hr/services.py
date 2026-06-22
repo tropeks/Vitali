@@ -359,7 +359,9 @@ class EmployeeDeactivationService:
             return 0
         from rest_framework.authtoken.models import Token
 
-        deleted, _ = Token.objects.filter(user=user).delete()
+        # django-stubs cannot resolve the manager because authtoken is not in
+        # INSTALLED_APPS (guarded above), so ``objects`` is untyped here.
+        deleted, _ = Token.objects.filter(user=user).delete()  # type: ignore[attr-defined]
         return deleted
 
     def _deactivate_schedule(self, professional) -> bool:
