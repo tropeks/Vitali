@@ -258,6 +258,33 @@ def _apply_study_to_tenants(
     return "matched"
 
 
+def ingest_one_study(orthanc_id: str, *, client: OrthancClient | None = None) -> str:
+    """Fetch ONE Orthanc study and backfill the matching tenant ``DicomStudy``.
+
+    The *push* counterpart of the cursor-driven poller: the Orthanc webhook
+    (``OnStableStudy`` Lua hook) calls this with the study's Orthanc id the
+    moment it becomes stable, so ``orthanc_study_id`` is backfilled immediately
+    instead of waiting for the next beat tick. The match/backfill rules are
+    identical to the poller — it reuses :func:`_apply_study_to_tenants`, so a
+    study with no pre-registered row is matched against ``DicomStudy`` rows that
+    already exist (never auto-created, see module docstring).
+
+    Returns the outcome: ``"matched"``, ``"skipped"`` or ``"ambiguous"``.
+    Raises :class:`OrthancError` if the study cannot be fetched (the caller
+    decides whether to surface a 502 so the PACS can retry).
+    """
+    client = client or OrthancClient()
+    study = client.get_study(orthanc_id)
+    stats = client.get_study_statistics(orthanc_id)
+    return _apply_study_to_tenants(
+        orthanc_id=orthanc_id,
+        study_uid=client.study_instance_uid(study),
+        accession=client.accession_number(study),
+        n_series=client.series_count(study, stats),
+        n_instances=client.instance_count(study, stats),
+    )
+
+
 def sync_orthanc_studies(client: OrthancClient | None = None) -> dict:
     """Run one ingestion pass. Returns a summary dict.
 
