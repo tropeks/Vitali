@@ -273,59 +273,144 @@ class EmployeeDeactivationService:
         from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
         from rest_framework_simplejwt.tokens import RefreshToken
 
-        correlation_id = str(uuid4())
-        with transaction.atomic():
-            # Soft-delete Employee
-            employee.employment_status = "terminated"
-            employee.terminated_at = timezone.now()
-            employee.save(update_fields=["employment_status", "terminated_at", "updated_at"])
+        # Re-entrancy guard. The post_save signal (apps.hr.signals) also routes
+        # terminations here; mark the instance so the save() below doesn't make
+        # the signal recurse into a second cascade (and duplicate AuditLogs).
+        employee._f15_cascade_active = True
+        try:
+            correlation_id = str(uuid4())
+            with transaction.atomic():
+                # Soft-delete Employee
+                employee.employment_status = "terminated"
+                employee.terminated_at = timezone.now()
+                employee.save(update_fields=["employment_status", "terminated_at", "updated_at"])
 
-            # Deactivate User
-            employee.user.is_active = False
-            employee.user.save(update_fields=["is_active"])
+                # Deactivate User
+                employee.user.is_active = False
+                employee.user.save(update_fields=["is_active"])
 
-            # Revoke all refresh tokens for the user (idempotent)
-            tokens_revoked = 0
-            tokens_already_blacklisted = 0
-            for ot in OutstandingToken.objects.filter(user=employee.user):
+                # Revoke all refresh tokens for the user (idempotent)
+                tokens_revoked = 0
+                tokens_already_blacklisted = 0
+                for ot in OutstandingToken.objects.filter(user=employee.user):
+                    try:
+                        RefreshToken(ot.token).blacklist()
+                        tokens_revoked += 1
+                    except TokenError:
+                        tokens_already_blacklisted += 1
+
+                # Revoke first-party API keys / personal access tokens.
+                api_keys_revoked = self._revoke_api_keys(employee.user)
+
+                # Deactivate Professional + drop it from the scheduling agenda.
+                professional_deactivated = False
+                schedule_deactivated = False
                 try:
-                    RefreshToken(ot.token).blacklist()
-                    tokens_revoked += 1
-                except TokenError:
-                    tokens_already_blacklisted += 1
+                    professional = employee.user.professional
+                except Exception:
+                    professional = None  # No Professional row — non-clinical user
+                if professional is not None:
+                    if professional.is_active:
+                        professional.is_active = False
+                        professional.save(update_fields=["is_active"])
+                        professional_deactivated = True
+                    schedule_deactivated = self._deactivate_schedule(professional)
 
-            # Deactivate Professional if it exists
-            professional_deactivated = False
-            try:
-                professional = employee.user.professional
-                if professional and professional.is_active:
-                    professional.is_active = False
-                    professional.save(update_fields=["is_active"])
-                    professional_deactivated = True
-            except Exception:
-                pass  # No Professional row — non-clinical user
+                # Deactivate the staff WhatsApp channel (best-effort, fail-open).
+                self._deactivate_whatsapp_staff_channel(employee.user)
 
-            # WhatsApp staff channel inactive — internal flag flip only, no API call.
-            # Sprint 18 doesn't track staff WhatsApp channels separately, so this is
-            # a no-op placeholder for Sprint 21+ when staff-channel tracking lands.
-
-            # AuditLog chain
-            self._audit_chain(
-                employee=employee,
-                correlation_id=correlation_id,
-                requesting_user=requesting_user,
-                tokens_revoked=tokens_revoked,
-                tokens_already_blacklisted=tokens_already_blacklisted,
-                professional_deactivated=professional_deactivated,
-            )
+                # AuditLog chain
+                self._audit_chain(
+                    employee=employee,
+                    correlation_id=correlation_id,
+                    requesting_user=requesting_user,
+                    tokens_revoked=tokens_revoked,
+                    tokens_already_blacklisted=tokens_already_blacklisted,
+                    professional_deactivated=professional_deactivated,
+                    api_keys_revoked=api_keys_revoked,
+                    schedule_deactivated=schedule_deactivated,
+                )
+        finally:
+            employee._f15_cascade_active = False
 
         return {
             "employee": employee,
             "tokens_revoked": tokens_revoked,
             "tokens_already_blacklisted": tokens_already_blacklisted,
+            "api_keys_revoked": api_keys_revoked,
             "professional_deactivated": professional_deactivated,
+            "schedule_deactivated": schedule_deactivated,
             "user_deactivated": True,
         }
+
+    def _revoke_api_keys(self, user) -> int:
+        """Revoke any first-party per-user API keys / personal access tokens.
+
+        Sprint 18 has no first-party per-user API-key store — the only API keys
+        in the codebase are outbound third-party service credentials kept in
+        settings (not user-scoped), and DRF TokenAuth is not installed. This is
+        a documented extension point so that when a per-user key model lands,
+        F-15 stays the single place that severs a terminated user's access.
+        Returns the number of keys revoked (0 today).
+        """
+        from django.apps import apps as django_apps
+
+        if not django_apps.is_installed("rest_framework.authtoken"):
+            return 0
+        from rest_framework.authtoken.models import Token
+
+        # django-stubs cannot resolve the manager because authtoken is not in
+        # INSTALLED_APPS (guarded above), so ``objects`` is untyped here.
+        deleted, _ = Token.objects.filter(user=user).delete()  # type: ignore[attr-defined]
+        return deleted
+
+    def _deactivate_schedule(self, professional) -> bool:
+        """Flip ``ScheduleConfig.is_active`` off so the professional drops out of
+        the booking agenda.
+
+        Both ``apps.whatsapp.slot_service`` and
+        ``apps.smart_scheduling.services.ranker`` gate slot generation on this
+        flag, so flipping it is what actually satisfies the F-15 criterion
+        ("remove professional da agenda de agendamentos"). Returns True if a
+        config was deactivated.
+        """
+        from apps.emr.models import ScheduleConfig
+
+        try:
+            config = professional.schedule_config
+        except ScheduleConfig.DoesNotExist:
+            return False
+        if config.is_active:
+            config.is_active = False
+            config.save(update_fields=["is_active"])
+            return True
+        return False
+
+    def _deactivate_whatsapp_staff_channel(self, user) -> None:
+        """Best-effort deactivation of the user's staff WhatsApp channel.
+
+        Sprint 18 doesn't persist staff WhatsApp channels as their own rows
+        (onboarding's ``setup_staff_whatsapp_channel`` only sends a welcome
+        message), so there is no dedicated channel row to flip yet. If the user
+        has a phone and a matching opted-in ``WhatsAppContact``, opt it out so no
+        further staff messages are sent. Documented extension point for Sprint
+        21+ staff-channel tracking. Fail-open: never blocks the cascade.
+        """
+        phone = (getattr(user, "phone", "") or "").strip()
+        if not phone:
+            return
+        try:
+            from apps.whatsapp.models import WhatsAppContact
+
+            contact = WhatsAppContact.objects.filter(phone=phone, opt_in=True).first()
+            if contact is not None:
+                contact.do_opt_out()
+        except Exception:
+            logger.warning(
+                "F-15: failed to deactivate WhatsApp staff channel for user %s",
+                getattr(user, "id", "?"),
+                exc_info=True,
+            )
 
     def _audit_chain(
         self,
@@ -336,6 +421,8 @@ class EmployeeDeactivationService:
         tokens_revoked,
         tokens_already_blacklisted,
         professional_deactivated,
+        api_keys_revoked=0,
+        schedule_deactivated=False,
     ):
         from apps.core.models import AuditLog
 
@@ -348,6 +435,7 @@ class EmployeeDeactivationService:
                 "correlation_id": correlation_id,
                 "user_id": str(employee.user.id),
                 "terminated_at": employee.terminated_at.isoformat(),
+                "schedule_deactivated": schedule_deactivated,
             },
         )
         AuditLog.objects.create(
@@ -359,6 +447,7 @@ class EmployeeDeactivationService:
                 "correlation_id": correlation_id,
                 "revoked_count": tokens_revoked,
                 "already_blacklisted_count": tokens_already_blacklisted,
+                "api_keys_revoked": api_keys_revoked,
             },
         )
         if professional_deactivated:
