@@ -87,8 +87,8 @@ def _opt_decimal(row: dict, col: str) -> Decimal | None:
         return None
     try:
         return Decimal(raw)
-    except (InvalidOperation, ValueError):
-        raise ValueError(f"column '{col}' is not a valid decimal: {raw!r}")
+    except (InvalidOperation, ValueError) as exc:
+        raise ValueError(f"column '{col}' is not a valid decimal: {raw!r}") from exc
 
 
 def _opt_int(row: dict, col: str) -> int | None:
@@ -98,8 +98,8 @@ def _opt_int(row: dict, col: str) -> int | None:
         return None
     try:
         return int(raw)
-    except (ValueError, TypeError):
-        raise ValueError(f"column '{col}' is not a valid integer: {raw!r}")
+    except (ValueError, TypeError) as exc:
+        raise ValueError(f"column '{col}' is not a valid integer: {raw!r}") from exc
 
 
 def _required_str(row: dict, col: str) -> str:

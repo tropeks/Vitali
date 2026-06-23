@@ -18,10 +18,10 @@ from django.test import TestCase
 
 from apps.core.observability_logging import OTelTraceLogFilter
 
-
 # ---------------------------------------------------------------------------
 # Helper
 # ---------------------------------------------------------------------------
+
 
 def _make_record() -> logging.LogRecord:
     return logging.LogRecord(
@@ -93,7 +93,7 @@ class OTelTraceLogFilterActiveSpanTests(TestCase):
             raise unittest.SkipTest(
                 "opentelemetry SDK not installed — active-span OTel log filter "
                 "tests skipped. Rebuild the image to run these."
-            )
+            ) from None
         super().setUpClass()
 
     def test_filter_populates_from_active_span(self):

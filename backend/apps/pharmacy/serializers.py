@@ -344,7 +344,9 @@ class DoseRuleSerializer(serializers.ModelSerializer):
         if obj.validated_by_id is None:
             return None
         user = obj.validated_by
-        full_name = getattr(user, "full_name", None) or getattr(user, "get_full_name", lambda: None)()
+        full_name = (
+            getattr(user, "full_name", None) or getattr(user, "get_full_name", lambda: None)()
+        )
         return full_name or user.email
 
 
