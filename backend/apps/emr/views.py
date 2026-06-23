@@ -318,6 +318,17 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             old_data={"status": old_status},
             new_data={"status": new_status},
         )
+        # F-11 (E-013): on the transition into no_show, run the cascade
+        # (re-engagement WhatsApp + reopen slot + consult waitlist). Deferred to
+        # on_commit so the no_show row is durable before the task reads it; the
+        # cascade is fail-open and never affects this response.
+        if new_status == "no_show" and old_status != "no_show":
+            from django.db import transaction
+
+            from apps.emr.tasks_waitlist import cascade_no_show
+
+            appointment_id = str(appointment.id)
+            transaction.on_commit(lambda: cascade_no_show.delay(appointment_id))
         return Response(AppointmentSerializer(appointment).data)
 
     @action(detail=True, methods=["post"], url_path="check-in")
