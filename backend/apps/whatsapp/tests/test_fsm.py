@@ -7,7 +7,9 @@ from unittest.mock import MagicMock, patch
 
 from django.utils import timezone
 
+from apps.core.models import AuditLog, FeatureFlag
 from apps.test_utils import TenantTestCase
+from apps.triage.models import TriageSession
 from apps.whatsapp.context import get_context, set_context
 from apps.whatsapp.fsm import ConversationFSM, _is_valid_cpf, detect_intent
 from apps.whatsapp.models import ConversationSession, WhatsAppContact
@@ -214,6 +216,161 @@ class FSMStateTransitionTests(TenantTestCase):
         fsm.process("nova consulta")
         session.refresh_from_db()
         self.assertEqual(session.state, "SELECTING_SELF_OR_OTHER")
+
+
+def _enable_triage(tenant, enabled=True):
+    FeatureFlag.objects.update_or_create(
+        tenant=tenant, module_key="triage", defaults={"is_enabled": enabled}
+    )
+
+
+def _answer_all_questions(fsm, session, answers):
+    """Walk TRIAGE_QUESTIONS feeding the given ordered yes/no answers."""
+    out = []
+    for ans in answers:
+        out = fsm.process(ans)
+        session.refresh_from_db()
+    return out
+
+
+class TriageFlowTests(TenantTestCase):
+    """End-to-end triage sub-flow over the WhatsApp ConversationFSM."""
+
+    # Ordered to leave the patient conscious (altered_consciousness #4 → "sim")
+    # and every red flag negative → routine classification.
+    ROUTINE_ANSWERS = ["nao", "nao", "nao", "sim", "nao", "nao"]
+
+    def setUp(self):
+        _enable_triage(self.tenant)
+
+    def test_triagem_gated_off_when_flag_disabled(self):
+        _enable_triage(self.tenant, enabled=False)
+        contact = _make_contact()
+        session = _make_session(contact, state="IDLE")
+        fsm, _ = _make_fsm(session)
+        msgs = fsm.process("triagem")
+        session.refresh_from_db()
+        self.assertEqual(session.state, "IDLE")
+        self.assertIn("não está disponível", msgs[0])
+        self.assertEqual(TriageSession.objects.count(), 0)
+
+    def test_triagem_intent_starts_session(self):
+        contact = _make_contact()
+        session = _make_session(contact, state="IDLE")
+        fsm, _ = _make_fsm(session)
+        msgs = fsm.process("triagem")
+        session.refresh_from_db()
+        self.assertEqual(session.state, "TRIAGE_COMPLAINT")
+        self.assertEqual(TriageSession.objects.count(), 1)
+        ts = TriageSession.objects.get()
+        self.assertEqual(get_context(session)["triage_session_id"], str(ts.id))
+        self.assertEqual(ts.contact_phone, contact.phone)
+        self.assertIn("descreva", msgs[0].lower())
+
+    def test_complaint_advances_to_questions(self):
+        contact = _make_contact()
+        session = _make_session(contact, state="IDLE")
+        fsm, _ = _make_fsm(session)
+        fsm.process("triagem")
+        msgs = fsm.process("dor de garganta há dois dias")
+        session.refresh_from_db()
+        self.assertEqual(session.state, "TRIAGE_QUESTIONS")
+        ts = TriageSession.objects.get()
+        self.assertEqual(ts.chief_complaint, "dor de garganta há dois dias")
+        # First red-flag question is sent
+        self.assertIn("sim", msgs[0].lower())
+
+    def test_full_flow_routine_classification(self):
+        contact = _make_contact()
+        session = _make_session(contact, state="IDLE")
+        fsm, _ = _make_fsm(session)
+        fsm.process("triagem")
+        fsm.process("dor de garganta leve")
+        msgs = _answer_all_questions(fsm, session, self.ROUTINE_ANSWERS)
+
+        ts = TriageSession.objects.get()
+        self.assertEqual(ts.urgency, "routine")
+        self.assertEqual(ts.status, TriageSession.STATUS_EVALUATED)
+        # Conversation returns to IDLE and clears the triage handle
+        self.assertEqual(session.state, "IDLE")
+        self.assertIsNone(get_context(session)["triage_session_id"])
+        self.assertIn("urgência", msgs[0].lower())
+
+    def test_unparseable_answer_reprompts(self):
+        contact = _make_contact()
+        session = _make_session(contact, state="IDLE")
+        fsm, _ = _make_fsm(session)
+        fsm.process("triagem")
+        fsm.process("dor de garganta")
+        msgs = fsm.process("talvez, não sei")
+        session.refresh_from_db()
+        self.assertEqual(session.state, "TRIAGE_QUESTIONS")
+        self.assertIn("sim", msgs[0].lower())
+
+    def test_emergency_keyword_notifies_staff(self):
+        from apps.emr.models import EscalationConfig
+
+        EscalationConfig.objects.create(is_active=True, notify_emails=["enfermagem@clinica.test"])
+        contact = _make_contact()
+        session = _make_session(contact, state="IDLE")
+        fsm, _ = _make_fsm(session)
+        fsm.process("triagem")
+        # "dor no peito" is an emergency chief-complaint keyword → emergency
+        # regardless of the red-flag answers.
+        fsm.process("estou com dor no peito")
+        # patch must stay active while captureOnCommitCallbacks executes the
+        # on_commit callback, so the patch wraps the capture (not vice-versa).
+        with patch("apps.triage.tasks.send_triage_emergency_notification.delay") as delay:
+            with self.captureOnCommitCallbacks(execute=True) as callbacks:
+                msgs = _answer_all_questions(fsm, session, self.ROUTINE_ANSWERS)
+
+        ts = TriageSession.objects.get()
+        self.assertEqual(ts.urgency, "emergency")
+        self.assertEqual(ts.status, TriageSession.STATUS_ESCALATED)
+
+        audit = AuditLog.objects.filter(action="triage_emergency_escalated").get()
+        self.assertEqual(audit.resource_id, str(ts.id))
+        self.assertEqual(audit.new_data["notify_emails"], ["enfermagem@clinica.test"])
+
+        # Staff delivery enqueued on commit with the configured recipients
+        self.assertEqual(len(callbacks), 1)
+        delay.assert_called_once_with(str(ts.id), ["enfermagem@clinica.test"])
+        self.assertIn("emergência", msgs[0].lower())
+
+    def test_emergency_without_recipients_still_audits_and_is_safe(self):
+        contact = _make_contact()
+        session = _make_session(contact, state="IDLE")
+        fsm, _ = _make_fsm(session)
+        fsm.process("triagem")
+        fsm.process("tive um desmaio")  # emergency keyword
+        msgs = _answer_all_questions(fsm, session, self.ROUTINE_ANSWERS)
+
+        ts = TriageSession.objects.get()
+        self.assertEqual(ts.urgency, "emergency")
+        self.assertTrue(AuditLog.objects.filter(action="triage_emergency_escalated").exists())
+        self.assertIn("emergência", msgs[0].lower())
+
+    def test_sair_during_triage_questions_opts_out(self):
+        contact = _make_contact()
+        session = _make_session(contact, state="IDLE")
+        fsm, _ = _make_fsm(session)
+        fsm.process("triagem")
+        fsm.process("dor de garganta")
+        fsm.process("sair")
+        session.refresh_from_db()
+        self.assertEqual(session.state, "OPTED_OUT")
+
+    def test_bare_nao_during_triage_is_a_clinical_answer(self):
+        contact = _make_contact()
+        session = _make_session(contact, state="IDLE")
+        fsm, _ = _make_fsm(session)
+        fsm.process("triagem")
+        fsm.process("dor de garganta")
+        fsm.process("nao")  # answers chest_pain, does NOT opt out
+        session.refresh_from_db()
+        self.assertEqual(session.state, "TRIAGE_QUESTIONS")
+        ts = TriageSession.objects.get()
+        self.assertEqual(ts.answers.get("chest_pain"), "não")
 
 
 class ConversationSessionLockingTests(TenantTestCase):
