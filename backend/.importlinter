@@ -52,6 +52,8 @@ ignore_imports =
     apps.emr.** -> apps.ai.**
     # emr -> pharmacy
     apps.emr.** -> apps.pharmacy.**
+    # emr -> signatures (S32 ICP-Brasil: encounter signing integrates the signer)
+    apps.emr.** -> apps.signatures.**
     # emr -> whatsapp
     apps.emr.** -> apps.whatsapp.**
     # fhir -> emr
