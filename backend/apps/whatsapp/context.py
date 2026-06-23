@@ -22,6 +22,9 @@ class ConversationContext(TypedDict, total=False):
     other_cpf: str | None  # Cleared immediately after patient matched/created
     other_patient_id: str | None  # UUID str — replaces other_cpf after match
 
+    # Triage sub-flow
+    triage_session_id: str | None  # UUID str of the active TriageSession, if any
+
     # FSM housekeeping
     mismatches: int | None  # Unrecognized input counter (FALLBACK_HUMAN at 3)
     last_message_id: str | None
@@ -37,6 +40,7 @@ _DEFAULTS: ConversationContext = {
     "other_name": None,
     "other_cpf": None,
     "other_patient_id": None,
+    "triage_session_id": None,
     "mismatches": 0,
     "last_message_id": None,
 }
