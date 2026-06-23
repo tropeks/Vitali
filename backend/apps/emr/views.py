@@ -318,6 +318,17 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             old_data={"status": old_status},
             new_data={"status": new_status},
         )
+        # F-11 (E-013): on the transition into no_show, run the cascade
+        # (re-engagement WhatsApp + reopen slot + consult waitlist). Deferred to
+        # on_commit so the no_show row is durable before the task reads it; the
+        # cascade is fail-open and never affects this response.
+        if new_status == "no_show" and old_status != "no_show":
+            from django.db import transaction
+
+            from apps.emr.tasks_waitlist import cascade_no_show
+
+            appointment_id = str(appointment.id)
+            transaction.on_commit(lambda: cascade_no_show.delay(appointment_id))
         return Response(AppointmentSerializer(appointment).data)
 
     @action(detail=True, methods=["post"], url_path="check-in")
@@ -741,9 +752,7 @@ class ClinicalDocumentViewSet(viewsets.ModelViewSet):
         """POST /documents/{id}/sign/ — assina o documento"""
         doc = self.get_object()
         if doc.is_signed:
-            return Response(
-                {"error": "Documento já assinado."}, status=status.HTTP_409_CONFLICT
-            )
+            return Response({"error": "Documento já assinado."}, status=status.HTTP_409_CONFLICT)
 
         from apps.emr.services.icp_brasil_integration import sign_with_icp_brasil
 
@@ -856,15 +865,19 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_409_CONFLICT,
                 )
 
-            from apps.emr.services.icp_brasil_integration import sign_with_icp_brasil
             import json
 
+            from apps.emr.services.icp_brasil_integration import sign_with_icp_brasil
+
             # Serialize prescription to sign
-            doc_content = json.dumps({
-                "prescription_id": str(locked_rx.id),
-                "patient_id": str(locked_rx.patient_id),
-                "notes": locked_rx.notes,
-            }, sort_keys=True).encode("utf-8")
+            doc_content = json.dumps(
+                {
+                    "prescription_id": str(locked_rx.id),
+                    "patient_id": str(locked_rx.patient_id),
+                    "notes": locked_rx.notes,
+                },
+                sort_keys=True,
+            ).encode("utf-8")
 
             is_icp, sig_hash = sign_with_icp_brasil(
                 user=request.user,

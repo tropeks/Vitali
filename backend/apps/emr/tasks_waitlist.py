@@ -69,6 +69,40 @@ def _get_patient_phone(entry) -> str | None:
 
 
 @shared_task
+def cascade_no_show(appointment_id: str):
+    """F-11 (E-013): run the no-show cascade for one appointment (async).
+
+    Dispatched (via ``transaction.on_commit``) the moment an appointment
+    transitions to ``no_show`` — from either the manual status PATCH or the
+    hourly ``mark_no_shows`` auto-marker. Loads the appointment, re-checks it is
+    still ``no_show`` (idempotency / guards against a later edit), then runs the
+    re-engagement WhatsApp + waitlist offer. Fail-open: never raises.
+    """
+    from apps.emr.models import Appointment
+    from apps.emr.services.no_show_cascade import run_no_show_cascade
+
+    try:
+        appointment = Appointment.objects.select_related("patient", "professional__user").get(
+            id=appointment_id
+        )
+    except Appointment.DoesNotExist:
+        logger.info("cascade_no_show: appointment %s not found", appointment_id)
+        return
+    if appointment.status != "no_show":
+        logger.info(
+            "cascade_no_show: appointment %s is %s (not no_show) — skipping",
+            appointment_id,
+            appointment.status,
+        )
+        return
+
+    try:
+        run_no_show_cascade(appointment)
+    except Exception:
+        logger.exception("cascade_no_show: failed for appointment %s", appointment_id)
+
+
+@shared_task
 def notify_next_waitlist_entry(professional_id: str, cancelled_slot: dict):
     """
     Find the first eligible WaitlistEntry for the professional and slot,
