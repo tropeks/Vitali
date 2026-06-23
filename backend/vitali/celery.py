@@ -8,7 +8,10 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "vitali.settings.development")
 
 app = Celery("vitali")
 app.config_from_object("django.conf:settings", namespace="CELERY")
-app.conf.imports = ("apps.emr.tasks_waitlist",)
+app.conf.imports = (
+    "apps.emr.tasks_waitlist",
+    "apps.core.tasks_wedge_value",
+)
 app.autodiscover_tasks()
 
 
@@ -41,5 +44,13 @@ app.conf.beat_schedule = {
     "sync-orthanc-studies": {
         "task": "imaging.sync_orthanc_studies",
         "schedule": crontab(minute="*/3"),
+    },
+    # Issue #123: daily per-tenant wedge business-value (ROI) snapshot at 04:20 UTC
+    # (quiet hour). Computes metrics inside each tenant schema and writes
+    # WedgeValueSnapshot rows the platform dashboard serves without per-request
+    # schema fan-out.
+    "snapshot-wedge-value": {
+        "task": "core.snapshot_wedge_value",
+        "schedule": crontab(hour=4, minute=20),
     },
 }

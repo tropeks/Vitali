@@ -15,6 +15,7 @@ from .views_platform import (
     PlanListCreateView,
     SubscriptionDetailView,
     SubscriptionListCreateView,
+    WedgeValueDashboardView,
 )
 
 
@@ -54,4 +55,10 @@ urlpatterns = [
     ),
     # S-061: Pilot health dashboard
     path("platform/pilot-health/", PilotHealthView.as_view(), name="platform-pilot-health"),
+    # Issue #123: Wedge business-value (ROI) dashboard
+    path(
+        "platform/wedge-value/",
+        WedgeValueDashboardView.as_view(),
+        name="platform-wedge-value",
+    ),
 ]

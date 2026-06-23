@@ -345,6 +345,155 @@ class PilotHealthView(APIView):
         return health
 
 
+# ─── Wedge business-value dashboard (issue #123) ─────────────────────────────
+
+
+class WedgeValueDashboardView(APIView):
+    """
+    GET /api/v1/platform/wedge-value/
+
+    Business-value (ROI) metrics per AI wedge per tenant for the platform
+    operator. Platform admin only. Serves the daily ``WedgeValueSnapshot`` rows
+    written by the ``core.snapshot_wedge_value`` Celery Beat task — O(1) schema,
+    no per-request fan-out.
+
+    Query params:
+      ``live=1``  — recompute on the fly across tenant schemas instead of reading
+                    snapshots (slower; useful before the first beat run or in dev).
+      ``window``  — rolling window in days for the ``live`` path (default 30).
+
+    Fallback: if no snapshot exists yet for ANY tenant, transparently computes
+    live so the page is never blank before the first nightly run.
+    """
+
+    permission_classes = _PLATFORM_PERMS
+
+    def get(self, request):
+        from django.utils import timezone
+
+        live = request.query_params.get("live") in ("1", "true", "True")
+        try:
+            window_days = int(request.query_params.get("window", 30))
+        except (TypeError, ValueError):
+            window_days = 30
+        window_days = max(1, min(window_days, 365))
+
+        if not live:
+            payload = self._from_snapshots()
+            if payload is not None:
+                return Response(payload)
+            # No snapshots yet — fall through to a live compute so the page works.
+
+        return Response(self._compute_live(window_days, generated_at=timezone.now()))
+
+    def _from_snapshots(self) -> dict | None:
+        """Latest snapshot per tenant; None when no snapshot rows exist at all."""
+        from apps.core.models import WedgeValueSnapshot
+
+        snapshots = list(WedgeValueSnapshot.objects.all())
+        if not snapshots:
+            return None
+
+        # Keep the newest snapshot per schema (rows are ordered -snapshot_date).
+        latest_by_schema: dict[str, Any] = {}
+        for snap in snapshots:
+            existing = latest_by_schema.get(snap.schema_name)
+            if existing is None or snap.snapshot_date > existing.snapshot_date:
+                latest_by_schema[snap.schema_name] = snap
+
+        tenants = [
+            {
+                "schema": snap.schema_name,
+                "name": snap.tenant_name or snap.schema_name,
+                "snapshot_date": snap.snapshot_date.isoformat(),
+                "generated_at": snap.generated_at.isoformat(),
+                "window_days": snap.window_days,
+                "metrics": snap.metrics,
+            }
+            for snap in sorted(
+                latest_by_schema.values(), key=lambda s: (s.tenant_name or s.schema_name)
+            )
+        ]
+        newest = max(latest_by_schema.values(), key=lambda s: s.snapshot_date)
+        return {
+            "source": "snapshot",
+            "generated_at": newest.generated_at.isoformat(),
+            "snapshot_date": newest.snapshot_date.isoformat(),
+            "tenants": tenants,
+            "totals": self._totals(tenants),
+        }
+
+    def _compute_live(self, window_days: int, generated_at) -> dict:
+        from apps.core.services.wedge_value import compute_wedge_value_for_tenant
+
+        tenants_qs = Tenant.objects.exclude(schema_name="public")
+        tenants = []
+        for tenant in tenants_qs:
+            try:
+                metrics = compute_wedge_value_for_tenant(
+                    tenant, window_days=window_days, now=generated_at
+                )
+                tenants.append(
+                    {
+                        "schema": tenant.schema_name,
+                        "name": tenant.name,
+                        "snapshot_date": generated_at.date().isoformat(),
+                        "generated_at": generated_at.isoformat(),
+                        "window_days": window_days,
+                        "metrics": metrics,
+                    }
+                )
+            except Exception as exc:
+                logger.error(
+                    "wedge_value.live_compute_failed tenant=%s err=%s",
+                    tenant.schema_name,
+                    exc,
+                )
+                tenants.append(
+                    {
+                        "schema": tenant.schema_name,
+                        "name": tenant.name,
+                        "error": str(exc),
+                        "metrics": {},
+                    }
+                )
+
+        tenants.sort(key=lambda t: t["name"])
+        return {
+            "source": "live",
+            "generated_at": generated_at.isoformat(),
+            "snapshot_date": generated_at.date().isoformat(),
+            "tenants": tenants,
+            "totals": self._totals(tenants),
+        }
+
+    @staticmethod
+    def _totals(tenants: list[dict]) -> dict:
+        """Aggregate headline numbers across all tenants for the summary band."""
+        roi_brl = 0.0
+        glosa_blocked = 0
+        dose_fired = 0
+        slots_recovered = 0
+        stockout_intercepted = 0
+        for t in tenants:
+            m = t.get("metrics") or {}
+            roi_brl += float((m.get("glosa_safety") or {}).get("blocked_value_brl", 0) or 0)
+            glosa_blocked += int((m.get("glosa_safety") or {}).get("blocked_count", 0) or 0)
+            dose_fired += int((m.get("dose_safety") or {}).get("fired", 0) or 0)
+            slots_recovered += int(
+                (m.get("no_show_prediction") or {}).get("slots_recovered", 0) or 0
+            )
+            stockout_intercepted += int((m.get("stockout_safety") or {}).get("intercepted", 0) or 0)
+        return {
+            "roi_brl": round(roi_brl, 2),
+            "glosa_blocked_count": glosa_blocked,
+            "dose_alerts_fired": dose_fired,
+            "no_show_slots_recovered": slots_recovered,
+            "stockout_intercepted": stockout_intercepted,
+            "tenant_count": len(tenants),
+        }
+
+
 # ─── Tenant-facing subscription status (S-041) ────────────────────────────────
 
 
