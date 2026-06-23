@@ -806,3 +806,58 @@ class UserInvitation(models.Model):
     def __str__(self) -> str:
         status = "consumed" if self.is_consumed else ("expired" if self.is_expired else "pending")
         return f"Invitation for {self.user.email} ({status})"
+
+
+# ─── Wedge business-value dashboard (issue #123) ─────────────────────────────
+
+
+class WedgeValueSnapshot(models.Model):
+    """Daily per-tenant snapshot of AI-wedge business-value (ROI) metrics.
+
+    Lives in the PUBLIC schema (apps.core is SHARED) so the platform operator
+    (Romulo, superuser) can read ROI per wedge per tenant from a single query
+    WITHOUT fan-out schema switching on every page load. The per-tenant numbers
+    are computed inside each tenant schema by ``apps.core.services.wedge_value``
+    and written here once a day by the ``snapshot_wedge_value`` Celery Beat task.
+
+    ``metrics`` is an opaque JSON payload (one key per wedge plus aggregates).
+    Keeping it JSON — rather than a wide column set — lets new wedge KPIs be
+    added without a migration; the shape is documented in the service module and
+    is additive-only (never remove a key consumers may read).
+
+    One row per (schema_name, snapshot_date); the daily task ``update_or_create``s
+    in place so a re-run on the same day refreshes rather than duplicates.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    schema_name = models.CharField("Schema do tenant", max_length=63, db_index=True)
+    tenant_name = models.CharField("Nome do tenant", max_length=255, blank=True)
+    snapshot_date = models.DateField("Data do snapshot", db_index=True)
+    window_days = models.PositiveIntegerField(
+        "Janela (dias)",
+        default=30,
+        help_text="Janela móvel usada no cálculo das métricas (ex.: últimos 30 dias).",
+    )
+    metrics = models.JSONField(
+        "Métricas por wedge",
+        default=dict,
+        help_text="Payload por wedge (glosa_safety, dose_safety, …) + agregados.",
+    )
+    generated_at = models.DateTimeField("Gerado em", auto_now=True)
+
+    class Meta:
+        verbose_name = "Snapshot de Valor de Wedge"
+        verbose_name_plural = "Snapshots de Valor de Wedge"
+        ordering = ["-snapshot_date", "tenant_name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["schema_name", "snapshot_date"],
+                name="uniq_wedge_value_snapshot_per_day",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["snapshot_date", "schema_name"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"WedgeValueSnapshot({self.schema_name}, {self.snapshot_date})"
