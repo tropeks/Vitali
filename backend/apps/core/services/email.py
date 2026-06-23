@@ -63,6 +63,60 @@ class EmailService:
             logger.error("email.failed template=%s user=%s err=%s", template, user.id, exc)
 
     @classmethod
+    def send_portal_invitation(cls, patient, link: str) -> bool:
+        """
+        Send a Patient Portal activation invite to *patient* (email fallback
+        channel for issue #117 — used when WhatsApp delivery is unavailable).
+        Returns True on success, False if there was no address / send failed.
+        Never raises — logs errors instead.
+        """
+        recipient = getattr(patient, "email", None)
+        if not recipient:
+            logger.warning(
+                "email.skipped patient=%s reason=no_email template=portal_invitation",
+                getattr(patient, "id", "?"),
+            )
+            return False
+
+        subject = "Acesse o Portal do Paciente — Vitali"
+        template = "email/portal_invitation.html"
+        context = {
+            "patient_name": getattr(patient, "full_name", "") or "",
+            "link": link,
+            "clinic_name": getattr(settings, "CLINIC_DISPLAY_NAME", "Clínica Vitali"),
+            "support_email": getattr(settings, "SUPPORT_EMAIL", "suporte@vitali.app"),
+        }
+
+        try:
+            html_body = render_to_string(template, context)
+            text_body = cls._strip_html(html_body)
+
+            msg = EmailMultiAlternatives(
+                subject=subject,
+                body=text_body,
+                from_email=cls.DEFAULT_FROM,
+                to=[recipient],
+            )
+            msg.attach_alternative(html_body, "text/html")
+            msg.send()
+
+            logger.info(
+                "email.sent template=%s patient=%s to=%s",
+                template,
+                getattr(patient, "id", "?"),
+                recipient,
+            )
+            return True
+        except Exception as exc:
+            logger.error(
+                "email.failed template=%s patient=%s err=%s",
+                template,
+                getattr(patient, "id", "?"),
+                exc,
+            )
+            return False
+
+    @classmethod
     def send_appointment_confirmation(cls, appointment) -> bool:
         """
         Send confirmation email after PIX payment is received.
