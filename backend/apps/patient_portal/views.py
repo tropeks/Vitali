@@ -35,6 +35,7 @@ from apps.core.permissions import HasPermission, ModuleRequiredPermission
 from apps.emr.models import Allergy, Appointment, Encounter, Prescription
 
 from .models import PatientPortalAccess
+from .services import deliver_portal_invite
 from .serializers import (
     PatientPortalAccessCreateSerializer,
     PatientPortalAccessSerializer,
@@ -102,6 +103,9 @@ class AccessListCreateView(APIView):
         serializer = PatientPortalAccessCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         access = serializer.save(created_by=request.user)
+        # Fire the activation link to the patient (WhatsApp → email fallback).
+        # Fail-open: delivery problems never fail invite creation.
+        deliver_portal_invite(access)
         return Response(
             PatientPortalAccessSerializer(access).data,
             status=status.HTTP_201_CREATED,

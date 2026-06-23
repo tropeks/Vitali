@@ -326,6 +326,11 @@ SCRIBE_SESSION_RETENTION_DAYS = env.int("SCRIBE_SESSION_RETENTION_DAYS", default
 # (module_key="dose_safety", default OFF), NOT a setting.
 DOSE_SAFETY_WEIGHT_STALENESS_DAYS = env.int("DOSE_SAFETY_WEIGHT_STALENESS_DAYS", default=90)
 
+# ─── Frontend / patient-facing links ────────────────────────────────────────
+# Base URL of the Next.js app. Used to build invite/activation links delivered
+# to users and patients (set-password, patient portal activation, etc.).
+FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:3000")
+
 # ─── WhatsApp / Evolution API (S-032) ───────────────────────────────────────
 WHATSAPP_EVOLUTION_URL = env("WHATSAPP_EVOLUTION_URL", default="http://evolution-api:8080")
 WHATSAPP_EVOLUTION_API_KEY = env("WHATSAPP_EVOLUTION_API_KEY", default="")
