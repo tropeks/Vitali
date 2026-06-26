@@ -20,9 +20,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name="tenant",
             name="address",
-            field=models.CharField(
-                blank=True, default="", max_length=500, verbose_name="Endereço"
-            ),
+            field=models.CharField(blank=True, default="", max_length=500, verbose_name="Endereço"),
         ),
         migrations.AddField(
             model_name="tenant",
