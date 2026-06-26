@@ -8,6 +8,7 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -1015,7 +1016,9 @@ class CurationReadinessView(APIView):
         supply_total = drug_total + material_total
 
         drug_ready = Drug.objects.filter(is_active=True, reorder_point__isnull=False).count()
-        material_ready = Material.objects.filter(is_active=True, reorder_point__isnull=False).count()
+        material_ready = Material.objects.filter(
+            is_active=True, reorder_point__isnull=False
+        ).count()
         supply_ready = drug_ready + material_ready
 
         if supply_total == 0:
@@ -1165,4 +1168,163 @@ class AcknowledgeControlledAlertView(APIView):
                 "acknowledged_at": alert.acknowledged_at.isoformat(),
             },
             status=status.HTTP_200_OK,
+        )
+
+
+# ─── D-T1: Formulary CSV upload (pharmacist-facing) ───────────────────────────
+#
+# Two stateless endpoints behind the upload UI:
+#   * preview/ — parse + validate + DRY-RUN upsert; returns the parsed rows and
+#     what WOULD change. Writes nothing.
+#   * commit/  — parse + validate + real upsert (idempotent); writes an AuditLog.
+# Both require pharmacy.catalog_manage (admin / farmaceutico). Imported DoseRules
+# land validated=False — the pharmacist still signs off each rule on the
+# /formulario curation page, and only THEN is it safe to enable dose_safety.
+#
+# The flow is intentionally stateless: the client uploads the file once to
+# preview, then re-uploads the SAME file to commit. No server-side temp storage.
+
+# Cap on the uploaded CSV size (the curated high-alert formulary is tiny; this is
+# a guard against a pathological upload, not a real-world limit).
+_FORMULARY_UPLOAD_MAX_BYTES = 5 * 1024 * 1024  # 5 MiB
+
+
+def _read_uploaded_csv(request):
+    """Return (content_str, error_response). Exactly one is non-None.
+
+    Validates that a ``file`` part is present, under the size cap, and decodes as
+    UTF-8. On any failure returns a ready-to-send 400 ``Response`` in the second
+    slot so the caller can ``return`` it directly.
+    """
+    from apps.pharmacy.services.formulary_import import FormularyImportError, decode_csv
+
+    upload = request.FILES.get("file")
+    if upload is None:
+        return None, Response(
+            {"detail": "Envie um arquivo CSV no campo 'file'."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if upload.size > _FORMULARY_UPLOAD_MAX_BYTES:
+        return None, Response(
+            {"detail": "Arquivo muito grande (máx. 5 MB)."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    try:
+        content = decode_csv(upload.read())
+    except FormularyImportError as exc:
+        return None, Response(
+            {"detail": exc.errors[0], "errors": exc.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return content, None
+
+
+class FormularyUploadPreviewView(APIView):
+    """POST /pharmacy/formulary/upload/preview/ — validate a CSV without writing.
+
+    Body: multipart with a ``file`` part (the formulary CSV).
+    Returns 200 ``{rows: [...], summary: {...}, errors: []}`` when valid, or 400
+    ``{detail, errors: [...]}`` listing every line-numbered parse/validation
+    error (no partial preview — it's all-or-nothing, mirroring the importer).
+    """
+
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get_permissions(self):
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission("pharmacy.catalog_manage")]
+
+    def post(self, request):
+        from apps.pharmacy.services.formulary_import import (
+            FormularyImportError,
+            parse_and_validate,
+            serialize_preview_row,
+            write_rows,
+        )
+
+        content, error_response = _read_uploaded_csv(request)
+        if error_response is not None:
+            return error_response
+
+        try:
+            parsed_rows = parse_and_validate(content)
+            summary = write_rows(parsed_rows, dry_run=True)
+        except FormularyImportError as exc:
+            return Response(
+                {
+                    "detail": (
+                        f"{len(exc.errors)} erro(s) encontrado(s). "
+                        "Corrija o arquivo e tente novamente — nada foi importado."
+                    ),
+                    "errors": exc.errors,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {
+                "rows": [serialize_preview_row(r) for r in parsed_rows],
+                "summary": summary.as_dict(),
+                "errors": [],
+            }
+        )
+
+
+class FormularyUploadCommitView(APIView):
+    """POST /pharmacy/formulary/upload/commit/ — import a validated CSV.
+
+    Body: multipart with a ``file`` part. Re-validates (the client may have
+    edited between preview and commit), then upserts idempotently. Writes one
+    AuditLog row (action="formulary_imported"). Returns 201 ``{summary, message}``.
+
+    NOTE: imported DoseRules are ``validated=False``; they are inert until a
+    pharmacist signs each off on the /formulario curation page. Only then is it
+    safe to enable the ``dose_safety`` feature flag.
+    """
+
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get_permissions(self):
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission("pharmacy.catalog_manage")]
+
+    def post(self, request):
+        from apps.pharmacy.services.formulary_import import (
+            FormularyImportError,
+            parse_and_validate,
+            write_rows,
+        )
+
+        content, error_response = _read_uploaded_csv(request)
+        if error_response is not None:
+            return error_response
+
+        try:
+            parsed_rows = parse_and_validate(content)
+            summary = write_rows(parsed_rows, dry_run=False)
+        except FormularyImportError as exc:
+            return Response(
+                {
+                    "detail": (f"{len(exc.errors)} erro(s) encontrado(s). Nada foi importado."),
+                    "errors": exc.errors,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        log_audit(
+            request,
+            "formulary_imported",
+            "MedicationFormulary",
+            "",
+            new_data=summary.as_dict(),
+        )
+
+        return Response(
+            {
+                "message": (
+                    f"Importação concluída: {summary.rules_created} regra(s) criada(s), "
+                    f"{summary.rules_updated} atualizada(s). "
+                    "Revise e valide cada regra antes de ativar o dose_safety."
+                ),
+                "summary": summary.as_dict(),
+            },
+            status=status.HTTP_201_CREATED,
         )

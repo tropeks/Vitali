@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
 import { PageShell, SectionState } from '@/components/shared'
 
@@ -89,11 +90,19 @@ export default function FormularioPage() {
 
   return (
     <PageShell variant="operational">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Formulário (doses)</h1>
-        <p className="text-sm text-slate-500 mt-0.5">
-          Revise e valide as regras de dose antes que entrem em vigor.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900">Formulário (doses)</h1>
+          <p className="text-sm text-slate-500 mt-0.5">
+            Revise e valide as regras de dose antes que entrem em vigor.
+          </p>
+        </div>
+        <Link
+          href="/configuracoes/farmacia/formulario/upload"
+          className="inline-flex items-center rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-500"
+        >
+          Importar CSV
+        </Link>
       </div>
 
       {error && (
