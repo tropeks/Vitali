@@ -48,7 +48,7 @@ class ClinicProfileSerializer(serializers.ModelSerializer):
 class ClinicProfileView(APIView):
     """GET/PATCH the clinic identity for the authenticated tenant."""
 
-    permission_classes = [IsAuthenticated, _CLINIC_ADMIN]
+    permission_classes = [IsAuthenticated, _CLINIC_ADMIN]  # type: ignore[list-item]
 
     @staticmethod
     def _tenant(request):
