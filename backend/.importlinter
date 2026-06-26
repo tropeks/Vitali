@@ -54,6 +54,9 @@ ignore_imports =
     apps.emr.** -> apps.pharmacy.**
     # emr -> whatsapp
     apps.emr.** -> apps.whatsapp.**
+    # emr -> signatures (ICP-Brasil document signing; emr.services.icp_brasil_integration
+    # + encounter-signing tests reuse the signatures app's signer/models)
+    apps.emr.** -> apps.signatures.**
     # fhir -> emr
     apps.fhir.** -> apps.emr.**
     # fhir -> pharmacy

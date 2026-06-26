@@ -15,8 +15,8 @@ Covers:
 
 from __future__ import annotations
 
-import tempfile
 import os
+import tempfile
 
 from django.test import SimpleTestCase
 

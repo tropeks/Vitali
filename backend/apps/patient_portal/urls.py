@@ -7,11 +7,11 @@ from .views import (
     AccessRevokeView,
     MeAllergiesView,
     MeAppointmentsView,
+    MeDeletionRequestView,
     MeEncountersView,
+    MeExportView,
     MePrescriptionsView,
     MeView,
-    MeExportView,
-    MeDeletionRequestView,
 )
 
 urlpatterns = [
