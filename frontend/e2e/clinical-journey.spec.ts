@@ -65,6 +65,13 @@ async function loginAsAdmin(page: Page): Promise<string> {
 }
 
 test.describe('Clinical journey', () => {
+  // Pre-accept cookie consent so the fixed-bottom consent banner does not overlay
+  // the form's bottom-aligned "Cadastrar paciente" submit button (z-50 banner
+  // otherwise intercepts the click, so the form never submits).
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => window.localStorage.setItem('vitali_cookie_consent', 'true'));
+  });
+
   test('patient registration to signed encounter and timeline', async ({ page, request }) => {
     test.setTimeout(180_000);
 
