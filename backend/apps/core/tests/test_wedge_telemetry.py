@@ -378,9 +378,7 @@ class TestWaveTwoWedges(_Base):
             cpf="66600000099",
         )
         enc = Encounter.objects.create(patient=slot_patient, professional=self.prof)
-        rx = Prescription.objects.create(
-            encounter=enc, patient=slot_patient, prescriber=self.prof
-        )
+        rx = Prescription.objects.create(encounter=enc, patient=slot_patient, prescriber=self.prof)
         drug = Drug.objects.create(name="Drug LLM")
         item = PrescriptionItem.objects.create(
             prescription=rx, drug=drug, quantity=1, unit_of_measure="un"
