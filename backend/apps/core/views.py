@@ -243,9 +243,17 @@ class SetPasswordView(APIView):
 
 
 class LoginRateThrottle(rest_framework_throttling.AnonRateThrottle):
-    """5 login attempts per minute per IP — tighter than the global 100/hour."""
+    """
+    Tighter per-IP login limit than the global 100/hour.
 
-    rate = "5/min"
+    The rate is resolved from REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["login"]
+    (5/min in base settings, i.e. production) instead of being hardcoded here,
+    so the E2E/CI profile can raise it without touching production behavior.
+    E2E suites run every spec's UI login from a single runner IP; with a
+    hardcoded 5/min, one failing spec's retries compress the suite and cascade
+    into 429s on later, unrelated specs (master run 29796568439).
+    """
+
     scope = "login"
 
 
