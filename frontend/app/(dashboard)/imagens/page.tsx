@@ -15,9 +15,9 @@ export default function ImagingWorkspacePage() {
               <ScanLine size={24} />
             </span>
             <div>
-              <h1 className="text-2xl font-bold text-neu-ink">Imagem / PACS</h1>
+              <h1 className="text-2xl font-bold text-neu-ink">Vitali Imagem</h1>
               <p className="text-sm text-neu-inkMuted">
-                Estudos DICOM do Orthanc visualizados no OHIF, sem sair do Vitali.
+                Exames e estudos DICOM visualizados com segurança, sem sair do Vitali.
               </p>
             </div>
           </div>

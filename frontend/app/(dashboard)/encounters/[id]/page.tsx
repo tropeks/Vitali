@@ -104,7 +104,7 @@ const ENCOUNTER_TABS: {
   { id: 'cpoe', label: 'CPOE', description: 'Prescrição e ordens', icon: Pill },
   { id: 'vitals', label: 'Sinais vitais', description: 'Parâmetros clínicos', icon: HeartPulse },
   { id: 'documents', label: 'Documentos', description: 'Atestados e laudos', icon: FileText },
-  { id: 'imaging', label: 'Imagem', description: 'Estudos DICOM / OHIF', icon: ScanLine },
+  { id: 'imaging', label: 'Imagem', description: 'Exames e estudos DICOM', icon: ScanLine },
   { id: 'billing', label: 'Faturamento', description: 'Guia TISS', icon: Receipt },
 ];
 

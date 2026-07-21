@@ -20,10 +20,10 @@ OHIF viewer (same-origin) <── viewer URL uses StudyInstanceUID
 ```
 
 - **Orthanc** is deployed alongside Vitali and serves the **OHIF** plugin
-  same-origin under `/ohif/`. The viewer URL for a study is:
+  same-origin under the white-label route `/visualizador/`. The viewer URL for a study is:
 
   ```
-  /ohif/viewer?StudyInstanceUIDs=<StudyInstanceUID>
+  /visualizador/viewer?StudyInstanceUIDs=<StudyInstanceUID>
   ```
 
   Note the viewer keys off `StudyInstanceUID` (the DICOM identity), not the

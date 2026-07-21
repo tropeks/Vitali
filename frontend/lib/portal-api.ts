@@ -162,6 +162,21 @@ export interface PortalLabOrder {
   report_url: string;
 }
 
+export interface PortalImagingStudy {
+  id: string;
+  accession_number: string;
+  study_instance_uid: string;
+  modality: string;
+  body_part_examined: string;
+  description: string;
+  study_date: string | null;
+  series_count: number;
+  instance_count: number;
+  available: boolean;
+  viewer_url: string | null;
+  report_url: string | null;
+}
+
 // ─── Endpoints ───────────────────────────────────────────────────────────────
 
 export const portalApi = {
@@ -179,6 +194,8 @@ export const portalApi = {
     portalFetchBlob(
       `/portal/me/lab-results/${encodeURIComponent(orderId)}/report/`,
     ),
+  getMyImagingStudies: () =>
+    portalFetch<PortalImagingStudy[]>("/portal/me/imaging-studies/"),
   activateInvite: (inviteToken: string) =>
     portalFetch<{ id: string; status: string }>("/portal/access/activate/", {
       method: "POST",

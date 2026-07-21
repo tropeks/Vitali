@@ -4,10 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { ExternalLink, ImageOff, ScanLine } from 'lucide-react';
 import { getAccessToken } from '@/lib/auth';
 
-// Base URL of the OHIF viewer served by Orthanc. Behind the bundled nginx it is
-// same-origin at /ohif/ (see docker/nginx/nginx.conf); in a split dev setup point
-// NEXT_PUBLIC_OHIF_VIEWER_URL at the Orthanc host, e.g. http://localhost:8042/ohif.
-const OHIF_BASE = (process.env.NEXT_PUBLIC_OHIF_VIEWER_URL ?? '/ohif').replace(/\/$/, '');
+// Browser-facing, white-label route for Vitali's embedded image viewer.
+const VIEWER_BASE = (process.env.NEXT_PUBLIC_IMAGING_VIEWER_URL ?? '/visualizador').replace(/\/$/, '');
 
 interface DicomStudy {
   id: string;
@@ -25,7 +23,7 @@ interface DicomStudy {
 }
 
 function viewerUrl(study: DicomStudy): string {
-  return `${OHIF_BASE}/viewer?StudyInstanceUIDs=${encodeURIComponent(study.study_instance_uid)}`;
+  return `${VIEWER_BASE}/viewer?StudyInstanceUIDs=${encodeURIComponent(study.study_instance_uid)}`;
 }
 
 /**
@@ -164,7 +162,7 @@ export function ImagingPanel({ encounterId, labOrderId, labOrderItemId }: Imagin
                 </div>
               ) : (
                 <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
-                  Aguardando PACS
+                  Imagens em processamento
                 </span>
               )}
             </li>
@@ -176,7 +174,7 @@ export function ImagingPanel({ encounterId, labOrderId, labOrderItemId }: Imagin
         <div className="overflow-hidden rounded-xl border border-slate-300 bg-black">
           <iframe
             key={activeStudy.study_instance_uid}
-            title={`OHIF Viewer — ${activeStudy.modality} ${activeStudy.body_part_examined}`}
+            title={`Vitali Imagem — ${activeStudy.modality} ${activeStudy.body_part_examined}`}
             src={viewerUrl(activeStudy)}
             className="h-[70vh] w-full border-0"
             allow="fullscreen"

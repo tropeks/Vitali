@@ -9,6 +9,7 @@ import {
   Heart,
   Menu,
   Pill,
+  ScanLine,
   ShieldAlert,
   User,
   X,
@@ -27,6 +28,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/portal/prontuario", label: "Prontuário", icon: ClipboardList },
   { href: "/portal/receitas", label: "Receitas", icon: Pill },
   { href: "/portal/resultados", label: "Resultados", icon: FlaskConical },
+  { href: "/portal/imagens", label: "Imagens", icon: ScanLine },
   { href: "/portal/alergias", label: "Alergias", icon: ShieldAlert },
   { href: "/portal/perfil", label: "Perfil", icon: User },
 ];
