@@ -122,7 +122,26 @@ test.describe('Clinical journey', () => {
     const patientId = page.url().split('/patients/')[1].split(/[?#]/)[0];
     expect(patientId).toBeTruthy();
 
-    const start = new Date(Date.now() + 15 * 60 * 1000);
+    // Schedule the appointment ~15 minutes out, but NEVER across the clinic's
+    // midnight. The backend runs with TIME_ZONE="America/Sao_Paulo" and both
+    // WaitingRoomView (start_time__date == timezone.localdate()) and
+    // AppointmentViewSet.get_queryset (start_time__date__gte=localdate) treat
+    // "today" in clinic-local time. A CI run starting between 23:45 and 00:00
+    // BRT (02:45–03:00 UTC) would otherwise create the appointment on
+    // clinic-local *tomorrow*, so the waiting-room row never appears
+    // (this is exactly what broke master run 29796568439 at 02:53 UTC).
+    const CLINIC_TZ = 'America/Sao_Paulo';
+    const clinicLocalDate = (date: Date): string =>
+      date.toLocaleDateString('en-CA', { timeZone: CLINIC_TZ });
+    const now = new Date();
+    let start = new Date(now.getTime() + 15 * 60 * 1000);
+    if (clinicLocalDate(start) !== clinicLocalDate(now)) {
+      // +15min crosses clinic midnight — pull the slot back so it stays on
+      // the clinic-local today. A slightly past start_time is valid (the API
+      // only validates end_time > start_time) and still lists in the waiting
+      // room, which is what this journey exercises.
+      start = new Date(now.getTime() - 5 * 60 * 1000);
+    }
     start.setSeconds(0, 0);
     const end = new Date(start.getTime() + 30 * 60 * 1000);
     const appointmentResp = await request.post('/api/v1/appointments/', {
