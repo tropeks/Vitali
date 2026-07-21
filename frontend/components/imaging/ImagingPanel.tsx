@@ -34,7 +34,12 @@ function viewerUrl(study: DicomStudy): string {
  * the webhook/poller). Gated by the `imaging` module: a 403 from the API hides
  * the panel entirely, matching the FaturamentoCard pattern.
  */
-export function ImagingPanel({ encounterId }: { encounterId: string }) {
+type ImagingPanelProps =
+  | { encounterId: string; labOrderId?: never; labOrderItemId?: never }
+  | { encounterId?: never; labOrderId: string; labOrderItemId?: never }
+  | { encounterId?: never; labOrderId?: never; labOrderItemId: string };
+
+export function ImagingPanel({ encounterId, labOrderId, labOrderItemId }: ImagingPanelProps) {
   const [studies, setStudies] = useState<DicomStudy[]>([]);
   const [loading, setLoading] = useState(true);
   const [hidden, setHidden] = useState(false);
@@ -47,7 +52,11 @@ export function ImagingPanel({ encounterId }: { encounterId: string }) {
       return;
     }
     setLoading(true);
-    fetch(`/api/v1/imaging/studies/?encounter=${encounterId}`, {
+    const params = new URLSearchParams();
+    if (encounterId) params.set('encounter', encounterId);
+    if (labOrderId) params.set('lab_order', labOrderId);
+    if (labOrderItemId) params.set('lab_order_item', labOrderItemId);
+    fetch(`/api/v1/imaging/studies/?${params.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => {
@@ -68,7 +77,7 @@ export function ImagingPanel({ encounterId }: { encounterId: string }) {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [encounterId]);
+  }, [encounterId, labOrderId, labOrderItemId]);
 
   useEffect(() => {
     load();

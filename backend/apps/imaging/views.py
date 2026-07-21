@@ -2,7 +2,7 @@
 REST views for the imaging (DICOM Study tracking) module.
 
 Endpoints:
-- `GET    /api/v1/imaging/studies/?patient=…&modality=…&_count=…` — list
+- `GET    /api/v1/imaging/studies/?patient=…&lab_order=…&_count=…` — list
 - `POST   /api/v1/imaging/studies/`                              — register
 - `GET    /api/v1/imaging/studies/{id}/`                         — read
 - `PATCH  /api/v1/imaging/studies/{id}/orthanc/`                 — backfill
@@ -56,16 +56,24 @@ class StudyListCreateView(APIView):
         return [IsAuthenticated(), _IMAGING_MODULE, HasPermission("imaging.read")]
 
     def get(self, request):
-        qs = DicomStudy.objects.select_related("patient").all()
+        qs = DicomStudy.objects.select_related(
+            "patient", "related_lab_item__order", "report_document"
+        ).all()
         patient = request.query_params.get("patient")
         modality = request.query_params.get("modality")
         encounter = request.query_params.get("encounter")
+        lab_order = request.query_params.get("lab_order")
+        lab_order_item = request.query_params.get("lab_order_item")
         if patient:
             qs = qs.filter(patient_id=patient)
         if modality:
             qs = qs.filter(modality=modality.upper())
         if encounter:
             qs = qs.filter(encounter_id=encounter)
+        if lab_order:
+            qs = qs.filter(related_lab_item__order_id=lab_order)
+        if lab_order_item:
+            qs = qs.filter(related_lab_item_id=lab_order_item)
         try:
             count = min(int(request.query_params.get("_count", self.DEFAULT_COUNT)), self.MAX_COUNT)
         except (TypeError, ValueError):
@@ -89,7 +97,9 @@ class StudyDetailView(APIView):
 
     def get(self, request, study_id):
         try:
-            study = DicomStudy.objects.select_related("patient").get(pk=study_id)
+            study = DicomStudy.objects.select_related(
+                "patient", "related_lab_item__order", "report_document"
+            ).get(pk=study_id)
         except (DicomStudy.DoesNotExist, ValueError):
             return Response({"detail": "Study not found."}, status=status.HTTP_404_NOT_FOUND)
         return Response(DicomStudySerializer(study).data)

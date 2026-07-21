@@ -38,7 +38,10 @@ export class PortalNotActiveError extends PortalApiError {
   }
 }
 
-async function portalFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function portalFetch<T>(
+  path: string,
+  init: RequestInit = {},
+): Promise<T> {
   const token = getAccessToken();
   const headers: HeadersInit = {
     "Content-Type": "application/json",
@@ -134,14 +137,48 @@ export interface PortalAllergy {
   created_at: string;
 }
 
+export interface PortalLabItem {
+  id: string;
+  test_name: string;
+  category: string;
+  method: string;
+  specimen_type: string;
+  unit: string;
+  reference_range: string;
+  result_value: string;
+  abnormal_flag: string;
+  abnormal_flag_display: string;
+  result_notes: string;
+  validated_at: string;
+}
+
+export interface PortalLabOrder {
+  id: string;
+  accession_number: string;
+  requested_at: string;
+  completed_at: string;
+  clinical_indication: string;
+  items: PortalLabItem[];
+  report_url: string;
+}
+
 // ─── Endpoints ───────────────────────────────────────────────────────────────
 
 export const portalApi = {
   getMyProfile: () => portalFetch<PortalPatient>("/portal/me/"),
-  getMyAppointments: () => portalFetch<PortalAppointment[]>("/portal/me/appointments/"),
-  getMyEncounters: () => portalFetch<PortalEncounter[]>("/portal/me/encounters/"),
-  getMyPrescriptions: () => portalFetch<PortalPrescription[]>("/portal/me/prescriptions/"),
+  getMyAppointments: () =>
+    portalFetch<PortalAppointment[]>("/portal/me/appointments/"),
+  getMyEncounters: () =>
+    portalFetch<PortalEncounter[]>("/portal/me/encounters/"),
+  getMyPrescriptions: () =>
+    portalFetch<PortalPrescription[]>("/portal/me/prescriptions/"),
   getMyAllergies: () => portalFetch<PortalAllergy[]>("/portal/me/allergies/"),
+  getMyLabResults: () =>
+    portalFetch<PortalLabOrder[]>("/portal/me/lab-results/"),
+  downloadLabReport: (orderId: string) =>
+    portalFetchBlob(
+      `/portal/me/lab-results/${encodeURIComponent(orderId)}/report/`,
+    ),
   activateInvite: (inviteToken: string) =>
     portalFetch<{ id: string; status: string }>("/portal/access/activate/", {
       method: "POST",

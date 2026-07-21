@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   CalendarDays,
   ClipboardList,
+  FlaskConical,
   Heart,
   Menu,
   Pill,
@@ -25,6 +26,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/portal/agendamentos", label: "Consultas", icon: CalendarDays },
   { href: "/portal/prontuario", label: "Prontuário", icon: ClipboardList },
   { href: "/portal/receitas", label: "Receitas", icon: Pill },
+  { href: "/portal/resultados", label: "Resultados", icon: FlaskConical },
   { href: "/portal/alergias", label: "Alergias", icon: ShieldAlert },
   { href: "/portal/perfil", label: "Perfil", icon: User },
 ];
@@ -47,8 +49,12 @@ export default function PortalShell({ userName, children }: PortalShellProps) {
               V
             </span>
             <div>
-              <div className="text-sm font-semibold text-slate-900">Vitali — Portal</div>
-              <div className="hidden text-xs text-slate-500 sm:block">Olá, {userName}</div>
+              <div className="text-sm font-semibold text-slate-900">
+                Vitali — Portal
+              </div>
+              <div className="hidden text-xs text-slate-500 sm:block">
+                Olá, {userName}
+              </div>
             </div>
           </Link>
 

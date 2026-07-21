@@ -38,6 +38,24 @@ ultrassom, tomografia e ressonância devem seguir o fluxo RIS/PACS. DICOM,
 Orthanc/OHIF e laudos de imagem permanecem separados; o laboratório não deve
 armazenar imagens ou fingir compatibilidade PACS.
 
+### Contexto cruzado com RIS/PACS
+
+Quando um estudo de imagem for clinicamente relacionado a um item do pedido, o
+registro `DicomStudy` pode guardar `related_lab_item`. É uma referência opcional
+para navegação e rastreabilidade: ela não transforma o exame em categoria
+laboratorial, não cria um pedido RIS e não envia nada ao Orthanc.
+
+Com o módulo `imaging` habilitado e permissão `imaging.read`, estudos podem ser
+consultados por `GET /api/v1/imaging/studies/?lab_order={uuid}` ou
+`?lab_order_item={uuid}`. O vínculo só é aceito quando estudo e pedido pertencem
+ao mesmo paciente. Um `report_document` opcional aponta para um
+`ClinicalDocument` do tipo `report` do mesmo paciente/atendimento; a resposta de
+imaging expõe apenas metadados e estado de assinatura, nunca o conteúdo do laudo.
+
+Sem `ORTHANC_URL` e sem `orthanc_study_id`, o registro continua útil como índice
+clínico e aparece como “Aguardando PACS”. O Vitali não presume que Orthanc/OHIF
+estejam disponíveis e só oferece o visualizador quando há pixel data vinculada.
+
 ## Fora deste corte
 
 - integração bidirecional com LIS/equipamentos (HL7 v2/ASTM) e cadastro do de/para;

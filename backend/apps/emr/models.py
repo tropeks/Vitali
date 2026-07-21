@@ -583,6 +583,13 @@ class LabOrder(models.Model):
 
     class Meta:
         ordering = ["-requested_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["accession_number"],
+                condition=~models.Q(accession_number=""),
+                name="emr_lab_accession_unique",
+            )
+        ]
         indexes = [
             models.Index(fields=["patient", "-requested_at"], name="emr_lab_pat_date_idx"),
             models.Index(fields=["status", "-requested_at"], name="emr_lab_status_idx"),
@@ -659,6 +666,54 @@ class LabOrderItem(models.Model):
 
     def __str__(self):
         return f"{self.test_name} — {self.order_id}"
+
+
+class LabIntegrationMessage(models.Model):
+    """Durable tenant-local inbox/outbox record for LIS interoperability."""
+
+    class Direction(models.TextChoices):
+        INBOUND = "inbound", "Entrada"
+        OUTBOUND = "outbound", "Saída"
+
+    class Format(models.TextChoices):
+        CANONICAL = "canonical", "JSON canônico"
+        HL7_V2 = "hl7_v2", "HL7 v2"
+        ASTM = "astm", "ASTM normalizado"
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pendente"
+        APPLIED = "applied", "Aplicado"
+        REJECTED = "rejected", "Rejeitado"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    source = models.CharField(max_length=80)
+    message_id = models.CharField(max_length=120)
+    direction = models.CharField(max_length=8, choices=Direction.choices)
+    format = models.CharField(max_length=12, choices=Format.choices)
+    payload_hash = models.CharField(max_length=64)
+    raw_payload = EncryptedTextField(blank=True)
+    canonical_payload = EncryptedJSONField(default=dict, blank=True)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
+    error = EncryptedTextField(blank=True)
+    lab_order = models.ForeignKey(
+        LabOrder, on_delete=models.SET_NULL, null=True, blank=True, related_name="lis_messages"
+    )
+    applied_by = models.ForeignKey(
+        "core.User", on_delete=models.PROTECT, null=True, blank=True, related_name="lis_applied"
+    )
+    applied_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source", "message_id", "direction"], name="emr_lis_message_idempotent"
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.source}:{self.message_id} ({self.status})"
 
 
 # ─── Sprint 7 (minimal S-015): Prescription ──────────────────────────────────

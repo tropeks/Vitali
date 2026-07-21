@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, FlaskConical, Plus, Search, TestTube2, X } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { ImagingPanel } from "@/components/imaging/ImagingPanel";
 
 type LabTest = {
   id: string;
@@ -289,6 +290,10 @@ export default function LaboratorioPage() {
   const [specimenType, setSpecimenType] = useState("");
   const [specimenContainer, setSpecimenContainer] = useState("");
   const [collectionNotes, setCollectionNotes] = useState("");
+  const [signingOrder, setSigningOrder] = useState<string | null>(null);
+  const [certificateFile, setCertificateFile] = useState<File | null>(null);
+  const [certificatePassword, setCertificatePassword] = useState("");
+  const [releasedOrders, setReleasedOrders] = useState<string[]>([]);
   const [orderQuery, setOrderQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -506,6 +511,31 @@ export default function LaboratorioPage() {
       await load();
     } catch {
       setError("Não foi possível validar o resultado.");
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function signReport(orderId: string) {
+    if (!certificateFile) return;
+    setPendingAction(`sign:${orderId}`);
+    try {
+      const bytes = new Uint8Array(await certificateFile.arrayBuffer());
+      let binary = "";
+      for (const byte of bytes) binary += String.fromCharCode(byte);
+      await apiFetch(`/api/v1/lab-orders/${orderId}/report/sign/`, {
+        method: "POST",
+        body: JSON.stringify({
+          pkcs12_b64: window.btoa(binary),
+          pkcs12_password: certificatePassword,
+        }),
+      });
+      setReleasedOrders((current) => [...current, orderId]);
+      setSigningOrder(null);
+      setCertificateFile(null);
+      setCertificatePassword("");
+    } catch {
+      setError("Não foi possível assinar e liberar o laudo.");
     } finally {
       setPendingAction(null);
     }
@@ -825,19 +855,86 @@ export default function LaboratorioPage() {
                       {new Date(order.requested_at).toLocaleString("pt-BR")}
                     </p>
                   </div>
-                  {order.status === "ordered" && (
-                    <button
-                      type="button"
-                      disabled={pendingAction === `collect:${order.id}`}
-                      onClick={() => setCollectingOrder(order.id)}
-                      className="neu-btn px-3 py-2 text-xs disabled:opacity-50"
-                    >
-                      {pendingAction === `collect:${order.id}`
-                        ? "Registrando…"
-                        : "Registrar coleta"}
-                    </button>
-                  )}
+                  <div className="flex flex-wrap gap-2">
+                    {order.status === "ordered" && (
+                      <button
+                        type="button"
+                        disabled={pendingAction === `collect:${order.id}`}
+                        onClick={() => setCollectingOrder(order.id)}
+                        className="neu-btn px-3 py-2 text-xs disabled:opacity-50"
+                      >
+                        {pendingAction === `collect:${order.id}`
+                          ? "Registrando…"
+                          : "Registrar coleta"}
+                      </button>
+                    )}
+                    {order.status === "completed" &&
+                      !releasedOrders.includes(order.id) && (
+                        <button
+                          type="button"
+                          onClick={() => setSigningOrder(order.id)}
+                          className="neu-btn-primary px-3 py-2 text-xs"
+                        >
+                          Assinar e liberar laudo
+                        </button>
+                      )}
+                    {releasedOrders.includes(order.id) && (
+                      <span className="rounded-full bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+                        Laudo liberado
+                      </span>
+                    )}
+                  </div>
                 </header>
+                {signingOrder === order.id && (
+                  <div className="grid gap-3 border-b border-neu-app bg-neu-input p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                    <label className="text-xs font-semibold text-neu-inkSoft">
+                      Certificado ICP-Brasil A1 (.pfx/.p12)
+                      <input
+                        type="file"
+                        accept=".pfx,.p12,application/x-pkcs12"
+                        onChange={(e) =>
+                          setCertificateFile(e.target.files?.[0] ?? null)
+                        }
+                        className="mt-1 block w-full text-sm font-normal"
+                      />
+                    </label>
+                    <label className="text-xs font-semibold text-neu-inkSoft">
+                      Senha do certificado
+                      <input
+                        type="password"
+                        value={certificatePassword}
+                        onChange={(e) => setCertificatePassword(e.target.value)}
+                        className="neu-input mt-1 w-full px-3 py-2 text-sm font-normal"
+                      />
+                    </label>
+                    <div className="flex items-end justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSigningOrder(null)}
+                        className="neu-btn px-3 py-2 text-xs"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        disabled={
+                          !certificateFile ||
+                          pendingAction === `sign:${order.id}`
+                        }
+                        onClick={() => signReport(order.id)}
+                        className="neu-btn-primary px-3 py-2 text-xs disabled:opacity-50"
+                      >
+                        {pendingAction === `sign:${order.id}`
+                          ? "Assinando…"
+                          : "Confirmar assinatura"}
+                      </button>
+                    </div>
+                    <p className="text-xs text-neu-inkSoft sm:col-span-3">
+                      O certificado é enviado apenas para esta assinatura e não
+                      é armazenado.
+                    </p>
+                  </div>
+                )}
                 {collectingOrder === order.id && (
                   <div className="grid gap-3 border-b border-neu-app bg-neu-input p-4 sm:grid-cols-2 lg:grid-cols-4">
                     <label className="text-xs font-semibold text-neu-inkSoft">
@@ -1000,6 +1097,9 @@ export default function LaboratorioPage() {
                       )}
                     </div>
                   ))}
+                </div>
+                <div className="border-t border-neu-app p-4">
+                  <ImagingPanel labOrderId={order.id} />
                 </div>
               </article>
             ))

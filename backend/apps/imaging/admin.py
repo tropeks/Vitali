@@ -9,6 +9,8 @@ class DicomStudyAdmin(admin.ModelAdmin):
         "modality",
         "body_part_examined",
         "patient",
+        "related_lab_item",
+        "report_document",
         "study_date",
         "has_pixel_data",
     )
@@ -20,4 +22,5 @@ class DicomStudyAdmin(admin.ModelAdmin):
         "patient__full_name",
     )
     ordering = ("-study_date",)
+    raw_id_fields = ("patient", "encounter", "related_lab_item", "report_document")
     readonly_fields = ("id", "created_at", "created_by", "has_pixel_data")
