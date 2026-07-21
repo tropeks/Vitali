@@ -3,7 +3,10 @@ Integration tests for patient portal invite delivery (issue #117).
 
 Covers both delivery channels wired to `PatientPortalAccess.invite_token`:
 
-- WhatsApp (primary) — gated on an opted-in `WhatsAppContact`.
+- WhatsApp (primary) — routed through the apps.core notifier port
+  (`apps.core.whatsapp_bridge`) so patient_portal never imports apps.whatsapp
+  directly (P1-01 domain-independence contract). The opt_in gate + gateway are
+  exercised in apps/whatsapp/tests/test_notifier.py.
 - Email (fallback) — used when WhatsApp is unavailable and an address exists.
 
 The admin REST surface (`POST /api/v1/portal/access/`) must trigger delivery
@@ -24,12 +27,11 @@ from apps.emr.models import Patient
 from apps.patient_portal.models import PatientPortalAccess
 from apps.patient_portal.services import build_activation_url, deliver_portal_invite
 from apps.test_utils import TenantTestCase
-from apps.whatsapp.models import WhatsAppContact
 
 ACCESS_URL = "/api/v1/portal/access/"
 
-# Where the service looks up the gateway (local import inside _try_whatsapp).
-GATEWAY_PATH = "apps.whatsapp.gateway.get_gateway"
+# Where _try_whatsapp resolves the notifier port (local import at call time).
+NOTIFIER_PATH = "apps.core.whatsapp_bridge.get_patient_whatsapp_notifier"
 
 
 def _make_user(*, role_name: str, perms: list[str], email: str, full_name: str) -> User:
@@ -37,6 +39,13 @@ def _make_user(*, role_name: str, perms: list[str], email: str, full_name: str) 
     role.permissions = perms
     role.save()
     return User.objects.create_user(email=email, password="pw", role=role, full_name=full_name)
+
+
+def _notifier(sends: bool) -> MagicMock:
+    """A stub PatientWhatsAppNotifier whose send returns ``sends``."""
+    m = MagicMock()
+    m.send_text_to_opted_in_patient.return_value = sends
+    return m
 
 
 @override_settings(
@@ -69,44 +78,41 @@ class InviteDeliveryServiceTest(TenantTestCase):
 
     # ─── WhatsApp channel ──────────────────────────────────────────────────────
 
-    def test_whatsapp_sent_when_contact_opted_in(self):
-        WhatsAppContact.objects.create(phone="5511988887777", patient=self.patient, opt_in=True)
+    def test_whatsapp_sent_when_notifier_delivers(self):
         access = self._mint()
+        notifier = _notifier(sends=True)
 
-        with patch(GATEWAY_PATH) as mock_get_gateway:
-            gateway = MagicMock()
-            mock_get_gateway.return_value = gateway
+        with patch(NOTIFIER_PATH, return_value=notifier):
             channels = deliver_portal_invite(access)
 
         self.assertEqual(channels, ["whatsapp"])
-        gateway.send_text.assert_called_once()
-        to, text = gateway.send_text.call_args.args
-        self.assertEqual(to, "5511988887777")
-        self.assertIn(access.invite_token, text)
-        self.assertIn("https://portal.vitali.test/portal/activate", text)
+        notifier.send_text_to_opted_in_patient.assert_called_once()
+        kwargs = notifier.send_text_to_opted_in_patient.call_args.kwargs
+        self.assertEqual(kwargs["patient"], self.patient)
+        self.assertIn(access.invite_token, kwargs["text"])
+        self.assertIn("https://portal.vitali.test/portal/activate", kwargs["text"])
         # WhatsApp succeeded → no email fallback.
         self.assertEqual(len(mail.outbox), 0)
 
-    def test_no_whatsapp_without_opt_in_falls_back_to_email(self):
-        # Contact exists but has NOT opted in → WhatsApp gate closed.
-        WhatsAppContact.objects.create(phone="5511988887777", patient=self.patient, opt_in=False)
+    def test_falls_back_to_email_when_notifier_declines(self):
+        # Notifier reports no delivery (no opted-in contact / not opted in /
+        # send failed — all collapse to False at this layer) → email fallback.
         access = self._mint()
+        notifier = _notifier(sends=False)
 
-        with patch(GATEWAY_PATH) as mock_get_gateway:
-            gateway = MagicMock()
-            mock_get_gateway.return_value = gateway
+        with patch(NOTIFIER_PATH, return_value=notifier):
             channels = deliver_portal_invite(access)
 
-        gateway.send_text.assert_not_called()
+        notifier.send_text_to_opted_in_patient.assert_called_once()
         self.assertEqual(channels, ["email"])
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn("ana@email.test", mail.outbox[0].to)
 
-    # ─── Email fallback channel ────────────────────────────────────────────────
+    def test_falls_back_to_email_when_no_notifier_registered(self):
+        access = self._mint()
 
-    def test_email_fallback_when_no_whatsapp_contact(self):
-        access = self._mint()  # no WhatsAppContact at all
-        channels = deliver_portal_invite(access)
+        with patch(NOTIFIER_PATH, return_value=None):
+            channels = deliver_portal_invite(access)
 
         self.assertEqual(channels, ["email"])
         self.assertEqual(len(mail.outbox), 1)
@@ -114,29 +120,18 @@ class InviteDeliveryServiceTest(TenantTestCase):
         self.assertIn("ana@email.test", msg.to)
         self.assertIn(build_activation_url(access), msg.body)
 
+    # ─── No channel ────────────────────────────────────────────────────────────
+
     def test_no_channel_when_neither_available(self):
         self.patient.email = ""
         self.patient.save(update_fields=["email"])
         access = self._mint()
 
-        channels = deliver_portal_invite(access)
+        with patch(NOTIFIER_PATH, return_value=_notifier(sends=False)):
+            channels = deliver_portal_invite(access)
 
         self.assertEqual(channels, [])
         self.assertEqual(len(mail.outbox), 0)
-
-    def test_whatsapp_send_failure_falls_back_to_email(self):
-        WhatsAppContact.objects.create(phone="5511988887777", patient=self.patient, opt_in=True)
-        access = self._mint()
-
-        with patch(GATEWAY_PATH) as mock_get_gateway:
-            gateway = MagicMock()
-            gateway.send_text.side_effect = RuntimeError("evolution down")
-            mock_get_gateway.return_value = gateway
-            channels = deliver_portal_invite(access)
-
-        # Send raised → fail-open → email fallback kicks in.
-        self.assertEqual(channels, ["email"])
-        self.assertEqual(len(mail.outbox), 1)
 
 
 @override_settings(
@@ -177,29 +172,27 @@ class InviteDeliveryViewTest(TenantTestCase):
             full_name="Ana Maria Souza",
         )
 
-    def test_create_invite_delivers_whatsapp(self):
-        WhatsAppContact.objects.create(phone="5511988887777", patient=self.patient, opt_in=True)
-        self.client.force_authenticate(user=self.admin)
-        with patch(GATEWAY_PATH) as mock_get_gateway:
-            gateway = MagicMock()
-            mock_get_gateway.return_value = gateway
-            resp = self.client.post(
-                ACCESS_URL,
-                {"user": self.patient_user.pk, "patient": str(self.patient.pk)},
-                format="json",
-            )
-        self.assertEqual(resp.status_code, 201, resp.data)
-        gateway.send_text.assert_called_once()
-        self.assertEqual(len(mail.outbox), 0)
-
-    def test_create_invite_delivers_email_fallback(self):
-        # No opted-in WhatsApp contact → email fallback.
-        self.client.force_authenticate(user=self.admin)
-        resp = self.client.post(
+    def _post(self):
+        return self.client.post(
             ACCESS_URL,
             {"user": self.patient_user.pk, "patient": str(self.patient.pk)},
             format="json",
         )
+
+    def test_create_invite_delivers_whatsapp(self):
+        self.client.force_authenticate(user=self.admin)
+        notifier = _notifier(sends=True)
+        with patch(NOTIFIER_PATH, return_value=notifier):
+            resp = self._post()
+        self.assertEqual(resp.status_code, 201, resp.data)
+        notifier.send_text_to_opted_in_patient.assert_called_once()
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_create_invite_delivers_email_fallback(self):
+        # No WhatsApp delivery → email fallback.
+        self.client.force_authenticate(user=self.admin)
+        with patch(NOTIFIER_PATH, return_value=_notifier(sends=False)):
+            resp = self._post()
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn("ana@email.test", mail.outbox[0].to)

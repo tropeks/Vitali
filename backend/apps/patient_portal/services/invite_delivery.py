@@ -69,31 +69,25 @@ def deliver_portal_invite(access) -> list[str]:
 
 
 def _try_whatsapp(patient, link: str) -> bool:
-    """Send via WhatsApp iff the patient has an opted-in contact."""
-    from apps.whatsapp.gateway import get_gateway
-    from apps.whatsapp.models import WhatsAppContact
+    """Send via WhatsApp iff the patient has an opted-in contact.
 
-    # Gate: WhatsApp only when an opted-in contact exists (opt_in=True).
-    contact = WhatsAppContact.objects.filter(patient=patient, opt_in=True).first()
-    if not contact:
+    Routed through the apps.core notifier port so patient_portal does not
+    import apps.whatsapp directly (P1-01 domain-independence contract). The
+    opt_in (LGPD consent) gate and the Evolution gateway live in the whatsapp
+    domain; here we only own the invite message content.
+    """
+    from apps.core.whatsapp_bridge import get_patient_whatsapp_notifier
+
+    notifier = get_patient_whatsapp_notifier()
+    if notifier is None:
+        # WhatsApp channel unregistered/unavailable → fall back to email.
         return False
 
-    try:
-        text = build_whatsapp_message(getattr(patient, "full_name", "") or "", link)
-        get_gateway().send_text(contact.phone, text)
-        logger.info(
-            "portal_invite.sent channel=whatsapp patient=%s contact=%s",
-            patient.id,
-            contact.id,
-        )
-        return True
-    except Exception as exc:  # noqa: BLE001 — fail-open, fall through to email
-        logger.error(
-            "portal_invite.failed channel=whatsapp patient=%s err=%s",
-            patient.id,
-            exc,
-        )
-        return False
+    text = build_whatsapp_message(getattr(patient, "full_name", "") or "", link)
+    sent = notifier.send_text_to_opted_in_patient(patient=patient, text=text)
+    if sent:
+        logger.info("portal_invite.sent channel=whatsapp patient=%s", patient.id)
+    return sent
 
 
 def _try_email(patient, link: str) -> bool:
