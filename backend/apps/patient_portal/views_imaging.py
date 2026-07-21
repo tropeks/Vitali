@@ -10,6 +10,7 @@ from rest_framework.views import APIView
 
 from apps.core.models import AuditLog
 from apps.core.permissions import HasPermission, ModuleRequiredPermission
+from apps.core.utils import tenant_has_feature
 from apps.imaging.models import DicomStudy
 
 from .models import PatientPortalAccess
@@ -76,6 +77,7 @@ class MeImagingViewerAuthorizationView(APIView):
             or access.status != PatientPortalAccess.STATUS_ACTIVE
             or role is None
             or "portal.self_access" not in role.permissions
+            or not tenant_has_feature(request.tenant, "patient_portal")
         ):
             return Response(status=status.HTTP_403_FORBIDDEN)
         patient = access.patient
