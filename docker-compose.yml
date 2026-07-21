@@ -139,9 +139,9 @@ services:
       redis:
         condition: service_healthy
 
-  # ─── Orthanc PACS (DICOM + OHIF viewer) ───────────────────────────────────
+  # ─── Orthanc archive (DICOM + DICOMweb; UI is a separate service) ─────────
   orthanc:
-    image: orthancteam/orthanc:24.10.1
+    image: orthancteam/orthanc:26.6.1@sha256:83a1f988c9790a8ec018d00bad2d23d29703313e10ec59ecbeb827b5fa8e0aee
     restart: unless-stopped
     environment:
       # Folded into orthanc.json by the orthancteam image at startup. Keeps the
@@ -155,11 +155,10 @@ services:
       VITALI_WEBHOOK_SECRET: ${ORTHANC_WEBHOOK_SECRET:-change-me-orthanc-webhook}
     volumes:
       - ./docker/orthanc/orthanc.json:/etc/orthanc/orthanc.json:ro
-      - ./docker/orthanc/vitali-viewer.js:/etc/orthanc/vitali-viewer.js:ro
       - ./docker/orthanc/vitali-webhook.lua:/etc/orthanc/vitali-webhook.lua:ro
       - orthanc_data:/var/lib/orthanc/db
     ports:
-      - "8042:8042"  # REST API + OHIF viewer (/ohif/) + DICOMweb (/dicom-web/)
+      - "8042:8042"  # REST API + DICOMweb
       - "4242:4242"  # DICOM C-STORE (modalities push studies here)
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS -u $${ORTHANC_USERNAME:-vitali}:$${ORTHANC_PASSWORD:-vitali} http://localhost:8042/system || exit 1"]
@@ -170,6 +169,21 @@ services:
     depends_on:
       django:
         condition: service_started
+
+  # ─── Vitali Imagem (OHIF 3.12.8, standalone and white-label) ──────────────
+  vitali-viewer:
+    build:
+      context: ./docker/ohif
+    image: vitali-viewer:local
+    restart: unless-stopped
+    security_opt:
+      - apparmor=unconfined
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8080/visualizador/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
   # ─── Next.js Frontend ─────────────────────────────────────────────────────
   nextjs:
@@ -201,6 +215,7 @@ services:
       - django
       - nextjs
       - orthanc
+      - vitali-viewer
     healthcheck:
       # busybox wget ships in nginx:alpine; /health/ proxies to Django.
       test: ["CMD-SHELL", "wget -q --spider http://localhost/health/ || exit 1"]

@@ -1,0 +1,19 @@
+{
+  "name": "Vitali Imagem",
+  "short_name": "Imagem",
+  "description": "Visualizador de exames de imagem do Vitali",
+  "dir": "auto",
+  "lang": "pt-BR",
+  "orientation": "any",
+  "icons": [{
+    "src": "/visualizador/assets/vitali-logo.svg",
+    "sizes": "any",
+    "type": "image/svg+xml",
+    "purpose": "any maskable"
+  }],
+  "start_url": "/visualizador/",
+  "scope": "/visualizador/",
+  "background_color": "#24292F",
+  "display": "standalone",
+  "theme_color": "#0066A1"
+}
