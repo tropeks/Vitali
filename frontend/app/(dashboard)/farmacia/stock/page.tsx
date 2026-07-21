@@ -191,7 +191,7 @@ export default function StockPage() {
       {/* Filters + action */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex gap-4">
-          <label className="flex items-center gap-2 text-sm text-[#57606A] cursor-pointer">
+          <label className="flex items-center gap-2 text-sm text-neu-inkSoft cursor-pointer">
             <input
               type="checkbox"
               checked={filterLow}
@@ -200,7 +200,7 @@ export default function StockPage() {
             />
             Estoque baixo
           </label>
-          <label className="flex items-center gap-2 text-sm text-[#57606A] cursor-pointer">
+          <label className="flex items-center gap-2 text-sm text-neu-inkSoft cursor-pointer">
             <input
               type="checkbox"
               checked={filterExpiring}
@@ -212,7 +212,7 @@ export default function StockPage() {
         </div>
         <button
           onClick={() => { setShowEntryForm(true); setError('') }}
-          className="px-4 py-2 bg-gradient-to-b from-[#0066A1] to-[#005282] border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] text-white text-sm font-medium rounded-lg hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)]"
+          className="px-4 py-2 bg-gradient-to-b from-neu-brand to-neu-brandDeep border-t border-neu-brandEdge shadow-neu-btn-primary text-white text-sm font-medium rounded-lg hover:shadow-neu-btn-primary-hover"
         >
           + Entrada de Estoque
         </button>
@@ -220,8 +220,8 @@ export default function StockPage() {
 
       {/* Entry form */}
       {showEntryForm && (
-        <div className="bg-[#F4F7FA] border border-slate-200 rounded-lg p-4 space-y-4">
-          <h3 className="font-medium text-[#24292F]">Registrar Entrada de Estoque</h3>
+        <div className="bg-neu-panel border border-slate-200 rounded-lg p-4 space-y-4">
+          <h3 className="font-medium text-neu-ink">Registrar Entrada de Estoque</h3>
           {error && (
             <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
               {error}
@@ -230,13 +230,13 @@ export default function StockPage() {
 
           {/* Drug search */}
           <div>
-            <label className="block text-xs font-medium text-[#57606A] mb-1">Medicamento *</label>
+            <label className="block text-xs font-medium text-neu-inkSoft mb-1">Medicamento *</label>
             {selectedDrug ? (
               <div className="flex items-center justify-between px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
                 <span className="text-sm font-medium text-blue-900">{selectedDrug.name}</span>
                 <button
                   onClick={() => { setSelectedDrug(null); setDrugSearch('') }}
-                  className="text-xs text-[#0066A1] hover:underline"
+                  className="text-xs text-neu-brand hover:underline"
                 >
                   Alterar
                 </button>
@@ -257,9 +257,9 @@ export default function StockPage() {
                       <button
                         key={d.id}
                         onClick={() => { setSelectedDrug(d); setDrugSearch(''); setDrugResults([]) }}
-                        className="w-full text-left px-3 py-2 hover:bg-[#F4F7FA] text-sm"
+                        className="w-full text-left px-3 py-2 hover:bg-neu-panel text-sm"
                       >
-                        <span className="font-medium text-[#24292F]">{d.name}</span>
+                        <span className="font-medium text-neu-ink">{d.name}</span>
                         {(d.dosage_form || d.concentration) && (
                           <span className="text-slate-400 ml-2 text-xs">
                             {[d.dosage_form, d.concentration].filter(Boolean).join(' ')}
@@ -275,7 +275,7 @@ export default function StockPage() {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-[#57606A] mb-1">Número do lote *</label>
+              <label className="block text-xs font-medium text-neu-inkSoft mb-1">Número do lote *</label>
               <input
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono"
                 placeholder="Ex: LOT2024-001"
@@ -284,7 +284,7 @@ export default function StockPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#57606A] mb-1">Data de validade</label>
+              <label className="block text-xs font-medium text-neu-inkSoft mb-1">Data de validade</label>
               <input
                 type="date"
                 min={today}
@@ -294,7 +294,7 @@ export default function StockPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#57606A] mb-1">Quantidade *</label>
+              <label className="block text-xs font-medium text-neu-inkSoft mb-1">Quantidade *</label>
               <input
                 type="number"
                 step="0.001"
@@ -306,7 +306,7 @@ export default function StockPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#57606A] mb-1">Observações</label>
+              <label className="block text-xs font-medium text-neu-inkSoft mb-1">Observações</label>
               <input
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                 placeholder="NF, fornecedor..."
@@ -320,7 +320,7 @@ export default function StockPage() {
             <button
               onClick={handleEntry}
               disabled={saving || !selectedDrug || !lotNumber || !entryQuantity}
-              className="px-4 py-2 bg-gradient-to-b from-[#0066A1] to-[#005282] border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] text-white text-sm font-medium rounded-lg hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] disabled:opacity-50"
+              className="px-4 py-2 bg-gradient-to-b from-neu-brand to-neu-brandDeep border-t border-neu-brandEdge shadow-neu-btn-primary text-white text-sm font-medium rounded-lg hover:shadow-neu-btn-primary-hover disabled:opacity-50"
             >
               {saving ? 'Salvando...' : 'Registrar Entrada'}
             </button>
@@ -336,7 +336,7 @@ export default function StockPage() {
                 setEntryNotes('')
                 setError('')
               }}
-              className="px-4 py-2 text-sm text-[#57606A] hover:text-[#24292F]"
+              className="px-4 py-2 text-sm text-neu-inkSoft hover:text-neu-ink"
             >
               Cancelar
             </button>
@@ -346,12 +346,12 @@ export default function StockPage() {
 
       {loading && <p className="text-sm text-slate-400">Carregando...</p>}
 
-      <div className="bg-[#F4F7FA] rounded-lg border border-slate-200 overflow-x-auto">
+      <div className="bg-neu-panel rounded-lg border border-slate-200 overflow-x-auto">
         <table className="w-full text-sm min-w-[700px]">
           <thead>
-            <tr className="border-b border-slate-100 bg-[#F4F7FA]">
+            <tr className="border-b border-slate-100 bg-neu-panel">
               {['Item', 'Lote', 'Vencimento', 'Quantidade', 'Estoque mín.', 'Local', 'Status'].map(h => (
-                <th key={h} className="text-left px-4 py-3 font-medium text-[#57606A]">{h}</th>
+                <th key={h} className="text-left px-4 py-3 font-medium text-neu-inkSoft">{h}</th>
               ))}
             </tr>
           </thead>
@@ -359,7 +359,7 @@ export default function StockPage() {
             {filtered.length === 0 && !loading && (
               <tr>
                 <td colSpan={7} className="px-4 py-10 text-center">
-                  <p className="text-sm font-medium text-[#8C959F]">Nenhum item de estoque encontrado</p>
+                  <p className="text-sm font-medium text-neu-inkMuted">Nenhum item de estoque encontrado</p>
                   <p className="text-xs text-slate-400 mt-1">
                     Registre uma entrada de estoque para começar.
                   </p>
@@ -367,12 +367,12 @@ export default function StockPage() {
               </tr>
             )}
             {filtered.map(item => (
-              <tr key={item.id} className={`border-b border-slate-50 hover:bg-[#F4F7FA] cursor-pointer ${expiryRowClass(item)}`} onClick={() => router.push(`/farmacia/stock/${item.id}`)}>
-                <td className="px-4 py-3 font-medium text-[#24292F]">
+              <tr key={item.id} className={`border-b border-slate-50 hover:bg-neu-panel cursor-pointer ${expiryRowClass(item)}`} onClick={() => router.push(`/farmacia/stock/${item.id}`)}>
+                <td className="px-4 py-3 font-medium text-neu-ink">
                   {item.drug_name ?? item.material_name ?? '—'}
                 </td>
-                <td className="px-4 py-3 font-mono text-xs text-[#57606A]">{item.lot_number || '—'}</td>
-                <td className="px-4 py-3 text-[#57606A]">
+                <td className="px-4 py-3 font-mono text-xs text-neu-inkSoft">{item.lot_number || '—'}</td>
+                <td className="px-4 py-3 text-neu-inkSoft">
                   {item.expiry_date
                     ? <span className={
                         item.is_expired ? 'text-red-600 font-medium' :
@@ -382,9 +382,9 @@ export default function StockPage() {
                       </span>
                     : '—'}
                 </td>
-                <td className="px-4 py-3 font-mono text-[#24292F]">{item.quantity}</td>
-                <td className="px-4 py-3 font-mono text-[#8C959F]">{item.min_stock}</td>
-                <td className="px-4 py-3 text-[#57606A]">{item.location || '—'}</td>
+                <td className="px-4 py-3 font-mono text-neu-ink">{item.quantity}</td>
+                <td className="px-4 py-3 font-mono text-neu-inkMuted">{item.min_stock}</td>
+                <td className="px-4 py-3 text-neu-inkSoft">{item.location || '—'}</td>
                 <td className="px-4 py-3">
                   {item.is_expired
                     ? <span className="px-2 py-0.5 text-xs bg-red-100 text-red-700 rounded">Vencido</span>

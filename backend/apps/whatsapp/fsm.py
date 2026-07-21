@@ -67,6 +67,12 @@ INTENT_MAP: dict[str, str] = {
     "nao": "optout",
     "nao quero": "optout",
     "recusar": "optout",
+    # Triage (symptom triage sub-flow — gated by the `triage` feature flag)
+    "triagem": "triagem",
+    "triar": "triagem",
+    "fazer triagem": "triagem",
+    "iniciar triagem": "triagem",
+    "quero triagem": "triagem",
     # Help
     "ajuda": "ajuda",
     "menu": "ajuda",
@@ -133,6 +139,76 @@ CONFIRMED_MSG_TEMPLATE = (
     "Você receberá um lembrete 24h antes. Para cancelar, envie *cancelar*."
 )
 
+# Triage sub-flow messages.
+TRIAGE_DISABLED_MSG = (
+    "A triagem por mensagem não está disponível nesta clínica no momento. "
+    "Para agendar uma consulta, digite *agendar*."
+)
+TRIAGE_INTRO_MSG = (
+    "Vou fazer algumas perguntas rápidas para avaliar a urgência da sua situação. "
+    "Isto não substitui uma avaliação médica.\n\n"
+    "Primeiro, descreva brevemente o que você está sentindo."
+)
+TRIAGE_ANSWER_HINT_MSG = "Por favor, responda apenas com *sim* ou *não*."
+TRIAGE_ABORT_MSG = "Não consegui recuperar sua triagem. Digite *triagem* para recomeçar."
+TRIAGE_RESULT_EMERGENCY_MSG = (
+    "🚨 *Atenção: sinais de emergência.*\n\n"
+    "Procure atendimento de emergência IMEDIATAMENTE ou ligue para o SAMU (192).\n\n"
+    "Nossa equipe foi notificada e poderá entrar em contato."
+)
+TRIAGE_RESULT_URGENT_MSG = (
+    "⚠️ *Sua situação parece urgente.*\n\n"
+    "Recomendamos buscar atendimento o quanto antes. "
+    "Digite *agendar* para marcar uma consulta prioritária ou procure uma unidade de saúde."
+)
+TRIAGE_RESULT_ROUTINE_MSG = (
+    "✅ *Não identificamos sinais de urgência.*\n\n"
+    "Se desejar, digite *agendar* para marcar uma consulta de rotina. "
+    "Caso os sintomas piorem, refaça a triagem enviando *triagem*."
+)
+
+# Affirmative / negative tokens accepted as triage answers (post-normalization,
+# i.e. lowercase + accent-stripped). Kept narrow so an ambiguous reply re-prompts.
+_TRIAGE_YES = frozenset({"sim", "s", "yes", "y", "claro", "tenho", "estou", "positivo"})
+_TRIAGE_NO = frozenset({"nao", "n", "no", "nunca", "negativo"})
+
+# Opt-out words that are AMBIGUOUS mid-triage: a bare "não" is a clinical answer
+# there, not a withdrawal of LGPD consent. The explicit words (sair/parar/stop)
+# always opt out, even during triage.
+_SOFT_OPTOUT_WORDS = frozenset({"nao", "nao quero"})
+
+
+def _parse_yes_no(text: str) -> str | None:
+    """Map a free-text reply to the triage answer 'sim' / 'não', or None."""
+    normalized = _normalize(text)
+    if normalized in _TRIAGE_YES:
+        return "sim"
+    if normalized in _TRIAGE_NO:
+        return "não"
+    return None
+
+
+# Urgency values mirror apps.triage.services.evaluator (kept as literals here so
+# the WhatsApp module doesn't import the triage package at load time).
+TRIAGE_URGENCY_ROUTINE = "routine"
+TRIAGE_URGENCY_URGENT = "urgent"
+TRIAGE_URGENCY_EMERGENCY = "emergency"
+
+_TRIAGE_RESULT_MESSAGES = {
+    TRIAGE_URGENCY_EMERGENCY: TRIAGE_RESULT_EMERGENCY_MSG,
+    TRIAGE_URGENCY_URGENT: TRIAGE_RESULT_URGENT_MSG,
+    TRIAGE_URGENCY_ROUTINE: TRIAGE_RESULT_ROUTINE_MSG,
+}
+
+
+def _triage_result_message(urgency: str | None) -> str:
+    """Map a triage urgency classification to its patient-facing message.
+
+    Falls back to the routine message for an unknown/empty urgency so the
+    patient always gets a coherent close to the flow.
+    """
+    return _TRIAGE_RESULT_MESSAGES.get(urgency or "", TRIAGE_RESULT_ROUTINE_MSG)
+
 
 # ─── FSM ──────────────────────────────────────────────────────────────────────
 
@@ -158,16 +234,38 @@ class ConversationFSM:
 
         # Expire check
         if session.is_expired() and session.state not in ("IDLE", "OPTED_OUT"):
+            outbound = [EXPIRED_MSG]
+            # An expired mid-triage session must not orphan the TriageSession:
+            # partially evaluate it so a known emergency (e.g. chief complaint
+            # "dor no peito") still pages staff before we abandon the flow.
+            if session.state in ("TRIAGE_COMPLAINT", "TRIAGE_QUESTIONS"):
+                if self._triage_abandon(self._load_triage_session(), "session_expired"):
+                    outbound = [TRIAGE_RESULT_EMERGENCY_MSG, EXPIRED_MSG]
             session.state = "IDLE"
-            set_context(session, mismatches=0)
+            set_context(session, triage_session_id=None, mismatches=0)
             session.refresh_expiry()
             session.save()
-            return [EXPIRED_MSG]
+            return outbound
 
-        # Global opt-out from any state
         intent = detect_intent(message)
+
+        # Global opt-out from any state. Mid-triage, a bare "não"/"nao" is a
+        # clinical answer (not a withdrawal of LGPD consent) — only the explicit
+        # opt-out words (sair/parar/stop) win there.
         if intent == "optout":
-            return self._do_optout()
+            if not (
+                session.state == "TRIAGE_QUESTIONS" and _normalize(message) in _SOFT_OPTOUT_WORDS
+            ):
+                return self._do_optout()
+
+        # Triage entry — an opted-in patient can start a symptom triage from
+        # anywhere by sending "triagem" (gated by the `triage` feature flag).
+        if (
+            intent == "triagem"
+            and session.contact.opt_in
+            and session.state not in ("TRIAGE_COMPLAINT", "TRIAGE_QUESTIONS")
+        ):
+            return self._start_triage()
 
         handler = getattr(self, f"_state_{session.state}", self._state_unknown)
         outbound = handler(message, message_type, intent)
@@ -395,11 +493,219 @@ class ConversationFSM:
     def _do_optout(self) -> list[str]:
         session = self._session
         contact = session.contact
+        # Opting out mid-triage abandons the TriageSession — partially evaluate
+        # it first so a known emergency still pages staff (the patient stops
+        # receiving messages, but the clinical escalation must not be lost).
+        if session.state in ("TRIAGE_COMPLAINT", "TRIAGE_QUESTIONS"):
+            self._triage_abandon(self._load_triage_session(), "opted_out")
         contact.do_opt_out()
         session.state = "OPTED_OUT"
-        set_context(session, mismatches=0)
+        set_context(session, triage_session_id=None, mismatches=0)
         session.save()
         return [OPTED_OUT_MSG]
+
+    # ─── Triage sub-flow (symptom triage over WhatsApp) ───────────────────────
+
+    def _triage_enabled(self) -> bool:
+        """True when the active tenant has the `triage` feature flag enabled."""
+        from django.db import connection
+
+        from apps.core.utils import tenant_has_feature
+
+        tenant = getattr(connection, "tenant", None)
+        if tenant is None:
+            return False
+        return tenant_has_feature(tenant, "triage")
+
+    def _triage_provider(self):
+        """Resolve the triage domain's provider via the apps.core port.
+
+        Returns None when apps.triage is not installed/registered — the
+        domain-independence contract (P1-01) forbids importing apps.triage
+        directly from here, so all triage operations go through this seam.
+        """
+        from apps.core.triage_bridge import get_triage_provider
+
+        return get_triage_provider()
+
+    def _load_triage_session(self):
+        """Return the in-progress triage session, or None if missing/invalid."""
+        ctx = get_context(self._session)
+        tsid = ctx.get("triage_session_id")
+        if not tsid:
+            return None
+        provider = self._triage_provider()
+        if provider is None:
+            return None
+        return provider.get_session(tsid)
+
+    def _start_triage(self) -> list[str]:
+        session = self._session
+        contact = session.contact
+
+        provider = self._triage_provider()
+        if provider is None or not self._triage_enabled():
+            return [TRIAGE_DISABLED_MSG]
+
+        ts = provider.create_session(
+            patient=contact.patient,
+            contact_phone=contact.phone,
+        )
+        set_context(session, triage_session_id=str(ts.id), mismatches=0)
+        session.state = "TRIAGE_COMPLAINT"
+        session.refresh_expiry()
+        session.save()
+        return [TRIAGE_INTRO_MSG]
+
+    def _state_TRIAGE_COMPLAINT(self, message, message_type, intent) -> list[str]:
+        session = self._session
+        ts = self._load_triage_session()
+        if ts is None:
+            return self._triage_abort()
+
+        complaint = (message or "").strip()
+        if len(complaint) < 2:
+            return self._triage_unrecognized(ts, [TRIAGE_INTRO_MSG])
+
+        ts.record_chief_complaint(complaint)
+        session.state = "TRIAGE_QUESTIONS"
+        set_context(session, mismatches=0)
+        session.save()
+        return self._triage_send_question(ts)
+
+    def _state_TRIAGE_QUESTIONS(self, message, message_type, intent) -> list[str]:
+        session = self._session
+        ts = self._load_triage_session()
+        if ts is None:
+            return self._triage_abort()
+
+        answer = _parse_yes_no(message)
+        if answer is None:
+            return self._triage_unrecognized(ts, self._triage_send_question(ts))
+
+        key = ts.next_question_key
+        if key is None:
+            # Defensive: no question pending — evaluate what we have.
+            return self._triage_finish(ts)
+
+        try:
+            ts.answer(key, answer)
+        except ValueError:
+            # Late duplicate / concurrent close: the TriageSession is already
+            # terminal. Swallow instead of exploding the webhook transaction
+            # (which would roll back everything and leave the patient with no
+            # reply at all) and close the conversation loop gracefully.
+            logger.warning(
+                "TriageSession %s no longer accepts answers (status=%s) — closing flow.",
+                ts.id,
+                getattr(ts, "status", "?"),
+            )
+            session.state = "IDLE"
+            set_context(session, triage_session_id=None, mismatches=0)
+            session.save()
+            if getattr(ts, "urgency", ""):
+                # Repeat the (safe) final classification message.
+                return [_triage_result_message(ts.urgency)]
+            return [TRIAGE_ABORT_MSG]
+        set_context(session, mismatches=0)
+
+        if ts.next_question_key is not None:
+            session.save()
+            return self._triage_send_question(ts)
+
+        return self._triage_finish(ts)
+
+    def _triage_send_question(self, ts) -> list[str]:
+        question = ts.current_question()
+        if question is None:
+            return self._triage_finish(ts)
+        return [f"{question.prompt}\n\n(responda *sim* ou *não*)"]
+
+    def _triage_finish(self, ts) -> list[str]:
+        session = self._session
+        try:
+            ts.evaluate_now()  # sets urgency; auto-escalates on emergency
+            evaluated = True
+        except ValueError:
+            # Already terminal (late duplicate / concurrent evaluation) —
+            # don't blow up the webhook transaction and don't re-page staff.
+            logger.warning(
+                "TriageSession %s could not be evaluated (status=%s) — reusing stored urgency.",
+                ts.id,
+                getattr(ts, "status", "?"),
+            )
+            evaluated = False
+
+        if evaluated and ts.urgency == TRIAGE_URGENCY_EMERGENCY:
+            provider = self._triage_provider()
+            if provider is not None:
+                provider.notify_emergency(ts)
+
+        # Triage sub-flow is done — return the conversation to IDLE.
+        session.state = "IDLE"
+        set_context(session, triage_session_id=None, mismatches=0)
+        session.save()
+        return [_triage_result_message(ts.urgency)]
+
+    def _triage_abort(self) -> list[str]:
+        session = self._session
+        session.state = "IDLE"
+        set_context(session, triage_session_id=None, mismatches=0)
+        session.save()
+        return [TRIAGE_ABORT_MSG]
+
+    def _triage_unrecognized(self, ts, retry_messages: list[str]) -> list[str]:
+        """Re-prompt an unparseable triage reply; abandon + hand off after 3.
+
+        Abandonment runs a partial evaluation first (see ``_triage_abandon``)
+        so a chief complaint with a known emergency keyword still pages staff
+        even though the patient never finished the questions.
+        """
+        session = self._session
+        ctx = get_context(session)
+        mismatches = (ctx.get("mismatches") or 0) + 1
+        if mismatches >= 3:
+            emergency = self._triage_abandon(ts, "unrecognized_answers")
+            session.state = "FALLBACK_HUMAN"
+            set_context(session, triage_session_id=None, mismatches=0)
+            session.save()
+            outbound = [FALLBACK_MSG_TEMPLATE.format(phone=self._clinic_phone)]
+            if emergency:
+                outbound = [TRIAGE_RESULT_EMERGENCY_MSG] + outbound
+            return outbound
+        set_context(session, mismatches=mismatches)
+        session.save()
+        return [TRIAGE_ANSWER_HINT_MSG] + retry_messages
+
+    def _triage_abandon(self, ts, reason: str) -> bool:
+        """Close an abandoned TriageSession, escalating a known emergency.
+
+        Runs the partial-evidence evaluation (``ts.abandon``) and, when it
+        classifies as emergency, pages staff via the triage provider — the
+        three early-exit paths (session expiry, opt-out, 3 unrecognized
+        replies) must never silently drop an emergency the evaluator can
+        already see (CFM Res. 2.314/2022 §6).
+
+        Returns True when the abandoned triage classified as emergency.
+        Never raises — abandonment bookkeeping must not break the patient's
+        conversation flow.
+        """
+        if ts is None:
+            return False
+        try:
+            emergency = ts.abandon(reason)
+        except Exception:
+            logger.exception(
+                "Could not abandon TriageSession %s (reason=%s)",
+                getattr(ts, "id", None),
+                reason,
+            )
+            return False
+        if emergency:
+            provider = self._triage_provider()
+            if provider is not None:
+                provider.notify_emergency(ts)
+        return emergency
 
     # ─── Booking confirmation (atomic slot reservation) ───────────────────────
 

@@ -208,7 +208,7 @@ def mfa_required_for(user) -> bool:
     if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
         return True
     role = getattr(user, "role", None)
-    required = getattr(settings, "MFA_REQUIRED_ROLES", set())
+    required: set[str] = getattr(settings, "MFA_REQUIRED_ROLES", set())
     return bool(role and role.name in required)
 
 

@@ -159,3 +159,47 @@ multi-clínica. M1 fecha o furo de isolamento; M2 refina o modelo de permissão.
 - **Model B completo (M1+M1.1+M2).** To go live segue igual: backfill → revisar órfãos +
   grant → `ENFORCE_TENANT_MEMBERSHIP=true`. Com o flag ON, admins podem dar role distinto por
   clínica setando `UserTenantMembership.role` (UI de gestão de membership = follow-up futuro).
+
+## Runbook de ativação — issue #115 (flip do flag + CSP)
+Ordem operacional para ligar o enforcement num tenant piloto e promover o CSP. Nada
+aqui altera o **default** do flag (`base.py` segue `False`, CI/dev safe); a ativação é
+por env, e `apps/core/checks.py::core.E002` já **falha o deploy** se prod subir com o
+flag OFF (`manage.py check --deploy`).
+
+1. **Auditar (sem escrever):** no container de produção/staging do piloto, rodar o
+   relatório por tenant antes de qualquer flip:
+   `docker compose exec -T django python manage.py backfill_tenant_memberships --dry-run --report`.
+   Revisar as memberships a criar **e** a lista de "active non-superuser com NO data
+   footprint" — esses NÃO são auto-concedidos (evita re-abrir o furo cross-tenant).
+2. **Resolver conflitos:** para cada órfão legítimo, conceder explicitamente com
+   `grant_tenant_membership --user <email> --tenant <schema> [--role <role>]`. Repetir o
+   `--dry-run --report` até a lista de órfãos conter só contas que DEVEM mesmo ficar sem acesso.
+3. **Aplicar o backfill:** `python manage.py backfill_tenant_memberships --report`
+   (idempotente; cria as memberships inferidas). Conferir o total criado no output.
+4. **Flip do flag:** setar `ENFORCE_TENANT_MEMBERSHIP=true` na env do container do piloto e
+   reiniciar. **Não** é deploy de código. Validar com `manage.py check --deploy` (core.E002 some).
+5. **Verificar (critério de aceite):**
+   - **Sem vazamento cross-tenant:** JWT da clínica A no domínio de B → 401
+     `NO_TENANT_MEMBERSHIP` (coberto por `test_tenant_membership.py`; o login genérico não
+     vira oráculo de enumeração).
+   - **Sessões existentes não quebram:** tokens já emitidos carregam o claim `schema`; refresh
+     re-checa membership. Usuários com membership ativa seguem 200.
+   - **MFA enforcement (admin/medico/dentista):** `MFARequiredMiddleware` +
+     `MFA_REQUIRED_ROLES` bloqueiam staff sem `mfa_verified` no JWT. Confirmar no browser que
+     esses roles caem no fluxo `/mfa` e não acessam rotas protegidas sem TOTP.
+6. **Soak 24h:** monitorar logs de acesso/Sentry do piloto por 24h com enforcement ON;
+   meta = zero erro de acesso indevido.
+
+### CSP — promoção de Report-Only → Enforcing
+O coletor de violações (`POST /api/v1/security/csp-report`, S28-05) já existia; o header
+em si era deferido. A partir de #115 o middleware do Next.js (`frontend/middleware.ts`)
+emite a policy **nonce-based** (`frontend/lib/security/csp.ts`) em **Report-Only por
+default** para todo ambiente não-dev.
+
+1. Subir o piloto com o default Report-Only. Navegar os fluxos principais
+   (login, dashboard, prontuário, prescrição, farmácia) e coletar os reports em
+   `/api/v1/security/csp-report` (logger `vitali.security.csp`).
+2. Ajustar diretivas em `csp.ts` se algum recurso legítimo violar (ex.: nova origem de
+   `connect-src`). Repetir até **relatório limpo** (sem violações) na janela de soak.
+3. Promover para enforcing setando `CSP_ENFORCE=true` na env do frontend e reiniciar. O
+   header passa de `Content-Security-Policy-Report-Only` para `Content-Security-Policy`.
