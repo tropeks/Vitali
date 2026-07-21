@@ -12,7 +12,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("core", "0019_auditlog_immutable"),
+        ("core", "0021_selfserve_signup"),
     ]
 
     operations = [

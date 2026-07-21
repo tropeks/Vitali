@@ -105,10 +105,10 @@ function WedgePanel({
   children: ReactNode
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white">
+    <div className="rounded-lg border border-slate-200 bg-neu-panel">
       <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5">
-        <span className="text-slate-500">{icon}</span>
-        <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
+        <span className="text-neu-inkSoft">{icon}</span>
+        <h3 className="text-sm font-semibold text-neu-ink">{title}</h3>
       </div>
       <div className="p-4">{children}</div>
     </div>
@@ -127,17 +127,17 @@ function TenantCard({ tenant }: { tenant: TenantValue }) {
 
   return (
     <section
-      className={`rounded-lg border bg-white ${
+      className={`rounded-lg border bg-neu-panel ${
         tenant.error ? 'border-red-200' : 'border-slate-200'
       }`}
     >
       <div className="flex items-start justify-between gap-2 border-b border-slate-100 px-4 py-3">
         <div>
-          <p className="text-base font-semibold text-slate-900">{tenant.name}</p>
-          <p className="font-mono text-xs text-slate-500">{tenant.schema}</p>
+          <p className="text-base font-semibold text-neu-ink">{tenant.name}</p>
+          <p className="font-mono text-xs text-neu-inkSoft">{tenant.schema}</p>
         </div>
         <div className="text-right">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">ROI estimado</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-neu-inkMuted">ROI estimado</p>
           <p className="text-lg font-semibold text-green-700">{brl(m.roi_brl)}</p>
         </div>
       </div>
@@ -209,18 +209,18 @@ function TenantCard({ tenant }: { tenant: TenantValue }) {
 
             {/* Override rate por tipo de wedge */}
             {Object.keys(overrides).length > 0 && (
-              <div className="rounded-lg border border-slate-200 bg-[#F4F7FA] p-4">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <div className="rounded-lg border border-slate-200 bg-neu-panelAlt p-4">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neu-inkSoft">
                   Override rate por wedge
                 </p>
                 <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
                   {Object.entries(overrides).map(([key, o]) => (
                     <div key={key} className="flex items-baseline gap-1.5">
-                      <span className="font-medium text-slate-700">
+                      <span className="font-medium text-neu-inkSoft">
                         {WEDGE_LABELS[key] ?? key}
                       </span>
-                      <span className="font-semibold text-slate-900">{pct(o.rate)}</span>
-                      <span className="text-xs text-slate-500">
+                      <span className="font-semibold text-neu-ink">{pct(o.rate)}</span>
+                      <span className="text-xs text-neu-inkSoft">
                         ({o.overridden ?? 0}/{o.fired ?? 0})
                       </span>
                     </div>
@@ -274,8 +274,8 @@ export default function WedgeValuePage() {
     <PageShell variant="operational">
       <div className="flex flex-wrap items-center gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Valor dos Wedges</h1>
-          <p className="mt-0.5 text-sm text-slate-500">
+          <h1 className="text-2xl font-semibold text-neu-ink">Valor dos Wedges</h1>
+          <p className="mt-0.5 text-sm text-neu-inkSoft">
             ROI de negócio por wedge por tenant — calculado a partir dos verdicts de IA, atualizado
             diariamente via Celery Beat.
           </p>
@@ -283,12 +283,12 @@ export default function WedgeValuePage() {
         <div className="flex-1" />
         <div className="flex items-center gap-3">
           {data && (
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-neu-inkSoft">
               {data.source === 'live' ? 'Cálculo ao vivo' : 'Snapshot diário'} ·{' '}
               {new Date(data.generated_at).toLocaleString('pt-BR')}
             </p>
           )}
-          <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+          <label className="flex items-center gap-1.5 text-xs font-medium text-neu-inkSoft">
             <input
               type="checkbox"
               checked={live}
@@ -300,7 +300,7 @@ export default function WedgeValuePage() {
           <button
             onClick={() => fetchData(live)}
             disabled={loading}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            className="inline-flex items-center gap-2 neu-btn-secondary disabled:opacity-50"
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             Atualizar
@@ -316,7 +316,7 @@ export default function WedgeValuePage() {
           action={
             <button
               onClick={() => fetchData(live)}
-              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+              className="inline-flex items-center gap-2 neu-btn-primary"
             >
               Tentar novamente
             </button>
@@ -326,7 +326,7 @@ export default function WedgeValuePage() {
 
       {/* Headline totals across all tenants */}
       {totals && (
-        <section className="rounded-lg border border-slate-200 bg-white p-4">
+        <section className="rounded-lg border border-slate-200 bg-neu-panel p-4">
           <div className="mb-3 flex items-center gap-2">
             <StatusBadge
               meta={{
@@ -337,7 +337,7 @@ export default function WedgeValuePage() {
                     : 'bg-slate-100 text-slate-600 border-slate-200',
               }}
             />
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <span className="text-xs font-semibold uppercase tracking-wide text-neu-inkSoft">
               Consolidado · {totals.tenant_count} tenant{totals.tenant_count !== 1 ? 's' : ''}
             </span>
           </div>
@@ -354,7 +354,10 @@ export default function WedgeValuePage() {
       {loading && !data && (
         <div className="space-y-4">
           {[1, 2].map((i) => (
-            <div key={i} className="h-64 animate-pulse rounded-lg border border-slate-200 bg-white" />
+            <div
+              key={i}
+              className="h-64 animate-pulse rounded-lg border border-slate-200 bg-neu-panel"
+            />
           ))}
         </div>
       )}
@@ -373,7 +376,7 @@ export default function WedgeValuePage() {
       )}
 
       {data?.snapshot_date && (
-        <p className="text-right text-xs text-slate-500">
+        <p className="text-right text-xs text-neu-inkSoft">
           Janela de cálculo: últimos {data.tenants[0]?.window_days ?? 30} dias · referência{' '}
           {new Date(data.snapshot_date).toLocaleDateString('pt-BR')}
         </p>
