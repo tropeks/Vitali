@@ -62,11 +62,11 @@ export default function ControladosPage() {
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="flex items-center gap-2 text-lg font-semibold text-[#24292F]">
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-neu-ink">
             <ShieldAlert size={20} className="text-red-600" />
             Controlados — Diversão
           </h2>
-          <p className="text-sm text-[#8C959F]">
+          <p className="text-sm text-neu-inkMuted">
             Padrões anômalos de dispensação de controlados (Portaria 344). Apenas aviso de
             compliance — nunca bloqueou a dispensa.
           </p>
@@ -78,8 +78,8 @@ export default function ControladosPage() {
               onClick={() => setKindFilter(f.value)}
               className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
                 kindFilter === f.value
-                  ? 'bg-gradient-to-b from-[#0066A1] to-[#005282] border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] text-white border-blue-600'
-                  : 'bg-[#F4F7FA] text-[#57606A] border-slate-200 hover:bg-[#F4F7FA]'
+                  ? 'bg-gradient-to-b from-neu-brand to-neu-brandDeep border-t border-neu-brandEdge shadow-neu-btn-primary text-white border-blue-600'
+                  : 'bg-neu-panel text-neu-inkSoft border-slate-200 hover:bg-neu-panel'
               }`}
             >
               {f.label}
@@ -96,7 +96,7 @@ export default function ControladosPage() {
       )}
 
       {!enabled && !loading && (
-        <div className="bg-[#F4F7FA] border border-slate-200 text-[#8C959F] text-sm rounded-lg px-4 py-3 text-center">
+        <div className="bg-neu-panel border border-slate-200 text-neu-inkMuted text-sm rounded-lg px-4 py-3 text-center">
           O monitoramento de diversão de controlados está desativado para este estabelecimento.
         </div>
       )}
@@ -104,14 +104,14 @@ export default function ControladosPage() {
       {loading && <p className="text-sm text-slate-400">Carregando...</p>}
 
       {!loading && enabled && (
-        <div className="bg-[#F4F7FA] rounded-lg border border-slate-200 overflow-x-auto">
+        <div className="bg-neu-panel rounded-lg border border-slate-200 overflow-x-auto">
           <table className="w-full text-sm min-w-[760px]">
             <thead>
-              <tr className="border-b border-slate-100 bg-[#F4F7FA]">
+              <tr className="border-b border-slate-100 bg-neu-panel">
                 {['Paciente', 'Medicamento', 'Sinal', 'Quando', ''].map((h, i) => (
                   <th
                     key={h || `col-${i}`}
-                    className="text-left px-4 py-3 text-xs font-medium text-[#8C959F] uppercase tracking-wide"
+                    className="text-left px-4 py-3 text-xs font-medium text-neu-inkMuted uppercase tracking-wide"
                   >
                     {h}
                   </th>
@@ -128,8 +128,8 @@ export default function ControladosPage() {
               )}
               {alerts.map((a) => (
                 <tr key={a.id} className="border-b border-slate-50 align-top">
-                  <td className="px-4 py-3 font-medium text-[#24292F]">{a.patient_name}</td>
-                  <td className="px-4 py-3 text-[#57606A]">
+                  <td className="px-4 py-3 font-medium text-neu-ink">{a.patient_name}</td>
+                  <td className="px-4 py-3 text-neu-inkSoft">
                     <p>{a.drug}</p>
                     <p className="text-xs text-slate-400 mt-1">Lista {a.controlled_class}</p>
                   </td>
@@ -138,12 +138,12 @@ export default function ControladosPage() {
                       {a.signal_kind_display}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-[#57606A]">{formatWhen(a.created_at)}</td>
+                  <td className="px-4 py-3 text-neu-inkSoft">{formatWhen(a.created_at)}</td>
                   <td className="px-4 py-3 text-right">
                     <button
                       onClick={() => handleAcknowledge(a.id)}
                       disabled={acking === a.id}
-                      className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 text-[#57606A] hover:bg-[#F4F7FA] disabled:opacity-50"
+                      className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 text-neu-inkSoft hover:bg-neu-panel disabled:opacity-50"
                     >
                       {acking === a.id ? 'Reconhecendo...' : 'Reconhecer'}
                     </button>

@@ -26,7 +26,7 @@ function pct(val: number | null): string {
 export default function GlosaAccuracyTable({ data, minPredictions = MIN_PER_INSURER }: Props) {
   if (data.length === 0) {
     return (
-      <div className="text-sm text-[#8C959F] py-3">
+      <div className="text-sm text-neu-inkMuted py-3">
         <p className="font-medium mb-1">A IA de Glosa está aprendendo.</p>
         <p className="text-slate-400">
           Acompanhe a precisão após {minPredictions} previsões por convênio. Crie guias TISS para começar.
@@ -45,7 +45,7 @@ export default function GlosaAccuracyTable({ data, minPredictions = MIN_PER_INSU
           {warmingRows.map(r => (
             <span
               key={r.insurer_ans_code}
-              className="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-[#DFE5EB] text-[#57606A]"
+              className="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-neu-app text-neu-inkSoft"
             >
               {r.insurer_name}: {r.total_predictions}/{minPredictions} previsões
             </span>
@@ -58,11 +58,11 @@ export default function GlosaAccuracyTable({ data, minPredictions = MIN_PER_INSU
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100">
-                <th className="text-left py-2 pr-4 font-medium text-[#8C959F]">Convênio</th>
-                <th className="text-right py-2 pr-4 font-medium text-[#8C959F]">Previsões</th>
-                <th className="text-right py-2 pr-4 font-medium text-[#8C959F]">Alto risco %</th>
-                <th className="text-right py-2 pr-4 font-medium text-[#8C959F]">Glosado real %</th>
-                <th className="text-right py-2 font-medium text-[#8C959F]">Precisão</th>
+                <th className="text-left py-2 pr-4 font-medium text-neu-inkMuted">Convênio</th>
+                <th className="text-right py-2 pr-4 font-medium text-neu-inkMuted">Previsões</th>
+                <th className="text-right py-2 pr-4 font-medium text-neu-inkMuted">Alto risco %</th>
+                <th className="text-right py-2 pr-4 font-medium text-neu-inkMuted">Glosado real %</th>
+                <th className="text-right py-2 font-medium text-neu-inkMuted">Precisão</th>
               </tr>
             </thead>
             <tbody>
@@ -77,11 +77,11 @@ export default function GlosaAccuracyTable({ data, minPredictions = MIN_PER_INSU
                     : '—';
                 return (
                   <tr key={r.insurer_ans_code} className="border-b border-slate-50">
-                    <td className="py-2 pr-4 text-[#24292F]">{r.insurer_name}</td>
-                    <td className="py-2 pr-4 text-right text-[#57606A]">{r.total_predictions}</td>
-                    <td className="py-2 pr-4 text-right text-[#57606A]">{highRatePct}</td>
-                    <td className="py-2 pr-4 text-right text-[#57606A]">{denialRatePct}</td>
-                    <td className="py-2 text-right font-medium text-[#24292F]">{pct(r.precision)}</td>
+                    <td className="py-2 pr-4 text-neu-ink">{r.insurer_name}</td>
+                    <td className="py-2 pr-4 text-right text-neu-inkSoft">{r.total_predictions}</td>
+                    <td className="py-2 pr-4 text-right text-neu-inkSoft">{highRatePct}</td>
+                    <td className="py-2 pr-4 text-right text-neu-inkSoft">{denialRatePct}</td>
+                    <td className="py-2 text-right font-medium text-neu-ink">{pct(r.precision)}</td>
                   </tr>
                 );
               })}

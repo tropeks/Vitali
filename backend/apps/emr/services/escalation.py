@@ -19,7 +19,7 @@ from apps.emr.models import DeteriorationAlert, EscalationConfig
 logger = logging.getLogger(__name__)
 
 # Severity ranking for threshold comparison.
-_SEVERITY_ORDER = {
+_SEVERITY_ORDER: dict[str, int] = {
     DeteriorationAlert.Severity.ADVISE: 0,
     DeteriorationAlert.Severity.ESCALATION: 1,
 }
@@ -75,6 +75,7 @@ class EscalationRouter:
             return
         try:
             from apps.emr.tasks import send_escalation_notification
+
             send_escalation_notification.delay(
                 alert_id=str(alert.pk),
                 notify_emails=config.notify_emails,

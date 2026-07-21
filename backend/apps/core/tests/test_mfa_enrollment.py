@@ -54,9 +54,7 @@ class MFARequiredForTests(TenantTestCase):
 @override_settings(MFA_GRACE_PERIOD_DAYS=7)
 class MFAGraceTests(TenantTestCase):
     def _user(self):
-        return User.objects.create_user(
-            email="grace@v.com", full_name="U", password=PW
-        )
+        return User.objects.create_user(email="grace@v.com", full_name="U", password=PW)
 
     def test_fresh_account_within_grace(self):
         user = self._user()  # created_at = now
@@ -64,9 +62,7 @@ class MFAGraceTests(TenantTestCase):
 
     def test_old_account_past_grace(self):
         user = self._user()
-        User.objects.filter(pk=user.pk).update(
-            created_at=timezone.now() - timedelta(days=8)
-        )
+        User.objects.filter(pk=user.pk).update(created_at=timezone.now() - timedelta(days=8))
         user.refresh_from_db()
         self.assertTrue(mfa_enrollment_grace_expired(user))
 

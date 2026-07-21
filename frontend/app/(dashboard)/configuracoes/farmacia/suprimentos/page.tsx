@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { apiFetch } from '@/lib/api'
-import { PageShell, SectionState } from '@/components/shared'
+import { Button, PageShell, SectionState } from '@/components/shared'
 
 interface Drug {
   id: string
@@ -62,6 +62,12 @@ function toPayloadValue(val: string, isInt: boolean): number | string | null {
   if (isInt) return parseInt(val, 10)
   return val
 }
+
+// Neumorphic input recipe (docs/FRONTEND_GUIDELINES.md §2 Inputs) with the
+// canonical `w-full` swapped for a per-field width — these are dense numeric
+// cells inside a table, not full-width form fields.
+const NEU_INPUT_BASE =
+  'h-8 px-2 py-1.5 bg-neu-input border-transparent rounded-md text-xs shadow-neu-inset focus:outline-none focus:bg-white focus:ring-2 focus:ring-neu-brand/50 transition-all text-neu-ink'
 
 export default function SuprimentosPage() {
   const [drugs, setDrugs] = useState<Drug[]>([])
@@ -167,8 +173,8 @@ export default function SuprimentosPage() {
   return (
     <PageShell variant="operational">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Suprimentos</h1>
-        <p className="text-sm text-slate-500 mt-0.5">
+        <h1 className="text-2xl font-semibold text-neu-ink">Suprimentos</h1>
+        <p className="text-sm text-neu-inkMuted mt-0.5">
           Configure os parâmetros de reposição e estoque de segurança de medicamentos e materiais.
         </p>
       </div>
@@ -181,13 +187,13 @@ export default function SuprimentosPage() {
         />
       )}
 
-      {loading && <p className="text-sm text-slate-500">Carregando...</p>}
+      {loading && <p className="text-sm text-neu-inkMuted">Carregando...</p>}
 
       {!loading && !error && (
         <>
           {/* ── Medicamentos ── */}
           <section className="space-y-3">
-            <h2 className="text-base font-semibold text-slate-800">Medicamentos</h2>
+            <h2 className="text-base font-semibold text-neu-ink">Medicamentos</h2>
 
             {drugs.length === 0 ? (
               <SectionState
@@ -195,10 +201,10 @@ export default function SuprimentosPage() {
                 detail="Adicione medicamentos no painel administrativo para que apareçam aqui."
               />
             ) : (
-              <div className="rounded-lg border border-slate-200 bg-white overflow-x-auto">
+              <div className="bg-neu-panelAlt rounded-xl border border-white shadow-neu-panel overflow-x-auto">
                 <table className="w-full text-sm min-w-[900px]">
                   <thead>
-                    <tr className="border-b border-slate-100 bg-slate-50">
+                    <tr className="border-b border-white bg-neu-panel">
                       {[
                         'Medicamento',
                         'Tempo de reposição (dias)',
@@ -209,7 +215,7 @@ export default function SuprimentosPage() {
                       ].map((h) => (
                         <th
                           key={h}
-                          className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500"
+                          className="text-left px-4 py-3 text-xs font-semibold text-neu-inkSoft uppercase tracking-wide"
                         >
                           {h}
                         </th>
@@ -220,8 +226,8 @@ export default function SuprimentosPage() {
                     {drugs.map((drug) => {
                       const edit = drugEdits[drug.id] ?? drugToEditState(drug)
                       return (
-                        <tr key={drug.id} className="border-b border-slate-100 last:border-0">
-                          <td className="px-4 py-3 font-medium text-slate-900">{drug.name}</td>
+                        <tr key={drug.id} className="border-b border-white last:border-0">
+                          <td className="px-4 py-3 font-medium text-neu-ink">{drug.name}</td>
                           <td className="px-4 py-3">
                             <input
                               type="number"
@@ -233,7 +239,7 @@ export default function SuprimentosPage() {
                                   [drug.id]: { ...edit, lead_time_days: e.target.value },
                                 }))
                               }
-                              className="w-24 rounded border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              className={`w-24 ${NEU_INPUT_BASE}`}
                               placeholder="—"
                             />
                           </td>
@@ -249,7 +255,7 @@ export default function SuprimentosPage() {
                                   [drug.id]: { ...edit, safety_stock: e.target.value },
                                 }))
                               }
-                              className="w-28 rounded border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              className={`w-28 ${NEU_INPUT_BASE}`}
                               placeholder="—"
                             />
                           </td>
@@ -265,7 +271,7 @@ export default function SuprimentosPage() {
                                   [drug.id]: { ...edit, reorder_point: e.target.value },
                                 }))
                               }
-                              className="w-28 rounded border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              className={`w-28 ${NEU_INPUT_BASE}`}
                               placeholder="—"
                             />
                           </td>
@@ -284,21 +290,22 @@ export default function SuprimentosPage() {
                                     },
                                   }))
                                 }
-                                className="w-24 rounded border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                className={`w-24 ${NEU_INPUT_BASE}`}
                                 placeholder="—"
                               />
                             ) : (
-                              <span className="text-xs text-slate-400">—</span>
+                              <span className="text-xs text-neu-inkMuted">—</span>
                             )}
                           </td>
                           <td className="px-4 py-3">
-                            <button
+                            <Button
+                              type="button"
+                              variant="primary"
                               onClick={() => handleSaveDrug(drug)}
                               disabled={savingId === drug.id}
-                              className="inline-flex items-center rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               {savingId === drug.id ? 'Salvando…' : 'Salvar'}
-                            </button>
+                            </Button>
                           </td>
                         </tr>
                       )
@@ -311,7 +318,7 @@ export default function SuprimentosPage() {
 
           {/* ── Materiais ── */}
           <section className="space-y-3">
-            <h2 className="text-base font-semibold text-slate-800">Materiais</h2>
+            <h2 className="text-base font-semibold text-neu-ink">Materiais</h2>
 
             {materials.length === 0 ? (
               <SectionState
@@ -319,10 +326,10 @@ export default function SuprimentosPage() {
                 detail="Adicione materiais no painel administrativo para que apareçam aqui."
               />
             ) : (
-              <div className="rounded-lg border border-slate-200 bg-white overflow-x-auto">
+              <div className="bg-neu-panelAlt rounded-xl border border-white shadow-neu-panel overflow-x-auto">
                 <table className="w-full text-sm min-w-[700px]">
                   <thead>
-                    <tr className="border-b border-slate-100 bg-slate-50">
+                    <tr className="border-b border-white bg-neu-panel">
                       {[
                         'Material',
                         'Tempo de reposição (dias)',
@@ -332,7 +339,7 @@ export default function SuprimentosPage() {
                       ].map((h) => (
                         <th
                           key={h}
-                          className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500"
+                          className="text-left px-4 py-3 text-xs font-semibold text-neu-inkSoft uppercase tracking-wide"
                         >
                           {h}
                         </th>
@@ -343,8 +350,8 @@ export default function SuprimentosPage() {
                     {materials.map((mat) => {
                       const edit = materialEdits[mat.id] ?? materialToEditState(mat)
                       return (
-                        <tr key={mat.id} className="border-b border-slate-100 last:border-0">
-                          <td className="px-4 py-3 font-medium text-slate-900">{mat.name}</td>
+                        <tr key={mat.id} className="border-b border-white last:border-0">
+                          <td className="px-4 py-3 font-medium text-neu-ink">{mat.name}</td>
                           <td className="px-4 py-3">
                             <input
                               type="number"
@@ -356,7 +363,7 @@ export default function SuprimentosPage() {
                                   [mat.id]: { ...edit, lead_time_days: e.target.value },
                                 }))
                               }
-                              className="w-24 rounded border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              className={`w-24 ${NEU_INPUT_BASE}`}
                               placeholder="—"
                             />
                           </td>
@@ -372,7 +379,7 @@ export default function SuprimentosPage() {
                                   [mat.id]: { ...edit, safety_stock: e.target.value },
                                 }))
                               }
-                              className="w-28 rounded border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              className={`w-28 ${NEU_INPUT_BASE}`}
                               placeholder="—"
                             />
                           </td>
@@ -388,18 +395,19 @@ export default function SuprimentosPage() {
                                   [mat.id]: { ...edit, reorder_point: e.target.value },
                                 }))
                               }
-                              className="w-28 rounded border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              className={`w-28 ${NEU_INPUT_BASE}`}
                               placeholder="—"
                             />
                           </td>
                           <td className="px-4 py-3">
-                            <button
+                            <Button
+                              type="button"
+                              variant="primary"
                               onClick={() => handleSaveMaterial(mat)}
                               disabled={savingId === mat.id}
-                              className="inline-flex items-center rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               {savingId === mat.id ? 'Salvando…' : 'Salvar'}
-                            </button>
+                            </Button>
                           </td>
                         </tr>
                       )

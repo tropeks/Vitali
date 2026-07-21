@@ -14,8 +14,8 @@ export function DPASignModal({ onConfirm, onClose, loading }: DPASignModalProps)
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40">
-      <div className="bg-[#EBF0F5] rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.2),_inset_0_2px_4px_rgba(255,255,255,0.8)] w-full max-w-lg max-h-[85vh] flex flex-col">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#DFE5EB]">
+      <div className="bg-neu-outer rounded-xl shadow-neu-modal w-full max-w-lg max-h-[85vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-neu-app">
           <h2 className="text-base font-semibold text-slate-900">
             Acordo de Processamento de Dados (DPA)
           </h2>
@@ -122,14 +122,14 @@ export function DPASignModal({ onConfirm, onClose, loading }: DPASignModalProps)
             <button
               onClick={onClose}
               disabled={loading}
-              className="flex-1 px-4 py-1.5 text-xs rounded-lg font-bold bg-[#E8EDF2] text-[#57606A] shadow-[inset_0_1px_1px_rgba(255,255,255,0.5),_0_2px_4px_rgba(0,0,0,0.05)] hover:bg-[#dfe5ea] transition-all disabled:opacity-40 h-8"
+              className="flex-1 px-4 py-1.5 text-xs rounded-lg font-bold bg-neu-input text-neu-inkSoft shadow-neu-btn hover:bg-neu-app transition-all disabled:opacity-40 h-8"
             >
               Cancelar
             </button>
             <button
               onClick={onConfirm}
               disabled={!agreed || loading}
-              className="flex-1 inline-flex items-center justify-center gap-2 px-6 py-2 text-xs font-bold text-white bg-gradient-to-b from-[#0066A1] to-[#005282] rounded-lg border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] transition-all disabled:opacity-40 disabled:cursor-not-allowed h-8"
+              className="flex-1 inline-flex items-center justify-center gap-2 px-6 py-2 text-xs font-bold text-white bg-gradient-to-b from-neu-brand to-neu-brandDeep rounded-lg border-t border-neu-brandEdge shadow-neu-btn-primary hover:shadow-neu-btn-primary-hover transition-all disabled:opacity-40 disabled:cursor-not-allowed h-8"
             >
               {loading && <Loader2 size={14} className="animate-spin" />}
               Confirmar Assinatura

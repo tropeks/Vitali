@@ -122,13 +122,14 @@ class Command(BaseCommand):
     @staticmethod
     def _parse_bundle(raw: bytes) -> list[x509.Certificate]:
         """Parse a ZIP bundle or a single PKCS#7 / PEM / DER file."""
-        import zipfile
         import io
+        import zipfile
+
         certs = []
         try:
             with zipfile.ZipFile(io.BytesIO(raw)) as z:
                 for name in z.namelist():
-                    if name.endswith('.crt') or name.endswith('.cer') or name.endswith('.pem'):
+                    if name.endswith(".crt") or name.endswith(".cer") or name.endswith(".pem"):
                         content = z.read(name)
                         try:
                             # Try to parse as DER
@@ -141,7 +142,7 @@ class Command(BaseCommand):
                                 pass
             return certs
         except zipfile.BadZipFile:
-            pass # Fallback to parsing as pkcs7
+            pass  # Fallback to parsing as pkcs7
 
         is_pem = b"-----BEGIN" in raw[:64] or raw.lstrip().startswith(b"-----BEGIN")
         try:
@@ -149,9 +150,7 @@ class Command(BaseCommand):
                 return pkcs7.load_pem_pkcs7_certificates(raw)
             return pkcs7.load_der_pkcs7_certificates(raw)
         except ValueError as exc:
-            raise CommandError(
-                f"Could not parse the bundle: {exc}"
-            ) from exc
+            raise CommandError(f"Could not parse the bundle: {exc}") from exc
 
     # ─── writing ────────────────────────────────────────────────────────────
 
