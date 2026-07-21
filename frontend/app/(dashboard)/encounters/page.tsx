@@ -190,7 +190,7 @@ export default function EncountersPage() {
             <h2 className="text-lg font-semibold text-slate-900">Nova Consulta</h2>
             <div className="space-y-3">
               <div>
-                <label className="block block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide mb-1">Paciente *</label>
+                <label className="block block text-[11px] font-bold text-neu-inkSoft mb-1.5 uppercase tracking-wide mb-1">Paciente *</label>
                 <select
                   value={form.patient}
                   onChange={e => setForm(f => ({ ...f, patient: e.target.value }))}
@@ -203,7 +203,7 @@ export default function EncountersPage() {
                 </select>
               </div>
               <div>
-                <label className="block block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide mb-1">Profissional *</label>
+                <label className="block block text-[11px] font-bold text-neu-inkSoft mb-1.5 uppercase tracking-wide mb-1">Profissional *</label>
                 <select
                   value={form.professional}
                   onChange={e => setForm(f => ({ ...f, professional: e.target.value }))}
@@ -216,7 +216,7 @@ export default function EncountersPage() {
                 </select>
               </div>
               <div>
-                <label className="block block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide mb-1">Queixa principal</label>
+                <label className="block block text-[11px] font-bold text-neu-inkSoft mb-1.5 uppercase tracking-wide mb-1">Queixa principal</label>
                 <textarea
                   value={form.chief_complaint}
                   onChange={e => setForm(f => ({ ...f, chief_complaint: e.target.value }))}

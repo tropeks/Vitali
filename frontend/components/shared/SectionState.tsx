@@ -13,7 +13,7 @@ interface SectionStateProps {
 }
 
 const STYLES = {
-  neutral: 'border-slate-200 bg-[#F4F7FA] text-[#57606A]',
+  neutral: 'border-slate-200 bg-neu-panel text-neu-inkSoft',
   success: 'border-green-200 bg-green-50 text-green-800',
   warning: 'border-yellow-200 bg-yellow-50 text-yellow-800',
   critical: 'border-red-200 bg-red-50 text-red-800',
