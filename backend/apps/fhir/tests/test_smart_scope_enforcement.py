@@ -161,9 +161,21 @@ class SmartScopeEnforcementTest(TenantTestCase):
 
     def test_user_scoped_token_is_not_confined(self):
         self._bearer(scope="user/*.read", patient_id=str(self.patient_a.pk))
-        resp = self.client.get(PATIENT_SEARCH)
+        # Direct read of a patient OUTSIDE the launch context must succeed — the
+        # patient-confined variant of this exact request is asserted to 404 in
+        # test_patient_scoped_token_read_of_other_patient_is_404. Reads are
+        # deterministic regardless of what other tests seeded in the shared
+        # schema (unlike an exact-set assertion over an unfiltered search).
+        resp = self.client.get(f"{PATIENT_SEARCH}{self.patient_b.pk}/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data["id"], str(self.patient_b.pk))
+        # Search is not confined either: both patients (context and non-context)
+        # appear. Superset assertion + explicit _count so patients leaked into
+        # the shared schema by sibling tests cannot flip the result.
+        resp = self.client.get(PATIENT_SEARCH, {"_count": "100"})
+        self.assertEqual(resp.status_code, 200)
         ids = {e["resource"]["id"] for e in resp.data["entry"]}
-        self.assertEqual(ids, {str(self.patient_a.pk), str(self.patient_b.pk)})
+        self.assertLessEqual({str(self.patient_a.pk), str(self.patient_b.pk)}, ids)
 
     # ─── End-to-end through the real OAuth flow ──────────────────────────────
 
