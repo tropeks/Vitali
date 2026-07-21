@@ -1,5 +1,6 @@
 import re
 
+from django.db import transaction
 from rest_framework import serializers
 
 from .models import (
@@ -8,6 +9,9 @@ from .models import (
     ClinicalDocument,
     Encounter,
     EncounterProcedure,
+    LabOrder,
+    LabOrderItem,
+    LabTest,
     MedicalHistory,
     Patient,
     PatientInsurance,
@@ -309,6 +313,157 @@ class ClinicalDocumentSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = ["id", "signed_at", "signed_by", "created_at"]
+
+
+class LabTestSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LabTest
+        fields = [
+            "id",
+            "code",
+            "name",
+            "specimen_type",
+            "unit",
+            "reference_range",
+            "active",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class LabOrderItemSerializer(serializers.ModelSerializer):
+    abnormal_flag_display = serializers.CharField(
+        source="get_abnormal_flag_display", read_only=True
+    )
+    is_validated = serializers.BooleanField(read_only=True)
+    validated_by_name = serializers.CharField(
+        source="validated_by.full_name", read_only=True, default=None
+    )
+
+    class Meta:
+        model = LabOrderItem
+        fields = [
+            "id",
+            "test",
+            "test_name",
+            "unit",
+            "reference_range",
+            "result_value",
+            "abnormal_flag",
+            "abnormal_flag_display",
+            "result_notes",
+            "resulted_at",
+            "validated_at",
+            "validated_by",
+            "validated_by_name",
+            "is_validated",
+        ]
+        read_only_fields = [
+            "id",
+            "test",
+            "test_name",
+            "unit",
+            "reference_range",
+            "resulted_at",
+            "validated_at",
+            "validated_by",
+        ]
+
+    def validate_result_value(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Informe um resultado não vazio.")
+        return value.strip()
+
+    def validate(self, attrs):
+        result_value = attrs.get("result_value", getattr(self.instance, "result_value", ""))
+        if not result_value or not result_value.strip():
+            raise serializers.ValidationError(
+                {"result_value": "Informe um resultado antes dos demais dados."}
+            )
+        return attrs
+
+
+class LabOrderSerializer(serializers.ModelSerializer):
+    test_ids = serializers.PrimaryKeyRelatedField(
+        queryset=LabTest.objects.filter(active=True), many=True, write_only=True, required=False
+    )
+    items = LabOrderItemSerializer(many=True, read_only=True)
+    patient_name = serializers.CharField(source="patient.full_name", read_only=True)
+    patient_mrn = serializers.CharField(source="patient.medical_record_number", read_only=True)
+    requested_by_name = serializers.CharField(source="requested_by.full_name", read_only=True)
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+
+    class Meta:
+        model = LabOrder
+        fields = [
+            "id",
+            "patient",
+            "patient_name",
+            "patient_mrn",
+            "encounter",
+            "status",
+            "status_display",
+            "clinical_indication",
+            "notes",
+            "requested_by",
+            "requested_by_name",
+            "requested_at",
+            "collected_at",
+            "completed_at",
+            "test_ids",
+            "items",
+        ]
+        read_only_fields = [
+            "id",
+            "status",
+            "requested_by",
+            "requested_at",
+            "collected_at",
+            "completed_at",
+        ]
+
+    def validate(self, attrs):
+        encounter = attrs.get("encounter")
+        patient = attrs.get("patient")
+        if encounter and patient and encounter.patient_id != patient.id:
+            raise serializers.ValidationError(
+                {"encounter": "O atendimento não pertence ao paciente informado."}
+            )
+        if self.instance is None:
+            tests = attrs.get("test_ids") or []
+            if not tests:
+                raise serializers.ValidationError({"test_ids": "Selecione ao menos um exame."})
+            test_ids = [test.pk for test in tests]
+            if len(test_ids) != len(set(test_ids)):
+                raise serializers.ValidationError(
+                    {"test_ids": "Um mesmo exame não pode ser incluído mais de uma vez."}
+                )
+        elif self.instance.status in (LabOrder.Status.COMPLETED, LabOrder.Status.CANCELLED):
+            raise serializers.ValidationError("Pedidos finalizados não podem ser alterados.")
+        elif "patient" in attrs or "encounter" in attrs or "test_ids" in attrs:
+            raise serializers.ValidationError(
+                "Paciente, atendimento e exames não podem ser alterados após a solicitação."
+            )
+        return attrs
+
+    @transaction.atomic
+    def create(self, validated_data):
+        tests = validated_data.pop("test_ids")
+        order = LabOrder.objects.create(**validated_data)
+        LabOrderItem.objects.bulk_create(
+            [
+                LabOrderItem(
+                    order=order,
+                    test=test,
+                    test_name=test.name,
+                    unit=test.unit,
+                    reference_range=test.reference_range,
+                )
+                for test in tests
+            ]
+        )
+        return order
 
 
 class EncounterListSerializer(serializers.ModelSerializer):
