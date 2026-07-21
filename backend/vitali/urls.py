@@ -10,6 +10,7 @@ from drf_spectacular.views import (
     SpectacularRedocView,
     SpectacularSwaggerView,
 )
+from vitali.urls_public import csp_report
 
 
 def health(request):
@@ -19,6 +20,7 @@ def health(request):
 urlpatterns = [
     path("health/", health, name="health"),
     path("admin/", admin.site.urls),
+    path("api/v1/security/csp-report/", csp_report, name="csp-report"),
     # API v1
     path("api/v1/", include("apps.core.urls")),
     path("api/v1/", include("apps.emr.urls")),
