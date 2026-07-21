@@ -24,6 +24,23 @@ write duplicate AuditLog entries), the service marks the instance with
 ``_f15_cascade_active`` while it runs; this handler treats that as "already
 being handled" and returns.
 
+Atomicity per entry point
+-------------------------
+The status flip and the cascade must commit as ONE unit, otherwise a mid-cascade
+failure leaves a "terminated" employee with live sessions — and the idempotency
+guard turns any retry into a silent no-op (orphaned access). Coverage:
+
+- ``PATCH``/``PUT``/``DELETE`` via ``EmployeeViewSet``: the view wraps the whole
+  request in ``transaction.atomic`` and takes ``select_for_update()`` on the
+  Employee row, so save + signal + cascade commit (or roll back) together.
+- Django admin: ``ModelAdmin`` runs its changeform inside ``transaction.atomic``,
+  so the same single-commit guarantee holds.
+- Data migrations: run inside the migration's transaction (atomic by default).
+- Raw ``Model.save()`` in a shell/management command *outside* ``atomic()``:
+  NOT covered — the flip autocommits before ``post_save`` runs, so a cascade
+  failure can strand the flip. Scripted terminations must either wrap the save
+  in ``transaction.atomic()`` or call ``EmployeeDeactivationService`` directly.
+
 Known limitation: ``QuerySet.update()`` bypasses ``Model.save()`` and therefore
 signals (a documented Django behaviour). Every supported termination entry point
 goes through ``save()``, so this is acceptable; bulk terminations should call the
@@ -96,6 +113,10 @@ def cascade_employee_termination(sender, instance, created, **kwargs):
         instance.pk,
         previous,
     )
-    # requesting_user is None: a signal-triggered termination (admin/ORM/migration)
-    # has no HTTP request context. AuditLog.user is nullable for exactly this case.
-    EmployeeDeactivationService().deactivate(instance, requesting_user=None)
+    # Actor attribution: the view path (PATCH/PUT) stashes request.user on the
+    # instance as _f15_acting_user (EmployeeViewSet.perform_update) so the audit
+    # chain records who terminated the employee. Non-HTTP entry points
+    # (admin/ORM/migration) have no request context; AuditLog.user is nullable
+    # for exactly that case.
+    acting_user = getattr(instance, "_f15_acting_user", None)
+    EmployeeDeactivationService().deactivate(instance, requesting_user=acting_user)

@@ -370,3 +370,99 @@ class TestEmployeeReactivationView(TenantTestCase):
         ).first()
         assert react_log is not None
         assert react_log.new_data["user_id"] == str(user.id)
+
+
+class TestEmployeeTerminationPatchView(TenantTestCase):
+    """Integration tests for the PATCH termination path (F-15 review fixes).
+
+    Covers the two guarantees added after the pre-merge review:
+    1. Atomicity — the status flip and the signal-triggered cascade commit as
+       one unit; a mid-cascade failure rolls back the flip (no orphaned access,
+       no silent-no-op retry).
+    2. Actor attribution — cascade AuditLog rows record the authenticated
+       admin who issued the PATCH, not ``user=None``.
+    """
+
+    def setUp(self):
+        super().setUp()
+        _admin_role()
+        _medico_role()
+        self.requester = _requesting_user()
+        self.requester.is_staff = True
+        self.requester.is_superuser = True
+        self.requester.save(update_fields=["is_staff", "is_superuser"])
+        self.client_api = APIClient()
+        self.client_api.defaults["SERVER_NAME"] = self.__class__.domain.domain
+        self.client_api.force_authenticate(user=self.requester)
+
+    def _patch_terminate(self, employee):
+        return self.client_api.patch(
+            f"/api/v1/hr/employees/{employee.id}/",
+            {"employment_status": "terminated"},
+            format="json",
+        )
+
+    def test_patch_terminate_runs_cascade_with_actor_attribution(self):
+        """PATCH employment_status=terminated runs the full cascade and the
+        cascade AuditLog rows are attributed to request.user (not None)."""
+        user = _make_user("patch.actor@example.com", role=_medico_role())
+        employee = _make_employee(user)
+        professional = _make_professional(user)
+        config = ScheduleConfig.objects.create(professional=professional, working_days=[0, 1])
+        RefreshToken.for_user(user)  # something to blacklist
+
+        response = self._patch_terminate(employee)
+
+        assert response.status_code == 200, response.data
+        employee.refresh_from_db()
+        user.refresh_from_db()
+        config.refresh_from_db()
+        assert employee.employment_status == "terminated"
+        assert employee.terminated_at is not None
+        assert user.is_active is False
+        assert config.is_active is False
+
+        # Actor attribution: signal forwarded request.user into the audit chain.
+        emp_log = AuditLog.objects.get(resource_id=str(employee.id), action="employee_terminated")
+        token_log = AuditLog.objects.get(resource_id=str(user.id), action="tokens_revoked")
+        assert emp_log.user_id == self.requester.id
+        assert token_log.user_id == self.requester.id
+
+    def test_patch_cascade_failure_rolls_back_status_flip(self):
+        """If the cascade fails mid-flight (AuditLog write blows up), the whole
+        PATCH — including the employment_status flip — rolls back: no
+        "terminated" employee with live access, and the retry is NOT a no-op."""
+        from unittest.mock import patch
+
+        user = _make_user("patch.rollback@example.com", role=_admin_role())
+        employee = _make_employee(user)
+        RefreshToken.for_user(user)
+
+        with patch(
+            "apps.core.models.AuditLog.objects.create",
+            side_effect=RuntimeError("audit store down"),
+        ):
+            with self.assertRaises(RuntimeError):
+                self._patch_terminate(employee)
+
+        # The flip rolled back together with the cascade — nothing was orphaned.
+        employee.refresh_from_db()
+        user.refresh_from_db()
+        assert employee.employment_status == "active"
+        assert employee.terminated_at is None
+        assert user.is_active is True
+        assert not AuditLog.objects.filter(
+            resource_id=str(employee.id), action="employee_terminated"
+        ).exists()
+
+        # Because the status never persisted, a retry re-runs the full cascade
+        # instead of silently no-oping on the idempotency guard.
+        response = self._patch_terminate(employee)
+        assert response.status_code == 200, response.data
+        employee.refresh_from_db()
+        user.refresh_from_db()
+        assert employee.employment_status == "terminated"
+        assert user.is_active is False
+        assert AuditLog.objects.filter(
+            resource_id=str(employee.id), action="employee_terminated"
+        ).exists()

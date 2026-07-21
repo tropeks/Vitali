@@ -280,6 +280,14 @@ class EmployeeDeactivationService:
         try:
             correlation_id = str(uuid4())
             with transaction.atomic():
+                # Cross-request concurrency guard: take a row lock on the
+                # Employee before touching any related state, so two concurrent
+                # terminations (e.g. DELETE racing a PATCH) serialize instead of
+                # interleaving their cascades. On the view paths the lock is
+                # already held by this transaction (get_object re-acquires it —
+                # a no-op here); direct service callers get it now.
+                Employee.objects.select_for_update().get(pk=employee.pk)
+
                 # Soft-delete Employee
                 employee.employment_status = "terminated"
                 employee.terminated_at = timezone.now()
@@ -395,6 +403,13 @@ class EmployeeDeactivationService:
         has a phone and a matching opted-in ``WhatsAppContact``, opt it out so no
         further staff messages are sent. Documented extension point for Sprint
         21+ staff-channel tracking. Fail-open: never blocks the cascade.
+
+        Staff-only discriminator: the phone match is deliberately restricted to
+        contacts with NO ``patient`` FK — a contact linked to a patient is a
+        *patient* channel, and opting it out because a staff member happens to
+        share the number would silently cut that patient off from reminders.
+        TODO(Sprint 21+): once staff channels are persisted as their own rows,
+        match on the explicit staff-channel link instead of the raw phone.
         """
         phone = (getattr(user, "phone", "") or "").strip()
         if not phone:
@@ -402,7 +417,9 @@ class EmployeeDeactivationService:
         try:
             from apps.whatsapp.models import WhatsAppContact
 
-            contact = WhatsAppContact.objects.filter(phone=phone, opt_in=True).first()
+            contact = WhatsAppContact.objects.filter(
+                phone=phone, opt_in=True, patient__isnull=True
+            ).first()
             if contact is not None:
                 contact.do_opt_out()
         except Exception:
