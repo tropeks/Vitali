@@ -133,7 +133,7 @@ export default function PatientsPage() {
         </div>
         <button
           onClick={() => router.push('/patients/new')}
-          className="inline-flex items-center justify-center gap-2 px-6 py-2 text-xs font-bold text-white bg-gradient-to-b from-[#0066A1] to-[#005282] rounded-lg border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] transition-all"
+          className="inline-flex items-center justify-center gap-2 neu-btn-primary"
         >
           <Plus size={16} />
           Novo paciente
@@ -141,28 +141,28 @@ export default function PatientsPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <div className="bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white">
+        <div className="neu-panel">
           <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">
             <Users size={14} />
             Total
           </div>
           <p className="mt-2 text-2xl font-bold text-slate-900">{count}</p>
         </div>
-        <div className="bg-[#eefcf1] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white">
+        <div className="bg-[#eefcf1] p-4 rounded-xl shadow-neu-panel border border-white">
           <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-green-700">
             <UserRound size={14} />
             Ativos na lista
           </div>
           <p className="mt-2 text-2xl font-bold text-green-700">{summary.active}</p>
         </div>
-        <div className="bg-[#fef2f2] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white">
+        <div className="bg-[#fef2f2] p-4 rounded-xl shadow-neu-panel border border-white">
           <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-red-700">
             <ShieldAlert size={14} />
             Com alergia
           </div>
           <p className="mt-2 text-2xl font-bold text-red-700">{summary.withAllergies}</p>
         </div>
-        <div className="bg-[#E8EDF2] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white">
+        <div className="bg-neu-input p-4 rounded-xl shadow-neu-panel border border-white">
           <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">
             <FileText size={14} />
             Inativos
@@ -181,7 +181,7 @@ export default function PatientsPage() {
             id="patient-search"
             type="text"
             placeholder="Buscar paciente, prontuário ou contato"
-            className="w-full pl-8 pr-2 py-1.5 bg-[#E8EDF2] border-transparent rounded-md text-xs shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#0066A1]/50 transition-all h-8 text-[#24292F]"
+            className="w-full pl-8 pr-2 py-1.5 bg-neu-input border-transparent rounded-md text-xs shadow-neu-inset focus:outline-none focus:bg-white focus:ring-2 focus:ring-neu-brand/50 transition-all h-8 text-neu-ink"
             value={search}
             onChange={(e) => {
               setSearch(e.target.value)
@@ -227,7 +227,7 @@ export default function PatientsPage() {
                     {!hasSearch && (
                       <button
                         onClick={() => router.push('/patients/new')}
-                        className="mt-4 inline-flex items-center gap-2 px-6 py-2 text-xs font-bold text-white bg-gradient-to-b from-[#0066A1] to-[#005282] rounded-lg border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] transition-all"
+                        className="mt-4 inline-flex items-center gap-2 neu-btn-primary"
                       >
                         <Plus size={16} />
                         Novo paciente

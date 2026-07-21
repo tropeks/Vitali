@@ -10,7 +10,6 @@ import os
 from decimal import Decimal
 
 from django.core.management import CommandError, call_command
-from django.db import connection
 
 from apps.pharmacy.models import DoseRule, Drug, MedicationFormulary
 from apps.test_utils import TenantTestCase
@@ -190,7 +189,9 @@ class TestImportFormularyAgeBandedRules(TenantTestCase):
         # Re-import must NOT raise MultipleObjectsReturned and must NOT add rows.
         call_command("import_formulary", file=_BANDED_CSV)
 
-        self.assertEqual(DoseRule.objects.count(), 2, "Re-import must be idempotent (no extra rows).")
+        self.assertEqual(
+            DoseRule.objects.count(), 2, "Re-import must be idempotent (no extra rows)."
+        )
         self.assertEqual(MedicationFormulary.objects.count(), 1)
 
 

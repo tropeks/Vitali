@@ -112,7 +112,7 @@ class WedgeTelemetryView(APIView):
     not something every clinical role should see.
     """
 
-    permission_classes = [IsAuthenticated, HasPermission("reports.read")]
+    permission_classes = [IsAuthenticated, HasPermission("reports.read")]  # type: ignore[list-item]
 
     def get(self, request):
         days = self._parse_days(request.query_params.get("days"))
@@ -136,9 +136,9 @@ class WedgeTelemetryView(APIView):
     def _enabled_flags(self) -> dict[str, bool]:
         """module_key -> is_enabled for the current tenant (missing = False)."""
         return dict(
-            FeatureFlag.objects.filter(
-                module_key__in=[w["key"] for w in WEDGES]
-            ).values_list("module_key", "is_enabled")
+            FeatureFlag.objects.filter(module_key__in=[w["key"] for w in WEDGES]).values_list(
+                "module_key", "is_enabled"
+            )
         )
 
     def _build_wedge(self, spec: dict, since, flags: dict[str, bool]) -> dict:
@@ -147,9 +147,7 @@ class WedgeTelemetryView(APIView):
 
         alert_count = qs.count()
         acknowledged_count = qs.filter(status="acknowledged").count()
-        override_rate = (
-            acknowledged_count / alert_count if alert_count else None
-        )
+        override_rate = acknowledged_count / alert_count if alert_count else None
 
         return {
             "key": spec["key"],
@@ -158,9 +156,7 @@ class WedgeTelemetryView(APIView):
             "acknowledged_count": acknowledged_count,
             "override_rate": override_rate,
             "flywheel": {
-                "outcome_counts": (
-                    self._outcome_counts(qs) if spec["has_outcome"] else None
-                ),
+                "outcome_counts": (self._outcome_counts(qs) if spec["has_outcome"] else None),
                 "graded_count": self._graded_count(spec["audit_prefix"], since),
             },
             # Wedges are pure deterministic algorithms — no model, no latency.

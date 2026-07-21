@@ -4,7 +4,6 @@ Core views — Auth, Tenant registration, User management.
 
 import hashlib
 import logging
-import uuid
 from datetime import timedelta
 
 import jwt
@@ -130,28 +129,17 @@ def _create_invitation_for_user(user, *, requesting_user):
     Generates a 72h signed JWT token, creates a UserInvitation row with the
     SHA-256 hash of the token (so DB leak doesn't expose live tokens), and
     sends the invitation email. Returns (invitation, token).
+
+    Thin wrapper around the shared issuer in apps.core.services.invitations so
+    both this admin flow and self-serve provisioning mint tokens identically.
     """
-    expires_at = timezone.now() + timedelta(hours=72)
-    payload = {
-        "user_id": str(user.id),
-        "purpose": "password_set",
-        "exp": int(expires_at.timestamp()),
-        "jti": uuid.uuid4().hex,
-    }
-    token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
-    token_hash = hashlib.sha256(token.encode()).hexdigest()
-    invitation = UserInvitation.objects.create(
-        user=user,
+    from apps.core.services.invitations import issue_password_set_invitation
+
+    return issue_password_set_invitation(
+        user,
         tenant=getattr(connection, "tenant", None),
         created_by=requesting_user,
-        token_hash=token_hash,
-        expires_at=expires_at,
     )
-    link = f"{getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')}/auth/set-password/{token}"
-    from apps.core.services.email import EmailService
-
-    EmailService.send_user_invitation(user, link)
-    return invitation, token
 
 
 # ─── T6: UserInvitationView ───────────────────────────────────────────────────
@@ -230,6 +218,13 @@ class SetPasswordView(APIView):
                     defaults={"role": user.role, "is_active": True},
                 )
                 refresh = tokens_for_user(user)
+            # Self-serve (S-132): a clinic owner accepting their welcome link is
+            # the activation signal — flip the tenant out of PENDING into TRIAL so
+            # it leaves the admin "pending" bucket. Guarded on PENDING only, so
+            # existing staff invites into a TRIAL/ACTIVE tenant are a no-op.
+            if invite_tenant.status == Tenant.Status.PENDING:
+                invite_tenant.status = Tenant.Status.TRIAL
+                invite_tenant.save(update_fields=["status", "updated_at"])
         else:
             refresh = tokens_for_user(user)
 
@@ -243,9 +238,17 @@ class SetPasswordView(APIView):
 
 
 class LoginRateThrottle(rest_framework_throttling.AnonRateThrottle):
-    """5 login attempts per minute per IP — tighter than the global 100/hour."""
+    """
+    Tighter per-IP login limit than the global 100/hour.
 
-    rate = "5/min"
+    The rate is resolved from REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["login"]
+    (5/min in base settings, i.e. production) instead of being hardcoded here,
+    so the E2E/CI profile can raise it without touching production behavior.
+    E2E suites run every spec's UI login from a single runner IP; with a
+    hardcoded 5/min, one failing spec's retries compress the suite and cascade
+    into 429s on later, unrelated specs (master run 29796568439).
+    """
+
     scope = "login"
 
 

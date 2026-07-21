@@ -8,11 +8,15 @@ import {
   type NoShowBand,
   type NoShowRisk,
 } from '@/lib/no-show'
+import { Button, PageShell } from '@/components/shared'
 
+// Mesma semântica de cor de sempre (low=neutro, medium=atenção, high=crítico),
+// só que sobre os tokens/recipes neu-* — `medium` usa o token âmbar
+// `neu-warning`, mesma anatomia /10 /20 dos demais.
 const BAND_STYLES: Record<NoShowBand, string> = {
-  low: 'bg-slate-100 text-slate-700',
-  medium: 'bg-amber-100 text-amber-800',
-  high: 'bg-red-100 text-red-700',
+  low: 'border border-neu-inkMuted/20 bg-neu-inkMuted/10 text-neu-inkSoft',
+  medium: 'border border-neu-warning/20 bg-neu-warning/10 text-neu-warning',
+  high: 'border border-neu-danger/20 bg-neu-danger/10 text-neu-danger',
 }
 
 const BAND_FILTERS: { value: '' | NoShowBand; label: string }[] = [
@@ -77,59 +81,60 @@ export default function FaltasPage() {
   }
 
   return (
-    <div className="space-y-5">
+    <PageShell variant="operational">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-            <CalendarX size={20} className="text-red-600" />
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-neu-ink">
+            <CalendarX size={20} className="text-neu-danger" />
             Risco de Falta
           </h2>
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-neu-inkSoft">
             Predição de não comparecimento por agendamento, derivada do histórico do
             paciente. Apenas aviso — nunca bloqueia o agendamento.
           </p>
         </div>
         <div className="flex gap-2">
           {BAND_FILTERS.map((f) => (
-            <button
+            <Button
               key={f.value || 'all'}
+              type="button"
+              variant={bandFilter === f.value ? 'primary' : 'secondary'}
+              // Mesmo tamanho nos dois estados (primary já é px-6 py-2; a
+              // utility sobrescreve o px-4 py-1.5 do recipe secondary) para o
+              // grupo de filtros não "pular" ao trocar a seleção.
+              className="px-6 py-2"
               onClick={() => setBandFilter(f.value)}
-              className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
-                bandFilter === f.value
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-              }`}
             >
               {f.label}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
+        <div className="flex items-center gap-2 bg-neu-danger/10 border border-neu-danger/20 text-neu-danger text-sm rounded-lg px-4 py-3">
           <AlertTriangle size={16} />
           {error}
         </div>
       )}
 
       {!enabled && !loading && (
-        <div className="bg-slate-50 border border-slate-200 text-slate-500 text-sm rounded-lg px-4 py-6 text-center">
+        <div className="bg-neu-panel border border-neu-inkMuted/20 text-neu-inkSoft text-sm rounded-lg px-4 py-6 text-center">
           A predição de risco de falta está desativada para este estabelecimento.
         </div>
       )}
 
-      {loading && <p className="text-sm text-slate-400">Carregando...</p>}
+      {loading && <p className="text-sm text-neu-inkMuted">Carregando...</p>}
 
       {!loading && enabled && (
-        <div className="bg-white rounded-lg border border-slate-200 overflow-x-auto">
+        <div className="bg-neu-panelAlt rounded-xl border border-white shadow-neu-panel overflow-x-auto">
           <table className="w-full text-sm min-w-[760px]">
             <thead>
-              <tr className="border-b border-slate-100 bg-slate-50">
+              <tr className="border-b border-white bg-neu-panel">
                 {['Paciente', 'Agendamento', 'Risco', 'Score', 'Ação sugerida', ''].map((h, i) => (
                   <th
                     key={h || `col-${i}`}
-                    className="text-left px-4 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide"
+                    className="text-left px-4 py-3 text-xs font-medium text-neu-inkSoft uppercase tracking-wide"
                   >
                     {h}
                   </th>
@@ -139,26 +144,26 @@ export default function FaltasPage() {
             <tbody>
               {risks.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-slate-400 text-sm">
+                  <td colSpan={6} className="px-4 py-10 text-center text-neu-inkMuted text-sm">
                     Nenhum risco de falta em aberto.
                   </td>
                 </tr>
               )}
               {risks.map((r) => (
-                <tr key={r.id} className="border-b border-slate-50 align-top">
+                <tr key={r.id} className="border-b border-white align-top">
                   <td className="px-4 py-3">
-                    <p className="font-medium text-slate-900">{r.patient_name}</p>
-                    <p className="text-xs text-slate-400 mt-1">{r.professional_name}</p>
+                    <p className="font-medium text-neu-ink">{r.patient_name}</p>
+                    <p className="text-xs text-neu-inkMuted mt-1">{r.professional_name}</p>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="px-4 py-3 text-neu-inkSoft">
                     <p>{formatWhen(r.appointment_start)}</p>
-                    <p className="text-xs text-slate-400 mt-1">{r.appointment_type_display}</p>
+                    <p className="text-xs text-neu-inkMuted mt-1">{r.appointment_type_display}</p>
                   </td>
                   <td className="px-4 py-3">
                     <BandBadge band={r.band} label={r.band_display} />
                   </td>
-                  <td className="px-4 py-3 font-semibold text-slate-900">{r.score}</td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="px-4 py-3 font-semibold text-neu-ink">{r.score}</td>
+                  <td className="px-4 py-3 text-neu-inkSoft">
                     {r.suggested_action === 'confirm_active' ? (
                       <span className="inline-flex items-center gap-1">
                         <PhoneCall size={13} /> {r.suggested_action_display}
@@ -168,13 +173,14 @@ export default function FaltasPage() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <button
+                    <Button
+                      type="button"
+                      variant="secondary"
                       onClick={() => handleAcknowledge(r.id)}
                       disabled={acking === r.id}
-                      className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                     >
                       {acking === r.id ? 'Reconhecendo...' : 'Reconhecer'}
-                    </button>
+                    </Button>
                   </td>
                 </tr>
               ))}
@@ -182,6 +188,6 @@ export default function FaltasPage() {
           </table>
         </div>
       )}
-    </div>
+    </PageShell>
   )
 }

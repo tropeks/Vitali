@@ -203,9 +203,7 @@ class TestGradeWritesFlywheelAuditLog(_Base):
         assert nd["outcome"] == NoShowRisk.Outcome.TRUE_POSITIVE.value, (
             f"AuditLog outcome mismatch: {nd['outcome']!r}"
         )
-        assert nd["band"] == NoShowRisk.Band.HIGH.value, (
-            f"AuditLog band mismatch: {nd['band']!r}"
-        )
+        assert nd["band"] == NoShowRisk.Band.HIGH.value, f"AuditLog band mismatch: {nd['band']!r}"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
