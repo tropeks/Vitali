@@ -4,7 +4,7 @@ from urllib.parse import quote
 
 from rest_framework import serializers
 
-from apps.imaging.models import DicomStudy
+from apps.core.imaging_bridge import DicomStudy
 
 
 class PortalImagingStudySerializer(serializers.ModelSerializer):

@@ -8,10 +8,10 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.imaging_bridge import DicomStudy
 from apps.core.models import AuditLog
 from apps.core.permissions import HasPermission, ModuleRequiredPermission
 from apps.core.utils import tenant_has_feature
-from apps.imaging.models import DicomStudy
 
 from .models import PatientPortalAccess
 from .serializers_imaging import PortalImagingReportSerializer, PortalImagingStudySerializer
@@ -64,9 +64,9 @@ class MeImagingViewerAuthorizationView(APIView):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
         # Clinical users retain their tenant module + RBAC authorization.
-        if self._STAFF_MODULE.has_permission(request, self) and self._STAFF_PERMISSION.has_permission(
+        if self._STAFF_MODULE.has_permission(
             request, self
-        ):
+        ) and self._STAFF_PERMISSION.has_permission(request, self):
             return Response(status=status.HTTP_204_NO_CONTENT)
 
         # Patient users are confined to the active portal binding below.

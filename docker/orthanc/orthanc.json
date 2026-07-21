@@ -24,8 +24,7 @@
   },
   "OHIF": {
     "DataSource": "dicom-web",
-    "RouterBasename": "/visualizador/",
-    "UserConfiguration": "/etc/orthanc/vitali-viewer.js"
+    "RouterBasename": "/visualizador/"
   },
 
   // ─── Push ingestion (E-012) ───────────────────────────────────────────────

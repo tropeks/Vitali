@@ -92,11 +92,8 @@ class StudyListCreateView(APIView):
 class ViewerAuthorizationView(APIView):
     """Cheap nginx ``auth_request`` target for OHIF and DICOMweb access."""
 
-    permission_classes = [
-        IsAuthenticated,
-        _IMAGING_MODULE,
-        HasPermission("imaging.read"),
-    ]
+    def get_permissions(self):
+        return [IsAuthenticated(), _IMAGING_MODULE, HasPermission("imaging.read")]
 
     def get(self, request):
         return Response(status=status.HTTP_204_NO_CONTENT)
