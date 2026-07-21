@@ -43,9 +43,7 @@ class ImportTussValidImportTests(TenantTestCase):
     def test_imported_codes_have_correct_version(self):
         """All imported rows carry the supplied tuss_version label."""
         call_command("import_tuss", file=_SAMPLE_CSV, tuss_version="2024-01")
-        self.assertTrue(
-            TUSSCode.objects.filter(version="2024-01").count() >= _SAMPLE_ROW_COUNT
-        )
+        self.assertTrue(TUSSCode.objects.filter(version="2024-01").count() >= _SAMPLE_ROW_COUNT)
 
     def test_idempotent_upsert(self):
         """Importing the same file twice does not grow the TUSSCode count."""
@@ -61,9 +59,7 @@ class ImportTussDryRunTests(TenantTestCase):
     def test_dry_run_writes_nothing(self):
         """dry_run=True leaves TUSSCode count unchanged and writes no SUCCESS log."""
         count_before = TUSSCode.objects.count()
-        log_count_before = TUSSSyncLog.objects.filter(
-            status=TUSSSyncLog.Status.SUCCESS
-        ).count()
+        log_count_before = TUSSSyncLog.objects.filter(status=TUSSSyncLog.Status.SUCCESS).count()
 
         call_command("import_tuss", file=_SAMPLE_CSV, tuss_version="2024-01", dry_run=True)
 

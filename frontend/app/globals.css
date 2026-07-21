@@ -49,3 +49,27 @@
     @apply bg-background text-foreground font-sans antialiased;
   }
 }
+
+/* Tasy Neumorphic — composições canônicas dos snippets de docs/FRONTEND_GUIDELINES.md.
+   Tokens de cor/sombra definidos em tailwind.config.ts (namespace neu / shadow-neu-*). */
+@layer components {
+  .neu-input {
+    @apply w-full px-2 py-1.5 h-8 bg-neu-input border-transparent rounded-md text-xs text-neu-ink shadow-neu-inset focus:outline-none focus:bg-white focus:ring-2 focus:ring-neu-brand/50 transition-all;
+  }
+
+  .neu-label {
+    @apply block text-[11px] font-bold text-neu-inkSoft mb-1.5 uppercase tracking-wide;
+  }
+
+  .neu-btn-primary {
+    @apply px-6 py-2 text-xs font-bold text-white bg-gradient-to-b from-neu-brand to-neu-brandDeep rounded-lg border-t border-neu-brandEdge shadow-neu-btn-primary hover:shadow-neu-btn-primary-hover transition-all;
+  }
+
+  .neu-btn-secondary {
+    @apply px-4 py-1.5 text-xs rounded-lg font-bold bg-neu-input text-neu-inkSoft shadow-neu-btn hover:bg-neu-app transition-all;
+  }
+
+  .neu-panel {
+    @apply bg-neu-panel p-4 rounded-xl shadow-neu-panel border border-white;
+  }
+}

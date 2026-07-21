@@ -9,6 +9,8 @@ import {
   fetchDeteriorationAlerts,
   PARAM_LABELS,
 } from '@/lib/deterioration'
+import Button from '@/components/shared/Button'
+import PageShell from '@/components/shared/PageShell'
 
 // Band → badge styling. Higher band = more alarming colour. low_medium is the
 // RCP single-parameter "red score" (urgent ward review).
@@ -36,17 +38,17 @@ function BandBadge({ band, label }: { band: DeteriorationBand; label: string }) 
 function Contributors({ breakdown }: { breakdown: Record<string, number> }) {
   const items = Object.entries(breakdown).filter(([, pts]) => pts > 0)
   if (items.length === 0) {
-    return <span className="text-slate-400">—</span>
+    return <span className="text-neu-inkMuted">—</span>
   }
   return (
     <div className="flex flex-wrap gap-1">
       {items.map(([param, pts]) => (
         <span
           key={param}
-          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-xs"
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-neu-input text-neu-inkSoft text-xs shadow-neu-inset"
         >
           {PARAM_LABELS[param] ?? param}
-          <span className="font-semibold text-slate-800">+{pts}</span>
+          <span className="font-semibold text-neu-ink">+{pts}</span>
         </span>
       ))}
     </div>
@@ -92,14 +94,14 @@ export default function DeterioracaoPage() {
   }
 
   return (
-    <div className="space-y-5">
+    <PageShell variant="operational">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-neu-ink">
             <Activity size={20} className="text-red-600" />
             Deterioração Clínica (NEWS2)
           </h2>
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-neu-inkSoft">
             Alerta precoce de deterioração pelo escore NEWS2 (Royal College of Physicians).
             Apenas aviso/escalonamento — nunca bloqueia o registro de sinais vitais.
           </p>
@@ -114,23 +116,23 @@ export default function DeterioracaoPage() {
       )}
 
       {!enabled && !loading && (
-        <div className="bg-slate-50 border border-slate-200 text-slate-500 text-sm rounded-lg px-4 py-6 text-center">
+        <div className="neu-panel text-sm text-neu-inkSoft text-center py-6">
           O alerta de deterioração clínica está desativado para este estabelecimento.
         </div>
       )}
 
-      {loading && <p className="text-sm text-slate-400">Carregando...</p>}
+      {loading && <p className="text-sm text-neu-inkMuted">Carregando...</p>}
 
       {!loading && enabled && (
-        <div className="bg-white rounded-lg border border-slate-200 overflow-x-auto">
+        <div className="bg-neu-panel rounded-xl border border-white shadow-neu-panel overflow-x-auto">
           <table className="w-full text-sm min-w-[760px]">
             <thead>
-              <tr className="border-b border-slate-100 bg-slate-50">
+              <tr className="border-b border-white bg-neu-input">
                 {['Paciente', 'NEWS2', 'Banda', 'Parâmetros', 'Resposta clínica', ''].map(
                   (h, i) => (
                     <th
                       key={h || `col-${i}`}
-                      className="text-left px-4 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide"
+                      className="text-left px-4 py-3 text-xs font-medium text-neu-inkSoft uppercase tracking-wide"
                     >
                       {h}
                     </th>
@@ -141,21 +143,21 @@ export default function DeterioracaoPage() {
             <tbody>
               {alerts.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-slate-400 text-sm">
+                  <td colSpan={6} className="px-4 py-10 text-center text-neu-inkMuted text-sm">
                     Nenhum alerta de deterioração em aberto.
                   </td>
                 </tr>
               )}
               {alerts.map((a) => (
-                <tr key={a.id} className="border-b border-slate-50 align-top">
+                <tr key={a.id} className="border-b border-neu-app/60 align-top">
                   <td className="px-4 py-3">
-                    <p className="font-medium text-slate-900">{a.patient_name}</p>
+                    <p className="font-medium text-neu-ink">{a.patient_name}</p>
                     {a.spo2_scale === 2 && (
-                      <p className="text-xs text-slate-400 mt-1">SpO2 Escala 2</p>
+                      <p className="text-xs text-neu-inkMuted mt-1">SpO2 Escala 2</p>
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <span className="text-lg font-bold text-slate-900">{a.score}</span>
+                    <span className="text-lg font-bold text-neu-ink">{a.score}</span>
                   </td>
                   <td className="px-4 py-3">
                     <BandBadge band={a.band} label={a.band_display} />
@@ -163,15 +165,15 @@ export default function DeterioracaoPage() {
                   <td className="px-4 py-3">
                     <Contributors breakdown={a.breakdown} />
                   </td>
-                  <td className="px-4 py-3 text-slate-600 max-w-md">{a.message}</td>
+                  <td className="px-4 py-3 text-neu-inkSoft max-w-md">{a.message}</td>
                   <td className="px-4 py-3 text-right">
-                    <button
+                    <Button
+                      variant="secondary"
                       onClick={() => handleAcknowledge(a.id)}
                       disabled={acking === a.id}
-                      className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                     >
                       {acking === a.id ? 'Reconhecendo...' : 'Reconhecer'}
-                    </button>
+                    </Button>
                   </td>
                 </tr>
               ))}
@@ -179,6 +181,6 @@ export default function DeterioracaoPage() {
           </table>
         </div>
       )}
-    </div>
+    </PageShell>
   )
 }
