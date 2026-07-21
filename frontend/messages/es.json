@@ -1,0 +1,50 @@
+{
+  "common": {
+    "appName": "Vitali",
+    "tagline": "Plataforma Hospitalaria"
+  },
+  "cookieBanner": {
+    "noticeLabel": "Aviso de Privacidad:",
+    "body": "Este sistema EMR utiliza cookies estrictamente necesarias para la autenticación y la auditoría clínica. Al continuar, acepta nuestra <policy>Política de Privacidad</policy>.",
+    "accept": "Entendido y de acuerdo"
+  },
+  "login": {
+    "heading": "Acceda a su cuenta",
+    "emailLabel": "Correo electrónico",
+    "passwordLabel": "Contraseña",
+    "emailPlaceholder": "su@correo.com",
+    "signIn": "Entrar",
+    "signingIn": "Entrando…",
+    "lockedTitle": "Cuenta bloqueada temporalmente.",
+    "lockedRetry": "Vuelva a intentarlo en {minutes} min.",
+    "genericError": "Error al iniciar sesión.",
+    "emailInvalid": "Correo electrónico no válido",
+    "passwordRequired": "La contraseña es obligatoria",
+    "rights": "Vitali © {year} — Todos los derechos reservados"
+  },
+  "nav": {
+    "dashboard": "Panel",
+    "patients": "Pacientes",
+    "agenda": "Agenda",
+    "waitingRoom": "Sala de Espera",
+    "encounters": "Consultas",
+    "deterioration": "Deterioro",
+    "absences": "Ausencias",
+    "pharmacy": "Farmacia",
+    "pharmacyCockpit": "Cabina",
+    "pharmacyDispense": "Dispensar",
+    "pharmacyStock": "Inventario",
+    "pharmacyCatalog": "Catálogo",
+    "pharmacyPurchases": "Compras",
+    "billing": "Facturación",
+    "billingAnalytics": "Análisis",
+    "settings": "Configuración",
+    "logout": "Cerrar sesión",
+    "notifications": "Notificaciones"
+  },
+  "language": {
+    "label": "Idioma",
+    "description": "Elija el idioma de la interfaz.",
+    "updating": "Actualizando…"
+  }
+}

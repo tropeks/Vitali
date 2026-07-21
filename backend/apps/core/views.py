@@ -11,6 +11,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.db import connection
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 from django_tenants.utils import schema_context
 from rest_framework import generics, permissions, status
 from rest_framework import throttling as rest_framework_throttling
@@ -269,7 +270,7 @@ class LoginView(APIView):
                 {
                     "error": {
                         "code": "VALIDATION_ERROR",
-                        "message": "Dados inválidos.",
+                        "message": _("Dados inválidos."),
                         "details": serializer.errors,
                     }
                 },
@@ -287,7 +288,7 @@ class LoginView(APIView):
                 {
                     "error": {
                         "code": "ACCOUNT_LOCKED",
-                        "message": "Conta temporariamente bloqueada por excesso de tentativas.",
+                        "message": _("Conta temporariamente bloqueada por excesso de tentativas."),
                         "retry_after": remaining,
                     }
                 },
@@ -301,7 +302,7 @@ class LoginView(APIView):
             _increment_attempts(ip, email)
             _write_audit(request, None, "login_failed", resource_id=email)
             return Response(
-                {"error": {"code": "INVALID_CREDENTIALS", "message": "Credenciais inválidas."}},
+                {"error": {"code": "INVALID_CREDENTIALS", "message": _("Credenciais inválidas.")}},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
@@ -309,7 +310,9 @@ class LoginView(APIView):
             _increment_attempts(ip, email)
             _write_audit(request, user, "login_failed", resource_id=str(user.pk))
             locked, remaining = _is_locked_out(ip, email)
-            resp = {"error": {"code": "INVALID_CREDENTIALS", "message": "Credenciais inválidas."}}
+            resp = {
+                "error": {"code": "INVALID_CREDENTIALS", "message": _("Credenciais inválidas.")}
+            }
             if locked:
                 resp["error"]["code"] = "ACCOUNT_LOCKED"
                 resp["error"]["retry_after"] = remaining
@@ -317,7 +320,7 @@ class LoginView(APIView):
 
         if not user.is_active:
             return Response(
-                {"error": {"code": "USER_INACTIVE", "message": "Conta desativada."}},
+                {"error": {"code": "USER_INACTIVE", "message": _("Conta desativada.")}},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -329,7 +332,7 @@ class LoginView(APIView):
             _increment_attempts(ip, email)
             _write_audit(request, user, "login_denied_no_membership", resource_id=str(user.pk))
             return Response(
-                {"error": {"code": "INVALID_CREDENTIALS", "message": "Credenciais inválidas."}},
+                {"error": {"code": "INVALID_CREDENTIALS", "message": _("Credenciais inválidas.")}},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
@@ -384,7 +387,7 @@ class LogoutView(APIView):
         refresh_token = request.data.get("refresh")
         if not refresh_token:
             return Response(
-                {"error": {"code": "MISSING_TOKEN", "message": "refresh token obrigatório."}},
+                {"error": {"code": "MISSING_TOKEN", "message": _("refresh token obrigatório.")}},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         try:
@@ -397,7 +400,7 @@ class LogoutView(APIView):
             )
 
         _write_audit(request, request.user, "logout", resource_id=str(request.user.pk))
-        return Response({"detail": "Logout realizado com sucesso."})
+        return Response({"detail": _("Logout realizado com sucesso.")})
 
 
 class TokenRefreshView(_BaseRefreshView):
@@ -434,7 +437,7 @@ class ChangePasswordView(APIView):
                 {
                     "error": {
                         "code": "VALIDATION_ERROR",
-                        "message": "Dados inválidos.",
+                        "message": _("Dados inválidos."),
                         "details": serializer.errors,
                     }
                 },
@@ -444,7 +447,7 @@ class ChangePasswordView(APIView):
         user = request.user
         if not user.check_password(serializer.validated_data["current_password"]):
             return Response(
-                {"error": {"code": "WRONG_PASSWORD", "message": "Senha atual incorreta."}},
+                {"error": {"code": "WRONG_PASSWORD", "message": _("Senha atual incorreta.")}},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -453,7 +456,7 @@ class ChangePasswordView(APIView):
         user.save(update_fields=["password", "must_change_password", "updated_at"])
 
         _write_audit(request, user, "password_changed", resource_id=str(user.pk))
-        return Response({"detail": "Senha alterada com sucesso."})
+        return Response({"detail": _("Senha alterada com sucesso.")})
 
 
 class MeView(APIView):
@@ -497,7 +500,7 @@ class MeLanguageView(APIView):
         if code and code not in self._allowed_codes():
             return Response(
                 {
-                    "detail": "Unsupported language code.",
+                    "detail": _("Unsupported language code."),
                     "allowed": sorted(self._allowed_codes()),
                 },
                 status=400,
@@ -525,7 +528,7 @@ class TenantRegistrationView(APIView):
                 {
                     "error": {
                         "code": "VALIDATION_ERROR",
-                        "message": "Dados inválidos.",
+                        "message": _("Dados inválidos."),
                         "details": serializer.errors,
                     }
                 },
@@ -541,7 +544,7 @@ class TenantRegistrationView(APIView):
                 {
                     "error": {
                         "code": "ADMIN_EMAIL_TAKEN",
-                        "message": "Já existe um usuário com este e-mail.",
+                        "message": _("Já existe um usuário com este e-mail."),
                     }
                 },
                 status=status.HTTP_409_CONFLICT,
@@ -571,7 +574,7 @@ class TenantRegistrationView(APIView):
                 base = host.split(".", 1)[-1] if "." in host else host
                 domain_url = f"{tenant.slug}.{base}"
 
-            domain, _ = Domain.objects.get_or_create(
+            domain, _domain_created = Domain.objects.get_or_create(
                 domain=domain_url,
                 defaults={"tenant": tenant, "is_primary": True},
             )
@@ -583,7 +586,7 @@ class TenantRegistrationView(APIView):
 
                 roles_created = {}
                 for role_name, perms in DEFAULT_ROLES.items():
-                    role, _ = Role.objects.get_or_create(
+                    role, _role_created = Role.objects.get_or_create(
                         name=role_name,
                         defaults={"permissions": perms, "is_system": True},
                     )
@@ -627,7 +630,9 @@ class TenantRegistrationView(APIView):
                 {
                     "error": {
                         "code": "TENANT_REGISTRATION_FAILED",
-                        "message": "Falha ao criar a clínica. Nenhum dado parcial foi mantido; tente novamente.",
+                        "message": _(
+                            "Falha ao criar a clínica. Nenhum dado parcial foi mantido; tente novamente."
+                        ),
                     }
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -720,7 +725,7 @@ class TUSSSyncStatusView(APIView):
             from rest_framework import status as drf_status
             from rest_framework.response import Response as Resp
 
-            return Resp({"detail": "Forbidden."}, status=drf_status.HTTP_403_FORBIDDEN)
+            return Resp({"detail": _("Forbidden.")}, status=drf_status.HTTP_403_FORBIDDEN)
 
         last_syncs = list(
             TUSSSyncLog.objects.order_by("-ran_at")[:5].values(

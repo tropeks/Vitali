@@ -43,6 +43,30 @@ jobs:
       - name: Import boundary check (P1-01)
         run: lint-imports --config .importlinter
 
+      # i18n (Vitali#130): every gettext catalog must ship a compiled .mo that
+      # matches its .po source, otherwise translations silently fall back to the
+      # source strings at runtime.
+      - name: Install gettext
+        run: sudo apt-get update && sudo apt-get install -y gettext
+
+      - name: Verify translation catalogs are compiled
+        run: |
+          status=0
+          for po in $(find locale -name '*.po'); do
+            mo="${po%.po}.mo"
+            if ! msgfmt --check "$po" -o /tmp/_check.mo; then
+              echo "::error::Invalid catalog: $po"; status=1; continue
+            fi
+            if [ ! -f "$mo" ]; then
+              echo "::error::Missing compiled catalog: $mo (run: python manage.py compilemessages)"; status=1; continue
+            fi
+            msgfmt "$po" -o /tmp/_fresh.mo
+            if ! diff -q <(msgunfmt /tmp/_fresh.mo) <(msgunfmt "$mo") >/dev/null; then
+              echo "::error::Stale catalog: $mo is out of date with $po (run: python manage.py compilemessages)"; status=1
+            fi
+          done
+          exit $status
+
   # ─── Backend: Tests ──────────────────────────────────────────────────────────
   backend-test:
     name: Backend — Tests

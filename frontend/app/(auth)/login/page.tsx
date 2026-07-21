@@ -2,20 +2,20 @@
 
 export const dynamic = "force-dynamic";
 
-import { Suspense } from "react";
+import { Suspense, useMemo } from "react";
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useTranslations } from "next-intl";
 import { Eye, EyeOff, Loader2, Lock, Mail, AlertCircle } from "lucide-react";
+import { LanguageSwitcher } from "@/components/shared/LanguageSwitcher";
 
-const loginSchema = z.object({
-  email: z.string().email("E-mail inválido"),
-  password: z.string().min(1, "Senha obrigatória"),
-});
-
-type LoginForm = z.infer<typeof loginSchema>;
+type LoginForm = {
+  email: string;
+  password: string;
+};
 
 function getSafeNextPath(next: string | null): string {
   if (!next || !next.startsWith("/") || next.startsWith("//")) {
@@ -25,6 +25,8 @@ function getSafeNextPath(next: string | null): string {
 }
 
 function LoginContent() {
+  const t = useTranslations("login");
+  const tc = useTranslations("common");
   const router = useRouter();
   const searchParams = useSearchParams();
   const nextPath = getSafeNextPath(searchParams.get("next"));
@@ -32,6 +34,15 @@ function LoginContent() {
   const [showPassword, setShowPassword] = useState(false);
   const [lockoutSeconds, setLockoutSeconds] = useState<number | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+
+  const loginSchema = useMemo(
+    () =>
+      z.object({
+        email: z.string().email(t("emailInvalid")),
+        password: z.string().min(1, t("passwordRequired")),
+      }),
+    [t],
+  );
 
   const {
     register,
@@ -66,33 +77,38 @@ function LoginContent() {
     if (err?.code === "ACCOUNT_LOCKED") {
       setLockoutSeconds(err.retry_after ?? 300);
     } else {
-      setApiError(err?.message ?? "Erro ao fazer login.");
+      setApiError(err?.message ?? t("genericError"));
     }
   };
 
   return (
-    <div className="min-h-screen bg-neu-app flex items-center justify-center p-4">
+    <div className="relative min-h-screen bg-neu-app flex items-center justify-center p-4">
+      <div className="absolute top-4 right-4">
+        <LanguageSwitcher />
+      </div>
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-b from-neu-brand to-neu-brandDeep shadow-neu-btn-primary border-t border-neu-brandEdge mb-4">
             <span className="text-white font-bold text-2xl">V</span>
           </div>
-          <h1 className="text-2xl font-bold text-neu-ink">Vitali</h1>
-          <p className="text-neu-inkSoft text-sm mt-1">Plataforma Hospitalar</p>
+          <h1 className="text-2xl font-bold text-neu-ink">{tc("appName")}</h1>
+          <p className="text-neu-inkSoft text-sm mt-1">{tc("tagline")}</p>
         </div>
 
         {/* Card */}
         <div className="bg-neu-outer border border-white rounded-2xl p-8 shadow-neu-modal">
-          <h2 className="text-lg font-semibold text-neu-ink mb-6">Acesse sua conta</h2>
+          <h2 className="text-lg font-semibold text-neu-ink mb-6">{t("heading")}</h2>
 
           {/* Lockout banner */}
           {lockoutSeconds !== null && (
             <div className="mb-4 p-3 bg-neu-danger/10 border border-neu-danger/20 rounded-lg flex items-start gap-2">
               <AlertCircle className="text-neu-danger mt-0.5 shrink-0" size={16} />
               <p className="text-neu-danger text-xs font-medium">
-                Conta bloqueada temporariamente.{" "}
-                <span className="font-bold">Tente novamente em {Math.ceil(lockoutSeconds / 60)} min.</span>
+                {t("lockedTitle")}{" "}
+                <span className="font-bold">
+                  {t("lockedRetry", { minutes: Math.ceil(lockoutSeconds / 60) })}
+                </span>
               </p>
             </div>
           )}
@@ -109,7 +125,7 @@ function LoginContent() {
             {/* Email */}
             <div>
               <label className="neu-label">
-                E-mail
+                {t("emailLabel")}
               </label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-neu-inkMuted" size={16} />
@@ -117,7 +133,7 @@ function LoginContent() {
                   {...register("email")}
                   type="email"
                   autoComplete="email"
-                  placeholder="seu@email.com"
+                  placeholder={t("emailPlaceholder")}
                   className="w-full pl-9 pr-4 py-1.5 bg-neu-input border-transparent rounded-md text-xs shadow-neu-inset focus:outline-none focus:bg-white focus:ring-2 focus:ring-neu-brand/50 transition-all h-8 text-neu-ink placeholder-neu-inkMuted"
                 />
               </div>
@@ -129,7 +145,7 @@ function LoginContent() {
             {/* Password */}
             <div>
               <label className="neu-label">
-                Senha
+                {t("passwordLabel")}
               </label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-neu-inkMuted" size={16} />
@@ -162,17 +178,17 @@ function LoginContent() {
               {isSubmitting ? (
                 <>
                   <Loader2 size={16} className="animate-spin" />
-                  Entrando…
+                  {t("signingIn")}
                 </>
               ) : (
-                "Entrar"
+                t("signIn")
               )}
             </button>
           </form>
         </div>
 
         <p className="text-center text-neu-inkMuted text-xs mt-6">
-          Vitali © {new Date().getFullYear()} — Todos os direitos reservados
+          {t("rights", { year: new Date().getFullYear() })}
         </p>
       </div>
     </div>

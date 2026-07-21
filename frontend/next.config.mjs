@@ -1,5 +1,10 @@
 // @ts-check
 import { withSentryConfig } from "@sentry/nextjs";
+import createNextIntlPlugin from "next-intl/plugin";
+
+// next-intl (no i18n routing): locale resolved from the NEXT_LOCALE cookie in
+// i18n/request.ts. Wraps the config so message catalogs are bundled per build.
+const withNextIntl = createNextIntlPlugin("./i18n/request.ts");
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -11,7 +16,7 @@ const nextConfig = {
   skipTrailingSlashRedirect: true,
 };
 
-export default withSentryConfig(nextConfig, {
+export default withSentryConfig(withNextIntl(nextConfig), {
   // Sentry organization and project (set in CI or .env.local for local builds).
   org: process.env.SENTRY_ORG,
   project: process.env.SENTRY_PROJECT,

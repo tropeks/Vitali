@@ -26,6 +26,7 @@ import {
 import type { UserDTO } from "@/lib/auth";
 import { apiFetch } from "@/lib/api";
 import { useActiveModules } from "@/hooks/useHasModule";
+import { LanguageSwitcher } from "@/components/shared/LanguageSwitcher";
 
 interface NavItem {
   label: string;
@@ -271,6 +272,9 @@ export default function DashboardShell({ user, children }: Props) {
               </span>
             )}
           </div>
+
+          {/* Language */}
+          <LanguageSwitcher />
 
           {/* Notifications */}
           <button className="relative p-2 text-neu-inkSoft hover:text-neu-ink rounded-lg hover:bg-neu-input">
