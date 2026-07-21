@@ -142,9 +142,9 @@ class TestSyntheticDatasetBandDistribution(_Base):
         )
 
         # (c) inert: no row created
-        assert not NoShowRisk.objects.filter(appointment=inert_appt).exists(), (
-            "Inert patient (< 5 terminal) must not create a NoShowRisk row"
-        )
+        assert not NoShowRisk.objects.filter(
+            appointment=inert_appt
+        ).exists(), "Inert patient (< 5 terminal) must not create a NoShowRisk row"
 
         # Sanity-check service counters: 2 scored, 1 inert
         assert counts["scored"] == 2, f"Expected 2 scored, got {counts}"
@@ -180,9 +180,9 @@ class TestGradeWritesFlywheelAuditLog(_Base):
 
         # The risk must now be graded as true_positive.
         risk.refresh_from_db()
-        assert risk.outcome == NoShowRisk.Outcome.TRUE_POSITIVE, (
-            f"Expected true_positive, got {risk.outcome!r}"
-        )
+        assert (
+            risk.outcome == NoShowRisk.Outcome.TRUE_POSITIVE
+        ), f"Expected true_positive, got {risk.outcome!r}"
         assert risk.graded_at is not None, "graded_at must be set after grading"
 
         # Exactly one new AuditLog entry must have been written.
@@ -200,9 +200,9 @@ class TestGradeWritesFlywheelAuditLog(_Base):
         nd = entry.new_data
         assert "score" in nd, f"score missing from AuditLog.new_data: {nd}"
         assert "outcome" in nd, f"outcome missing from AuditLog.new_data: {nd}"
-        assert nd["outcome"] == NoShowRisk.Outcome.TRUE_POSITIVE.value, (
-            f"AuditLog outcome mismatch: {nd['outcome']!r}"
-        )
+        assert (
+            nd["outcome"] == NoShowRisk.Outcome.TRUE_POSITIVE.value
+        ), f"AuditLog outcome mismatch: {nd['outcome']!r}"
         assert nd["band"] == NoShowRisk.Band.HIGH.value, f"AuditLog band mismatch: {nd['band']!r}"
 
 
@@ -224,9 +224,9 @@ class TestFlagOffEvaluateIsNoop(_Base):
 
         counts = NoShowService().evaluate_window(now=self.now)
 
-        assert NoShowRisk.objects.count() == 0, (
-            "evaluate_window must create zero NoShowRisk rows when flag is OFF"
-        )
+        assert (
+            NoShowRisk.objects.count() == 0
+        ), "evaluate_window must create zero NoShowRisk rows when flag is OFF"
         assert counts == {
             "scored": 0,
             "inert": 0,

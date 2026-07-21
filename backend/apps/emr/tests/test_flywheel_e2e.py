@@ -107,9 +107,9 @@ class TestNoShowFlywheelFullCycle(TenantTestCase):
         # ── Step 5: re-evaluate → override preserved (stays ACKNOWLEDGED) ────────
         svc.evaluate_window(now=self.now)
         risk.refresh_from_db()
-        assert risk.status == NoShowRisk.Status.ACKNOWLEDGED, (
-            "re-evaluate must NOT reopen an acknowledged risk"
-        )
+        assert (
+            risk.status == NoShowRisk.Status.ACKNOWLEDGED
+        ), "re-evaluate must NOT reopen an acknowledged risk"
         assert risk.band == band_before, "band must not change when history is unchanged"
 
         # ── Step 6: patient actually no-shows → move appointment to past ─────────
