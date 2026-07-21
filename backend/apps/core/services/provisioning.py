@@ -147,7 +147,7 @@ def provision_tenant(
         logger.error("provisioning.failed slug=%s err=%s", slug, exc)
         # Drop the half-built schema + tenant row so a retry starts clean.
         try:
-            tenant.delete(force_drop=True)
+            tenant.delete(force_drop=True)  # type: ignore[call-arg]
         except Exception as cleanup_exc:  # noqa: BLE001
             logger.error("provisioning.rollback_failed slug=%s err=%s", slug, cleanup_exc)
         raise ProvisioningError(str(exc)) from exc

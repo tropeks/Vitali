@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("core", "0019_auditlog_immutable"),
+        ("core", "0020_tenant_clinic_identity"),
     ]
 
     operations = [
