@@ -82,6 +82,10 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10 MB
 # NOTE: .update() not = to preserve ENGINE=django_tenants.postgresql_backend from base.py.
 # Replacing DATABASES entirely would break multi-tenancy.
 DATABASES["default"].update(env.db("DATABASE_URL"))  # noqa: F405
+# env.db() itself emits an ENGINE key (django.db.backends.postgresql), so the
+# update above still clobbers the tenant backend — re-pin it explicitly or
+# migrate_schemas crashes with "DatabaseWrapper has no attribute set_schema".
+DATABASES["default"]["ENGINE"] = "django_tenants.postgresql_backend"  # noqa: F405
 DATABASES["default"]["CONN_MAX_AGE"] = 60  # noqa: F405
 DATABASES["default"]["CONN_HEALTH_CHECKS"] = True  # noqa: F405
 
