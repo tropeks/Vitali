@@ -227,6 +227,7 @@ class TestFlagOffEvaluateIsNoop(_Base):
         assert NoShowRisk.objects.count() == 0, (
             "evaluate_window must create zero NoShowRisk rows when flag is OFF"
         )
-        assert counts == {"scored": 0, "inert": 0}, (
-            f"Expected zero counts when flag is OFF, got {counts}"
-        )
+        assert counts == {
+            "scored": 0,
+            "inert": 0,
+        }, f"Expected zero counts when flag is OFF, got {counts}"

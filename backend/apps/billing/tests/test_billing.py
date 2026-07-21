@@ -22,6 +22,7 @@ from apps.billing.models import (
     TISSGuide,
     TISSGuideItem,
 )
+from apps.billing.services.glosa_checker import ANS_CODE_DUPLICATE
 from apps.billing.services.retorno_parser import parse_retorno
 from apps.core.models import FeatureFlag, Role, TUSSCode, User
 from apps.emr.models import Encounter, Patient, Professional
@@ -648,6 +649,28 @@ class RetornoParserTestCase(TenantTestCase):
         glosa = Glosa.objects.get(guide=self.guide)
         self.assertEqual(glosa.reason_code, "01")
         self.assertEqual(str(glosa.value_denied), "150.00")
+
+    def test_parse_retorno_preserves_ans_duplicate_code(self):
+        """Regression (issue #127): an inbound duplicate glosa carrying the ANS
+        TISS 4.01 code "1702" (Cobrança de procedimento em duplicidade) must be
+        preserved as-is, NOT downgraded to the generic "99" fallback. This keeps
+        the retorno parser in sync with GlosaChecker.ANS_CODE_DUPLICATE so a
+        duplicate the engine flags round-trips correctly when the payer denies it.
+        """
+        self.assertEqual(ANS_CODE_DUPLICATE, "1702")
+        glosas_xml = f"""<ans:glosa xmlns:ans="{TISS_NS}">
+          <ans:codigoGlosa>{ANS_CODE_DUPLICATE}</ans:codigoGlosa>
+          <ans:descricaoGlosa>Cobrança de procedimento em duplicidade</ans:descricaoGlosa>
+          <ans:valorGlosa>150.00</ans:valorGlosa>
+        </ans:glosa>"""
+        xml = _make_retorno_xml(
+            self.batch.batch_number, self.guide.guide_number, situacao="2", glosas=glosas_xml
+        )
+        result = parse_retorno(xml)
+        self.assertEqual(result["glosas_created"], 1)
+        glosa = Glosa.objects.get(guide=self.guide)
+        self.assertEqual(glosa.reason_code, ANS_CODE_DUPLICATE)
+        self.assertNotEqual(glosa.reason_code, "99")
 
     def test_parse_retorno_invalid_xml_returns_error(self):
         """Malformed XML returns an error dict without raising."""
