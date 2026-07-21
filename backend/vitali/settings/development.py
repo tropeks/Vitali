@@ -2,6 +2,8 @@
 Vitali — Development Settings
 """
 
+from typing import cast
+
 import environ
 
 from .base import *  # noqa: F401, F403
@@ -30,4 +32,5 @@ CELERY_TASK_ALWAYS_EAGER = env.bool("CELERY_TASK_ALWAYS_EAGER", default=False)
 # later specs' logins get 429'd (cascade seen in master run 29796568439).
 # Gated on E2E_MODE so plain local development keeps production-like limits.
 if E2E_MODE:  # noqa: F405 — defined in base.py from the E2E_MODE env var
-    REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["login"] = "100/min"  # noqa: F405
+    # cast: mypy sees REST_FRAMEWORK as dict[str, object] through the star import
+    cast(dict[str, str], REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"])["login"] = "100/min"  # noqa: F405
