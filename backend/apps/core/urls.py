@@ -3,6 +3,7 @@
 from django.urls import path
 
 from . import views
+from .views_clinic import ClinicProfileView
 from .views_dpa import DPASignView, DPAStatusView
 from .views_mfa import (
     MFADisableView,
@@ -55,6 +56,8 @@ urlpatterns = [
     path("wedge-telemetry/", WedgeTelemetryView.as_view(), name="wedge-telemetry"),
     # AI: TUSS sync status (admin-only)
     path("ai/tuss-sync-status/", views.TUSSSyncStatusView.as_view(), name="tuss-sync-status"),
+    # Clinic identity (issue #116 — onboarding wizard Step 1)
+    path("settings/clinic/", ClinicProfileView.as_view(), name="clinic-profile"),
     # DPA (S-070)
     path("settings/dpa/", DPAStatusView.as_view(), name="dpa-status"),
     path("settings/dpa/sign/", DPASignView.as_view(), name="dpa-sign"),
