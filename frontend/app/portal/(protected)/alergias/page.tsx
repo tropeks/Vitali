@@ -21,18 +21,18 @@ export default function PortalAllergiesPage() {
       renderRow={(a) => (
         <div className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm font-semibold text-[#24292F]">{a.substance}</p>
+            <p className="text-sm font-semibold text-neu-ink">{a.substance}</p>
             <StatusBadge
               meta={resolveBadgeMeta(PORTAL_ALLERGY_SEVERITY, a.severity)}
             />
           </div>
           {a.reaction && (
-            <p className="text-xs text-[#57606A]">
-              <span className="font-medium text-[#8C959F]">Reação:</span>{" "}
+            <p className="text-xs text-neu-inkSoft">
+              <span className="font-medium text-neu-inkMuted">Reação:</span>{" "}
               {a.reaction}
             </p>
           )}
-          <p className="text-xs text-[#8C959F]">
+          <p className="text-xs text-neu-inkMuted">
             Status: {a.status === "active" ? "Ativa" : a.status === "resolved" ? "Resolvida" : "Inativa"}
           </p>
         </div>

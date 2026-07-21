@@ -22,5 +22,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
     redirect("/login");
   }
 
-  return <DashboardShell user={user}>{children}</DashboardShell>;
+  return (
+    <div className="min-h-screen bg-neu-app">
+      <DashboardShell user={user}>{children}</DashboardShell>
+    </div>
+  );
 }

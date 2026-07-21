@@ -25,7 +25,6 @@ from apps.emr.services.deterioration import DeteriorationService
 from apps.emr.services.no_show import NoShowService
 from apps.test_utils import TenantTestCase
 
-
 # ─── No-show flywheel ─────────────────────────────────────────────────────────
 
 
@@ -169,9 +168,7 @@ class TestDeteriorationFlywheelFullCycle(TenantTestCase):
         self.prof = Professional.objects.create(
             user=self.user, council_type="COREN", council_number="7", council_state="SP"
         )
-        self.encounter = Encounter.objects.create(
-            patient=self.patient, professional=self.prof
-        )
+        self.encounter = Encounter.objects.create(patient=self.patient, professional=self.prof)
 
     def _svc(self):
         return DeteriorationService(requesting_user=self.user)

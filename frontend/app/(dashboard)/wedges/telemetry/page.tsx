@@ -7,6 +7,7 @@ import {
   type WedgeTelemetry,
   type WedgeTelemetryPayload,
 } from '@/lib/wedge-telemetry'
+import { PageShell, Badge } from '@/components/shared'
 
 const WEDGE_LABELS: Record<string, string> = {
   no_show_prediction: 'Risco de Falta',
@@ -28,22 +29,14 @@ function formatOverrideRate(rate: number | null): string {
 }
 
 function EnabledBadge({ enabled }: { enabled: boolean }) {
-  return (
-    <span
-      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${
-        enabled ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'
-      }`}
-    >
-      {enabled ? 'Ativo' : 'Inativo'}
-    </span>
-  )
+  return <Badge variant={enabled ? 'success' : 'neutral'}>{enabled ? 'Ativo' : 'Inativo'}</Badge>
 }
 
 function Metric({ label, value }: { label: string; value: string | number }) {
   return (
     <div>
-      <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">{label}</p>
-      <p className="text-lg font-semibold text-slate-900">{value}</p>
+      <p className="text-xs font-medium text-neu-inkSoft uppercase tracking-wide">{label}</p>
+      <p className="text-lg font-semibold text-neu-ink">{value}</p>
     </div>
   )
 }
@@ -51,10 +44,10 @@ function Metric({ label, value }: { label: string; value: string | number }) {
 function WedgeCard({ wedge }: { wedge: WedgeTelemetry }) {
   const outcomes = wedge.flywheel.outcome_counts
   return (
-    <div className="bg-white rounded-lg border border-slate-200 p-5 space-y-4">
+    <div className="neu-panel space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="flex items-center gap-2 font-semibold text-slate-900">
-          <Activity size={16} className="text-blue-600" />
+        <h3 className="flex items-center gap-2 font-semibold text-neu-ink">
+          <Activity size={16} className="text-neu-brand" />
           {wedgeLabel(wedge.key)}
         </h3>
         <EnabledBadge enabled={wedge.enabled} />
@@ -67,27 +60,26 @@ function WedgeCard({ wedge }: { wedge: WedgeTelemetry }) {
       </div>
 
       <div className="pt-3 border-t border-slate-100">
-        <p className="flex items-center gap-1.5 text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">
+        <p className="flex items-center gap-1.5 text-xs font-medium text-neu-inkSoft uppercase tracking-wide mb-2">
           <Gauge size={13} /> Flywheel
         </p>
         {outcomes === null ? (
-          <p className="text-sm text-slate-400">Sem rótulo de desfecho para esta cunha.</p>
+          <p className="text-sm text-neu-inkMuted">Sem rótulo de desfecho para esta cunha.</p>
         ) : Object.keys(outcomes).length === 0 ? (
-          <p className="text-sm text-slate-400">Nenhum desfecho registrado.</p>
+          <p className="text-sm text-neu-inkMuted">Nenhum desfecho registrado.</p>
         ) : (
           <ul className="flex flex-wrap gap-2">
             {Object.entries(outcomes).map(([outcome, count]) => (
-              <li
-                key={outcome}
-                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-50 border border-slate-200 text-xs text-slate-700"
-              >
-                <span className="font-medium">{outcome}</span>
-                <span className="text-slate-900 font-semibold">{count}</span>
+              <li key={outcome}>
+                <Badge variant="neutral" className="gap-1.5">
+                  <span className="font-medium">{outcome}</span>
+                  <span className="text-neu-ink font-semibold">{count}</span>
+                </Badge>
               </li>
             ))}
           </ul>
         )}
-        <p className="text-xs text-slate-400 mt-2">
+        <p className="text-xs text-neu-inkMuted mt-2">
           {wedge.flywheel.graded_count} eventos gradados · motor {wedge.engine}
         </p>
       </div>
@@ -120,20 +112,20 @@ export default function WedgeTelemetryPage() {
   }, [])
 
   return (
-    <div className="space-y-5">
+    <PageShell variant="operational">
       <div>
-        <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-          <Gauge size={20} className="text-blue-600" />
+        <h2 className="flex items-center gap-2 text-lg font-semibold text-neu-ink">
+          <Gauge size={20} className="text-neu-brand" />
           Telemetria das Cunhas
         </h2>
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-neu-inkMuted">
           Métricas operacionais por cunha determinística (alertas, reconhecimentos, taxa de
           override e flywheel). Apenas observabilidade — não reexecuta nenhum motor.
         </p>
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
+        <div className="flex items-center gap-2 bg-neu-danger/10 border border-neu-danger/20 text-neu-danger text-sm rounded-lg px-4 py-3">
           <AlertTriangle size={16} />
           {error}
         </div>
@@ -142,10 +134,7 @@ export default function WedgeTelemetryPage() {
       {loading && (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3" data-testid="telemetry-skeleton">
           {[0, 1, 2, 3, 4, 5, 6].map((i) => (
-            <div
-              key={i}
-              className="bg-white rounded-lg border border-slate-200 p-5 animate-pulse h-48"
-            />
+            <div key={i} className="neu-panel animate-pulse h-48" />
           ))}
         </div>
       )}
@@ -157,6 +146,6 @@ export default function WedgeTelemetryPage() {
           ))}
         </div>
       )}
-    </div>
+    </PageShell>
   )
 }

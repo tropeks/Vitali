@@ -23,7 +23,7 @@ def health_check(request):
 @csrf_exempt
 @require_POST
 def csp_report(request):
-    """Collect CSP violation reports (S28-05).
+    """Collect CSP violation reports (S28-05; activated in #115).
 
     The CSP header ships report-only with ``report-uri`` pointing here, so violations
     are logged before the policy is promoted to enforcing. No auth (browsers post
@@ -38,7 +38,9 @@ def csp_report(request):
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("health/", health_check, name="health-check"),
-    path("api/v1/security/csp-report", csp_report, name="csp-report"),
+    # Trailing slash: the Next.js API proxy appends one to every forwarded path,
+    # so the browser's report-uri (no slash) resolves here after proxying.
+    path("api/v1/security/csp-report/", csp_report, name="csp-report"),
     path("api/v1/", include("apps.core.urls_public")),
     # TUSSSyncLog lives in public schema — must be routable from public schema URL conf
     path(
