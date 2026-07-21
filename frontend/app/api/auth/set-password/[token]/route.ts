@@ -8,10 +8,8 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 
-const DJANGO_API =
-  process.env.DJANGO_API_URL ??
-  process.env.NEXT_PUBLIC_API_URL ??
-  "http://localhost:8000";
+import { djangoApiBaseUrl } from "@/lib/server/django-api";
+
 const IS_PROD = process.env.NODE_ENV === "production";
 
 const ACCESS_MAX_AGE = 15 * 60;
@@ -78,14 +76,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
 
   let djangoResp: Response;
   try {
-    djangoResp = await fetch(`${DJANGO_API}/api/v1/auth/set-password/${encodeURIComponent(token)}/`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Forwarded-Host": forwardedHost,
-      },
-      body: JSON.stringify({ password: body.password }),
-    });
+    djangoResp = await fetch(
+      `${djangoApiBaseUrl()}/api/v1/auth/set-password/${encodeURIComponent(token)}/`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Forwarded-Host": forwardedHost,
+        },
+        body: JSON.stringify({ password: body.password }),
+      }
+    );
   } catch {
     return NextResponse.json(
       { error: { code: "BACKEND_UNAVAILABLE", message: "Servico indisponivel." } },
@@ -110,7 +111,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
 
   let meResp: Response;
   try {
-    meResp = await fetch(`${DJANGO_API}/api/v1/me`, {
+    meResp = await fetch(`${djangoApiBaseUrl()}/api/v1/me`, {
       method: "GET",
       headers: {
         "X-Forwarded-Host": forwardedHost,

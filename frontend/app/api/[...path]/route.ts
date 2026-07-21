@@ -12,17 +12,14 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 
-const DJANGO_API =
-  process.env.DJANGO_API_URL ??
-  process.env.NEXT_PUBLIC_API_URL ??
-  "http://django:8000";
+import { djangoApiBaseUrl } from "@/lib/server/django-api";
 
 async function proxy(request: NextRequest): Promise<NextResponse> {
   const { pathname, search } = request.nextUrl;
 
   // Always forward with trailing slash — Django DRF URL patterns require it.
   const djangoPath = pathname.endsWith("/") ? pathname : pathname + "/";
-  const djangoUrl = `${DJANGO_API}${djangoPath}${search}`;
+  const djangoUrl = `${djangoApiBaseUrl()}${djangoPath}${search}`;
 
   const rawHost = request.headers.get("host") ?? "localhost";
   const forwardedHost = rawHost.split(":")[0];
@@ -35,6 +32,7 @@ async function proxy(request: NextRequest): Promise<NextResponse> {
     headers.set(key, value);
   });
   headers.set("X-Forwarded-Host", forwardedHost);
+  headers.set("X-Forwarded-Proto", "https");
 
   let body: BodyInit | undefined;
   if (!["GET", "HEAD"].includes(request.method)) {

@@ -6,10 +6,8 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 
-const DJANGO_API =
-  process.env.DJANGO_API_URL ??
-  process.env.NEXT_PUBLIC_API_URL ??
-  "http://localhost:8000";
+import { djangoApiBaseUrl } from "@/lib/server/django-api";
+
 const IS_PROD = process.env.NODE_ENV === "production";
 
 export async function POST(req: NextRequest) {
@@ -30,13 +28,14 @@ export async function POST(req: NextRequest) {
 
   let djangoResp: Response;
   try {
-    djangoResp = await fetch(`${DJANGO_API}/api/v1/auth/login`, {
+    djangoResp = await fetch(`${djangoApiBaseUrl()}/api/v1/auth/login`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         // Node.js fetch() cannot set Host directly (Fetch API spec forbids it).
         // Use X-Forwarded-Host instead; Django reads this when USE_X_FORWARDED_HOST=True.
         "X-Forwarded-Host": forwardedHost,
+        "X-Forwarded-Proto": "https",
       },
       body: JSON.stringify({ email: body.email, password: body.password }),
     });

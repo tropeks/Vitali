@@ -53,9 +53,12 @@ describe("buildContentSecurityPolicy", () => {
     expect(buildContentSecurityPolicy({ nonce })).toContain(`report-uri ${CSP_REPORT_PATH}`);
   });
 
-  it("upgrades insecure requests only outside dev", () => {
-    expect(buildContentSecurityPolicy({ nonce })).toContain("upgrade-insecure-requests");
-    expect(buildContentSecurityPolicy({ nonce, isDev: true })).not.toContain(
+  it("upgrades insecure requests only when enforcing outside dev", () => {
+    expect(buildContentSecurityPolicy({ nonce })).not.toContain("upgrade-insecure-requests");
+    expect(buildContentSecurityPolicy({ nonce, enforce: true })).toContain(
+      "upgrade-insecure-requests",
+    );
+    expect(buildContentSecurityPolicy({ nonce, enforce: true, isDev: true })).not.toContain(
       "upgrade-insecure-requests",
     );
   });

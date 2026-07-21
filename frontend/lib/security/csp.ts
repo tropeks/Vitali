@@ -12,11 +12,11 @@
  */
 
 /**
- * Same-origin path the browser POSTs violation reports to. The Next.js API proxy
- * (`app/api/[...path]/route.ts`) forwards it to Django, appending the trailing slash
- * Django's URLConf expects.
+ * Same-origin path the browser POSTs violation reports to. Keep the trailing slash:
+ * browsers do not follow redirects for CSP reports reliably, and Django's URLConf
+ * expects the slash.
  */
-export const CSP_REPORT_PATH = "/api/v1/security/csp-report";
+export const CSP_REPORT_PATH = "/api/v1/security/csp-report/";
 
 /** Header carrying the per-request nonce to Server Components that render scripts. */
 export const NONCE_HEADER = "x-nonce";
@@ -34,6 +34,8 @@ export interface CspOptions {
   nonce: string;
   /** Dev needs 'unsafe-eval' for React Refresh / webpack HMR; never set in prod. */
   isDev?: boolean;
+  /** Only the enforcing policy should include browser-upgrade directives. */
+  enforce?: boolean;
 }
 
 /**
@@ -48,7 +50,11 @@ export interface CspOptions {
  *   without hardcoding the deploy-specific DSN host.
  * - `worker-src blob:`: Sentry Session Replay runs in a Worker created from a blob URL.
  */
-export function buildContentSecurityPolicy({ nonce, isDev = false }: CspOptions): string {
+export function buildContentSecurityPolicy({
+  nonce,
+  isDev = false,
+  enforce = false,
+}: CspOptions): string {
   const scriptSrc = [
     "'self'",
     `'nonce-${nonce}'`,
@@ -70,8 +76,10 @@ export function buildContentSecurityPolicy({ nonce, isDev = false }: CspOptions)
     ["frame-ancestors", ["'none'"]],
     ["form-action", ["'self'"]],
     ["object-src", ["'none'"]],
-    // Boolean directive (no value). Omitted in dev where there is no TLS to upgrade to.
-    ...(isDev ? [] : ([["upgrade-insecure-requests", null]] as Array<[string, null]>)),
+    // Boolean directive (no value). Only meaningful when the policy is enforcing.
+    ...(enforce && !isDev
+      ? ([["upgrade-insecure-requests", null]] as Array<[string, null]>)
+      : []),
   ];
 
   const serialized = directives.map(([key, vals]) =>

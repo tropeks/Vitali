@@ -5,10 +5,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
-const DJANGO_API =
-  process.env.DJANGO_API_URL ??
-  process.env.NEXT_PUBLIC_API_URL ??
-  "http://localhost:8000";
+import { djangoApiBaseUrl } from "@/lib/server/django-api";
+
 const IS_PROD = process.env.NODE_ENV === "production";
 
 export async function POST(req: NextRequest) {
@@ -24,7 +22,7 @@ export async function POST(req: NextRequest) {
 
   let djangoResp: Response;
   try {
-    djangoResp = await fetch(`${DJANGO_API}/api/v1/auth/refresh`, {
+    djangoResp = await fetch(`${djangoApiBaseUrl()}/api/v1/auth/refresh`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

@@ -5,10 +5,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
-const DJANGO_API =
-  process.env.DJANGO_API_URL ??
-  process.env.NEXT_PUBLIC_API_URL ??
-  "http://localhost:8000";
+import { djangoApiBaseUrl } from "@/lib/server/django-api";
 
 export async function POST(req: NextRequest) {
   const cookieStore = await cookies();
@@ -21,7 +18,7 @@ export async function POST(req: NextRequest) {
   // Call Django to blacklist the refresh token
   if (refreshToken && accessToken) {
     try {
-      await fetch(`${DJANGO_API}/api/v1/auth/logout`, {
+      await fetch(`${djangoApiBaseUrl()}/api/v1/auth/logout`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

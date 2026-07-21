@@ -73,7 +73,9 @@ export function middleware(request: NextRequest) {
   // headers so Next.js stamps it onto its own bootstrap <script> tags; the policy
   // goes on the response so the browser enforces (or reports) it.
   const nonce = generateNonce();
-  const csp = CSP_ENABLED ? buildContentSecurityPolicy({ nonce }) : null;
+  const csp = CSP_ENABLED
+    ? buildContentSecurityPolicy({ nonce, enforce: CSP_ENFORCE })
+    : null;
 
   const requestHeaders = new Headers(request.headers);
   if (csp) {
