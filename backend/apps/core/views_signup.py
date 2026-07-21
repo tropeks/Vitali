@@ -22,13 +22,35 @@ from rest_framework.views import APIView
 
 from .models import Tenant, User
 from .serializers import SelfServeSignupSerializer
-from .services.provisioning import ProvisioningError, generate_unique_slug, provision_tenant
+from .services.provisioning import (
+    ProvisioningConflict,
+    ProvisioningError,
+    generate_unique_slug,
+    provision_tenant,
+)
 
 logger = logging.getLogger(__name__)
 
+# Friendly 409 messages keyed by ProvisioningConflict.code.
+_CONFLICT_MESSAGES = {
+    "CNPJ_TAKEN": "Já existe uma clínica cadastrada com este CNPJ.",
+    "EMAIL_TAKEN": "Já existe uma conta com este e-mail.",
+    "SLUG_TAKEN": "Não foi possível reservar o endereço da clínica. Tente novamente.",
+    "CONFLICT": "Estes dados já estão em uso. Tente novamente.",
+}
+
 
 class SignupRateThrottle(AnonRateThrottle):
-    """Signups create a PG schema each — keep abuse cheap to absorb."""
+    """Signups create a PG schema each — keep abuse cheap to absorb.
+
+    This 5/hour bucket is the *only* defense on an anonymous endpoint that
+    provisions a PG schema + runs migrations (expensive). The bucket key is the
+    client IP from ``BaseThrottle.get_ident``, which trusts ``REST_FRAMEWORK
+    ["NUM_PROXIES"]`` (=1, we sit behind a single nginx hop) to read the real
+    client IP off X-Forwarded-For instead of the whole spoofable XFF string —
+    without it, an attacker rotates XFF to mint unlimited buckets and bypasses
+    the throttle entirely. See vitali/settings/base.py NUM_PROXIES.
+    """
 
     rate = "5/hour"
     scope = "signup"
@@ -87,15 +109,28 @@ class SelfServeSignupView(APIView):
 
         data = serializer.validated_data
         email = data["email"]
+        cnpj = data["cnpj"]
 
-        # Reject duplicate owner email up front (User.email is globally unique)
-        # so we never build a schema we'd just have to roll back.
+        # Reject known duplicates up front — email AND CNPJ are both unique — so
+        # the expensive schema build never even starts for the common re-signup
+        # case (these run BEFORE provision_tenant; a genuine concurrent race that
+        # slips past the check is still caught as a 409 via ProvisioningConflict).
         if User.objects.filter(email=email).exists():
             return Response(
                 {
                     "error": {
                         "code": "EMAIL_TAKEN",
-                        "message": "Já existe uma conta com este e-mail.",
+                        "message": _CONFLICT_MESSAGES["EMAIL_TAKEN"],
+                    }
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        if cnpj and Tenant.objects.filter(cnpj=cnpj).exists():
+            return Response(
+                {
+                    "error": {
+                        "code": "CNPJ_TAKEN",
+                        "message": _CONFLICT_MESSAGES["CNPJ_TAKEN"],
                     }
                 },
                 status=status.HTTP_409_CONFLICT,
@@ -108,7 +143,7 @@ class SelfServeSignupView(APIView):
             result = provision_tenant(
                 name=data["company_name"],
                 slug=slug,
-                cnpj=data["cnpj"],
+                cnpj=cnpj,
                 owner_email=email,
                 owner_full_name=owner_full_name,
                 owner_password=None,  # passwordless — activates via welcome link
@@ -116,17 +151,20 @@ class SelfServeSignupView(APIView):
                 status=Tenant.Status.PENDING,
                 send_welcome=True,
             )
+        except ProvisioningConflict as exc:
+            # Duplicate CNPJ/email or a slug race (incl. concurrent signups that
+            # beat the up-front checks) → friendly 409, never a 500.
+            logger.info("signup.conflict slug=%s code=%s", slug, exc.code)
+            return Response(
+                {
+                    "error": {
+                        "code": exc.code,
+                        "message": _CONFLICT_MESSAGES.get(exc.code, _CONFLICT_MESSAGES["CONFLICT"]),
+                    }
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
         except ProvisioningError as exc:
-            if str(exc) == "OWNER_EMAIL_TAKEN":
-                return Response(
-                    {
-                        "error": {
-                            "code": "EMAIL_TAKEN",
-                            "message": "Já existe uma conta com este e-mail.",
-                        }
-                    },
-                    status=status.HTTP_409_CONFLICT,
-                )
             logger.error("signup.failed slug=%s err=%s", slug, exc)
             return Response(
                 {

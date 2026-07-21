@@ -496,6 +496,22 @@ class SubscriptionWebhookView(APIView):
                 return Response({"status": "ok"})
 
             tenant = subscription.tenant
+            # Only onboarding tenants (PENDING/TRIAL) get flipped live on first
+            # payment. SUSPENDED/CANCELLED are deliberate ops states (abuse,
+            # churn, fraud) — a late/retried Asaas payment event must NOT silently
+            # reinstate them, or a suspension could be undone by a straggler
+            # webhook. Reinstatement of those is a manual ops decision; we just
+            # audit-log the ignored event here.
+            if tenant.status not in (Tenant.Status.PENDING, Tenant.Status.TRIAL):
+                logger.warning(
+                    "subscription.webhook.reactivation_ignored tenant=%s sub=%s status=%s event=%s",
+                    tenant.schema_name,
+                    asaas_subscription_id,
+                    tenant.status,
+                    event,
+                )
+                return Response({"status": "ok"})
+
             if tenant.status != Tenant.Status.ACTIVE:
                 tenant.status = Tenant.Status.ACTIVE
                 tenant.save(update_fields=["status", "updated_at"])
