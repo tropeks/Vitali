@@ -1,12 +1,12 @@
 from datetime import timedelta
 
+from django.apps import apps
 from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.core.models import FeatureFlag, Role, User
 from apps.emr.models import LabOrder, LabOrderItem, LabTest, Patient
 from apps.patient_portal.models import PatientPortalAccess
-from apps.signatures.models import DigitalSignature, LabReportArtifact
 from apps.test_utils import TenantTestCase
 
 
@@ -35,6 +35,8 @@ class PortalLabResultsTest(TenantTestCase):
         self.client.force_authenticate(self.user)
 
     def _released_order(self, patient, test, suffix):
+        digital_signature = apps.get_model("signatures", "DigitalSignature")
+        lab_report_artifact = apps.get_model("signatures", "LabReportArtifact")
         order = LabOrder.objects.create(
             patient=patient,
             requested_by=self.signer,
@@ -50,7 +52,7 @@ class PortalLabResultsTest(TenantTestCase):
             validated_at=timezone.now(),
             validated_by=self.signer,
         )
-        signature = DigitalSignature.objects.create(
+        signature = digital_signature.objects.create(
             document_type="custom",
             document_id=str(order.id),
             signer=self.signer,
@@ -60,7 +62,7 @@ class PortalLabResultsTest(TenantTestCase):
             cert_serial_hex="01",
             cert_not_valid_after=timezone.now() + timedelta(days=1),
         )
-        LabReportArtifact.objects.create(
+        lab_report_artifact.objects.create(
             order=order, signature=signature, pdf=b"%PDF", released_by=self.signer
         )
         return order

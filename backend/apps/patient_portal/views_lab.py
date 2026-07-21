@@ -1,9 +1,9 @@
+from django.core.exceptions import ObjectDoesNotExist
 from django.http import HttpResponse
 from rest_framework.response import Response
 
 from apps.core.models import AuditLog
 from apps.emr.models import LabOrder
-from apps.signatures.models import LabReportArtifact
 
 from .serializers_lab import PortalLabOrderSerializer
 from .views import _SelfView
@@ -26,10 +26,11 @@ class MeLabReportPDFView(_SelfView):
     def get(self, request, order_id):
         patient = self._patient(request)
         try:
-            artifact = LabReportArtifact.objects.select_related("order", "signature").get(
-                order_id=order_id, order__patient=patient, order__status=LabOrder.Status.COMPLETED
+            order = LabOrder.objects.select_related("report_artifact__signature").get(
+                id=order_id, patient=patient, status=LabOrder.Status.COMPLETED
             )
-        except (LabReportArtifact.DoesNotExist, ValueError):
+            artifact = order.report_artifact
+        except (LabOrder.DoesNotExist, ObjectDoesNotExist, ValueError):
             return Response({"detail": "Laudo não encontrado."}, status=404)
         AuditLog.objects.create(
             user=request.user,
