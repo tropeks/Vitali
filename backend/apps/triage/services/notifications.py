@@ -104,11 +104,10 @@ def _recipients() -> list[str]:
         with transaction.atomic():
             from apps.emr.models import EscalationConfig
 
-            # TODO(EscalationConfig): no uniqueness constraint on active
-            # configs — multiple is_active=True rows can coexist and this
-            # silently picks the newest. Enforce one active config per tenant
-            # (partial UniqueConstraint on is_active=True + data migration
-            # deactivating older rows) in apps.emr.
+            # apps.emr.EscalationConfig now enforces at most one is_active=True
+            # row per tenant (partial UniqueConstraint, emr migration 0026), so
+            # .filter(is_active=True).first() is unambiguous — the order_by is
+            # kept only as defensive belt-and-suspenders.
             config = EscalationConfig.objects.filter(is_active=True).order_by("-created_at").first()
             if config and config.notify_emails:
                 return list(config.notify_emails)
