@@ -8,13 +8,19 @@ Race-safety decision (eng review A5):
   select_for_update + IntegrityError catch on WhatsAppContact creation.
 
 F-04 (E-013) — full cascade on Patient creation:
-  1. Always pre-create an EMPTY MedicalHistory placeholder (ungated, idempotent).
-     "Empty" means genuinely blank (condition=""/type="") — never fabricated
-     clinical data — a container the clinician fills in later.
-  2. Gate the WhatsApp cascade behind the tenant's ``whatsapp`` module flag.
-  3. When the module is active and a brand-new WhatsAppContact is created for a
+  1. Gate the WhatsApp cascade behind the tenant's ``whatsapp`` module flag.
+  2. When the module is active and a brand-new WhatsAppContact is created for a
      not-yet-decided number, enqueue the welcome + opt-in invitation
      (async via Celery / transaction.on_commit so the API stays well under 30s).
+     The invitation dispatch is additionally gated behind the default-OFF
+     ``whatsapp_cold_optin`` tenant flag — see _cold_optin_enabled for why.
+
+  NOTE (pre-merge review, PR #145): the cascade previously pre-created an empty
+  MedicalHistory(condition="", type="") placeholder. That was removed —
+  MedicalHistory is a *list of clinical entries* (chronic/acute/surgical/family)
+  with no per-item PATCH/DELETE in the API, so the placeholder polluted every
+  new patient's chart with a permanent blank row. Real entries are created on
+  demand via POST /medical-history/.
 
   The post-opt-in welcome handshake (after the patient replies) lives in the FSM
   opt-in transition (S-110: WhatsAppContact.do_opt_in → send_post_opt_in_welcome).
@@ -37,18 +43,19 @@ from apps.whatsapp.models import WhatsAppContact
 logger = logging.getLogger(__name__)
 
 WHATSAPP_MODULE_KEY = "whatsapp"
+COLD_OPTIN_FLAG_KEY = "whatsapp_cold_optin"
 
 
 class PatientRegistrationService:
     """
     Orchestrates the post-save Patient cascade (F-04 / E-013):
       1. AuditLog entry for the patient creation (with correlation_id).
-      2. Pre-create an empty MedicalHistory placeholder (ungated, idempotent).
-      3. If the tenant's ``whatsapp`` module is active:
+      2. If the tenant's ``whatsapp`` module is active:
          a. Atomic WhatsAppContact get-or-create (race-safe).
          b. AuditLog entry for the WhatsApp contact mapping.
-         c. For a brand-new, not-yet-decided contact, enqueue the welcome +
-            opt-in invitation (async, fail-open).
+         c. For a brand-new, not-yet-decided contact — and only when the
+            default-OFF ``whatsapp_cold_optin`` tenant flag is enabled —
+            enqueue the welcome + opt-in invitation (async, fail-open).
     """
 
     def __init__(self, requesting_user) -> None:
@@ -77,11 +84,7 @@ class PatientRegistrationService:
                     "full_name": patient.full_name,
                 },
             )
-            # F-04 step 1: every patient gets an empty MedicalHistory container.
-            # Ungated — clinical record scaffolding is independent of WhatsApp.
-            self._ensure_medical_history(patient)
-
-            # F-04 steps 2-3: the WhatsApp cascade is gated on the tenant module.
+            # F-04: the WhatsApp cascade is gated on the tenant module.
             if not self._whatsapp_module_active():
                 return patient
 
@@ -94,33 +97,18 @@ class PatientRegistrationService:
                     new_data={"phone": contact.phone, "opt_in": contact.opt_in},
                 )
                 # Send the welcome + opt-in invitation only for a brand-new
-                # contact whose consent has not yet been decided.
-                if created and not contact.opt_in and contact.opt_out_at is None:
+                # contact whose consent has not yet been decided, and only when
+                # the tenant has explicitly enabled cold outbound opt-in.
+                if (
+                    created
+                    and not contact.opt_in
+                    and contact.opt_out_at is None
+                    and self._cold_optin_enabled()
+                ):
                     self._enqueue_opt_in_invitation(contact)
         return patient
 
     # ── Private helpers ──────────────────────────────────────────────────────
-
-    def _ensure_medical_history(self, patient: Patient):
-        """Pre-create an empty MedicalHistory placeholder for the patient.
-
-        Idempotent: a no-op when the patient already has any history row (e.g. on
-        re-registration). The row is genuinely blank (condition=""/type="") — a
-        scaffold the clinician fills in, never fabricated clinical data.
-        """
-        from apps.emr.models import MedicalHistory
-
-        if MedicalHistory.objects.filter(patient=patient).exists():
-            return None
-
-        history = MedicalHistory.objects.create(patient=patient, condition="", type="")
-        self._audit(
-            "medical_history_precreated",
-            "medical_history",
-            history.id,
-            new_data={"patient_id": str(patient.id)},
-        )
-        return history
 
     def _whatsapp_module_active(self) -> bool:
         """Return whether the current tenant has the ``whatsapp`` module enabled.
@@ -134,6 +122,32 @@ class PatientRegistrationService:
         except Exception:
             logger.warning(
                 "Could not resolve whatsapp module flag; skipping WhatsApp cascade.",
+                exc_info=True,
+            )
+            return False
+
+    def _cold_optin_enabled(self) -> bool:
+        """Return whether the tenant explicitly enabled cold outbound opt-in.
+
+        The opt-in invitation is a *business-initiated, freeform* WhatsApp
+        message to a number that has never interacted with the channel. On
+        Baileys/Evolution-style gateways that pattern is a well-known trigger
+        for the provider banning the sender number — which would take down the
+        tenant's entire WhatsApp channel. The dispatch is therefore gated
+        behind the dedicated ``whatsapp_cold_optin`` FeatureFlag, which is
+        default-OFF (no row → disabled): the cascade lands inert and an
+        operator enables the flag explicitly once an approved template /
+        messaging window strategy is in place.
+
+        Fail-closed, mirroring _whatsapp_module_active: any error resolving
+        the tenant/flag disables the invitation dispatch.
+        """
+        try:
+            tenant = connection.tenant  # type: ignore[attr-defined]
+            return tenant_has_feature(tenant, COLD_OPTIN_FLAG_KEY)
+        except Exception:
+            logger.warning(
+                "Could not resolve whatsapp_cold_optin flag; skipping opt-in invitation dispatch.",
                 exc_info=True,
             )
             return False

@@ -1,10 +1,16 @@
 """F-04 (E-013) — Patient registration cascade integration tests.
 
 End-to-end coverage of the cascade fired when a Patient is created:
-  1. Patient with a WhatsApp number (module active) → WhatsAppContact created and
-     the welcome + opt-in invitation dispatched (async, < 30s).
-  2. MedicalHistory pre-created automatically for every patient.
-  3. Gate: the WhatsApp cascade only runs when the tenant's whatsapp module is on.
+  1. Patient with a WhatsApp number (module active + cold opt-in flag on) →
+     WhatsAppContact created and the welcome + opt-in invitation dispatched
+     (async, < 30s).
+  2. Gate 1: the WhatsApp cascade only runs when the tenant's whatsapp module
+     is on (fail-closed, including when tenant resolution itself blows up).
+  3. Gate 2: the opt-in invitation dispatch additionally requires the
+     default-OFF ``whatsapp_cold_optin`` flag (cold outbound ban-risk gate).
+  4. No MedicalHistory placeholder is ever pre-created (pre-merge review of
+     PR #145: the model is a list of clinical entries; a blank row would
+     permanently pollute every new patient's chart).
 
 Plus unit coverage of the send_opt_in_invitation Celery task (happy path,
 opt-in/opt-out no-ops, and fail-open on exhausted retries).
@@ -20,7 +26,7 @@ Harness notes (mirror test_opt_in_cascade.py):
 """
 
 from datetime import date
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
 from apps.core.models import AuditLog, FeatureFlag, User
 from apps.emr.models import MedicalHistory, Patient
@@ -51,12 +57,20 @@ def _make_patient(full_name="Joana Prado", cpf="529.982.247-25", phone="", whats
     )
 
 
-def _set_whatsapp_module(tenant, enabled):
+def _set_flag(tenant, module_key, enabled):
     FeatureFlag.objects.update_or_create(
         tenant=tenant,
-        module_key="whatsapp",
+        module_key=module_key,
         defaults={"is_enabled": enabled},
     )
+
+
+def _set_whatsapp_module(tenant, enabled):
+    _set_flag(tenant, "whatsapp", enabled)
+
+
+def _set_cold_optin(tenant, enabled):
+    _set_flag(tenant, "whatsapp_cold_optin", enabled)
 
 
 # ── Cascade integration ─────────────────────────────────────────────────────
@@ -70,9 +84,10 @@ class PatientCascadeF04Tests(TenantTestCase):
         return PatientRegistrationService(requesting_user=self.requester).register(patient)
 
     def test_full_cascade_with_whatsapp_module_active(self):
-        """Module on + WhatsApp number → contact created, invitation dispatched,
-        MedicalHistory pre-created."""
+        """Module on + cold opt-in flag on + WhatsApp number → contact created,
+        invitation dispatched, and NO MedicalHistory placeholder."""
         _set_whatsapp_module(self.__class__.tenant, True)
+        _set_cold_optin(self.__class__.tenant, True)
         patient = _make_patient(whatsapp="5511910000001")
 
         with (
@@ -95,10 +110,8 @@ class PatientCascadeF04Tests(TenantTestCase):
         self.assertEqual(args[0], str(contact.id))
         self.assertIsNotNone(args[1])
 
-        # MedicalHistory pre-created (empty placeholder).
-        history = MedicalHistory.objects.get(patient=patient)
-        self.assertEqual(history.condition, "")
-        self.assertEqual(history.type, "")
+        # No MedicalHistory placeholder — real entries are POSTed on demand.
+        self.assertFalse(MedicalHistory.objects.filter(patient=patient).exists())
 
         # Audit trail covers each cascade step.
         actions = set(
@@ -109,14 +122,60 @@ class PatientCascadeF04Tests(TenantTestCase):
         self.assertTrue(
             {
                 "patient_created",
-                "medical_history_precreated",
                 "whatsapp_contact_mapped",
                 "opt_in_invitation_enqueued",
             }.issubset(actions)
         )
 
-    def test_medical_history_created_when_module_off(self):
-        """Gate closed → no WhatsAppContact, no invitation, but MedicalHistory still created."""
+    def test_cold_optin_flag_off_blocks_invitation(self):
+        """Module on but whatsapp_cold_optin off (default) → contact is still
+        mapped, but the cold outbound invitation is NOT enqueued."""
+        _set_whatsapp_module(self.__class__.tenant, True)
+        # No whatsapp_cold_optin row at all: the flag is default-OFF.
+        patient = _make_patient(whatsapp="5511910000005", cpf="004.690.418-20")
+
+        with (
+            patch(
+                "apps.emr.services.patient_registration.transaction.on_commit",
+                side_effect=lambda fn: fn(),
+            ),
+            patch("apps.whatsapp.tasks.send_opt_in_invitation.delay") as mock_delay,
+        ):
+            self._register(patient)
+
+        # Contact mapping still happens (that part is safe).
+        contact = WhatsAppContact.objects.get(phone="5511910000005")
+        self.assertEqual(contact.patient_id, patient.id)
+
+        # But nothing is dispatched and no enqueue audit is written.
+        mock_delay.assert_not_called()
+        self.assertFalse(
+            AuditLog.objects.filter(
+                action="opt_in_invitation_enqueued",
+                resource_id=str(contact.id),
+            ).exists()
+        )
+
+    def test_cold_optin_flag_explicitly_disabled_blocks_invitation(self):
+        """An explicit is_enabled=False row behaves the same as no row."""
+        _set_whatsapp_module(self.__class__.tenant, True)
+        _set_cold_optin(self.__class__.tenant, False)
+        patient = _make_patient(whatsapp="5511910000006", cpf="871.379.833-40")
+
+        with (
+            patch(
+                "apps.emr.services.patient_registration.transaction.on_commit",
+                side_effect=lambda fn: fn(),
+            ),
+            patch("apps.whatsapp.tasks.send_opt_in_invitation.delay") as mock_delay,
+        ):
+            self._register(patient)
+
+        self.assertTrue(WhatsAppContact.objects.filter(phone="5511910000006").exists())
+        mock_delay.assert_not_called()
+
+    def test_module_off_no_whatsapp_side_effects(self):
+        """Gate closed → no WhatsAppContact, no invitation."""
         _set_whatsapp_module(self.__class__.tenant, False)
         patient = _make_patient(whatsapp="5511910000002", cpf="111.444.777-35")
 
@@ -125,10 +184,42 @@ class PatientCascadeF04Tests(TenantTestCase):
 
         self.assertFalse(WhatsAppContact.objects.filter(phone="5511910000002").exists())
         mock_delay.assert_not_called()
-        self.assertTrue(MedicalHistory.objects.filter(patient=patient).exists())
+        # Patient creation itself is still audited.
+        self.assertTrue(
+            AuditLog.objects.filter(action="patient_created", resource_id=str(patient.id)).exists()
+        )
 
-    def test_medical_history_created_without_phone(self):
-        """No phone/whatsapp at all → still gets a MedicalHistory, no contact."""
+    def test_fail_closed_when_tenant_resolution_raises(self):
+        """_whatsapp_module_active fail-closed path: connection.tenant blowing up
+        must NOT break patient registration — it just skips the WhatsApp cascade."""
+        _set_whatsapp_module(self.__class__.tenant, True)
+        _set_cold_optin(self.__class__.tenant, True)
+        patient = _make_patient(whatsapp="5511910000007", cpf="616.929.166-90")
+
+        mock_connection = MagicMock()
+        type(mock_connection).tenant = PropertyMock(
+            side_effect=RuntimeError("no tenant on connection")
+        )
+        with (
+            patch(
+                "apps.emr.services.patient_registration.connection",
+                mock_connection,
+            ),
+            patch("apps.whatsapp.tasks.send_opt_in_invitation.delay") as mock_delay,
+        ):
+            result = self._register(patient)
+
+        # Registration completed and returned the patient unchanged.
+        self.assertEqual(result.id, patient.id)
+        self.assertTrue(
+            AuditLog.objects.filter(action="patient_created", resource_id=str(patient.id)).exists()
+        )
+        # WhatsApp cascade fully skipped.
+        self.assertFalse(WhatsAppContact.objects.filter(phone="5511910000007").exists())
+        mock_delay.assert_not_called()
+
+    def test_no_phone_no_contact(self):
+        """No phone/whatsapp at all → no contact, registration still completes."""
         _set_whatsapp_module(self.__class__.tenant, True)
         patient = _make_patient(cpf="390.533.447-05")
 
@@ -136,16 +227,17 @@ class PatientCascadeF04Tests(TenantTestCase):
         self._register(patient)
 
         self.assertEqual(WhatsAppContact.objects.count(), before)
-        self.assertTrue(MedicalHistory.objects.filter(patient=patient).exists())
+        self.assertTrue(
+            AuditLog.objects.filter(action="patient_created", resource_id=str(patient.id)).exists()
+        )
 
-    def test_medical_history_precreation_is_idempotent(self):
-        """Registering the same patient twice never creates a second placeholder."""
+    def test_no_medical_history_placeholder_ever_created(self):
+        """Registration (even repeated) never fabricates MedicalHistory rows."""
         _set_whatsapp_module(self.__class__.tenant, True)
         patient = _make_patient(whatsapp="5511910000003", cpf="901.452.467-90")
 
         # on_commit fires immediately here, so .delay must be mocked across BOTH
-        # registrations — the first one creates the contact and enqueues the
-        # invitation; without the mock it would hit the real Celery backend.
+        # registrations to avoid hitting the real Celery backend.
         with (
             patch(
                 "apps.emr.services.patient_registration.transaction.on_commit",
@@ -156,11 +248,12 @@ class PatientCascadeF04Tests(TenantTestCase):
             self._register(patient)
             self._register(patient)
 
-        self.assertEqual(MedicalHistory.objects.filter(patient=patient).count(), 1)
+        self.assertEqual(MedicalHistory.objects.filter(patient=patient).count(), 0)
 
     def test_invitation_not_sent_for_existing_contact(self):
         """Re-registering a phone that already has a contact must not re-invite."""
         _set_whatsapp_module(self.__class__.tenant, True)
+        _set_cold_optin(self.__class__.tenant, True)
         phone = "5511910000004"
         first = _make_patient(whatsapp=phone, cpf="153.509.460-56")
         WhatsAppContact.objects.create(phone=phone, patient=first, opt_in=False)

@@ -388,6 +388,18 @@ def send_opt_in_invitation(self, contact_id: str, correlation_id: str | None = N
     contact in ``PENDING_OPTIN`` so the patient's reply ("sim"/"aceito"/"1") is
     interpreted directly as opt-in.
 
+    ⚠️ COLD OUTBOUND / BAN RISK: this is a *business-initiated, freeform*
+    (``send_text``, not ``send_template``) message to a number that has never
+    interacted with the channel. On Baileys/Evolution-style gateways that
+    pattern is a known trigger for the provider banning the sender number,
+    which would take down the tenant's entire WhatsApp channel. For that
+    reason the *dispatch* of this task is gated in
+    PatientRegistrationService._cold_optin_enabled behind the dedicated
+    ``whatsapp_cold_optin`` tenant FeatureFlag — default-OFF and fail-closed.
+    An operator must enable it explicitly, and only with an approved template
+    / messaging-window strategy signed off by whoever operates the Evolution
+    API instance.
+
     Fail-open (mirrors send_post_opt_in_welcome): a messaging failure must never
     roll back patient registration. On exhausted retries an
     ``opt_in_invitation_failed`` AuditLog is written instead of raising.
