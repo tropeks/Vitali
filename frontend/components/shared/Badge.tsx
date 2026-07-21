@@ -1,6 +1,6 @@
 import type { HTMLAttributes } from 'react'
 
-export type BadgeVariant = 'neutral' | 'brand' | 'success' | 'danger'
+export type BadgeVariant = 'neutral' | 'brand' | 'success' | 'warning' | 'danger'
 
 /**
  * Neumorphic badge primitive. Same anatomy as the topbar clinic badge in
@@ -12,6 +12,7 @@ const VARIANT_CLASSES: Record<BadgeVariant, string> = {
   neutral: 'border-neu-inkMuted/20 bg-neu-inkMuted/10 text-neu-inkSoft',
   brand: 'border-neu-brand/20 bg-neu-brand/10 text-neu-brand',
   success: 'border-neu-success/20 bg-neu-success/10 text-neu-success',
+  warning: 'border-neu-warning/20 bg-neu-warning/10 text-neu-warning',
   danger: 'border-neu-danger/20 bg-neu-danger/10 text-neu-danger',
 }
 

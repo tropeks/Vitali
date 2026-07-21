@@ -57,10 +57,10 @@ export default function ProfissionaisPage() {
       )}
 
       {!loading && !error && professionals.length > 0 && (
-        <div className="bg-neu-panel rounded-lg border border-slate-200 overflow-x-auto">
+        <div className="bg-neu-panel rounded-lg border border-white overflow-x-auto">
           <table className="w-full text-sm min-w-[720px]">
             <thead>
-              <tr className="border-b border-slate-100 bg-neu-panel">
+              <tr className="border-b border-white bg-neu-panel">
                 {['Nome', 'Email', 'Conselho', 'Especialidade', 'Status'].map((h) => (
                   <th
                     key={h}
@@ -71,7 +71,7 @@ export default function ProfissionaisPage() {
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
+            <tbody>
               {professionals.map((pro) => (
                 <ProfessionalRow key={pro.id} professional={pro} />
               ))}

@@ -33,11 +33,11 @@ export default function ProfessionalRow({ professional }: Props) {
       : '—'
 
   return (
-    <tr className="border-b border-slate-100 hover:bg-slate-50">
-      <td className="px-4 py-3 font-medium text-slate-900">{professional.user_name || '—'}</td>
-      <td className="px-4 py-3 text-slate-600">{professional.user_email || '—'}</td>
-      <td className="px-4 py-3 font-mono text-xs text-slate-700">{councilDisplay}</td>
-      <td className="px-4 py-3 text-slate-600">{professional.specialty || '—'}</td>
+    <tr className="border-b border-white hover:bg-neu-panelAlt">
+      <td className="px-4 py-3 font-medium text-neu-ink">{professional.user_name || '—'}</td>
+      <td className="px-4 py-3 text-neu-inkSoft">{professional.user_email || '—'}</td>
+      <td className="px-4 py-3 font-mono text-xs text-neu-inkSoft">{councilDisplay}</td>
+      <td className="px-4 py-3 text-neu-inkSoft">{professional.specialty || '—'}</td>
       <td className="px-4 py-3">
         <StatusBadge meta={getActivenessMeta(professional.is_active)} />
       </td>
