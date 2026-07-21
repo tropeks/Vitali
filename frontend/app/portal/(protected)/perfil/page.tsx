@@ -52,7 +52,7 @@ export default function PortalProfilePage() {
     load();
   }, []);
 
-  if (loading) return <p className="text-sm text-[#8C959F]">Carregando…</p>;
+  if (loading) return <p className="text-sm text-neu-inkMuted">Carregando…</p>;
   if (error)
     return (
       <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
@@ -64,15 +64,15 @@ export default function PortalProfilePage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-2xl font-semibold text-[#24292F]">Meu perfil</h1>
-        <p className="mt-1 text-sm text-[#57606A]">
+        <h1 className="text-2xl font-semibold text-neu-ink">Meu perfil</h1>
+        <p className="mt-1 text-sm text-neu-inkSoft">
           Para corrigir qualquer informação, fale com a recepção da clínica.
         </p>
       </div>
 
-      <section className="rounded-lg border border-slate-200 bg-[#F4F7FA]">
+      <section className="rounded-lg border border-slate-200 bg-neu-panel">
         <div className="border-b border-slate-100 px-4 py-3">
-          <h2 className="text-base font-semibold text-[#24292F]">Dados pessoais</h2>
+          <h2 className="text-base font-semibold text-neu-ink">Dados pessoais</h2>
         </div>
         <dl className="divide-y divide-slate-100">
           <Row label="Nome" value={patient.full_name} />
@@ -85,9 +85,9 @@ export default function PortalProfilePage() {
         </dl>
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-[#F4F7FA]">
+      <section className="rounded-lg border border-slate-200 bg-neu-panel">
         <div className="border-b border-slate-100 px-4 py-3">
-          <h2 className="text-base font-semibold text-[#24292F]">Contato</h2>
+          <h2 className="text-base font-semibold text-neu-ink">Contato</h2>
         </div>
         <dl className="divide-y divide-slate-100">
           <Row label="E-mail" value={patient.email || "—"} />
@@ -155,18 +155,18 @@ function PrivacySection({ patientId }: { patientId: string }) {
   }
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-[#F4F7FA]">
+    <section className="rounded-lg border border-slate-200 bg-neu-panel">
       <div className="border-b border-slate-100 px-4 py-3">
-        <h2 className="text-base font-semibold text-[#24292F]">Privacidade e dados</h2>
-        <p className="mt-0.5 text-xs text-[#8C959F]">
+        <h2 className="text-base font-semibold text-neu-ink">Privacidade e dados</h2>
+        <p className="mt-0.5 text-xs text-neu-inkMuted">
           Seus direitos previstos na LGPD (Lei nº 13.709/2018).
         </p>
       </div>
 
       <div className="space-y-4 px-4 py-4">
         <div>
-          <h3 className="text-sm font-semibold text-[#24292F]">Baixar meus dados</h3>
-          <p className="mt-0.5 text-xs text-[#57606A]">
+          <h3 className="text-sm font-semibold text-neu-ink">Baixar meus dados</h3>
+          <p className="mt-0.5 text-xs text-neu-inkSoft">
             Exporte uma cópia dos seus dados (cadastro, consultas, atendimentos,
             receitas e alergias).
           </p>
@@ -175,12 +175,12 @@ function PrivacySection({ patientId }: { patientId: string }) {
               type="button"
               onClick={() => handleExport("json")}
               disabled={exporting !== null}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-[#24292F] shadow-[0_1px_3px_rgba(0,0,0,0.06)] transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-neu-ink shadow-[0_1px_3px_rgba(0,0,0,0.06)] transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {exporting === "json" ? (
                 <Loader2 size={16} className="animate-spin" />
               ) : (
-                <FileJson size={16} className="text-[#0066A1]" />
+                <FileJson size={16} className="text-neu-brand" />
               )}
               Baixar meus dados (JSON)
             </button>
@@ -188,12 +188,12 @@ function PrivacySection({ patientId }: { patientId: string }) {
               type="button"
               onClick={() => handleExport("pdf")}
               disabled={exporting !== null}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-[#24292F] shadow-[0_1px_3px_rgba(0,0,0,0.06)] transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-neu-ink shadow-[0_1px_3px_rgba(0,0,0,0.06)] transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {exporting === "pdf" ? (
                 <Loader2 size={16} className="animate-spin" />
               ) : (
-                <FileText size={16} className="text-[#0066A1]" />
+                <FileText size={16} className="text-neu-brand" />
               )}
               Baixar meus dados (PDF)
             </button>
@@ -207,7 +207,7 @@ function PrivacySection({ patientId }: { patientId: string }) {
         </div>
 
         <div className="border-t border-slate-100 pt-4">
-          <h3 className="text-sm font-semibold text-[#24292F]">Excluir minha conta</h3>
+          <h3 className="text-sm font-semibold text-neu-ink">Excluir minha conta</h3>
           <div className="mt-1 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
             <ShieldAlert size={16} className="mt-0.5 shrink-0 text-amber-600" />
             <p className="text-xs text-amber-800">
@@ -227,7 +227,7 @@ function PrivacySection({ patientId }: { patientId: string }) {
               <div>
                 <label
                   htmlFor="delete-reason"
-                  className="text-xs font-semibold uppercase tracking-wide text-[#8C959F]"
+                  className="text-xs font-semibold uppercase tracking-wide text-neu-inkMuted"
                 >
                   Motivo (opcional)
                 </label>
@@ -266,7 +266,7 @@ function PrivacySection({ patientId }: { patientId: string }) {
                     setDeleteMessage(null);
                   }}
                   disabled={deleteState === "submitting"}
-                  className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-[#24292F] transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-neu-ink transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Cancelar
                 </button>
@@ -276,7 +276,7 @@ function PrivacySection({ patientId }: { patientId: string }) {
             <button
               type="button"
               onClick={() => setConfirmingDelete(true)}
-              className="mt-3 inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 bg-white px-4 py-2.5 text-sm font-semibold text-[#C13515] shadow-[0_1px_3px_rgba(0,0,0,0.06)] transition-colors hover:bg-red-50"
+              className="mt-3 inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 bg-white px-4 py-2.5 text-sm font-semibold text-neu-danger shadow-[0_1px_3px_rgba(0,0,0,0.06)] transition-colors hover:bg-red-50"
             >
               <Trash2 size={16} />
               Solicitar exclusão de conta
@@ -299,10 +299,10 @@ function Row({
 }) {
   return (
     <div className="flex items-center justify-between gap-3 px-4 py-3">
-      <dt className="text-xs font-semibold uppercase tracking-wide text-[#8C959F]">
+      <dt className="text-xs font-semibold uppercase tracking-wide text-neu-inkMuted">
         {label}
       </dt>
-      <dd className={`text-sm text-[#24292F] ${mono ? "font-mono" : ""}`}>{value}</dd>
+      <dd className={`text-sm text-neu-ink ${mono ? "font-mono" : ""}`}>{value}</dd>
     </div>
   );
 }

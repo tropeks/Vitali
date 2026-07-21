@@ -60,7 +60,7 @@ function AlertRow({ alert }: { alert: GlosaAlert }) {
           </span>
           <p className={`text-sm font-medium mt-0.5 ${styles.text}`}>{alert.message}</p>
           {alert.recommendation && (
-            <p className="text-xs text-[#57606A] mt-1">{alert.recommendation}</p>
+            <p className="text-xs text-neu-inkSoft mt-1">{alert.recommendation}</p>
           )}
         </div>
       </div>
@@ -89,7 +89,7 @@ function GuideSection({
   return (
     <div className="rounded-xl border border-slate-200 p-4 space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <h3 className="text-sm font-semibold text-[#24292F]">
+        <h3 className="text-sm font-semibold text-neu-ink">
           Guia {guide.guide_number}
         </h3>
         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${riskBadge.cls}`}>
@@ -105,7 +105,7 @@ function GuideSection({
 
       {hasBlock && (
         <div className="space-y-1">
-          <label className="block text-xs font-medium text-[#57606A] mb-1">
+          <label className="block text-xs font-medium text-neu-inkSoft mb-1">
             Motivo para fechar mesmo assim (obrigatório, mín. 10 caracteres) — reconhece{' '}
             {blockAlerts.length === 1 ? 'o bloqueio' : `os ${blockAlerts.length} bloqueios`} desta guia
           </label>
@@ -178,16 +178,16 @@ export function GlosaSafetyModal({ block, onResolved, onClose }: GlosaSafetyModa
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40">
-      <div className="bg-[#F4F7FA] rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] w-full max-w-lg max-h-[80vh] flex flex-col">
+      <div className="bg-neu-panel rounded-xl shadow-neu-panel w-full max-w-lg max-h-[80vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
           <div className="flex items-center gap-2">
             <span className="text-red-600"><ShieldAlert size={18} /></span>
-            <h2 className="text-base font-semibold text-[#24292F]">Risco de glosa</h2>
+            <h2 className="text-base font-semibold text-neu-ink">Risco de glosa</h2>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-[#57606A] transition-colors"
+            className="text-slate-400 hover:text-neu-inkSoft transition-colors"
             aria-label="Fechar"
           >
             <X size={20} />
@@ -196,7 +196,7 @@ export function GlosaSafetyModal({ block, onResolved, onClose }: GlosaSafetyModa
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          <p className="text-sm text-[#57606A]">{block.detail}</p>
+          <p className="text-sm text-neu-inkSoft">{block.detail}</p>
 
           {block.guides.map(guide => (
             <GuideSection
@@ -217,13 +217,13 @@ export function GlosaSafetyModal({ block, onResolved, onClose }: GlosaSafetyModa
           <button
             onClick={handleConfirm}
             disabled={submitting || !canConfirm}
-            className="w-full text-sm font-semibold px-3 py-2.5 rounded-lg bg-gradient-to-b from-[#0066A1] to-[#005282] border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] text-white hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="w-full text-sm font-semibold px-3 py-2.5 rounded-lg bg-gradient-to-b from-neu-brand to-neu-brandDeep border-t border-neu-brandEdge shadow-neu-btn-primary text-white hover:shadow-neu-btn-primary-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             {submitting ? 'Reconhecendo...' : 'Reconhecer e fechar o lote'}
           </button>
           <button
             onClick={onClose}
-            className="w-full text-sm text-[#57606A] hover:text-[#24292F] py-1.5 transition-colors"
+            className="w-full text-sm text-neu-inkSoft hover:text-neu-ink py-1.5 transition-colors"
           >
             Cancelar
           </button>

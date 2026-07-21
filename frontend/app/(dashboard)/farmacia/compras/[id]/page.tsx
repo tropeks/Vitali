@@ -39,7 +39,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const STATUS_BADGE: Record<string, string> = {
-  draft: 'bg-[#DFE5EB] text-[#57606A]',
+  draft: 'bg-neu-app text-neu-inkSoft',
   sent: 'bg-blue-100 text-blue-700',
   partial: 'bg-yellow-100 text-yellow-700',
   received: 'bg-green-100 text-green-700',
@@ -183,10 +183,10 @@ export default function PODetailPage() {
     return (
       <div className="text-center py-16 space-y-3">
         <AlertCircle size={40} className="text-slate-300 mx-auto" />
-        <p className="text-[#8C959F]">Ordem de compra não encontrada.</p>
+        <p className="text-neu-inkMuted">Ordem de compra não encontrada.</p>
         <button
           onClick={() => router.push('/farmacia/compras')}
-          className="text-sm text-[#0066A1] hover:underline"
+          className="text-sm text-neu-brand hover:underline"
         >
           Voltar para ordens
         </button>
@@ -194,7 +194,7 @@ export default function PODetailPage() {
     );
   }
 
-  const statusMeta = STATUS_BADGE[order.status] ?? 'bg-[#DFE5EB] text-[#57606A]';
+  const statusMeta = STATUS_BADGE[order.status] ?? 'bg-neu-app text-neu-inkSoft';
   const statusLabel = STATUS_LABELS[order.status] ?? order.status;
 
   return (
@@ -204,7 +204,7 @@ export default function PODetailPage() {
         <div
           role="status"
           aria-live="polite"
-          className="fixed top-4 right-4 z-50 flex items-center gap-2 bg-green-700 text-white text-sm font-medium px-4 py-3 rounded-lg shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)]"
+          className="fixed top-4 right-4 z-50 flex items-center gap-2 bg-green-700 text-white text-sm font-medium px-4 py-3 rounded-lg shadow-neu-panel"
         >
           <CheckCircle size={16} />
           {toast}
@@ -215,14 +215,14 @@ export default function PODetailPage() {
       <div>
         <button
           onClick={() => router.push('/farmacia/compras')}
-          className="text-xs text-[#0066A1] hover:underline mb-2 inline-block"
+          className="text-xs text-neu-brand hover:underline mb-2 inline-block"
         >
           ← Ordens de Compra
         </button>
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
-            <h2 className="text-xl font-semibold text-[#24292F]">{order.supplier_name}</h2>
-            <p className="text-sm text-[#8C959F] mt-0.5">
+            <h2 className="text-xl font-semibold text-neu-ink">{order.supplier_name}</h2>
+            <p className="text-sm text-neu-inkMuted mt-0.5">
               Previsto: {formatDate(order.expected_date)} · Atualizado:{' '}
               {formatDate(order.updated_at)}
             </p>
@@ -232,7 +232,7 @@ export default function PODetailPage() {
           </span>
         </div>
         {order.notes && (
-          <p className="mt-2 text-sm text-[#57606A] bg-[#F4F7FA] border border-slate-200 rounded-lg px-4 py-2">
+          <p className="mt-2 text-sm text-neu-inkSoft bg-neu-panel border border-slate-200 rounded-lg px-4 py-2">
             {order.notes}
           </p>
         )}
@@ -254,9 +254,9 @@ export default function PODetailPage() {
       )}
 
       {/* Items table */}
-      <div className="bg-[#F4F7FA] rounded-lg border border-slate-200 overflow-hidden">
+      <div className="bg-neu-panel rounded-lg border border-slate-200 overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-4 flex-wrap">
-          <h3 className="font-semibold text-[#24292F]">Itens da Ordem</h3>
+          <h3 className="font-semibold text-neu-ink">Itens da Ordem</h3>
           <span className="text-xs text-slate-400">
             {order.items.length} {order.items.length === 1 ? 'item' : 'itens'}
           </span>
@@ -278,25 +278,25 @@ export default function PODetailPage() {
         <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-sm min-w-[640px]">
             <thead>
-              <tr className="border-b border-slate-100 bg-[#F4F7FA]">
-                <th className="text-left px-4 py-3 text-xs font-medium text-[#8C959F]">
+              <tr className="border-b border-slate-100 bg-neu-panel">
+                <th className="text-left px-4 py-3 text-xs font-medium text-neu-inkMuted">
                   Medicamento
                 </th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-[#8C959F]">
+                <th className="text-left px-4 py-3 text-xs font-medium text-neu-inkMuted">
                   Qtd. Pedida
                 </th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-[#8C959F]">
+                <th className="text-left px-4 py-3 text-xs font-medium text-neu-inkMuted">
                   Preço unit.
                 </th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-[#8C959F]">
+                <th className="text-left px-4 py-3 text-xs font-medium text-neu-inkMuted">
                   Qtd. Recebida
                 </th>
                 {canReceive && (
                   <>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-[#8C959F]">
+                    <th className="text-left px-4 py-3 text-xs font-medium text-neu-inkMuted">
                       Lote
                     </th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-[#8C959F]">
+                    <th className="text-left px-4 py-3 text-xs font-medium text-neu-inkMuted">
                       Validade
                     </th>
                   </>
@@ -305,10 +305,10 @@ export default function PODetailPage() {
             </thead>
             <tbody>
               {order.items.map((item) => (
-                <tr key={item.id} className="border-b border-slate-50 hover:bg-[#F4F7FA]">
-                  <td className="px-4 py-3 font-medium text-[#24292F]">{item.drug_name}</td>
-                  <td className="px-4 py-3 font-mono text-[#57606A]">{item.quantity_ordered}</td>
-                  <td className="px-4 py-3 text-[#57606A]">{formatCurrency(item.unit_price)}</td>
+                <tr key={item.id} className="border-b border-slate-50 hover:bg-neu-panel">
+                  <td className="px-4 py-3 font-medium text-neu-ink">{item.drug_name}</td>
+                  <td className="px-4 py-3 font-mono text-neu-inkSoft">{item.quantity_ordered}</td>
+                  <td className="px-4 py-3 text-neu-inkSoft">{formatCurrency(item.unit_price)}</td>
                   <td className="px-4 py-3">
                     {canReceive ? (
                       <input
@@ -323,7 +323,7 @@ export default function PODetailPage() {
                         placeholder="0"
                       />
                     ) : (
-                      <span className="font-mono text-[#57606A]">
+                      <span className="font-mono text-neu-inkSoft">
                         {item.quantity_received ?? '—'}
                       </span>
                     )}
@@ -359,15 +359,15 @@ export default function PODetailPage() {
         <div className="sm:hidden divide-y divide-slate-100">
           {order.items.map((item) => (
             <div key={item.id} className="p-4 space-y-3">
-              <p className="font-medium text-[#24292F]">{item.drug_name}</p>
-              <div className="flex gap-4 text-xs text-[#8C959F]">
+              <p className="font-medium text-neu-ink">{item.drug_name}</p>
+              <div className="flex gap-4 text-xs text-neu-inkMuted">
                 <span>Pedido: {item.quantity_ordered}</span>
                 <span>Preço: {formatCurrency(item.unit_price)}</span>
               </div>
               {canReceive ? (
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-[#8C959F] mb-1">Qtd. recebida</label>
+                    <label className="block text-xs text-neu-inkMuted mb-1">Qtd. recebida</label>
                     <input
                       type="number"
                       step="0.001"
@@ -381,7 +381,7 @@ export default function PODetailPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-[#8C959F] mb-1">Lote</label>
+                    <label className="block text-xs text-neu-inkMuted mb-1">Lote</label>
                     <input
                       type="text"
                       value={entries[item.id]?.lot_number ?? ''}
@@ -391,7 +391,7 @@ export default function PODetailPage() {
                     />
                   </div>
                   <div className="col-span-2">
-                    <label className="block text-xs text-[#8C959F] mb-1">Validade</label>
+                    <label className="block text-xs text-neu-inkMuted mb-1">Validade</label>
                     <input
                       type="date"
                       value={entries[item.id]?.expiry_date ?? ''}
@@ -401,7 +401,7 @@ export default function PODetailPage() {
                   </div>
                 </div>
               ) : (
-                <p className="text-xs text-[#8C959F]">
+                <p className="text-xs text-neu-inkMuted">
                   Recebido: {item.quantity_received ?? '—'}
                 </p>
               )}
@@ -415,7 +415,7 @@ export default function PODetailPage() {
             <button
               onClick={handleRegisterReceipt}
               disabled={registering}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-3 sm:py-2.5 bg-gradient-to-b from-[#0066A1] to-[#005282] border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] text-white text-sm font-medium rounded-lg hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] disabled:opacity-50 transition-colors"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-3 sm:py-2.5 bg-gradient-to-b from-neu-brand to-neu-brandDeep border-t border-neu-brandEdge shadow-neu-btn-primary text-white text-sm font-medium rounded-lg hover:shadow-neu-btn-primary-hover disabled:opacity-50 transition-colors"
             >
               {registering && <Loader2 size={16} className="animate-spin" />}
               {registering ? 'Registrando...' : 'Registrar Recebimento'}

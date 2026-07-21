@@ -370,8 +370,8 @@ export default function DispensePage() {
         )}
         <header className="flex flex-wrap items-center gap-3">
           <div className="min-w-0 flex-1">
-            <h1 className="text-2xl font-semibold text-[#24292F]">Bancada de Dispensação</h1>
-            <p className="text-sm text-[#8C959F]">
+            <h1 className="text-2xl font-semibold text-neu-ink">Bancada de Dispensação</h1>
+            <p className="text-sm text-neu-inkMuted">
               Paciente, prescrição, FEFO, controle especial e fechamento permanecem visíveis.
             </p>
           </div>
@@ -386,39 +386,39 @@ export default function DispensePage() {
         </header>
 
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-lg border border-slate-200 bg-[#F4F7FA] p-4">
+          <div className="rounded-lg border border-slate-200 bg-neu-panel p-4">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase text-slate-400">
               <Search size={14} />
               Paciente
             </div>
-            <p className="mt-2 truncate text-sm font-semibold text-[#24292F]">
+            <p className="mt-2 truncate text-sm font-semibold text-neu-ink">
               {loadingPrefill ? 'Carregando paciente...' : selectedPatient?.full_name ?? 'Nenhum selecionado'}
             </p>
-            <p className="mt-1 truncate font-mono text-xs text-[#8C959F]">{patientMrn(selectedPatient, selectedRx)}</p>
+            <p className="mt-1 truncate font-mono text-xs text-neu-inkMuted">{patientMrn(selectedPatient, selectedRx)}</p>
           </div>
-          <div className="rounded-lg border border-slate-200 bg-[#F4F7FA] p-4">
+          <div className="rounded-lg border border-slate-200 bg-neu-panel p-4">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase text-slate-400">
               <ClipboardList size={14} />
               Prescrições
             </div>
-            <p className="mt-2 text-sm font-semibold text-[#24292F]">{prescriptions.length} receita(s)</p>
-            <p className="mt-1 text-xs text-[#8C959F]">{totalItems} item(ns) liberado(s)</p>
+            <p className="mt-2 text-sm font-semibold text-neu-ink">{prescriptions.length} receita(s)</p>
+            <p className="mt-1 text-xs text-neu-inkMuted">{totalItems} item(ns) liberado(s)</p>
           </div>
-          <div className="rounded-lg border border-slate-200 bg-[#F4F7FA] p-4">
+          <div className="rounded-lg border border-slate-200 bg-neu-panel p-4">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase text-slate-400">
               <PackageSearch size={14} />
               FEFO
             </div>
-            <p className="mt-2 text-sm font-semibold text-[#24292F]">{loadingLots ? 'Verificando...' : `${formatQty(availableQty)} disponível`}</p>
-            <p className="mt-1 text-xs text-[#8C959F]">{lots.length} lote(s) elegível(is)</p>
+            <p className="mt-2 text-sm font-semibold text-neu-ink">{loadingLots ? 'Verificando...' : `${formatQty(availableQty)} disponível`}</p>
+            <p className="mt-1 text-xs text-neu-inkMuted">{lots.length} lote(s) elegível(is)</p>
           </div>
-          <div className="rounded-lg border border-slate-200 bg-[#F4F7FA] p-4">
+          <div className="rounded-lg border border-slate-200 bg-neu-panel p-4">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase text-slate-400">
               <ShieldAlert size={14} />
               Portaria
             </div>
-            <p className="mt-2 text-sm font-semibold text-[#24292F]">{controlledItems} item(ns) controlado(s)</p>
-            <p className="mt-1 text-xs text-[#8C959F]">{selectedControlled ? 'Observação obrigatória' : 'Sem bloqueio no item'}</p>
+            <p className="mt-2 text-sm font-semibold text-neu-ink">{controlledItems} item(ns) controlado(s)</p>
+            <p className="mt-1 text-xs text-neu-inkMuted">{selectedControlled ? 'Observação obrigatória' : 'Sem bloqueio no item'}</p>
           </div>
         </section>
 
@@ -440,13 +440,13 @@ export default function DispensePage() {
 
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
           <div className="space-y-4">
-            <section className="rounded-lg border border-slate-200 bg-[#F4F7FA]">
+            <section className="rounded-lg border border-slate-200 bg-neu-panel">
               <div className="border-b border-slate-100 px-4 py-3">
-                <h3 className="text-base font-semibold text-[#24292F]">Busca e contexto do paciente</h3>
-                <p className="text-xs text-[#8C959F]">A fila de receitas aparece abaixo sem retornar para outra tela.</p>
+                <h3 className="text-base font-semibold text-neu-ink">Busca e contexto do paciente</h3>
+                <p className="text-xs text-neu-inkMuted">A fila de receitas aparece abaixo sem retornar para outra tela.</p>
               </div>
               <div className="space-y-3 p-4">
-                <label htmlFor="patient-search" className="block text-xs font-medium text-[#57606A]">
+                <label htmlFor="patient-search" className="block text-xs font-medium text-neu-inkSoft">
                   Buscar paciente
                 </label>
                 <div className="relative">
@@ -471,11 +471,11 @@ export default function DispensePage() {
                         type="button"
                         key={patient.id}
                         onClick={() => selectPatient(patient)}
-                        className="flex w-full items-center justify-between gap-3 border-b border-slate-100 px-4 py-2.5 text-left last:border-b-0 hover:bg-[#F4F7FA]"
+                        className="flex w-full items-center justify-between gap-3 border-b border-slate-100 px-4 py-2.5 text-left last:border-b-0 hover:bg-neu-panel"
                       >
                         <span className="min-w-0">
-                          <span className="block truncate text-sm font-semibold text-[#24292F]">{patient.full_name}</span>
-                          <span className="block truncate font-mono text-xs text-[#8C959F]">
+                          <span className="block truncate text-sm font-semibold text-neu-ink">{patient.full_name}</span>
+                          <span className="block truncate font-mono text-xs text-neu-inkMuted">
                             {patient.medical_record_number ?? 'MRN pendente'}
                           </span>
                         </span>
@@ -487,17 +487,17 @@ export default function DispensePage() {
               </div>
             </section>
 
-            <section className="rounded-lg border border-slate-200 bg-[#F4F7FA]">
+            <section className="rounded-lg border border-slate-200 bg-neu-panel">
               <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
                 <div className="min-w-0 flex-1">
-                  <h3 className="text-base font-semibold text-[#24292F]">Itens para dispensar</h3>
-                  <p className="text-xs text-[#8C959F]">Status, prescrição, posologia, controle especial e ação ficam na mesma grade.</p>
+                  <h3 className="text-base font-semibold text-neu-ink">Itens para dispensar</h3>
+                  <p className="text-xs text-neu-inkMuted">Status, prescrição, posologia, controle especial e ação ficam na mesma grade.</p>
                 </div>
                 {selectedPatient && (
                   <button
                     type="button"
                     onClick={() => loadPrescriptions(selectedPatient.id)}
-                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-[#57606A] hover:bg-[#F4F7FA] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-neu-inkSoft hover:bg-neu-panel focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <RotateCcw size={14} />
                     Atualizar
@@ -515,8 +515,8 @@ export default function DispensePage() {
               <div className="divide-y divide-slate-100">
                 {!selectedPatient && !loadingPrefill && (
                   <div className="px-4 py-10 text-center">
-                    <p className="text-sm font-semibold text-[#57606A]">Selecione um paciente para abrir a fila.</p>
-                    <p className="mt-1 text-xs text-[#8C959F]">O cockpit pode abrir esta bancada já com paciente preenchido.</p>
+                    <p className="text-sm font-semibold text-neu-inkSoft">Selecione um paciente para abrir a fila.</p>
+                    <p className="mt-1 text-xs text-neu-inkMuted">O cockpit pode abrir esta bancada já com paciente preenchido.</p>
                   </div>
                 )}
                 {selectedPatient && loadingRx && (
@@ -524,13 +524,13 @@ export default function DispensePage() {
                 )}
                 {selectedPatient && !loadingRx && prescriptions.length === 0 && (
                   <div className="px-4 py-10 text-center">
-                    <p className="text-sm font-semibold text-[#57606A]">Nenhuma prescrição assinada para dispensar.</p>
-                    <p className="mt-1 text-xs text-[#8C959F]">Rascunhos e receitas canceladas não entram na fila da farmácia.</p>
+                    <p className="text-sm font-semibold text-neu-inkSoft">Nenhuma prescrição assinada para dispensar.</p>
+                    <p className="mt-1 text-xs text-neu-inkMuted">Rascunhos e receitas canceladas não entram na fila da farmácia.</p>
                   </div>
                 )}
                 {prescriptions.map((rx) => (
                   <div key={rx.id} className="divide-y divide-slate-100">
-                    <div className="bg-[#F4F7FA] px-4 py-3">
+                    <div className="bg-neu-panel px-4 py-3">
                       <div className="flex flex-wrap items-center gap-2">
                         <StatusBadge
                           meta={resolveBadgeMeta(
@@ -539,8 +539,8 @@ export default function DispensePage() {
                             rx.status_display,
                           )}
                         />
-                        <span className="text-xs text-[#8C959F]">{formatDate(rx.created_at)}</span>
-                        <span className="text-xs text-[#8C959F]">{rx.prescriber_name || 'Prescritor não informado'}</span>
+                        <span className="text-xs text-neu-inkMuted">{formatDate(rx.created_at)}</span>
+                        <span className="text-xs text-neu-inkMuted">{rx.prescriber_name || 'Prescritor não informado'}</span>
                       </div>
                     </div>
                     {rx.items.map((item) => (
@@ -564,18 +564,18 @@ export default function DispensePage() {
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             <Pill size={15} className="shrink-0 text-slate-400" />
-                            <p className="truncate text-sm font-semibold text-[#24292F]">{item.drug_name}</p>
+                            <p className="truncate text-sm font-semibold text-neu-ink">{item.drug_name}</p>
                           </div>
                           {item.drug_generic_name && (
-                            <p className="mt-1 truncate text-xs text-[#8C959F]">{item.drug_generic_name}</p>
+                            <p className="mt-1 truncate text-xs text-neu-inkMuted">{item.drug_generic_name}</p>
                           )}
                           {item.dosage_instructions && (
-                            <p className="mt-1 line-clamp-2 text-xs text-[#8C959F]">{item.dosage_instructions}</p>
+                            <p className="mt-1 line-clamp-2 text-xs text-neu-inkMuted">{item.dosage_instructions}</p>
                           )}
                         </div>
                         <div>
-                          <span className="block text-xs font-medium text-[#8C959F] lg:hidden">Prescrito</span>
-                          <p className="font-mono text-sm font-semibold text-[#24292F]">
+                          <span className="block text-xs font-medium text-neu-inkMuted lg:hidden">Prescrito</span>
+                          <p className="font-mono text-sm font-semibold text-neu-ink">
                             {formatQty(item.quantity)} {item.unit_of_measure || 'un'}
                           </p>
                         </div>
@@ -583,7 +583,7 @@ export default function DispensePage() {
                           <button
                             type="button"
                             onClick={() => selectItem(rx, item)}
-                            className="w-full rounded-lg bg-gradient-to-b from-[#0066A1] to-[#005282] border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] px-3 py-2 text-sm font-semibold text-white hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full rounded-lg bg-gradient-to-b from-neu-brand to-neu-brandDeep border-t border-neu-brandEdge shadow-neu-btn-primary px-3 py-2 text-sm font-semibold text-white hover:shadow-neu-btn-primary-hover focus:outline-none focus:ring-2 focus:ring-blue-500"
                           >
                             Fechar item
                           </button>
@@ -597,39 +597,39 @@ export default function DispensePage() {
           </div>
 
           <aside>
-            <form onSubmit={handleDispense} noValidate className="sticky top-4 rounded-lg border border-slate-200 bg-[#F4F7FA]">
+            <form onSubmit={handleDispense} noValidate className="sticky top-4 rounded-lg border border-slate-200 bg-neu-panel">
               <div className="border-b border-slate-100 px-4 py-3">
-                <h3 className="text-base font-semibold text-[#24292F]">Fechamento</h3>
-                <p className="text-xs text-[#8C959F]">Quantidade, lotes FEFO e registro auditável.</p>
+                <h3 className="text-base font-semibold text-neu-ink">Fechamento</h3>
+                <p className="text-xs text-neu-inkMuted">Quantidade, lotes FEFO e registro auditável.</p>
               </div>
               <div className="space-y-4 p-4">
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between gap-3">
-                    <span className="text-[#8C959F]">Paciente</span>
-                    <span className="max-w-[210px] truncate text-right font-medium text-[#24292F]">
+                    <span className="text-neu-inkMuted">Paciente</span>
+                    <span className="max-w-[210px] truncate text-right font-medium text-neu-ink">
                       {selectedPatient?.full_name ?? 'Pendente'}
                     </span>
                   </div>
                   <div className="flex justify-between gap-3">
-                    <span className="text-[#8C959F]">Medicamento</span>
-                    <span className="max-w-[210px] truncate text-right font-medium text-[#24292F]">
+                    <span className="text-neu-inkMuted">Medicamento</span>
+                    <span className="max-w-[210px] truncate text-right font-medium text-neu-ink">
                       {selectedItem?.drug_name ?? 'Pendente'}
                     </span>
                   </div>
                   <div className="flex justify-between gap-3">
-                    <span className="text-[#8C959F]">Prescrito</span>
-                    <span className="font-mono font-medium text-[#24292F]">
+                    <span className="text-neu-inkMuted">Prescrito</span>
+                    <span className="font-mono font-medium text-neu-ink">
                       {selectedItem ? `${formatQty(selectedItem.quantity)} ${selectedItem.unit_of_measure || 'un'}` : '-'}
                     </span>
                   </div>
                   <div className="flex justify-between gap-3">
-                    <span className="text-[#8C959F]">FEFO disponível</span>
-                    <span className="font-mono font-medium text-[#24292F]">{formatQty(availableQty)}</span>
+                    <span className="text-neu-inkMuted">FEFO disponível</span>
+                    <span className="font-mono font-medium text-neu-ink">{formatQty(availableQty)}</span>
                   </div>
                 </div>
 
                 <div>
-                  <label htmlFor="dispense-quantity" className="mb-1 block text-xs font-medium text-[#57606A]">
+                  <label htmlFor="dispense-quantity" className="mb-1 block text-xs font-medium text-neu-inkSoft">
                     Quantidade a dispensar
                   </label>
                   <input
@@ -645,13 +645,13 @@ export default function DispensePage() {
                 </div>
 
                 <div className="rounded-lg border border-slate-200 p-3">
-                  <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-[#24292F]">
+                  <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-neu-ink">
                     <PackageSearch size={15} />
                     Lotes FEFO
                   </div>
                   {loadingLots && <p className="text-sm text-slate-400">Verificando estoque...</p>}
                   {!loadingLots && !selectedItem && (
-                    <p className="text-sm text-[#8C959F]">Selecione um item para ver os lotes elegíveis.</p>
+                    <p className="text-sm text-neu-inkMuted">Selecione um item para ver os lotes elegíveis.</p>
                   )}
                   {!loadingLots && selectedItem && lots.length === 0 && (
                     <p className="text-sm font-medium text-red-700">Nenhum lote disponível para este medicamento.</p>
@@ -659,12 +659,12 @@ export default function DispensePage() {
                   {!loadingLots && lots.length > 0 && (
                     <div className="space-y-2">
                       {lots.slice(0, 5).map((lot) => (
-                        <div key={lot.id} className="rounded-lg bg-[#F4F7FA] px-3 py-2 text-xs">
+                        <div key={lot.id} className="rounded-lg bg-neu-panel px-3 py-2 text-xs">
                           <div className="flex items-center justify-between gap-3">
                             <span className="truncate font-mono font-semibold text-slate-800">Lote {lot.lot_number || '-'}</span>
-                            <span className="font-mono text-[#57606A]">{formatQty(lot.quantity)}</span>
+                            <span className="font-mono text-neu-inkSoft">{formatQty(lot.quantity)}</span>
                           </div>
-                          <p className="mt-1 text-[#8C959F]">
+                          <p className="mt-1 text-neu-inkMuted">
                             Validade {formatDate(lot.expiry_date)}{lot.location ? ` - ${lot.location}` : ''}
                           </p>
                         </div>
@@ -674,7 +674,7 @@ export default function DispensePage() {
                 </div>
 
                 <div>
-                  <label htmlFor="dispense-notes" className="mb-1 block text-xs font-medium text-[#57606A]">
+                  <label htmlFor="dispense-notes" className="mb-1 block text-xs font-medium text-neu-inkSoft">
                     Observações de dispensação
                     {selectedControlled && <span className="text-red-600"> *</span>}
                   </label>
@@ -700,14 +700,14 @@ export default function DispensePage() {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="w-full rounded-lg bg-gradient-to-b from-[#0066A1] to-[#005282] border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] py-2.5 text-sm font-semibold text-white hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg bg-gradient-to-b from-neu-brand to-neu-brandDeep border-t border-neu-brandEdge shadow-neu-btn-primary py-2.5 text-sm font-semibold text-white hover:shadow-neu-btn-primary-hover disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   {saving ? 'Dispensando...' : 'Confirmar dispensação'}
                 </button>
                 <button
                   type="button"
                   onClick={reset}
-                  className="w-full rounded-lg py-2 text-sm font-medium text-[#57606A] hover:bg-[#F4F7FA] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg py-2 text-sm font-medium text-neu-inkSoft hover:bg-neu-panel focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   Nova dispensação
                 </button>
