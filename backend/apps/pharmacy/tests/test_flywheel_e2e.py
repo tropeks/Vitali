@@ -125,9 +125,9 @@ class TestStockoutFlywheelFullCycle(TenantTestCase):
         counts = svc2.grade_predictions(now=self.now)
 
         alert.refresh_from_db()
-        assert alert.outcome == StockAlert.Outcome.TRUE_POSITIVE, (
-            f"expected true_positive, got {alert.outcome}"
-        )
+        assert (
+            alert.outcome == StockAlert.Outcome.TRUE_POSITIVE
+        ), f"expected true_positive, got {alert.outcome}"
         assert alert.graded_at is not None
         assert counts.get(StockAlert.Outcome.TRUE_POSITIVE, 0) >= 1
 
