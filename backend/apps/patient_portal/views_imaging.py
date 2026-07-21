@@ -8,10 +8,10 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.imaging_bridge import DicomStudy
 from apps.core.models import AuditLog
 from apps.core.permissions import HasPermission, ModuleRequiredPermission
 from apps.core.utils import tenant_has_feature
-from apps.imaging.models import DicomStudy
 
 from .models import PatientPortalAccess
 from .serializers_imaging import PortalImagingReportSerializer, PortalImagingStudySerializer

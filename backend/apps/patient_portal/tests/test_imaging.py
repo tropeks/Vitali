@@ -2,9 +2,9 @@ from datetime import UTC, date, datetime
 
 from rest_framework.test import APIClient
 
+from apps.core.imaging_bridge import DicomStudy
 from apps.core.models import FeatureFlag, Role, User
 from apps.emr.models import ClinicalDocument, Encounter, Patient, Professional
-from apps.imaging.models import DicomStudy
 from apps.patient_portal.models import PatientPortalAccess
 from apps.test_utils import TenantTestCase
 
