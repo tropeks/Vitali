@@ -34,10 +34,11 @@ function viewerUrl(study: DicomStudy): string {
  * the webhook/poller). Gated by the `imaging` module: a 403 from the API hides
  * the panel entirely, matching the FaturamentoCard pattern.
  */
-type ImagingPanelProps =
-  | { encounterId: string; labOrderId?: never; labOrderItemId?: never }
-  | { encounterId?: never; labOrderId: string; labOrderItemId?: never }
-  | { encounterId?: never; labOrderId?: never; labOrderItemId: string };
+interface ImagingPanelProps {
+  encounterId?: string;
+  labOrderId?: string;
+  labOrderItemId?: string;
+}
 
 export function ImagingPanel({ encounterId, labOrderId, labOrderItemId }: ImagingPanelProps) {
   const [studies, setStudies] = useState<DicomStudy[]>([]);
@@ -93,7 +94,7 @@ export function ImagingPanel({ encounterId, labOrderId, labOrderItemId }: Imagin
     return (
       <div className="flex items-center gap-2 text-sm text-slate-500">
         <ImageOff size={16} className="text-slate-400" />
-        Nenhum estudo de imagem (DICOM) vinculado a este atendimento.
+        Nenhum estudo de imagem (DICOM) encontrado.
       </div>
     );
   }

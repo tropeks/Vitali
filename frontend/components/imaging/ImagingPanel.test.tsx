@@ -62,4 +62,41 @@ describe('ImagingPanel', () => {
       ),
     );
   });
+
+  it('lists all studies and embeds OHIF in the PACS workspace', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify([
+          {
+            id: 'study-pacs',
+            study_instance_uid: '1.2.826.1',
+            accession_number: 'PACS-1',
+            modality: 'OT',
+            modality_display: 'Other',
+            body_part_examined: 'TEST',
+            description: 'Teste PACS',
+            study_date: '2026-07-21T10:00:00Z',
+            number_of_series: 1,
+            number_of_instances: 1,
+            orthanc_study_id: 'orthanc-1',
+            has_pixel_data: true,
+          },
+        ]),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    render(<ImagingPanel />);
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/v1/imaging/studies/?',
+        expect.objectContaining({ headers: { Authorization: 'Bearer token' } }),
+      ),
+    );
+    expect(await screen.findByTitle(/OHIF Viewer/)).toHaveAttribute(
+      'src',
+      '/ohif/viewer?StudyInstanceUIDs=1.2.826.1',
+    );
+  });
 });
