@@ -310,7 +310,9 @@ class LoginView(APIView):
             _increment_attempts(ip, email)
             _write_audit(request, user, "login_failed", resource_id=str(user.pk))
             locked, remaining = _is_locked_out(ip, email)
-            resp = {"error": {"code": "INVALID_CREDENTIALS", "message": _("Credenciais inválidas.")}}
+            resp = {
+                "error": {"code": "INVALID_CREDENTIALS", "message": _("Credenciais inválidas.")}
+            }
             if locked:
                 resp["error"]["code"] = "ACCOUNT_LOCKED"
                 resp["error"]["retry_after"] = remaining
@@ -628,7 +630,9 @@ class TenantRegistrationView(APIView):
                 {
                     "error": {
                         "code": "TENANT_REGISTRATION_FAILED",
-                        "message": _("Falha ao criar a clínica. Nenhum dado parcial foi mantido; tente novamente."),
+                        "message": _(
+                            "Falha ao criar a clínica. Nenhum dado parcial foi mantido; tente novamente."
+                        ),
                     }
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,

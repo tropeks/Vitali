@@ -53,7 +53,7 @@ export function LanguageSwitcher() {
         disabled={pending}
         aria-label={t("label")}
         title={pending ? t("updating") : t("label")}
-        className="relative p-2 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100 disabled:opacity-50"
+        className="relative p-2 text-neu-inkSoft hover:text-neu-ink rounded-lg hover:bg-neu-input disabled:opacity-50"
       >
         <Globe size={18} />
       </button>
@@ -61,8 +61,8 @@ export function LanguageSwitcher() {
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full mt-1 w-52 bg-white rounded-lg shadow-lg border border-slate-200 z-20 py-1 text-sm">
-            <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400 border-b border-slate-100">
+          <div className="absolute right-0 top-full mt-1 w-52 bg-neu-outer rounded-lg shadow-neu-elevated border border-white/50 z-20 py-1 text-sm">
+            <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-neu-inkMuted border-b border-neu-app">
               {t("label")}
             </p>
             {locales.map((locale) => (
@@ -70,11 +70,11 @@ export function LanguageSwitcher() {
                 key={locale}
                 type="button"
                 onClick={() => selectLocale(locale)}
-                className="flex w-full items-center justify-between px-3 py-2 text-left text-slate-700 hover:bg-slate-50"
+                className="flex w-full items-center justify-between px-3 py-2 text-left text-neu-ink hover:bg-neu-panel"
               >
                 {localeLabels[locale]}
                 {locale === activeLocale && (
-                  <Check size={14} className="text-blue-600 shrink-0" />
+                  <Check size={14} className="text-neu-brand shrink-0" />
                 )}
               </button>
             ))}
