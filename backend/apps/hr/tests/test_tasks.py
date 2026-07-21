@@ -89,9 +89,9 @@ class TestSetupStaffWhatsappChannel(TenantTestCase):
             resource_type="user",
             resource_id=str(user.id),
         )
-        assert (
-            success_log.new_data["correlation_id"] == correlation_id
-        ), "correlation_id must be propagated into whatsapp_channel_created AuditLog"
+        assert success_log.new_data["correlation_id"] == correlation_id, (
+            "correlation_id must be propagated into whatsapp_channel_created AuditLog"
+        )
 
     # ── 2. No phone (blank) → skip ────────────────────────────────────────────
 
@@ -253,9 +253,9 @@ class TestSetupStaffWhatsappChannel(TenantTestCase):
         )
         assert failed_log.new_data["reason"] == "max_retries_exceeded"
         assert "gateway permanently broken" in failed_log.new_data["error"]
-        assert (
-            failed_log.new_data["correlation_id"] == correlation_id
-        ), "correlation_id must be propagated into whatsapp_setup_failed AuditLog"
+        assert failed_log.new_data["correlation_id"] == correlation_id, (
+            "correlation_id must be propagated into whatsapp_setup_failed AuditLog"
+        )
 
     # ── 7. correlation_id None (backward-compat path) ────────────────────────
 
