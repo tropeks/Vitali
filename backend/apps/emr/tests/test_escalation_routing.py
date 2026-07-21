@@ -16,6 +16,8 @@ Run: docker compose exec -T django pytest apps/emr/tests/test_escalation_routing
 from decimal import Decimal
 from unittest.mock import patch
 
+from django.db import IntegrityError, transaction
+
 from apps.core.models import AuditLog, FeatureFlag, User
 from apps.emr.models import DeteriorationAlert, EscalationConfig, Patient, Professional
 from apps.emr.services.deterioration import DeteriorationService
@@ -197,3 +199,44 @@ class EscalationRoutingTests(TenantTestCase):
             AuditLog.objects.filter(action="deterioration_escalation_routed").count(),
             0,
         )
+
+
+class EscalationConfigUniquenessTests(TenantTestCase):
+    """A second active EscalationConfig per tenant must be rejected at the DB level.
+
+    apps.triage.services.notifications._recipients and
+    apps.emr.services.escalation both read EscalationConfig.filter(is_active=True)
+    and pick "the" active row — two active rows would make that choice ambiguous
+    (which one is "the" config an operator thinks they edited?).
+    """
+
+    def test_second_active_config_raises_integrity_error(self):
+        EscalationConfig.objects.create(is_active=True, notify_emails=["first@hospital.com"])
+
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                EscalationConfig.objects.create(
+                    is_active=True, notify_emails=["second@hospital.com"]
+                )
+
+    def test_multiple_inactive_configs_are_allowed(self):
+        EscalationConfig.objects.create(is_active=False, notify_emails=["a@hospital.com"])
+        EscalationConfig.objects.create(is_active=False, notify_emails=["b@hospital.com"])
+
+        self.assertEqual(EscalationConfig.objects.filter(is_active=False).count(), 2)
+
+    def test_reactivating_requires_deactivating_the_current_active_config(self):
+        first = EscalationConfig.objects.create(
+            is_active=True, notify_emails=["first@hospital.com"]
+        )
+        second = EscalationConfig.objects.create(
+            is_active=False, notify_emails=["second@hospital.com"]
+        )
+
+        first.is_active = False
+        first.save(update_fields=["is_active"])
+        second.is_active = True
+        second.save(update_fields=["is_active"])
+
+        self.assertEqual(EscalationConfig.objects.filter(is_active=True).count(), 1)
+        self.assertEqual(EscalationConfig.objects.get(is_active=True).pk, second.pk)

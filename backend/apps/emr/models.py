@@ -865,13 +865,11 @@ class EscalationConfig(models.Model):
 
     Controls who is notified when a DeteriorationAlert of severity ESCALATION
     is raised. NEVER blocks clinical flow — the router is always fail-safe.
-    One active config per tenant is the expected usage; service reads .first().
-
-    TODO: enforce "one active config" with a partial UniqueConstraint
-    (fields=["is_active"], condition=Q(is_active=True)) + a data migration
-    deactivating all but the newest active row. Today multiple is_active=True
-    rows can coexist and readers silently pick the newest — surprising for
-    operators editing an older row.
+    One active config per tenant is enforced by a partial UniqueConstraint on
+    is_active=True (see Meta.constraints) — the table itself is per-tenant
+    (apps.emr is a TENANT_APP), so this caps active rows at one per schema.
+    Migration 0026 deactivated pre-existing duplicates (kept the newest by
+    created_at) before the constraint was added.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -897,6 +895,15 @@ class EscalationConfig(models.Model):
     class Meta:
         verbose_name = "Configuração de escalonamento"
         verbose_name_plural = "Configurações de escalonamento"
+        constraints = [
+            # No máximo UM config ativo por tenant (índice único parcial; a
+            # tabela já é per-tenant via schema, então isto vale por schema).
+            models.UniqueConstraint(
+                fields=["is_active"],
+                condition=models.Q(is_active=True),
+                name="uniq_active_escalation_config_per_tenant",
+            ),
+        ]
 
     def __str__(self):
         status = "ativa" if self.is_active else "inativa"
