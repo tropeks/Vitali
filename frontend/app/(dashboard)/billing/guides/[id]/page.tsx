@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { getAccessToken } from '@/lib/auth';
 
 const STATUS_BADGE: Record<string, string> = {
-  draft: 'bg-[#DFE5EB] text-[#57606A]',
+  draft: 'bg-neu-app text-neu-inkSoft',
   pending: 'bg-yellow-100 text-yellow-700',
   submitted: 'bg-blue-100 text-blue-700',
   paid: 'bg-green-100 text-green-700',
@@ -30,8 +30,8 @@ function fmtCurrency(val: any) {
 function Field({ label, value }: { label: string; value: any }) {
   return (
     <div>
-      <dt className="text-xs font-medium text-[#8C959F] uppercase tracking-wide">{label}</dt>
-      <dd className="mt-0.5 text-sm text-[#24292F]">{value ?? '—'}</dd>
+      <dt className="text-xs font-medium text-neu-inkMuted uppercase tracking-wide">{label}</dt>
+      <dd className="mt-0.5 text-sm text-neu-ink">{value ?? '—'}</dd>
     </div>
   );
 }
@@ -83,10 +83,10 @@ export default function GuideDetailPage() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="h-8 w-48 bg-[#DFE5EB] rounded animate-pulse" />
-        <div className="bg-[#F4F7FA] rounded-lg border border-slate-200 p-4 space-y-4">
+        <div className="h-8 w-48 bg-neu-app rounded animate-pulse" />
+        <div className="bg-neu-panel rounded-lg border border-slate-200 p-4 space-y-4">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-5 bg-[#DFE5EB] rounded animate-pulse w-3/4" />
+            <div key={i} className="h-5 bg-neu-app rounded animate-pulse w-3/4" />
           ))}
         </div>
       </div>
@@ -96,7 +96,7 @@ export default function GuideDetailPage() {
   if (error && !guide) {
     return (
       <div className="space-y-4">
-        <button onClick={() => router.back()} className="text-sm text-[#8C959F] hover:text-[#57606A]">← Voltar</button>
+        <button onClick={() => router.back()} className="text-sm text-neu-inkMuted hover:text-neu-inkSoft">← Voltar</button>
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">{error}</div>
       </div>
     );
@@ -108,12 +108,12 @@ export default function GuideDetailPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3 flex-wrap">
-        <button onClick={() => router.back()} className="text-slate-400 hover:text-[#57606A] text-sm">← Voltar</button>
-        <h1 className="text-2xl font-semibold text-[#24292F]">
+        <button onClick={() => router.back()} className="text-slate-400 hover:text-neu-inkSoft text-sm">← Voltar</button>
+        <h1 className="text-2xl font-semibold text-neu-ink">
           Guia #{guide?.guide_number ?? guide?.id}
         </h1>
         {guide?.status && (
-          <span className={`inline-flex px-3 py-1 rounded-full text-sm font-medium ${STATUS_BADGE[guide.status] ?? 'bg-[#DFE5EB] text-[#57606A]'}`}>
+          <span className={`inline-flex px-3 py-1 rounded-full text-sm font-medium ${STATUS_BADGE[guide.status] ?? 'bg-neu-app text-neu-inkSoft'}`}>
             {STATUS_LABEL[guide.status] ?? guide.status}
           </span>
         )}
@@ -127,8 +127,8 @@ export default function GuideDetailPage() {
       )}
 
       {/* Guide details card */}
-      <div className="bg-[#F4F7FA] rounded-lg border border-slate-200 p-4">
-        <h2 className="font-semibold text-[#24292F] mb-4">Dados da Guia</h2>
+      <div className="bg-neu-panel rounded-lg border border-slate-200 p-4">
+        <h2 className="font-semibold text-neu-ink mb-4">Dados da Guia</h2>
         <dl className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
           <Field label="Nº da Guia" value={guide?.guide_number} />
           <Field label="Paciente" value={guide?.patient_name ?? guide?.patient} />
@@ -144,26 +144,26 @@ export default function GuideDetailPage() {
 
       {/* Items table */}
       {guide?.items && guide.items.length > 0 && (
-        <div className="bg-[#F4F7FA] rounded-lg border border-slate-200 overflow-hidden">
+        <div className="bg-neu-panel rounded-lg border border-slate-200 overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-100">
-            <h2 className="font-semibold text-[#24292F]">Procedimentos</h2>
+            <h2 className="font-semibold text-neu-ink">Procedimentos</h2>
           </div>
           <table className="w-full text-sm">
-            <thead className="bg-[#F4F7FA] border-b border-slate-100">
+            <thead className="bg-neu-panel border-b border-slate-100">
               <tr>
                 {['#', 'Descrição', 'Qtd', 'Valor Unit.', 'Total'].map(h => (
-                  <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-[#8C959F] uppercase tracking-wide">{h}</th>
+                  <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-neu-inkMuted uppercase tracking-wide">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {guide.items.map((item: any, idx: number) => (
                 <tr key={item.id ?? idx}>
-                  <td className="px-4 py-3 text-[#8C959F]">{idx + 1}</td>
-                  <td className="px-4 py-3 text-[#24292F]">{item.description ?? '—'}</td>
-                  <td className="px-4 py-3 text-[#57606A]">{item.quantity}</td>
-                  <td className="px-4 py-3 text-[#57606A]">{fmtCurrency(item.unit_value)}</td>
-                  <td className="px-4 py-3 text-[#24292F] font-medium">{fmtCurrency(item.total_value ?? (item.quantity * item.unit_value))}</td>
+                  <td className="px-4 py-3 text-neu-inkMuted">{idx + 1}</td>
+                  <td className="px-4 py-3 text-neu-ink">{item.description ?? '—'}</td>
+                  <td className="px-4 py-3 text-neu-inkSoft">{item.quantity}</td>
+                  <td className="px-4 py-3 text-neu-inkSoft">{fmtCurrency(item.unit_value)}</td>
+                  <td className="px-4 py-3 text-neu-ink font-medium">{fmtCurrency(item.total_value ?? (item.quantity * item.unit_value))}</td>
                 </tr>
               ))}
             </tbody>
@@ -173,12 +173,12 @@ export default function GuideDetailPage() {
 
       {/* Glosas section */}
       {isDenied && (
-        <div className="bg-[#F4F7FA] rounded-lg border border-red-200 p-4">
+        <div className="bg-neu-panel rounded-lg border border-red-200 p-4">
           <h2 className="font-semibold text-red-700 mb-3">Glosas</h2>
           {guide?.glosas && guide.glosas.length > 0 ? (
             <ul className="space-y-2">
               {guide.glosas.map((g: any, i: number) => (
-                <li key={g.id ?? i} className="text-sm text-[#57606A] border border-slate-100 rounded-lg p-3">
+                <li key={g.id ?? i} className="text-sm text-neu-inkSoft border border-slate-100 rounded-lg p-3">
                   <span className="font-medium">{g.reason ?? g.motivo ?? 'Motivo não informado'}</span>
                   {g.value && <span className="ml-2 text-red-600">{fmtCurrency(g.value)}</span>}
                 </li>
@@ -196,7 +196,7 @@ export default function GuideDetailPage() {
           <button
             onClick={submitGuide}
             disabled={submitting}
-            className="bg-gradient-to-b from-[#0066A1] to-[#005282] border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] text-white px-4 py-2 rounded-lg text-sm font-medium hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] disabled:opacity-50"
+            className="bg-gradient-to-b from-neu-brand to-neu-brandDeep border-t border-neu-brandEdge shadow-neu-btn-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:shadow-neu-btn-primary-hover disabled:opacity-50"
           >
             {submitting ? 'Enviando...' : 'Enviar Guia'}
           </button>

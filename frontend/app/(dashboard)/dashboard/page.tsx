@@ -126,8 +126,8 @@ function KPICard({
   color: string;
 }) {
   return (
-    <div className="bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white">
-      <p className="text-[11px] font-bold text-[#57606A] uppercase tracking-wide">{label}</p>
+    <div className="neu-panel">
+      <p className="text-[11px] font-bold text-neu-inkSoft uppercase tracking-wide">{label}</p>
       <p className={`mt-1 text-2xl font-bold ${color}`}>{value}</p>
       {sub && <p className="mt-1 text-xs text-slate-500">{sub}</p>}
     </div>
@@ -144,7 +144,7 @@ function Skeleton({ className }: { className?: string }) {
 
 function KPISkeleton() {
   return (
-    <div className="bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white space-y-3">
+    <div className="neu-panel space-y-3">
       <Skeleton className="h-4 w-32" />
       <Skeleton className="h-9 w-20" />
       <Skeleton className="h-3 w-40" />
@@ -284,15 +284,15 @@ export default function DashboardPage() {
         </div>
 
         {/* Period toggle */}
-        <div className="flex items-center gap-1 bg-[#E8EDF2] rounded-lg p-1 shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)]">
+        <div className="flex items-center gap-1 bg-neu-input rounded-lg p-1 shadow-neu-inset">
           {(["today", "week", "month"] as Period[]).map((p) => (
             <button
               key={p}
               onClick={() => setPeriod(p)}
               className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${
                 period === p
-                  ? "bg-white text-[#0066A1] shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
-                  : "text-[#57606A] hover:text-[#24292F]"
+                  ? "bg-white text-neu-brand shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+                  : "text-neu-inkSoft hover:text-neu-ink"
               }`}
             >
               {PERIOD_LABELS[p]}
@@ -307,7 +307,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
         {overviewLoading
           ? Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white">
+              <div key={i} className="neu-panel">
                 <Skeleton className="h-4 w-28" />
                 <Skeleton className="mt-3 h-8 w-12" />
                 <Skeleton className="mt-2 h-3 w-40" />
@@ -398,7 +398,7 @@ export default function DashboardPage() {
 
       {/* ── Charts Row 1: Line + Donut ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white">
+        <div className="lg:col-span-2 neu-panel">
           <h2 className="font-semibold text-slate-900 mb-4">
             Consultas por Dia{" "}
             <span className="text-xs text-slate-400 font-normal">(últimos 30 dias)</span>
@@ -440,7 +440,7 @@ export default function DashboardPage() {
           )}
         </div>
 
-        <div className="bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white">
+        <div className="neu-panel">
           <h2 className="font-semibold text-slate-900 mb-4">
             Status das Consultas{" "}
             <span className="text-xs text-slate-400 font-normal">(mês atual)</span>
@@ -476,7 +476,7 @@ export default function DashboardPage() {
 
       {/* ── Charts Row 2: Bar + Table ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white">
+        <div className="neu-panel">
           <h2 className="font-semibold text-slate-900 mb-4">
             Novos Pacientes por Mês{" "}
             <span className="text-xs text-slate-400 font-normal">(últimos 6 meses)</span>
@@ -498,7 +498,7 @@ export default function DashboardPage() {
           )}
         </div>
 
-        <div className="bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white">
+        <div className="neu-panel">
           <h2 className="font-semibold text-slate-900 mb-4">
             Top Profissionais{" "}
             <span className="text-xs text-slate-400 font-normal">(consultas concluídas este mês)</span>

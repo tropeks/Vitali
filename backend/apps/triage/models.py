@@ -195,6 +195,51 @@ class TriageSession(models.Model):
         self.status = self.STATUS_CANCELLED
         self.save(update_fields=["closed_at", "status"])
 
+    def abandon(self, reason: str = "") -> bool:
+        """Close an abandoned (incomplete) triage, evaluating partial evidence first.
+
+        Unlike ``evaluate_now`` this does NOT require every question to be
+        answered: the evaluator treats missing answers as "no evidence", so a
+        chief complaint containing an emergency keyword (e.g. "dor no peito")
+        still classifies as ``emergency`` even if the patient went silent
+        (CFM Res. 2.314/2022 §6 — a known red flag must escalate regardless
+        of how the conversation ended).
+
+        Returns True when the partial evidence classifies as emergency — the
+        session is then ESCALATED (not CANCELLED) so callers can page staff.
+        Terminal sessions (evaluated/escalated/completed/cancelled) are left
+        untouched and return False so callers never double-page.
+        """
+        if self.status not in (self.STATUS_STARTED, self.STATUS_ANSWERING):
+            return False
+        now = timezone.now()
+        decision = evaluate(self.chief_complaint, self.answers or {})
+        prefix = f"[abandoned{f': {reason}' if reason else ''}] "
+        self.urgency = decision.urgency
+        self.rationale = prefix + decision.rationale
+        self.matched_keywords = decision.matched_keywords
+        self.red_flags_positive = decision.red_flags_positive
+        self.evaluated_at = now
+        self.closed_at = now
+        if decision.urgency == URGENCY_EMERGENCY:
+            self.status = self.STATUS_ESCALATED
+            self.escalated_at = now
+        else:
+            self.status = self.STATUS_CANCELLED
+        self.save(
+            update_fields=[
+                "urgency",
+                "rationale",
+                "matched_keywords",
+                "red_flags_positive",
+                "evaluated_at",
+                "escalated_at",
+                "closed_at",
+                "status",
+            ]
+        )
+        return decision.urgency == URGENCY_EMERGENCY
+
 
 # Keep direct imports stable for callers that prefer the constants here.
 __all__ = ["TriageSession", "RED_FLAG_QUESTIONS"]
