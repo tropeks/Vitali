@@ -5,11 +5,11 @@ Tests for ConversationFSM — state transitions, intent detection, slot reservat
 from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
+from django.apps import apps as django_apps
 from django.utils import timezone
 
 from apps.core.models import AuditLog, FeatureFlag
 from apps.test_utils import TenantTestCase
-from apps.triage.models import TriageSession
 from apps.whatsapp.context import get_context, set_context
 from apps.whatsapp.fsm import ConversationFSM, _is_valid_cpf, detect_intent
 from apps.whatsapp.models import ConversationSession, WhatsAppContact
@@ -32,6 +32,13 @@ def _make_session(contact, state="IDLE"):
 def _make_fsm(session):
     gateway = MagicMock()
     return ConversationFSM(session, gateway), gateway
+
+
+# Resolved via the app registry (not a static import): apps.whatsapp.** must not
+# import apps.triage.** (import-linter domain-independence contract, P1-01).
+# Production code goes through apps.core.triage_bridge; tests only need the
+# model class to assert on persisted state.
+TriageSession = django_apps.get_model("triage", "TriageSession")
 
 
 class IntentDetectionTests(TenantTestCase):

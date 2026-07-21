@@ -23,7 +23,6 @@ import re
 import unicodedata
 from datetime import date
 
-from django.core.exceptions import ValidationError
 from django.db import transaction
 
 from .context import get_context, set_context
@@ -506,29 +505,37 @@ class ConversationFSM:
             return False
         return tenant_has_feature(tenant, "triage")
 
+    def _triage_provider(self):
+        """Resolve the triage domain's provider via the apps.core port.
+
+        Returns None when apps.triage is not installed/registered — the
+        domain-independence contract (P1-01) forbids importing apps.triage
+        directly from here, so all triage operations go through this seam.
+        """
+        from apps.core.triage_bridge import get_triage_provider
+
+        return get_triage_provider()
+
     def _load_triage_session(self):
-        """Return the in-progress TriageSession, or None if missing/invalid."""
+        """Return the in-progress triage session, or None if missing/invalid."""
         ctx = get_context(self._session)
         tsid = ctx.get("triage_session_id")
         if not tsid:
             return None
-        from apps.triage.models import TriageSession
-
-        try:
-            return TriageSession.objects.get(pk=tsid)
-        except (TriageSession.DoesNotExist, ValueError, ValidationError):
+        provider = self._triage_provider()
+        if provider is None:
             return None
+        return provider.get_session(tsid)
 
     def _start_triage(self) -> list[str]:
         session = self._session
         contact = session.contact
 
-        if not self._triage_enabled():
+        provider = self._triage_provider()
+        if provider is None or not self._triage_enabled():
             return [TRIAGE_DISABLED_MSG]
 
-        from apps.triage.models import TriageSession
-
-        ts = TriageSession.objects.create(
+        ts = provider.create_session(
             patient=contact.patient,
             contact_phone=contact.phone,
         )
@@ -589,9 +596,9 @@ class ConversationFSM:
         ts.evaluate_now()  # sets urgency; auto-escalates on emergency
 
         if ts.urgency == TRIAGE_URGENCY_EMERGENCY:
-            from apps.triage.services.notifications import notify_staff_emergency
-
-            notify_staff_emergency(ts)
+            provider = self._triage_provider()
+            if provider is not None:
+                provider.notify_emergency(ts)
 
         # Triage sub-flow is done — return the conversation to IDLE.
         session.state = "IDLE"
