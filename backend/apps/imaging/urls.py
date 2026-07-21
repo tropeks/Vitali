@@ -6,9 +6,15 @@ from .views import (
     StudyDetailView,
     StudyListCreateView,
     StudyOrthancBackfillView,
+    ViewerAuthorizationView,
 )
 
 urlpatterns = [
+    path(
+        "imaging/viewer-auth/",
+        ViewerAuthorizationView.as_view(),
+        name="imaging-viewer-auth",
+    ),
     path("imaging/studies/", StudyListCreateView.as_view(), name="imaging-study-list"),
     path(
         "imaging/orthanc/webhook/",

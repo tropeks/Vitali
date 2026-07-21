@@ -20,6 +20,7 @@ from apps.imaging.models import DicomStudy
 from apps.test_utils import TenantTestCase
 
 LIST_URL = "/api/v1/imaging/studies/"
+VIEWER_AUTH_URL = "/api/v1/imaging/viewer-auth/"
 
 
 def _detail_url(pk):
@@ -139,6 +140,16 @@ class ImagingViewsTest(TenantTestCase):
         return payload
 
     # ─── List + filtering ────────────────────────────────────────────────────
+
+    def test_viewer_auth_accepts_authorized_reader(self):
+        self.client.force_authenticate(user=self.reader)
+        response = self.client.get(VIEWER_AUTH_URL)
+        self.assertEqual(response.status_code, 204)
+
+    def test_viewer_auth_rejects_anonymous_user(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.get(VIEWER_AUTH_URL)
+        self.assertIn(response.status_code, (401, 403))
 
     def test_list_returns_studies(self):
         resp = self.client.get(LIST_URL)
