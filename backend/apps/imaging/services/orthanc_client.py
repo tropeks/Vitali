@@ -80,6 +80,26 @@ class OrthancClient:
         return (study.get("MainDicomTags") or {}).get("AccessionNumber", "")
 
     @staticmethod
+    def patient_id(study: dict[str, Any]) -> str:
+        """DICOM PatientID (0010,0020), normally in PatientMainDicomTags."""
+        patient_tags = study.get("PatientMainDicomTags") or {}
+        return str(
+            patient_tags.get("PatientID")
+            or (study.get("MainDicomTags") or {}).get("PatientID")
+            or ""
+        ).strip()
+
+    @staticmethod
+    def issuer_of_patient_id(study: dict[str, Any]) -> str:
+        """DICOM IssuerOfPatientID (0010,0021), blank when not supplied."""
+        patient_tags = study.get("PatientMainDicomTags") or {}
+        return str(
+            patient_tags.get("IssuerOfPatientID")
+            or (study.get("MainDicomTags") or {}).get("IssuerOfPatientID")
+            or ""
+        ).strip()
+
+    @staticmethod
     def series_count(study: dict[str, Any], statistics: dict[str, Any] | None = None) -> int:
         """Series count, preferring the statistics resource over the Series list."""
         if statistics:

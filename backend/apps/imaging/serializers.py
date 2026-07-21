@@ -29,6 +29,9 @@ class DicomStudySerializer(serializers.ModelSerializer):
             "report_status",
             "study_instance_uid",
             "accession_number",
+            "dicom_patient_id",
+            "dicom_patient_id_issuer",
+            "dicom_identity_verified",
             "modality",
             "modality_display",
             "body_part_examined",
@@ -46,6 +49,7 @@ class DicomStudySerializer(serializers.ModelSerializer):
             "patient_name",
             "modality_display",
             "has_pixel_data",
+            "dicom_identity_verified",
             "created_at",
         ]
 
@@ -76,13 +80,14 @@ class DicomStudyCreateSerializer(serializers.ModelSerializer):
             "report_document",
             "study_instance_uid",
             "accession_number",
+            "dicom_patient_id",
+            "dicom_patient_id_issuer",
             "modality",
             "body_part_examined",
             "description",
             "study_date",
             "number_of_series",
             "number_of_instances",
-            "orthanc_study_id",
         ]
 
     def validate(self, attrs):
@@ -91,6 +96,11 @@ class DicomStudyCreateSerializer(serializers.ModelSerializer):
         encounter = attrs.get("encounter")
         lab_item = attrs.get("related_lab_item")
         report = attrs.get("report_document")
+
+        # The MRN is Vitali's canonical DICOM PatientID unless an integration
+        # explicitly supplies another tenant-scoped identifier.
+        if patient and not attrs.get("dicom_patient_id"):
+            attrs["dicom_patient_id"] = patient.medical_record_number
 
         if encounter and encounter.patient_id != patient.id:
             raise serializers.ValidationError(
@@ -120,5 +130,3 @@ class DicomStudyOrthancPatchSerializer(serializers.Serializer):
     """Patch payload for backfilling the Orthanc UID once the PACS has the study."""
 
     orthanc_study_id = serializers.CharField(max_length=128)
-    number_of_series = serializers.IntegerField(required=False, min_value=0)
-    number_of_instances = serializers.IntegerField(required=False, min_value=0)

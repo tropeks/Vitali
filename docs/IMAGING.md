@@ -38,14 +38,16 @@ OHIF viewer (same-origin) <── viewer URL uses StudyInstanceUID
    this point `orthanc_study_id` is empty.
 2. A Celery beat task (`imaging.sync_orthanc_studies`, every 3 minutes) polls
    Orthanc's PACS-wide `/changes` feed from a stored cursor.
-3. For every `StableStudy` change it fetches `/studies/{id}` (for
-   `StudyInstanceUID` + `AccessionNumber`) and `/studies/{id}/statistics` (for
-   accurate series/instance counts).
-4. It then iterates **tenant schemas** and, in each, looks for a matching
-   `DicomStudy` — by `study_instance_uid` first, falling back to
-   `accession_number`. On a match it backfills `orthanc_study_id` and the
-   series/instance counts (`save(update_fields=...)`). The cursor advances to
-   the feed's `Last`.
+3. For every `StableStudy` change it fetches `/studies/{id}` for
+   `StudyInstanceUID`, `AccessionNumber`, `PatientID` and `IssuerOfPatientID`,
+   plus `/studies/{id}/statistics` for accurate counts.
+4. It resolves the UID (or accession fallback) to **exactly one row across all
+   tenant schemas**. Duplicate UID across tenants and duplicate accession
+   within or across tenants are refused as ambiguous.
+5. Before linking pixels, the stored tenant-scoped DICOM patient identity must
+   exactly match `PatientID + IssuerOfPatientID`. Missing/mismatched PatientID
+   fails closed. Only then are `orthanc_study_id`, counts and
+   `dicom_identity_verified` written.
 
 Studies with **no matching `DicomStudy` in any tenant are logged and skipped** —
 the task never auto-creates rows.
@@ -58,6 +60,13 @@ safely decide which schema it belongs to. Auto-creating would either guess wrong
 or leak a study across tenant boundaries. Instead, the order flow owns row
 creation inside the correct tenant; ingestion only **backfills** the PACS handle
 onto rows that already exist.
+
+Legacy rows are migrated with `dicom_patient_id` set to the patient's Vitali
+medical-record number, but remain unverified. Existing PACS links therefore do
+not authorize patient pixels until a webhook, poll or manual server-side
+verification confirms the Orthanc tags. New API-created studies default their
+DICOM PatientID to that same medical-record number; integrations may explicitly
+provide a tenant-specific PatientID and issuer.
 
 ### Idempotency & resilience
 

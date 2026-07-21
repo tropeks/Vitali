@@ -129,18 +129,25 @@ class StudyOrthancBackfillView(APIView):
         serializer = DicomStudyOrthancPatchSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        study.orthanc_study_id = data["orthanc_study_id"]
-        if "number_of_series" in data:
-            study.number_of_series = data["number_of_series"]
-        if "number_of_instances" in data:
-            study.number_of_instances = data["number_of_instances"]
-        study.save(
-            update_fields=[
-                "orthanc_study_id",
-                "number_of_series",
-                "number_of_instances",
-            ]
-        )
+        from .services.orthanc_client import OrthancError
+        from .services.orthanc_sync import verify_and_link_study
+
+        try:
+            outcome = verify_and_link_study(study, data["orthanc_study_id"])
+        except OrthancError as exc:
+            return Response(
+                {"detail": f"Orthanc unreachable: {exc}"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        study.refresh_from_db()
+        if outcome != "matched" or study.orthanc_study_id != data["orthanc_study_id"]:
+            return Response(
+                {
+                    "detail": "Orthanc study metadata does not uniquely match this patient/study.",
+                    "outcome": outcome,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
         return Response(DicomStudySerializer(study).data)
 
 

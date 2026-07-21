@@ -66,6 +66,7 @@ class PortalImagingTest(TenantTestCase):
             number_of_series=2,
             number_of_instances=10,
             orthanc_study_id="stored-study" if pixels else "",
+            dicom_identity_verified=pixels,
         )
 
     def test_list_contains_only_own_studies_and_patient_safe_fields(self):
@@ -161,4 +162,28 @@ class PortalImagingTest(TenantTestCase):
         )
         self.assertEqual(
             self.client.get(url, HTTP_X_ORIGINAL_URI="/api/v1/users/").status_code, 403
+        )
+
+    def test_unverified_legacy_pacs_link_never_exposes_pixels(self):
+        """A stale/wrong FK is not proof that PACS pixels belong to this patient."""
+        self.own.dicom_identity_verified = False
+        self.own.save(update_fields=["dicom_identity_verified"])
+
+        listing = self.client.get("/api/v1/portal/me/imaging-studies/")
+        own = next(row for row in listing.data if row["id"] == str(self.own.id))
+        self.assertFalse(own["available"])
+        self.assertEqual(
+            self.client.get(
+                f"/api/v1/portal/me/imaging-studies/{self.own.id}/authorize/"
+            ).status_code,
+            404,
+        )
+        self.assertEqual(
+            self.client.get(
+                "/api/v1/portal/me/imaging-viewer-auth/",
+                HTTP_X_ORIGINAL_URI=(
+                    f"/imagens-dicom/studies/{self.own.study_instance_uid}/series/1/instances/1"
+                ),
+            ).status_code,
+            403,
         )
