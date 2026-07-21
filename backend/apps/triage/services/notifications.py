@@ -29,9 +29,16 @@ def notify_staff_emergency(session) -> None:
 
     Writes an AuditLog row synchronously (durable trail) then best-effort
     enqueues delivery via ``send_triage_emergency_notification``.
+
+    The DB work runs inside its own nested ``transaction.atomic()`` block
+    (a savepoint when the caller is already in a transaction): without it, a
+    DB error here would mark the caller's transaction as needs-rollback and
+    abort the whole WhatsApp conversation transaction even though we swallow
+    the exception — breaking the ALWAYS FAIL-SAFE contract above.
     """
     try:
-        _notify(session)
+        with transaction.atomic():
+            _notify(session)
     except Exception:
         logger.exception(
             "notify_staff_emergency failed for TriageSession %s; failing safe.",
@@ -88,13 +95,23 @@ def _notify(session) -> None:
 
 
 def _recipients() -> list[str]:
-    """Configured staff emails for this tenant, or [] when unconfigured."""
-    try:
-        from apps.emr.models import EscalationConfig
+    """Configured staff emails for this tenant, or [] when unconfigured.
 
-        config = EscalationConfig.objects.filter(is_active=True).order_by("-created_at").first()
-        if config and config.notify_emails:
-            return list(config.notify_emails)
+    Own savepoint: a failed read must not poison the enclosing savepoint —
+    the AuditLog write that follows still has to succeed.
+    """
+    try:
+        with transaction.atomic():
+            from apps.emr.models import EscalationConfig
+
+            # TODO(EscalationConfig): no uniqueness constraint on active
+            # configs — multiple is_active=True rows can coexist and this
+            # silently picks the newest. Enforce one active config per tenant
+            # (partial UniqueConstraint on is_active=True + data migration
+            # deactivating older rows) in apps.emr.
+            config = EscalationConfig.objects.filter(is_active=True).order_by("-created_at").first()
+            if config and config.notify_emails:
+                return list(config.notify_emails)
     except Exception:
         logger.exception("Could not load EscalationConfig for triage emergency.")
     return []

@@ -27,7 +27,11 @@ class ConversationContext(TypedDict, total=False):
 
     # FSM housekeeping
     mismatches: int | None  # Unrecognized input counter (FALLBACK_HUMAN at 3)
-    last_message_id: str | None
+    # Recently processed Evolution message-ids (msg.key.id) — inbound
+    # idempotency guard against webhook redelivery. Bounded FIFO (see
+    # views._already_processed). None ≡ [] (kept None here so the shared
+    # _DEFAULTS dict never holds a mutable list).
+    processed_message_ids: list[str] | None
 
 
 _DEFAULTS: ConversationContext = {
@@ -42,7 +46,7 @@ _DEFAULTS: ConversationContext = {
     "other_patient_id": None,
     "triage_session_id": None,
     "mismatches": 0,
-    "last_message_id": None,
+    "processed_message_ids": None,
 }
 
 

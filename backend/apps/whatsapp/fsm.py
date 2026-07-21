@@ -234,11 +234,18 @@ class ConversationFSM:
 
         # Expire check
         if session.is_expired() and session.state not in ("IDLE", "OPTED_OUT"):
+            outbound = [EXPIRED_MSG]
+            # An expired mid-triage session must not orphan the TriageSession:
+            # partially evaluate it so a known emergency (e.g. chief complaint
+            # "dor no peito") still pages staff before we abandon the flow.
+            if session.state in ("TRIAGE_COMPLAINT", "TRIAGE_QUESTIONS"):
+                if self._triage_abandon(self._load_triage_session(), "session_expired"):
+                    outbound = [TRIAGE_RESULT_EMERGENCY_MSG, EXPIRED_MSG]
             session.state = "IDLE"
-            set_context(session, mismatches=0)
+            set_context(session, triage_session_id=None, mismatches=0)
             session.refresh_expiry()
             session.save()
-            return [EXPIRED_MSG]
+            return outbound
 
         intent = detect_intent(message)
 
@@ -486,9 +493,14 @@ class ConversationFSM:
     def _do_optout(self) -> list[str]:
         session = self._session
         contact = session.contact
+        # Opting out mid-triage abandons the TriageSession — partially evaluate
+        # it first so a known emergency still pages staff (the patient stops
+        # receiving messages, but the clinical escalation must not be lost).
+        if session.state in ("TRIAGE_COMPLAINT", "TRIAGE_QUESTIONS"):
+            self._triage_abandon(self._load_triage_session(), "opted_out")
         contact.do_opt_out()
         session.state = "OPTED_OUT"
-        set_context(session, mismatches=0)
+        set_context(session, triage_session_id=None, mismatches=0)
         session.save()
         return [OPTED_OUT_MSG]
 
@@ -576,7 +588,25 @@ class ConversationFSM:
             # Defensive: no question pending — evaluate what we have.
             return self._triage_finish(ts)
 
-        ts.answer(key, answer)
+        try:
+            ts.answer(key, answer)
+        except ValueError:
+            # Late duplicate / concurrent close: the TriageSession is already
+            # terminal. Swallow instead of exploding the webhook transaction
+            # (which would roll back everything and leave the patient with no
+            # reply at all) and close the conversation loop gracefully.
+            logger.warning(
+                "TriageSession %s no longer accepts answers (status=%s) — closing flow.",
+                ts.id,
+                getattr(ts, "status", "?"),
+            )
+            session.state = "IDLE"
+            set_context(session, triage_session_id=None, mismatches=0)
+            session.save()
+            if getattr(ts, "urgency", ""):
+                # Repeat the (safe) final classification message.
+                return [_triage_result_message(ts.urgency)]
+            return [TRIAGE_ABORT_MSG]
         set_context(session, mismatches=0)
 
         if ts.next_question_key is not None:
@@ -593,9 +623,20 @@ class ConversationFSM:
 
     def _triage_finish(self, ts) -> list[str]:
         session = self._session
-        ts.evaluate_now()  # sets urgency; auto-escalates on emergency
+        try:
+            ts.evaluate_now()  # sets urgency; auto-escalates on emergency
+            evaluated = True
+        except ValueError:
+            # Already terminal (late duplicate / concurrent evaluation) —
+            # don't blow up the webhook transaction and don't re-page staff.
+            logger.warning(
+                "TriageSession %s could not be evaluated (status=%s) — reusing stored urgency.",
+                ts.id,
+                getattr(ts, "status", "?"),
+            )
+            evaluated = False
 
-        if ts.urgency == TRIAGE_URGENCY_EMERGENCY:
+        if evaluated and ts.urgency == TRIAGE_URGENCY_EMERGENCY:
             provider = self._triage_provider()
             if provider is not None:
                 provider.notify_emergency(ts)
@@ -614,22 +655,57 @@ class ConversationFSM:
         return [TRIAGE_ABORT_MSG]
 
     def _triage_unrecognized(self, ts, retry_messages: list[str]) -> list[str]:
-        """Re-prompt an unparseable triage reply; cancel + hand off after 3."""
+        """Re-prompt an unparseable triage reply; abandon + hand off after 3.
+
+        Abandonment runs a partial evaluation first (see ``_triage_abandon``)
+        so a chief complaint with a known emergency keyword still pages staff
+        even though the patient never finished the questions.
+        """
         session = self._session
         ctx = get_context(session)
         mismatches = (ctx.get("mismatches") or 0) + 1
         if mismatches >= 3:
-            try:
-                ts.cancel()
-            except Exception:
-                logger.warning("Could not cancel abandoned TriageSession %s", ts.id)
+            emergency = self._triage_abandon(ts, "unrecognized_answers")
             session.state = "FALLBACK_HUMAN"
             set_context(session, triage_session_id=None, mismatches=0)
             session.save()
-            return [FALLBACK_MSG_TEMPLATE.format(phone=self._clinic_phone)]
+            outbound = [FALLBACK_MSG_TEMPLATE.format(phone=self._clinic_phone)]
+            if emergency:
+                outbound = [TRIAGE_RESULT_EMERGENCY_MSG] + outbound
+            return outbound
         set_context(session, mismatches=mismatches)
         session.save()
         return [TRIAGE_ANSWER_HINT_MSG] + retry_messages
+
+    def _triage_abandon(self, ts, reason: str) -> bool:
+        """Close an abandoned TriageSession, escalating a known emergency.
+
+        Runs the partial-evidence evaluation (``ts.abandon``) and, when it
+        classifies as emergency, pages staff via the triage provider — the
+        three early-exit paths (session expiry, opt-out, 3 unrecognized
+        replies) must never silently drop an emergency the evaluator can
+        already see (CFM Res. 2.314/2022 §6).
+
+        Returns True when the abandoned triage classified as emergency.
+        Never raises — abandonment bookkeeping must not break the patient's
+        conversation flow.
+        """
+        if ts is None:
+            return False
+        try:
+            emergency = ts.abandon(reason)
+        except Exception:
+            logger.exception(
+                "Could not abandon TriageSession %s (reason=%s)",
+                getattr(ts, "id", None),
+                reason,
+            )
+            return False
+        if emergency:
+            provider = self._triage_provider()
+            if provider is not None:
+                provider.notify_emergency(ts)
+        return emergency
 
     # ─── Booking confirmation (atomic slot reservation) ───────────────────────
 

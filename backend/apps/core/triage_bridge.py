@@ -30,8 +30,9 @@ class TriageProvider(Protocol):
     to callers: they expose the TriageSession FSM surface
     (``record_chief_complaint(text)``, ``answer(key, value)``,
     ``next_question_key``, ``current_question()``, ``evaluate_now()``,
-    ``cancel()``, ``urgency``, ``id``) but callers must not assume a concrete
-    model class.
+    ``cancel()``, ``abandon(reason) -> bool`` — partial-evidence close that
+    returns True when the abandoned session classifies as emergency —
+    ``urgency``, ``id``) but callers must not assume a concrete model class.
     """
 
     def create_session(self, *, patient: Any, contact_phone: str) -> Any:

@@ -26,6 +26,7 @@ from rest_framework.views import APIView
 
 from apps.core.permissions import ModuleRequiredPermission
 
+from .context import get_context, set_context
 from .fsm import ConversationFSM
 from .gateway import get_gateway, verify_webhook_signature
 from .models import ConversationSession, MessageLog, WhatsAppContact
@@ -36,6 +37,33 @@ logger = logging.getLogger(__name__)
 _WHATSAPP_MODULE = ModuleRequiredPermission("whatsapp")
 _RATE_LIMIT_WINDOW = 60  # seconds
 _RATE_LIMIT_MAX = 20  # messages per window per contact
+_PROCESSED_IDS_MAX = 20  # bounded FIFO of Evolution message-ids kept per session
+
+
+def _already_processed(session, message_id: str) -> bool:
+    """Inbound idempotency guard — True if this Evolution message-id was seen.
+
+    Evolution API redelivers webhooks (retries on timeout / non-2xx), and in a
+    triage each inbound message is consumed as the answer to the *next*
+    question — a redelivered "sim" would shift every subsequent red-flag
+    answer by one position, masking or fabricating red flags. Duplicates are
+    dropped silently (safest: re-running the FSM could re-trigger prompts or
+    displace clinical answers).
+
+    Marks unseen ids on the row-locked session (caller holds
+    select_for_update): the mark commits/rolls back together with the FSM
+    outcome, so a failed processing attempt is retried normally.
+    """
+    if not message_id:
+        return False  # No id in payload — cannot dedup, process normally.
+    ctx = get_context(session)
+    seen = list(ctx.get("processed_message_ids") or [])
+    if message_id in seen:
+        return True
+    seen.append(message_id)
+    set_context(session, processed_message_ids=seen[-_PROCESSED_IDS_MAX:])
+    session.save(update_fields=["context", "updated_at"])
+    return False
 
 
 def _check_rate_limit(phone: str) -> bool:
@@ -214,12 +242,16 @@ class WebhookView(APIView):
             if not text:
                 continue
 
-            self._process_message(phone, text, message_type)
+            message_id = msg.get("key", {}).get("id", "") or ""
+            self._process_message(phone, text, message_type, message_id)
 
-    def _process_message(self, phone: str, text: str, message_type: str):
+    def _process_message(self, phone: str, text: str, message_type: str, message_id: str = ""):
         # S-066: Check for pending waitlist notification before routing to scheduling FSM.
         # SIM/NÃO responses must be disambiguated: if the patient has a 'notified'
         # WaitlistEntry, route to waitlist handler first.
+        # (Known limitation: waitlist-consumed messages are not id-deduped —
+        # the handler is a no-op on redelivery since the entry leaves the
+        # 'notified' status on first processing.)
         if _handle_waitlist_reply(phone, text):
             return
 
@@ -228,6 +260,16 @@ class WebhookView(APIView):
             # Lock session row to prevent concurrent double-tap corruption
             session, _ = ConversationSession.get_or_create_for_contact(contact)
             session = ConversationSession.objects.select_for_update().get(pk=session.pk)
+
+            # Idempotency: drop webhook redeliveries of an already-processed
+            # message before logging or advancing the FSM.
+            if _already_processed(session, message_id):
+                logger.info(
+                    "Duplicate WhatsApp message %s from %s — ignored (idempotent).",
+                    message_id,
+                    phone,
+                )
+                return
 
             _log_message(contact, "inbound", text, message_type)
 
