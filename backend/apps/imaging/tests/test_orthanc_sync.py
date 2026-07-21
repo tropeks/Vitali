@@ -115,7 +115,7 @@ class OrthancSyncTest(TenantTestCase):
                     "Done": True,
                 }
             ],
-            studies={"orth-1": _study_payload(UID_CT, "", n_series=4, n_instances=120)},
+            studies={"orth-1": _study_payload(UID_CT, ACC_CT, n_series=4, n_instances=120)},
         )
         summary = orthanc_sync.sync_orthanc_studies(client=client)
 
@@ -177,7 +177,7 @@ class OrthancSyncTest(TenantTestCase):
                     "Done": True,
                 }
             ],
-            studies={"orth-1": _study_payload(UID_CT, "")},
+            studies={"orth-1": _study_payload(UID_CT, ACC_CT)},
         )
         summary = orthanc_sync.sync_orthanc_studies(client=client)
         self.assertEqual(summary, _summary())
@@ -193,7 +193,7 @@ class OrthancSyncTest(TenantTestCase):
                     "Done": True,
                 }
             ],
-            studies={"orth-1": _study_payload(UID_CT, "")},
+            studies={"orth-1": _study_payload(UID_CT, ACC_CT)},
         )
         first = orthanc_sync.sync_orthanc_studies(client=client)
         self.assertEqual(first["matched"], 1)
@@ -220,7 +220,7 @@ class OrthancSyncTest(TenantTestCase):
                     "Done": True,
                 }
             ],
-            studies={"orth-1": _study_payload(UID_CT, "", n_series=2, n_instances=50)},
+            studies={"orth-1": _study_payload(UID_CT, ACC_CT, n_series=2, n_instances=50)},
         )
         client._raises = {"orth-gone"}
 
@@ -271,7 +271,7 @@ class OrthancSyncTest(TenantTestCase):
                     "Done": True,
                 }
             ],
-            studies={"orth-1": _study_payload(UID_CT, "")},
+            studies={"orth-1": _study_payload(UID_CT, ACC_CT)},
         )
         orthanc_sync.sync_orthanc_studies(client=client)
         # Lock must be free again.
@@ -359,7 +359,7 @@ class OrthancSyncMultiTenantTest(TenantTestCase):
                     "Done": True,
                 }
             ],
-            studies={"orth-1": _study_payload(UID_CT, "")},  # UID only, no accession
+            studies={"orth-1": _study_payload(UID_CT, ACC_CT)},
         )
         with patch("apps.core.tenancy.connection") as conn:
             conn.schema_name = "public"
