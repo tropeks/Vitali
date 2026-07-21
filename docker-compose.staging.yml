@@ -59,6 +59,7 @@ services:
     env_file: ${STAGING_ENV_FILE:-.env.staging}
     environment:
       DJANGO_SETTINGS_MODULE: vitali.settings.production
+      HEALTHCHECK_HOST: ${HEALTHCHECK_HOST:-vitali.qtec.me}
     depends_on:
       postgres:
         condition: service_healthy
@@ -68,7 +69,7 @@ services:
       - static_files:/app/staticfiles
       - media_files:/app/media
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health/')\" || exit 1"]
+      test: ["CMD-SHELL", "python -c \"import os, urllib.request; req=urllib.request.Request('http://127.0.0.1:8000/health/', headers={'Host': os.environ.get('HEALTHCHECK_HOST', 'localhost'), 'X-Forwarded-Proto': 'https'}); urllib.request.urlopen(req, timeout=5)\" || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -126,6 +127,7 @@ services:
     image: ghcr.io/${GHCR_REPO}/vitali-frontend:${IMAGE_TAG:-latest}
     restart: always
     environment:
+      HOSTNAME: 0.0.0.0
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
       DJANGO_API_URL: http://django:8000
     depends_on:
@@ -217,7 +219,7 @@ services:
       - django
       - nextjs
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost/health/ || exit 1"]
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/login || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
