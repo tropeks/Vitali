@@ -13,6 +13,7 @@ from .views import (
     MePrescriptionsView,
     MeView,
 )
+from .views_lab import MeLabReportPDFView, MeLabResultsView
 
 urlpatterns = [
     path("portal/access/", AccessListCreateView.as_view(), name="portal-access-list"),
@@ -40,6 +41,8 @@ urlpatterns = [
         name="portal-me-rx",
     ),
     path("portal/me/allergies/", MeAllergiesView.as_view(), name="portal-me-allergies"),
+    path("portal/me/lab-results/", MeLabResultsView.as_view(), name="portal-me-lab-results"),
+    path("portal/me/lab-results/<uuid:order_id>/report/", MeLabReportPDFView.as_view(), name="portal-me-lab-report"),
     path("portal/me/export/", MeExportView.as_view(), name="portal-me-export"),
     path("portal/me/delete-request/", MeDeletionRequestView.as_view(), name="portal-me-delete"),
 ]

@@ -7,7 +7,15 @@ from datetime import UTC, date, datetime
 from rest_framework.test import APIClient
 
 from apps.core.models import FeatureFlag, Role, User
-from apps.emr.models import Encounter, Patient, Professional
+from apps.emr.models import (
+    ClinicalDocument,
+    Encounter,
+    LabOrder,
+    LabOrderItem,
+    LabTest,
+    Patient,
+    Professional,
+)
 from apps.imaging.models import DicomStudy
 from apps.test_utils import TenantTestCase
 
@@ -106,6 +114,29 @@ class ImagingViewsTest(TenantTestCase):
             body_part_examined="HEAD",
             study_date=datetime(2026, 5, 18, 16, 0, tzinfo=UTC),
         )
+        self.lab_test = LabTest.objects.create(code="IMG-CONTEXT", name="Contexto diagnóstico")
+        self.lab_order = LabOrder.objects.create(patient=self.patient, requested_by=self.writer)
+        self.lab_item = LabOrderItem.objects.create(
+            order=self.lab_order,
+            test=self.lab_test,
+            test_name=self.lab_test.name,
+        )
+
+    def create_payload(self, **overrides):
+        payload = {
+            "patient": str(self.patient.pk),
+            "encounter": str(self.encounter.pk),
+            "study_instance_uid": "1.2.840.113619.2.55.3.604688119.999.999",
+            "accession_number": "ACC-2026-999",
+            "modality": "MR",
+            "body_part_examined": "BRAIN",
+            "description": "RM crânio com contraste.",
+            "study_date": "2026-05-20T10:00:00Z",
+            "number_of_series": 8,
+            "number_of_instances": 320,
+        }
+        payload.update(overrides)
+        return payload
 
     # ─── List + filtering ────────────────────────────────────────────────────
 
@@ -153,18 +184,7 @@ class ImagingViewsTest(TenantTestCase):
     # ─── Create ──────────────────────────────────────────────────────────────
 
     def test_create_registers_new_study(self):
-        payload = {
-            "patient": str(self.patient.pk),
-            "encounter": str(self.encounter.pk),
-            "study_instance_uid": "1.2.840.113619.2.55.3.604688119.999.999",
-            "accession_number": "ACC-2026-999",
-            "modality": "MR",
-            "body_part_examined": "BRAIN",
-            "description": "RM crânio com contraste.",
-            "study_date": "2026-05-20T10:00:00Z",
-            "number_of_series": 8,
-            "number_of_instances": 320,
-        }
+        payload = self.create_payload()
         resp = self.client.post(LIST_URL, payload, format="json")
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(resp.data["modality_display"], "Magnetic Resonance")
@@ -175,6 +195,70 @@ class ImagingViewsTest(TenantTestCase):
                 study_instance_uid="1.2.840.113619.2.55.3.604688119.999.999"
             ).exists()
         )
+
+    def test_create_links_lab_context_and_filters_without_changing_its_category(self):
+        response = self.client.post(
+            LIST_URL,
+            self.create_payload(related_lab_item=str(self.lab_item.pk)),
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data["related_lab_item"], self.lab_item.pk)
+        self.assertEqual(response.data["related_lab_order"], str(self.lab_order.pk))
+        self.lab_test.refresh_from_db()
+        self.assertEqual(self.lab_test.category, LabTest.Category.OTHER)
+
+        by_item = self.client.get(LIST_URL, {"lab_order_item": str(self.lab_item.pk)})
+        by_order = self.client.get(LIST_URL, {"lab_order": str(self.lab_order.pk)})
+        self.assertEqual([entry["id"] for entry in by_item.data], [response.data["id"]])
+        self.assertEqual([entry["id"] for entry in by_order.data], [response.data["id"]])
+
+    def test_create_rejects_lab_item_from_another_patient(self):
+        other_order = LabOrder.objects.create(patient=self.other_patient, requested_by=self.writer)
+        other_item = LabOrderItem.objects.create(
+            order=other_order,
+            test=self.lab_test,
+            test_name=self.lab_test.name,
+        )
+        response = self.client.post(
+            LIST_URL,
+            self.create_payload(related_lab_item=str(other_item.pk)),
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("related_lab_item", response.data)
+
+    def test_report_link_exposes_metadata_but_not_clinical_content(self):
+        report = ClinicalDocument.objects.create(
+            encounter=self.encounter,
+            doc_type="report",
+            content="Achado sensível que não pertence ao endpoint de imagem.",
+        )
+        response = self.client.post(
+            LIST_URL,
+            self.create_payload(report_document=str(report.pk)),
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data["report_status"]["id"], str(report.pk))
+        self.assertFalse(response.data["report_status"]["is_signed"])
+        self.assertNotIn("content", response.data["report_status"])
+        self.assertNotIn("content", response.data)
+
+    def test_report_link_rejects_non_report_document(self):
+        document = ClinicalDocument.objects.create(
+            encounter=self.encounter,
+            doc_type="exam_request",
+            content="Solicitação",
+        )
+        response = self.client.post(
+            LIST_URL,
+            self.create_payload(report_document=str(document.pk)),
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("report_document", response.data)
 
     def test_create_rejects_duplicate_study_uid(self):
         payload = {

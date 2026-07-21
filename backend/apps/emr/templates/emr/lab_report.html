@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><style>
+body{font-family:Arial,sans-serif;color:#172033;font-size:11px;margin:36px}h1{font-size:20px;margin-bottom:4px}.meta{color:#526079;margin-bottom:24px}.patient{background:#f2f5f9;padding:12px;margin-bottom:20px}table{width:100%;border-collapse:collapse}th,td{padding:8px;border-bottom:1px solid #d9e0e9;text-align:left}th{font-size:9px;text-transform:uppercase;color:#526079}.critical{color:#a11212;font-weight:bold}.footer{margin-top:32px;padding-top:12px;border-top:1px solid #b8c1ce;font-size:9px;color:#526079}
+</style></head><body>
+<h1>Laudo de exames laboratoriais</h1>
+<div class="meta">Pedido {{ order.accession_number|default:order.id }} · solicitado em {{ order.requested_at|date:"d/m/Y H:i" }}</div>
+<div class="patient"><strong>{{ order.patient.full_name }}</strong><br>Prontuário {{ order.patient.medical_record_number }}{% if order.patient.birth_date %} · Nascimento {{ order.patient.birth_date|date:"d/m/Y" }}{% endif %}</div>
+<table><thead><tr><th>Exame</th><th>Resultado</th><th>Referência</th><th>Interpretação</th></tr></thead><tbody>
+{% for item in order.items.all %}<tr><td><strong>{{ item.test_name }}</strong>{% if item.method %}<br><small>{{ item.method }}</small>{% endif %}</td><td class="{% if item.abnormal_flag == 'critical' %}critical{% endif %}">{{ item.result_value|default:"Resultado estruturado" }} {{ item.unit }}</td><td>{{ item.reference_range|default:"—" }}</td><td>{{ item.get_abnormal_flag_display }}{% if item.result_notes %}<br><small>{{ item.result_notes }}</small>{% endif %}</td></tr>{% endfor %}
+</tbody></table>
+<div class="footer">Documento eletrônico destinado ao paciente. A autenticidade e integridade são asseguradas pela assinatura digital vinculada ao hash SHA-256 deste arquivo.</div>
+</body></html>

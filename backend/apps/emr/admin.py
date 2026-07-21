@@ -58,9 +58,18 @@ class ProfessionalAdmin(admin.ModelAdmin):
 
 @admin.register(LabTest)
 class LabTestAdmin(admin.ModelAdmin):
-    list_display = ["code", "name", "specimen_type", "unit", "active", "updated_at"]
-    list_filter = ["active", "specimen_type"]
-    search_fields = ["code", "name"]
+    list_display = [
+        "code",
+        "name",
+        "category",
+        "result_type",
+        "specimen_type",
+        "method",
+        "active",
+        "updated_at",
+    ]
+    list_filter = ["active", "category", "result_type", "specimen_type"]
+    search_fields = ["code", "name", "loinc_code", "method"]
     readonly_fields = ["id", "created_at", "updated_at"]
 
 
@@ -70,23 +79,51 @@ class LabOrderItemInline(admin.TabularInline):
     fields = [
         "test",
         "test_name",
+        "category",
+        "result_type",
+        "specimen_type",
+        "method",
+        "loinc_code",
         "unit",
         "reference_range",
+        "components",
+        "reference_ranges",
         "abnormal_flag",
         "resulted_at",
         "validated_at",
         "validated_by",
     ]
-    readonly_fields = ["test_name", "unit", "reference_range", "resulted_at", "validated_at"]
+    readonly_fields = [
+        "test_name",
+        "category",
+        "result_type",
+        "specimen_type",
+        "method",
+        "loinc_code",
+        "unit",
+        "reference_range",
+        "components",
+        "reference_ranges",
+        "resulted_at",
+        "validated_at",
+    ]
 
 
 @admin.register(LabOrder)
 class LabOrderAdmin(admin.ModelAdmin):
-    list_display = ["id", "patient", "status", "requested_by", "requested_at", "completed_at"]
+    list_display = [
+        "accession_number",
+        "patient",
+        "status",
+        "requested_by",
+        "collected_by",
+        "requested_at",
+        "completed_at",
+    ]
     list_filter = ["status", "requested_at", "completed_at"]
-    search_fields = ["patient__medical_record_number"]
-    raw_id_fields = ["patient", "encounter", "requested_by"]
-    readonly_fields = ["id", "requested_at", "collected_at", "completed_at"]
+    search_fields = ["accession_number", "patient__medical_record_number"]
+    raw_id_fields = ["patient", "encounter", "requested_by", "collected_by"]
+    readonly_fields = ["id", "accession_number", "requested_at", "collected_at", "completed_at"]
     inlines = [LabOrderItemInline]
 
 
@@ -94,13 +131,34 @@ class LabOrderAdmin(admin.ModelAdmin):
 class LabOrderItemAdmin(admin.ModelAdmin):
     list_display = [
         "test_name",
+        "category",
+        "result_type",
         "order",
         "abnormal_flag",
         "resulted_at",
         "validated_at",
         "validated_by",
     ]
-    list_filter = ["abnormal_flag", "resulted_at", "validated_at"]
-    search_fields = ["test_name", "order__patient__medical_record_number"]
+    list_filter = ["category", "result_type", "abnormal_flag", "resulted_at", "validated_at"]
+    search_fields = [
+        "test_name",
+        "loinc_code",
+        "order__accession_number",
+        "order__patient__medical_record_number",
+    ]
     raw_id_fields = ["order", "test", "validated_by"]
-    readonly_fields = ["id", "test_name", "unit", "reference_range", "resulted_at", "validated_at"]
+    readonly_fields = [
+        "id",
+        "test_name",
+        "category",
+        "result_type",
+        "specimen_type",
+        "method",
+        "loinc_code",
+        "unit",
+        "reference_range",
+        "components",
+        "reference_ranges",
+        "resulted_at",
+        "validated_at",
+    ]

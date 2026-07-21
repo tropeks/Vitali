@@ -24,7 +24,7 @@ import uuid
 from django.db import models
 
 from apps.core.models import User
-from apps.emr.models import Encounter, Patient
+from apps.emr.models import ClinicalDocument, Encounter, LabOrderItem, Patient
 
 
 class DicomStudy(models.Model):
@@ -54,6 +54,25 @@ class DicomStudy(models.Model):
         blank=True,
         related_name="dicom_studies",
         help_text="Optional — the encounter that requested the study, if known.",
+    )
+    related_lab_item = models.ForeignKey(
+        LabOrderItem,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="imaging_studies",
+        help_text=(
+            "Optional contextual link to a laboratory item for the same patient. "
+            "The study remains a RIS/PACS resource, never a laboratory category."
+        ),
+    )
+    report_document = models.OneToOneField(
+        ClinicalDocument,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="dicom_study",
+        help_text="Optional signed imaging report; content remains on the EMR document endpoint.",
     )
 
     # DICOM identity. StudyInstanceUID is mandatory and unique in DICOM; we

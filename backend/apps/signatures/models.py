@@ -73,3 +73,26 @@ class DigitalSignature(models.Model):
             f"{self.get_document_type_display()} {self.document_id} signed by "
             f"{self.signer_id} @ {self.signed_at:%Y-%m-%d %H:%M}"
         )
+
+
+class LabReportArtifact(models.Model):
+    """Immutable released laboratory report bound to its signed PDF bytes."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    order = models.OneToOneField(
+        "emr.LabOrder", on_delete=models.PROTECT, related_name="report_artifact"
+    )
+    signature = models.OneToOneField(
+        DigitalSignature, on_delete=models.PROTECT, related_name="lab_report_artifact"
+    )
+    pdf = models.BinaryField()
+    released_by = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name="released_lab_reports"
+    )
+    released_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-released_at"]
+
+    def __str__(self):
+        return f"Lab report {self.order_id}"

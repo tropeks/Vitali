@@ -789,8 +789,8 @@ class LabTestViewSet(viewsets.ModelViewSet):
     serializer_class = LabTestSerializer
     permission_classes = [IsAuthenticated, HasPermission("emr.read")]  # type: ignore[list-item]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
-    filterset_fields = ["active", "specimen_type"]
-    search_fields = ["code", "name"]
+    filterset_fields = ["active", "category", "result_type", "specimen_type"]
+    search_fields = ["code", "name", "loinc_code", "method"]
 
     def get_queryset(self):
         return LabTest.objects.all()
@@ -814,7 +814,7 @@ class LabOrderViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = LabOrder.objects.select_related(
-            "patient", "encounter", "requested_by"
+            "patient", "encounter", "requested_by", "collected_by"
         ).prefetch_related("items__test", "items__validated_by")
         for param, field in (
             ("patient", "patient_id"),
@@ -865,9 +865,40 @@ class LabOrderViewSet(viewsets.ModelViewSet):
             return Response(
                 {"detail": "Apenas pedidos solicitados podem ser coletados."}, status=409
             )
+        specimen_details = request.data.get("specimen_details", [])
+        if not isinstance(specimen_details, list) or any(
+            not isinstance(item, dict) for item in specimen_details
+        ):
+            return Response({"specimen_details": "Use uma lista de amostras."}, status=400)
+        allowed = {
+            "identifier",
+            "type",
+            "container",
+            "body_site",
+            "collected_at",
+            "received_at",
+            "condition",
+        }
+        if any(not set(item).issubset(allowed) for item in specimen_details):
+            return Response(
+                {"specimen_details": "Amostra contém campos desconhecidos."}, status=400
+            )
         order.status = LabOrder.Status.COLLECTED
         order.collected_at = timezone.now()
-        order.save(update_fields=["status", "collected_at"])
+        order.collected_by = request.user
+        order.accession_number = str(request.data.get("accession_number", "")).strip()[:64]
+        order.collection_notes = str(request.data.get("collection_notes", "")).strip()
+        order.specimen_details = specimen_details
+        order.save(
+            update_fields=[
+                "status",
+                "collected_at",
+                "collected_by",
+                "accession_number",
+                "collection_notes",
+                "specimen_details",
+            ]
+        )
         log_audit(request, "lab_order_collect", "LabOrder", order.id)
         return Response(self.get_serializer(order).data)
 
@@ -926,7 +957,9 @@ class LabOrderViewSet(viewsets.ModelViewSet):
         item = LabOrderItem.objects.select_for_update().get(pk=item.pk)
         if item.is_validated:
             return Response({"detail": "Resultado já validado."}, status=409)
-        if not item.resulted_at or not item.result_value.strip():
+        if not item.resulted_at or not (
+            item.result_value.strip() or item.result_data or item.microbiology
+        ):
             return Response({"detail": "Lance o resultado antes de validá-lo."}, status=409)
         item.validated_at = timezone.now()
         item.validated_by = request.user
