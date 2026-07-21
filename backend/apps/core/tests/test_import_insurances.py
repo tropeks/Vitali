@@ -1,9 +1,12 @@
 import os
 from io import StringIO
+
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from apps.test_utils import TenantTestCase
+
 from apps.billing.models import InsuranceProvider
+from apps.test_utils import TenantTestCase
+
 
 class TestImportInsurances(TenantTestCase):
     def setUp(self):
@@ -20,7 +23,9 @@ class TestImportInsurances(TenantTestCase):
 
     def test_import_insurances_success(self):
         out = StringIO()
-        call_command("import_insurances", file=self.csv_file, tenant=self.tenant.schema_name, stdout=out)
+        call_command(
+            "import_insurances", file=self.csv_file, tenant=self.tenant.schema_name, stdout=out
+        )
         self.assertIn("Done: 2 created", out.getvalue())
         self.assertEqual(InsuranceProvider.objects.count(), 2)
         p = InsuranceProvider.objects.get(ans_code="123456")
@@ -30,7 +35,9 @@ class TestImportInsurances(TenantTestCase):
     def test_import_insurances_update(self):
         InsuranceProvider.objects.create(ans_code="123456", name="Old Name")
         out = StringIO()
-        call_command("import_insurances", file=self.csv_file, tenant=self.tenant.schema_name, stdout=out)
+        call_command(
+            "import_insurances", file=self.csv_file, tenant=self.tenant.schema_name, stdout=out
+        )
         p = InsuranceProvider.objects.get(ans_code="123456")
         self.assertEqual(p.name, "Plano A")
         self.assertIn("1 created, 1 updated", out.getvalue())

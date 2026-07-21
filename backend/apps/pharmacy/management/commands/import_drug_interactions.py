@@ -224,7 +224,6 @@ class Command(BaseCommand):
         action = "Would import" if dry_run else "Done"
         self.stdout.write(
             self.style.SUCCESS(
-                f"{action}. "
-                f"DrugInteractions: {created_count} created, {updated_count} updated."
+                f"{action}. DrugInteractions: {created_count} created, {updated_count} updated."
             )
         )

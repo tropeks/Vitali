@@ -82,29 +82,29 @@ function LoginContent() {
   };
 
   return (
-    <div className="relative min-h-screen bg-[#DFE5EB] flex items-center justify-center p-4">
+    <div className="relative min-h-screen bg-neu-app flex items-center justify-center p-4">
       <div className="absolute top-4 right-4">
         <LanguageSwitcher />
       </div>
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-b from-[#0066A1] to-[#005282] shadow-[0_3px_10px_rgba(0,102,161,0.3)] border-t border-[#3385b5] mb-4">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-b from-neu-brand to-neu-brandDeep shadow-neu-btn-primary border-t border-neu-brandEdge mb-4">
             <span className="text-white font-bold text-2xl">V</span>
           </div>
-          <h1 className="text-2xl font-bold text-[#1f2937]">{tc("appName")}</h1>
-          <p className="text-[#57606A] text-sm mt-1">{tc("tagline")}</p>
+          <h1 className="text-2xl font-bold text-neu-ink">{tc("appName")}</h1>
+          <p className="text-neu-inkSoft text-sm mt-1">{tc("tagline")}</p>
         </div>
 
         {/* Card */}
-        <div className="bg-[#EBF0F5] border border-white rounded-2xl p-8 shadow-[0_20px_50px_rgba(0,0,0,0.2),_inset_0_2px_4px_rgba(255,255,255,0.8)]">
-          <h2 className="text-lg font-semibold text-[#1f2937] mb-6">{t("heading")}</h2>
+        <div className="bg-neu-outer border border-white rounded-2xl p-8 shadow-neu-modal">
+          <h2 className="text-lg font-semibold text-neu-ink mb-6">{t("heading")}</h2>
 
           {/* Lockout banner */}
           {lockoutSeconds !== null && (
-            <div className="mb-4 p-3 bg-[#CF222E]/10 border border-[#CF222E]/20 rounded-lg flex items-start gap-2">
-              <AlertCircle className="text-[#CF222E] mt-0.5 shrink-0" size={16} />
-              <p className="text-[#CF222E] text-xs font-medium">
+            <div className="mb-4 p-3 bg-neu-danger/10 border border-neu-danger/20 rounded-lg flex items-start gap-2">
+              <AlertCircle className="text-neu-danger mt-0.5 shrink-0" size={16} />
+              <p className="text-neu-danger text-xs font-medium">
                 {t("lockedTitle")}{" "}
                 <span className="font-bold">
                   {t("lockedRetry", { minutes: Math.ceil(lockoutSeconds / 60) })}
@@ -115,57 +115,57 @@ function LoginContent() {
 
           {/* Generic error */}
           {apiError && !lockoutSeconds && (
-            <div className="mb-4 p-3 bg-[#CF222E]/10 border border-[#CF222E]/20 rounded-lg flex items-start gap-2">
-              <AlertCircle className="text-[#CF222E] mt-0.5 shrink-0" size={16} />
-              <p className="text-[#CF222E] text-xs font-medium">{apiError}</p>
+            <div className="mb-4 p-3 bg-neu-danger/10 border border-neu-danger/20 rounded-lg flex items-start gap-2">
+              <AlertCircle className="text-neu-danger mt-0.5 shrink-0" size={16} />
+              <p className="text-neu-danger text-xs font-medium">{apiError}</p>
             </div>
           )}
 
           <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
             {/* Email */}
             <div>
-              <label className="block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide">
+              <label className="neu-label">
                 {t("emailLabel")}
               </label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8C959F]" size={16} />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-neu-inkMuted" size={16} />
                 <input
                   {...register("email")}
                   type="email"
                   autoComplete="email"
                   placeholder={t("emailPlaceholder")}
-                  className="w-full pl-9 pr-4 py-1.5 bg-[#E8EDF2] border-transparent rounded-md text-xs shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#0066A1]/50 transition-all h-8 text-[#24292F] placeholder-[#8C959F]"
+                  className="w-full pl-9 pr-4 py-1.5 bg-neu-input border-transparent rounded-md text-xs shadow-neu-inset focus:outline-none focus:bg-white focus:ring-2 focus:ring-neu-brand/50 transition-all h-8 text-neu-ink placeholder-neu-inkMuted"
                 />
               </div>
               {errors.email && (
-                <p className="mt-1 text-xs text-[#CF222E] font-medium">{errors.email.message}</p>
+                <p className="mt-1 text-xs text-neu-danger font-medium">{errors.email.message}</p>
               )}
             </div>
 
             {/* Password */}
             <div>
-              <label className="block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide">
+              <label className="neu-label">
                 {t("passwordLabel")}
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8C959F]" size={16} />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-neu-inkMuted" size={16} />
                 <input
                   {...register("password")}
                   type={showPassword ? "text" : "password"}
                   autoComplete="current-password"
                   placeholder="••••••••"
-                  className="w-full pl-9 pr-10 py-1.5 bg-[#E8EDF2] border-transparent rounded-md text-xs shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#0066A1]/50 transition-all h-8 text-[#24292F] placeholder-[#8C959F]"
+                  className="w-full pl-9 pr-10 py-1.5 bg-neu-input border-transparent rounded-md text-xs shadow-neu-inset focus:outline-none focus:bg-white focus:ring-2 focus:ring-neu-brand/50 transition-all h-8 text-neu-ink placeholder-neu-inkMuted"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8C959F] hover:text-[#57606A]"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-neu-inkMuted hover:text-neu-inkSoft"
                 >
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
               {errors.password && (
-                <p className="mt-1 text-xs text-[#CF222E] font-medium">{errors.password.message}</p>
+                <p className="mt-1 text-xs text-neu-danger font-medium">{errors.password.message}</p>
               )}
             </div>
 
@@ -173,7 +173,7 @@ function LoginContent() {
             <button
               type="submit"
               disabled={isSubmitting || lockoutSeconds !== null}
-              className="w-full px-6 py-2 text-xs font-bold text-white bg-gradient-to-b from-[#0066A1] to-[#005282] rounded-lg border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-4"
+              className="w-full neu-btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-4"
             >
               {isSubmitting ? (
                 <>
@@ -187,7 +187,7 @@ function LoginContent() {
           </form>
         </div>
 
-        <p className="text-center text-[#8C959F] text-xs mt-6">
+        <p className="text-center text-neu-inkMuted text-xs mt-6">
           {t("rights", { year: new Date().getFullYear() })}
         </p>
       </div>

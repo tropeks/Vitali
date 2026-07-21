@@ -78,24 +78,28 @@ class EncounterSigningService:
         if encounter.status != "open":
             raise ValueError("Apenas consultas abertas podem ser assinadas.")
 
-        from apps.emr.services.icp_brasil_integration import sign_with_icp_brasil
         import json
-        
+
+        from apps.emr.services.icp_brasil_integration import sign_with_icp_brasil
+
         # Serialize the encounter for signing
-        doc_content = json.dumps({
-            "encounter_id": str(encounter.id),
-            "patient_id": str(encounter.patient_id),
-            "professional_id": str(encounter.professional_id),
-            "chief_complaint": encounter.chief_complaint,
-        }, sort_keys=True).encode("utf-8")
-        
+        doc_content = json.dumps(
+            {
+                "encounter_id": str(encounter.id),
+                "patient_id": str(encounter.patient_id),
+                "professional_id": str(encounter.professional_id),
+                "chief_complaint": encounter.chief_complaint,
+            },
+            sort_keys=True,
+        ).encode("utf-8")
+
         is_icp, sig_hash = sign_with_icp_brasil(
             user=self.requesting_user,
             document_type="encounter",
             document_id=str(encounter.id),
             document_content=doc_content,
             pkcs12_b64=pkcs12_b64,
-            pkcs12_password=pkcs12_password
+            pkcs12_password=pkcs12_password,
         )
 
         with transaction.atomic():
@@ -104,7 +108,16 @@ class EncounterSigningService:
             encounter.signed_by = self.requesting_user
             encounter.is_icp_brasil = is_icp
             encounter.signature_hash = sig_hash
-            encounter.save(update_fields=["status", "signed_at", "signed_by", "is_icp_brasil", "signature_hash", "updated_at"])
+            encounter.save(
+                update_fields=[
+                    "status",
+                    "signed_at",
+                    "signed_by",
+                    "is_icp_brasil",
+                    "signature_hash",
+                    "updated_at",
+                ]
+            )
 
             self._audit(
                 "encounter_signed",

@@ -141,7 +141,7 @@ export default function CatalogPage() {
               key={t}
               onClick={() => setTab(t)}
               className={`px-3 py-1.5 text-sm rounded-lg font-medium ${
-                tab === t ? 'bg-blue-50 text-blue-700' : 'text-[#57606A] hover:bg-[#DFE5EB]'
+                tab === t ? 'bg-blue-50 text-blue-700' : 'text-neu-inkSoft hover:bg-neu-app'
               }`}
             >
               {t === 'drugs' ? 'Medicamentos' : 'Materiais'}
@@ -150,7 +150,7 @@ export default function CatalogPage() {
         </div>
         <button
           onClick={() => { setShowForm(true); setForm({ controlled_class: 'none', unit_of_measure: 'un' }) }}
-          className="px-4 py-2 bg-gradient-to-b from-[#0066A1] to-[#005282] border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] text-white text-sm font-medium rounded-lg hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)]"
+          className="px-4 py-2 bg-gradient-to-b from-neu-brand to-neu-brandDeep border-t border-neu-brandEdge shadow-neu-btn-primary text-white text-sm font-medium rounded-lg hover:shadow-neu-btn-primary-hover"
         >
           + {tab === 'drugs' ? 'Medicamento' : 'Material'}
         </button>
@@ -164,17 +164,17 @@ export default function CatalogPage() {
         className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
 
-      {loading && <p className="text-sm text-[#8C959F]">Carregando...</p>}
+      {loading && <p className="text-sm text-neu-inkMuted">Carregando...</p>}
 
       {showForm && (
-        <div className="bg-[#F4F7FA] border border-slate-200 rounded-lg p-4 space-y-4">
-          <h3 className="font-medium text-[#24292F]">
+        <div className="bg-neu-panel border border-slate-200 rounded-lg p-4 space-y-4">
+          <h3 className="font-medium text-neu-ink">
             {tab === 'drugs' ? 'Novo Medicamento' : 'Novo Material'}
           </h3>
           {error && <p className="text-sm text-red-600">{error}</p>}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-[#57606A] mb-1">Nome *</label>
+              <label className="block text-xs font-medium text-neu-inkSoft mb-1">Nome *</label>
               <input
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                 value={form.name ?? ''}
@@ -184,7 +184,7 @@ export default function CatalogPage() {
             {tab === 'drugs' && (
               <>
                 <div>
-                  <label className="block text-xs font-medium text-[#57606A] mb-1">Nome genérico</label>
+                  <label className="block text-xs font-medium text-neu-inkSoft mb-1">Nome genérico</label>
                   <input
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                     value={form.generic_name ?? ''}
@@ -192,7 +192,7 @@ export default function CatalogPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-[#57606A] mb-1">Código ANVISA</label>
+                  <label className="block text-xs font-medium text-neu-inkSoft mb-1">Código ANVISA</label>
                   <input
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono"
                     value={form.anvisa_code ?? ''}
@@ -200,7 +200,7 @@ export default function CatalogPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-[#57606A] mb-1">Forma farmacêutica</label>
+                  <label className="block text-xs font-medium text-neu-inkSoft mb-1">Forma farmacêutica</label>
                   <input
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                     value={form.dosage_form ?? ''}
@@ -208,7 +208,7 @@ export default function CatalogPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-[#57606A] mb-1">Concentração</label>
+                  <label className="block text-xs font-medium text-neu-inkSoft mb-1">Concentração</label>
                   <input
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                     value={form.concentration ?? ''}
@@ -216,7 +216,7 @@ export default function CatalogPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-[#57606A] mb-1">Classe controlada</label>
+                  <label className="block text-xs font-medium text-neu-inkSoft mb-1">Classe controlada</label>
                   <select
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                     value={form.controlled_class ?? 'none'}
@@ -232,7 +232,7 @@ export default function CatalogPage() {
             )}
             {tab === 'materials' && (
               <div>
-                <label className="block text-xs font-medium text-[#57606A] mb-1">Categoria</label>
+                <label className="block text-xs font-medium text-neu-inkSoft mb-1">Categoria</label>
                 <input
                   className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                   value={form.category ?? ''}
@@ -241,7 +241,7 @@ export default function CatalogPage() {
               </div>
             )}
             <div>
-              <label className="block text-xs font-medium text-[#57606A] mb-1">Unidade de medida</label>
+              <label className="block text-xs font-medium text-neu-inkSoft mb-1">Unidade de medida</label>
               <input
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                 value={form.unit_of_measure ?? 'un'}
@@ -253,13 +253,13 @@ export default function CatalogPage() {
             <button
               onClick={handleSave}
               disabled={saving || !form.name}
-              className="px-4 py-2 bg-gradient-to-b from-[#0066A1] to-[#005282] border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] text-white text-sm font-medium rounded-lg hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] disabled:opacity-50"
+              className="px-4 py-2 bg-gradient-to-b from-neu-brand to-neu-brandDeep border-t border-neu-brandEdge shadow-neu-btn-primary text-white text-sm font-medium rounded-lg hover:shadow-neu-btn-primary-hover disabled:opacity-50"
             >
               {saving ? 'Salvando...' : 'Salvar'}
             </button>
             <button
               onClick={() => { setShowForm(false); setForm({}) }}
-              className="px-4 py-2 text-sm text-[#57606A] hover:text-[#24292F]"
+              className="px-4 py-2 text-sm text-neu-inkSoft hover:text-neu-ink"
             >
               Cancelar
             </button>
@@ -268,12 +268,12 @@ export default function CatalogPage() {
       )}
 
       {tab === 'drugs' ? (
-        <div className="bg-[#F4F7FA] rounded-lg border border-slate-200 overflow-x-auto">
+        <div className="bg-neu-panel rounded-lg border border-slate-200 overflow-x-auto">
           <table className="w-full text-sm min-w-[640px]">
             <thead>
-              <tr className="border-b border-slate-100 bg-[#F4F7FA]">
+              <tr className="border-b border-slate-100 bg-neu-panel">
                 {['Medicamento', 'Nome genérico', 'Forma / Concentração', 'Controlado', 'Código ANVISA'].map(h => (
-                  <th key={h} className="text-left px-4 py-3 font-medium text-[#57606A]">{h}</th>
+                  <th key={h} className="text-left px-4 py-3 font-medium text-neu-inkSoft">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -282,30 +282,30 @@ export default function CatalogPage() {
                 <tr><td colSpan={5} className="px-4 py-3 text-center text-slate-400">Nenhum medicamento encontrado</td></tr>
               )}
               {drugs.map(d => (
-                <tr key={d.id} className="border-b border-slate-50 hover:bg-[#F4F7FA] cursor-pointer" onClick={() => router.push(`/farmacia/catalog/drugs/${d.id}`)}>
-                  <td className="px-4 py-3 font-medium text-[#24292F] hover:text-[#0066A1]">{d.name}</td>
-                  <td className="px-4 py-3 text-[#57606A]">{d.generic_name || '—'}</td>
-                  <td className="px-4 py-3 text-[#57606A]">{[d.dosage_form, d.concentration].filter(Boolean).join(' ')|| '—'}</td>
+                <tr key={d.id} className="border-b border-slate-50 hover:bg-neu-panel cursor-pointer" onClick={() => router.push(`/farmacia/catalog/drugs/${d.id}`)}>
+                  <td className="px-4 py-3 font-medium text-neu-ink hover:text-neu-brand">{d.name}</td>
+                  <td className="px-4 py-3 text-neu-inkSoft">{d.generic_name || '—'}</td>
+                  <td className="px-4 py-3 text-neu-inkSoft">{[d.dosage_form, d.concentration].filter(Boolean).join(' ')|| '—'}</td>
                   <td className="px-4 py-3">
                     {d.controlled_class !== 'none' ? (
-                      <span className={`px-2 py-0.5 text-xs font-mono font-semibold rounded ${CONTROLLED_BADGE[d.controlled_class] || 'bg-[#DFE5EB] text-[#57606A]'}`}>
+                      <span className={`px-2 py-0.5 text-xs font-mono font-semibold rounded ${CONTROLLED_BADGE[d.controlled_class] || 'bg-neu-app text-neu-inkSoft'}`}>
                         {d.controlled_class}
                       </span>
                     ) : <span className="text-slate-400">—</span>}
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs text-[#8C959F]">{d.anvisa_code || '—'}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-neu-inkMuted">{d.anvisa_code || '—'}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       ) : (
-        <div className="bg-[#F4F7FA] rounded-lg border border-slate-200 overflow-hidden">
+        <div className="bg-neu-panel rounded-lg border border-slate-200 overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-100 bg-[#F4F7FA]">
+              <tr className="border-b border-slate-100 bg-neu-panel">
                 {['Material', 'Categoria', 'Unidade'].map(h => (
-                  <th key={h} className="text-left px-4 py-3 font-medium text-[#57606A]">{h}</th>
+                  <th key={h} className="text-left px-4 py-3 font-medium text-neu-inkSoft">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -314,10 +314,10 @@ export default function CatalogPage() {
                 <tr><td colSpan={3} className="px-4 py-3 text-center text-slate-400">Nenhum material encontrado</td></tr>
               )}
               {materials.map(m => (
-                <tr key={m.id} className="border-b border-slate-50 hover:bg-[#F4F7FA] cursor-pointer" onClick={() => router.push(`/farmacia/catalog/materials/${m.id}`)}>
-                  <td className="px-4 py-3 font-medium text-[#24292F] hover:text-[#0066A1]">{m.name}</td>
-                  <td className="px-4 py-3 text-[#57606A]">{m.category || '—'}</td>
-                  <td className="px-4 py-3 text-[#57606A]">{m.unit_of_measure}</td>
+                <tr key={m.id} className="border-b border-slate-50 hover:bg-neu-panel cursor-pointer" onClick={() => router.push(`/farmacia/catalog/materials/${m.id}`)}>
+                  <td className="px-4 py-3 font-medium text-neu-ink hover:text-neu-brand">{m.name}</td>
+                  <td className="px-4 py-3 text-neu-inkSoft">{m.category || '—'}</td>
+                  <td className="px-4 py-3 text-neu-inkSoft">{m.unit_of_measure}</td>
                 </tr>
               ))}
             </tbody>

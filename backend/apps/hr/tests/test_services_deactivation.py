@@ -14,7 +14,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.core.models import AuditLog, Role, User
-from apps.emr.models import Professional
+from apps.emr.models import Professional, ScheduleConfig
 from apps.hr.models import Employee
 from apps.hr.services import EmployeeDeactivationService
 from apps.test_utils import TenantTestCase
@@ -199,6 +199,98 @@ class TestEmployeeDeactivationService(TenantTestCase):
         assert token_log.new_data["correlation_id"] == cid
         assert prof_log.new_data["correlation_id"] == cid
 
+    # ── 5. Schedule removed from the booking agenda ──────────────────────────
+
+    def test_deactivate_flips_schedule_config_inactive(self):
+        """Clinical deactivation flips ScheduleConfig.is_active off so the
+        professional drops out of the booking agenda (F-15 acceptance criterion)."""
+        user = _make_user("sched.deact@example.com", role=_medico_role())
+        employee = _make_employee(user)
+        professional = _make_professional(user)
+        config = ScheduleConfig.objects.create(professional=professional, working_days=[0, 1])
+
+        result = self.service.deactivate(employee, requesting_user=self.requester)
+
+        config.refresh_from_db()
+        assert config.is_active is False
+        assert result["schedule_deactivated"] is True
+
+    # ── 6. Signal-triggered cascade (F-15, issue #128) ───────────────────────
+
+    def test_signal_fires_cascade_on_status_flip_to_terminated(self):
+        """Flipping employment_status->terminated via a plain save() (no service
+        call, no DELETE endpoint) must run the full cascade via the post_save
+        signal: User deactivated, refresh tokens revoked, Professional and its
+        ScheduleConfig deactivated, and the audit chain written."""
+        user = _make_user("signal.deact@example.com", role=_medico_role())
+        employee = _make_employee(user)
+        professional = _make_professional(user)
+        config = ScheduleConfig.objects.create(professional=professional, working_days=[0, 1, 2])
+        RefreshToken.for_user(user)  # something to blacklist
+
+        employee.employment_status = "terminated"
+        employee.save()
+
+        user.refresh_from_db()
+        employee.refresh_from_db()
+        professional.refresh_from_db()
+        config.refresh_from_db()
+        assert user.is_active is False
+        assert employee.terminated_at is not None
+        assert professional.is_active is False
+        assert config.is_active is False
+        # Cascade audit written even though there is no requesting_user.
+        assert AuditLog.objects.filter(
+            resource_id=str(employee.id), action="employee_terminated"
+        ).exists()
+        assert AuditLog.objects.filter(resource_id=str(user.id), action="tokens_revoked").exists()
+
+    def test_signal_cascade_is_idempotent(self):
+        """Re-saving an already-terminated employee does not re-run the cascade
+        (no duplicate AuditLog entries)."""
+        user = _make_user("idem.deact@example.com", role=_admin_role())
+        employee = _make_employee(user)
+
+        employee.employment_status = "terminated"
+        employee.save()
+        first_count = AuditLog.objects.filter(resource_id=str(employee.id)).count()
+
+        employee.save()  # already terminated → signal must no-op
+        second_count = AuditLog.objects.filter(resource_id=str(employee.id)).count()
+        assert second_count == first_count
+
+    def test_service_path_emits_no_duplicate_audit_from_signal(self):
+        """Going through the service still yields exactly one of each audit entry —
+        the re-entrancy guard stops the signal from doubling them."""
+        user = _make_user("guard.deact@example.com", role=_admin_role())
+        employee = _make_employee(user)
+
+        self.service.deactivate(employee, requesting_user=self.requester)
+
+        assert (
+            AuditLog.objects.filter(
+                resource_id=str(employee.id), action="employee_terminated"
+            ).count()
+            == 1
+        )
+        assert (
+            AuditLog.objects.filter(resource_id=str(user.id), action="tokens_revoked").count() == 1
+        )
+
+    def test_signal_ignored_on_status_flip_to_active(self):
+        """A transition to a non-terminated status must not trigger the cascade."""
+        user = _make_user("active.flip@example.com", role=_admin_role())
+        employee = _make_employee(user, employment_status="leave")
+
+        employee.employment_status = "active"
+        employee.save()
+
+        user.refresh_from_db()
+        assert user.is_active is True
+        assert not AuditLog.objects.filter(
+            resource_id=str(employee.id), action="employee_terminated"
+        ).exists()
+
 
 class TestEmployeeDeactivationView(TenantTestCase):
     """Integration test for DELETE /api/v1/hr/employees/{id}/ response shape."""
@@ -278,3 +370,99 @@ class TestEmployeeReactivationView(TenantTestCase):
         ).first()
         assert react_log is not None
         assert react_log.new_data["user_id"] == str(user.id)
+
+
+class TestEmployeeTerminationPatchView(TenantTestCase):
+    """Integration tests for the PATCH termination path (F-15 review fixes).
+
+    Covers the two guarantees added after the pre-merge review:
+    1. Atomicity — the status flip and the signal-triggered cascade commit as
+       one unit; a mid-cascade failure rolls back the flip (no orphaned access,
+       no silent-no-op retry).
+    2. Actor attribution — cascade AuditLog rows record the authenticated
+       admin who issued the PATCH, not ``user=None``.
+    """
+
+    def setUp(self):
+        super().setUp()
+        _admin_role()
+        _medico_role()
+        self.requester = _requesting_user()
+        self.requester.is_staff = True
+        self.requester.is_superuser = True
+        self.requester.save(update_fields=["is_staff", "is_superuser"])
+        self.client_api = APIClient()
+        self.client_api.defaults["SERVER_NAME"] = self.__class__.domain.domain
+        self.client_api.force_authenticate(user=self.requester)
+
+    def _patch_terminate(self, employee):
+        return self.client_api.patch(
+            f"/api/v1/hr/employees/{employee.id}/",
+            {"employment_status": "terminated"},
+            format="json",
+        )
+
+    def test_patch_terminate_runs_cascade_with_actor_attribution(self):
+        """PATCH employment_status=terminated runs the full cascade and the
+        cascade AuditLog rows are attributed to request.user (not None)."""
+        user = _make_user("patch.actor@example.com", role=_medico_role())
+        employee = _make_employee(user)
+        professional = _make_professional(user)
+        config = ScheduleConfig.objects.create(professional=professional, working_days=[0, 1])
+        RefreshToken.for_user(user)  # something to blacklist
+
+        response = self._patch_terminate(employee)
+
+        assert response.status_code == 200, response.data
+        employee.refresh_from_db()
+        user.refresh_from_db()
+        config.refresh_from_db()
+        assert employee.employment_status == "terminated"
+        assert employee.terminated_at is not None
+        assert user.is_active is False
+        assert config.is_active is False
+
+        # Actor attribution: signal forwarded request.user into the audit chain.
+        emp_log = AuditLog.objects.get(resource_id=str(employee.id), action="employee_terminated")
+        token_log = AuditLog.objects.get(resource_id=str(user.id), action="tokens_revoked")
+        assert emp_log.user_id == self.requester.id
+        assert token_log.user_id == self.requester.id
+
+    def test_patch_cascade_failure_rolls_back_status_flip(self):
+        """If the cascade fails mid-flight (AuditLog write blows up), the whole
+        PATCH — including the employment_status flip — rolls back: no
+        "terminated" employee with live access, and the retry is NOT a no-op."""
+        from unittest.mock import patch
+
+        user = _make_user("patch.rollback@example.com", role=_admin_role())
+        employee = _make_employee(user)
+        RefreshToken.for_user(user)
+
+        with patch(
+            "apps.core.models.AuditLog.objects.create",
+            side_effect=RuntimeError("audit store down"),
+        ):
+            with self.assertRaises(RuntimeError):
+                self._patch_terminate(employee)
+
+        # The flip rolled back together with the cascade — nothing was orphaned.
+        employee.refresh_from_db()
+        user.refresh_from_db()
+        assert employee.employment_status == "active"
+        assert employee.terminated_at is None
+        assert user.is_active is True
+        assert not AuditLog.objects.filter(
+            resource_id=str(employee.id), action="employee_terminated"
+        ).exists()
+
+        # Because the status never persisted, a retry re-runs the full cascade
+        # instead of silently no-oping on the idempotency guard.
+        response = self._patch_terminate(employee)
+        assert response.status_code == 200, response.data
+        employee.refresh_from_db()
+        user.refresh_from_db()
+        assert employee.employment_status == "terminated"
+        assert user.is_active is False
+        assert AuditLog.objects.filter(
+            resource_id=str(employee.id), action="employee_terminated"
+        ).exists()

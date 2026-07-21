@@ -36,7 +36,7 @@ function TableSkeleton() {
       {Array.from({ length: 5 }).map((_, i) => (
         <tr key={i}>
           <td colSpan={8} className="px-4 py-3">
-            <div className="h-4 w-4/5 animate-pulse rounded bg-slate-100" />
+            <div className="h-4 w-4/5 animate-pulse rounded bg-neu-input" />
           </td>
         </tr>
       ))}
@@ -149,22 +149,22 @@ export default function WaitingRoomPage() {
     <PageShell variant="operational">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Sala de Espera Operacional</h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <h1 className="text-2xl font-semibold text-neu-ink">Sala de Espera Operacional</h1>
+          <p className="mt-1 text-sm text-neu-inkSoft">
             Fila de hoje com atualização automática.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => router.push('/appointments')}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="neu-btn-secondary inline-flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-neu-brand/50"
           >
             <CalendarDays size={14} />
             Agenda
           </button>
           <button
             onClick={refresh}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="neu-btn-secondary inline-flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-neu-brand/50"
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             Atualizar
@@ -206,26 +206,26 @@ export default function WaitingRoomPage() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="flex items-center gap-2 rounded-lg border border-neu-danger/20 bg-neu-danger/10 px-4 py-3 text-sm text-neu-danger">
           <AlertTriangle size={16} />
           {error}
         </div>
       )}
 
       {nextPatient && !loading && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+        <div className="rounded-xl border border-white bg-neu-panel p-4 shadow-neu-panel">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Próximo paciente</p>
-              <p className="mt-1 text-lg font-semibold text-blue-950">{nextPatient.patient_name}</p>
-              <p className="text-sm text-blue-800">
+              <p className="text-xs font-semibold uppercase tracking-wide text-neu-brand">Próximo paciente</p>
+              <p className="mt-1 text-lg font-semibold text-neu-ink">{nextPatient.patient_name}</p>
+              <p className="text-sm text-neu-inkSoft">
                 {formatPtTime(nextPatient.start_time)} · {nextPatient.professional_name} · {nextPatient.type_display}
               </p>
             </div>
             <button
               disabled={updating === nextPatient.id}
               onClick={() => startAppointment(nextPatient)}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              className="neu-btn-primary inline-flex items-center justify-center gap-2 disabled:opacity-50"
             >
               <PlayCircle size={16} />
               Chamar agora
@@ -234,27 +234,27 @@ export default function WaitingRoomPage() {
         </div>
       )}
 
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+      <div className="overflow-hidden rounded-xl border border-white bg-neu-panel shadow-neu-panel">
         <div className="hidden overflow-x-auto lg:block">
           <table className="w-full min-w-[960px] text-sm">
             <thead>
-              <tr className="border-b border-slate-100 bg-slate-50">
+              <tr className="border-b border-neu-app bg-neu-outer">
                 {['Horário', 'Paciente', 'Prontuário', 'Profissional', 'Tipo', 'Espera', 'Status', 'Ações'].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neu-inkSoft">
                     {h}
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
+            <tbody className="divide-y divide-neu-app/60">
               {loading ? (
                 <TableSkeleton />
               ) : appointments.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-4 py-14 text-center">
-                    <CheckCircle2 size={36} className="mx-auto mb-3 text-slate-300" />
-                    <p className="font-medium text-slate-700">Nenhum paciente aguardando</p>
-                    <p className="mt-1 text-sm text-slate-500">
+                    <CheckCircle2 size={36} className="mx-auto mb-3 text-neu-inkMuted" />
+                    <p className="font-medium text-neu-ink">Nenhum paciente aguardando</p>
+                    <p className="mt-1 text-sm text-neu-inkSoft">
                       Todos os agendamentos de hoje foram atendidos ou estão em andamento.
                     </p>
                   </td>
@@ -263,13 +263,13 @@ export default function WaitingRoomPage() {
                 const meta = getAppointmentStatusMeta(appt.status)
                 const waitMin = minutesSince(appt.arrived_at ?? appt.start_time)
                 return (
-                  <tr key={appt.id} className={`border-l-4 ${meta.borderClass} ${meta.rowClass} hover:bg-blue-50`}>
-                    <td className="px-4 py-3 font-mono text-slate-700">{formatPtTime(appt.start_time)}</td>
-                    <td className="px-4 py-3 font-medium text-slate-900">{appt.patient_name}</td>
-                    <td className="px-4 py-3 font-mono text-xs text-slate-500">{appt.patient_mrn}</td>
-                    <td className="px-4 py-3 text-slate-600">{appt.professional_name}</td>
-                    <td className="px-4 py-3 text-slate-500">{appt.type_display}</td>
-                    <td className="px-4 py-3 text-slate-700">{waitMin == null ? '—' : `${waitMin} min`}</td>
+                  <tr key={appt.id} className={`border-l-4 ${meta.borderClass} ${meta.rowClass} hover:bg-neu-brand/5`}>
+                    <td className="px-4 py-3 font-mono text-neu-ink">{formatPtTime(appt.start_time)}</td>
+                    <td className="px-4 py-3 font-medium text-neu-ink">{appt.patient_name}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-neu-inkMuted">{appt.patient_mrn}</td>
+                    <td className="px-4 py-3 text-neu-inkSoft">{appt.professional_name}</td>
+                    <td className="px-4 py-3 text-neu-inkMuted">{appt.type_display}</td>
+                    <td className="px-4 py-3 text-neu-ink">{waitMin == null ? '—' : `${waitMin} min`}</td>
                     <td className="px-4 py-3">
                       <StatusBadge meta={meta} label={appointmentBadgeLabel(appt.status, appt.status_display)} />
                     </td>
@@ -278,7 +278,7 @@ export default function WaitingRoomPage() {
                         <button
                           disabled={updating === appt.id || appt.arrived_at !== null}
                           onClick={() => checkIn(appt)}
-                          className="inline-flex items-center gap-1 rounded-lg bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-200 disabled:opacity-50"
+                          className="inline-flex items-center gap-1 rounded-lg bg-neu-brand/10 px-2.5 py-1 text-xs font-semibold text-neu-brand hover:bg-neu-brand/20 disabled:opacity-50"
                           title={appt.arrived_at ? 'Paciente já registrou chegada' : 'Registrar chegada do paciente'}
                         >
                           <UserCheck size={12} />
@@ -288,7 +288,7 @@ export default function WaitingRoomPage() {
                           <button
                             disabled={updating === appt.id}
                             onClick={() => startAppointment(appt)}
-                            className="inline-flex items-center gap-1 rounded-lg bg-green-100 px-2.5 py-1 text-xs font-semibold text-green-700 hover:bg-green-200 disabled:opacity-50"
+                            className="inline-flex items-center gap-1 rounded-lg bg-neu-success/10 px-2.5 py-1 text-xs font-semibold text-neu-success hover:bg-neu-success/20 disabled:opacity-50"
                             title="Chamar paciente"
                           >
                             <PlayCircle size={12} />
@@ -298,7 +298,7 @@ export default function WaitingRoomPage() {
                           <button
                             disabled={updating === appt.id}
                             onClick={() => updateStatus(appt, 'completed')}
-                            className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-200 disabled:opacity-50"
+                            className="inline-flex items-center gap-1 rounded-lg bg-neu-inkMuted/10 px-2.5 py-1 text-xs font-semibold text-neu-inkSoft hover:bg-neu-inkMuted/20 disabled:opacity-50"
                             title="Concluir atendimento"
                           >
                             <CheckCircle2 size={12} />
@@ -308,7 +308,7 @@ export default function WaitingRoomPage() {
                         <button
                           disabled={updating === appt.id}
                           onClick={() => updateStatus(appt, 'no_show')}
-                          className="inline-flex items-center gap-1 rounded-lg bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-100 disabled:opacity-50"
+                          className="inline-flex items-center gap-1 rounded-lg bg-neu-danger/10 px-2.5 py-1 text-xs font-semibold text-neu-danger hover:bg-neu-danger/20 disabled:opacity-50"
                           title="Marcar como não compareceu"
                         >
                           <XCircle size={12} />
@@ -323,19 +323,19 @@ export default function WaitingRoomPage() {
           </table>
         </div>
 
-        <div className="divide-y divide-slate-100 lg:hidden">
+        <div className="divide-y divide-neu-app/60 lg:hidden">
           {loading ? (
             Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="p-4">
-                <div className="h-4 w-3/4 animate-pulse rounded bg-slate-100" />
-                <div className="mt-2 h-3 w-1/2 animate-pulse rounded bg-slate-100" />
+                <div className="h-4 w-3/4 animate-pulse rounded bg-neu-input" />
+                <div className="mt-2 h-3 w-1/2 animate-pulse rounded bg-neu-input" />
               </div>
             ))
           ) : appointments.length === 0 ? (
             <div className="p-8 text-center">
-              <CheckCircle2 size={36} className="mx-auto mb-3 text-slate-300" />
-              <p className="font-medium text-slate-700">Nenhum paciente aguardando</p>
-              <p className="mt-1 text-sm text-slate-500">A operação de hoje está sem fila pendente.</p>
+              <CheckCircle2 size={36} className="mx-auto mb-3 text-neu-inkMuted" />
+              <p className="font-medium text-neu-ink">Nenhum paciente aguardando</p>
+              <p className="mt-1 text-sm text-neu-inkSoft">A operação de hoje está sem fila pendente.</p>
             </div>
           ) : appointments.map((appt) => {
             const meta = getAppointmentStatusMeta(appt.status)
@@ -344,15 +344,15 @@ export default function WaitingRoomPage() {
               <div key={appt.id} className={`border-l-4 p-4 ${meta.borderClass} ${meta.rowClass}`}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="truncate font-semibold text-slate-900">{appt.patient_name}</p>
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="truncate font-semibold text-neu-ink">{appt.patient_name}</p>
+                    <p className="mt-1 text-xs text-neu-inkSoft">
                       {formatPtTime(appt.start_time)} · {appt.professional_name}
                     </p>
-                    <p className="mt-1 font-mono text-xs text-slate-500">{appt.patient_mrn}</p>
+                    <p className="mt-1 font-mono text-xs text-neu-inkMuted">{appt.patient_mrn}</p>
                   </div>
                   <StatusBadge meta={meta} label={appointmentBadgeLabel(appt.status, appt.status_display)} className="shrink-0" />
                 </div>
-                <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
+                <div className="mt-3 flex flex-wrap gap-2 text-xs text-neu-inkSoft">
                   <span>{appt.type_display}</span>
                   <span>·</span>
                   <span>{waitMin == null ? 'Espera não registrada' : `${waitMin} min de espera`}</span>
@@ -361,21 +361,21 @@ export default function WaitingRoomPage() {
                   <button
                     disabled={updating === appt.id || appt.arrived_at !== null}
                     onClick={() => checkIn(appt)}
-                    className="rounded-lg bg-blue-100 px-2 py-2 text-xs font-semibold text-blue-700 disabled:opacity-50"
+                    className="rounded-lg bg-neu-brand/10 px-2 py-2 text-xs font-semibold text-neu-brand disabled:opacity-50"
                   >
                     Chegou
                   </button>
                   <button
                     disabled={updating === appt.id}
                     onClick={() => appt.status === 'in_progress' ? updateStatus(appt, 'completed') : startAppointment(appt)}
-                    className="rounded-lg bg-green-100 px-2 py-2 text-xs font-semibold text-green-700 disabled:opacity-50"
+                    className="rounded-lg bg-neu-success/10 px-2 py-2 text-xs font-semibold text-neu-success disabled:opacity-50"
                   >
                     {appt.status === 'in_progress' ? 'Concluir' : 'Chamar'}
                   </button>
                   <button
                     disabled={updating === appt.id}
                     onClick={() => updateStatus(appt, 'no_show')}
-                    className="rounded-lg bg-red-50 px-2 py-2 text-xs font-semibold text-red-600 disabled:opacity-50"
+                    className="rounded-lg bg-neu-danger/10 px-2 py-2 text-xs font-semibold text-neu-danger disabled:opacity-50"
                   >
                     Faltou
                   </button>
