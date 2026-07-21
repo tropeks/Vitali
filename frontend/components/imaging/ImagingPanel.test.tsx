@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ImagingPanel } from './ImagingPanel';
@@ -41,7 +41,7 @@ describe('ImagingPanel', () => {
         expect.objectContaining({ headers: { Authorization: 'Bearer token' } }),
       ),
     );
-    expect(await screen.findByText('Aguardando PACS')).toBeInTheDocument();
+    expect(await screen.findByText('Imagens em processamento')).toBeInTheDocument();
     expect(screen.queryByTitle(/Vitali Imagem/)).not.toBeInTheDocument();
   });
 
@@ -63,7 +63,7 @@ describe('ImagingPanel', () => {
     );
   });
 
-  it('lists all studies and embeds OHIF in the PACS workspace', async () => {
+  it('loads the viewer only after the clinician clicks the study', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(
         JSON.stringify([
@@ -94,6 +94,11 @@ describe('ImagingPanel', () => {
         expect.objectContaining({ headers: { Authorization: 'Bearer token' } }),
       ),
     );
+    const openButton = await screen.findByRole('button', { name: 'Abrir' });
+    expect(screen.queryByTitle(/Vitali Imagem/)).not.toBeInTheDocument();
+
+    fireEvent.click(openButton);
+
     expect(await screen.findByTitle(/Vitali Imagem/)).toHaveAttribute(
       'src',
       '/visualizador/viewer?StudyInstanceUIDs=1.2.826.1',

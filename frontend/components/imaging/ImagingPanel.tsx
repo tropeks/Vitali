@@ -70,9 +70,9 @@ export function ImagingPanel({ encounterId, labOrderId, labOrderItemId }: Imagin
         if (!data) return;
         const list: DicomStudy[] = Array.isArray(data) ? data : (data.results ?? []);
         setStudies(list);
-        // Auto-open the first viewable study so the clinician sees imagery immediately.
-        const firstViewable = list.find((s) => s.has_pixel_data);
-        setActiveUid(firstViewable ? firstViewable.study_instance_uid : null);
+        // Loading the DICOM workspace is intentionally user-driven. Keeping the
+        // selection empty avoids fetching images and allocating a viewer until click.
+        setActiveUid(null);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
