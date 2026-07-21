@@ -21,7 +21,12 @@ from django.conf import settings
 from django.db import connection
 from rest_framework_simplejwt.tokens import AccessToken
 
-from apps.core.tenant_auth import SCHEMA_CLAIM
+from apps.core.tenant_auth import SCHEMA_CLAIM, SMART_TOKEN_USE, TOKEN_USE_CLAIM
+
+# Claim carrying the SMART launch-context patient id (when the app was launched
+# with a patient context). Consumed by apps.fhir.permissions for compartment
+# confinement of `patient/*.read`-only tokens.
+PATIENT_CLAIM = "patient"
 
 # Scopes advertised in discovery + CapabilityStatement. Read-only surface, so no
 # write scopes. `patient/*.read` and `user/*.read` cover the resource types.
@@ -61,16 +66,23 @@ def access_token_ttl_seconds() -> int:
     return int(lifetime.total_seconds())
 
 
-def mint_access_token(user, *, scope: str) -> str:
+def mint_access_token(user, *, scope: str, patient_id: str = "") -> str:
     """Mint a tenant-bound FHIR access token (stringified JWT) for ``user``.
 
     Mirrors ``apps.core.tenant_auth.tokens_for_user``: stamps the current schema so
     the token is detectable if replayed against another tenant, and attaches the
-    granted ``scope`` claim.
+    granted ``scope`` claim. Additionally stamps ``token_use="smart"`` so
+    ``TenantJWTAuthentication`` restricts the token to the FHIR surface (a SMART
+    grant must never double as a full Vitali API login), and — when the app was
+    launched with patient context — the ``patient`` claim that confines
+    ``patient/*.read``-only tokens to that patient's compartment.
     """
     token = AccessToken.for_user(user)
     token[SCHEMA_CLAIM] = connection.schema_name  # type: ignore[attr-defined]
     token["scope"] = scope
+    token[TOKEN_USE_CLAIM] = SMART_TOKEN_USE
+    if patient_id:
+        token[PATIENT_CLAIM] = patient_id
     return str(token)
 
 

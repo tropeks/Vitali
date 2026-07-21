@@ -217,11 +217,19 @@ class TokenView(APIView):
             ):
                 return _oauth_error("invalid_grant", "PKCE verification failed.")
 
-        # Single-use: burn the code before issuing the token.
-        auth_code.used_at = timezone.now()
-        auth_code.save(update_fields=["used_at"])
+        # Single-use: burn the code atomically before issuing the token. The
+        # conditional UPDATE wins for exactly one request, so two concurrent
+        # redemptions of the same code cannot both receive a token (the plain
+        # read-check-save pattern would race).
+        burned = SmartAuthorizationCode.objects.filter(
+            pk=auth_code.pk, used_at__isnull=True
+        ).update(used_at=timezone.now())
+        if not burned:
+            return _oauth_error("invalid_grant", "Authorization code is expired or already used.")
 
-        access_token = smart.mint_access_token(auth_code.user, scope=auth_code.scope)
+        access_token = smart.mint_access_token(
+            auth_code.user, scope=auth_code.scope, patient_id=auth_code.patient_id
+        )
         body = {
             "access_token": access_token,
             "token_type": "Bearer",

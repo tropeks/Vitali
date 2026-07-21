@@ -21,6 +21,17 @@ from rest_framework_simplejwt.tokens import RefreshToken
 PUBLIC_SCHEMA = "public"
 SCHEMA_CLAIM = "schema"
 
+# ── SMART-on-FHIR token audience restriction ─────────────────────────────────
+# Access tokens minted by the SMART-on-FHIR token endpoint (apps.fhir) carry
+# ``token_use="smart"``. They authenticate through the same TenantJWTAuthentication
+# as regular login tokens, but are only honoured on the FHIR surface — a SMART app
+# granted read scopes must never receive a token usable against the whole Vitali
+# API as the authorizing user. The constants live here (not in apps.fhir) because
+# apps.core must not import from domain apps (.importlinter).
+TOKEN_USE_CLAIM = "token_use"
+SMART_TOKEN_USE = "smart"
+SMART_ALLOWED_PATH_PREFIX = "/api/v1/fhir/"
+
 
 def enforcement_enabled() -> bool:
     return bool(getattr(settings, "ENFORCE_TENANT_MEMBERSHIP", False))
