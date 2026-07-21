@@ -106,6 +106,46 @@ def get_available_slots(
     return result
 
 
+def count_slots_for_config(config, start_date: date, end_date: date) -> int:
+    """
+    Gross bookable-slot capacity a ScheduleConfig generates in [start_date, end_date] inclusive.
+
+    Unlike ``get_available_slots`` this ignores existing bookings — it returns the total
+    number of slots the agenda *offers*, which is the denominator for fill-rate / occupancy
+    metrics. Returns 0 for an inactive config or one with no working days.
+
+    Args:
+        config: emr.ScheduleConfig instance
+        start_date: first day to count (inclusive)
+        end_date: last day to count (inclusive)
+    """
+    if not config.is_active:
+        return 0
+
+    working_days: list[int] = config.working_days or []
+    if not working_days or end_date < start_date:
+        return 0
+
+    duration = timedelta(minutes=config.slot_duration_minutes)
+    total = 0
+    current = start_date
+    while current <= end_date:
+        if current.weekday() in working_days:
+            total += len(
+                _generate_day_slots(
+                    day=current,
+                    work_start=config.working_hours_start,
+                    work_end=config.working_hours_end,
+                    lunch_start=config.lunch_start,
+                    lunch_end=config.lunch_end,
+                    duration=duration,
+                )
+            )
+        current += timedelta(days=1)
+
+    return total
+
+
 def _to_time(t) -> time:
     """Coerce str '08:00' or datetime.time to datetime.time."""
     if isinstance(t, str):

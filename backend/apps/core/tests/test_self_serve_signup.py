@@ -25,6 +25,7 @@ import datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from django.db import transaction
 from django.test import SimpleTestCase, override_settings
 from django.utils import timezone
 from django_tenants.utils import get_public_schema_name, schema_context
@@ -139,6 +140,63 @@ class ProvisioningHelpersTests(TenantTestCase):
         self.assertEqual(provisioning.build_domain_url("app.vitali.app", "boa"), "boa.vitali.app")
 
 
+# ─── Provisioning conflicts (issue #167) ──────────────────────────────────────
+
+
+class ProvisioningConflictTests(TenantTestCase):
+    """A unique collision on tenant creation must surface as a recoverable
+    ProvisioningConflict (→ friendly 409), not a raw IntegrityError (→ 500)."""
+
+    def test_duplicate_cnpj_raises_conflict_and_leaves_no_orphan(self):
+        _schemaless_tenant(
+            name="First",
+            slug="first-clinic",
+            status=Tenant.Status.TRIAL,
+            cnpj=VALID_CNPJ_FORMATTED,
+        )
+        with schema_context(get_public_schema_name()):
+            # Savepoint so the IntegrityError doesn't poison the TestCase's outer
+            # atomic wrapper — lets us assert on DB state afterwards. In the real
+            # request path there's no enclosing atomic, so the aborted txn is just
+            # discarded and the view returns a clean 409.
+            with self.assertRaises(provisioning.ProvisioningConflict) as ctx:
+                with transaction.atomic():
+                    provisioning.provision_tenant(
+                        name="Second Clinic",
+                        slug="second-clinic",
+                        cnpj=VALID_CNPJ_FORMATTED,  # collides on the unique CNPJ
+                        owner_email="second.owner@clinic.com",
+                        owner_full_name="Second Owner",
+                        owner_password="Passw0rd!",
+                        host="localhost",
+                        create_subscription=False,
+                        send_welcome=False,
+                    )
+        self.assertEqual(ctx.exception.code, "CNPJ_TAKEN")
+        # INSERT failed before schema creation — no half-tenant left behind.
+        self.assertFalse(Tenant.objects.filter(slug="second-clinic").exists())
+
+    def test_existing_owner_email_raises_conflict(self):
+        with schema_context(get_public_schema_name()):
+            User.objects.create_user(
+                email="taken.owner@clinic.com", password="X", full_name="Taken"
+            )
+            with self.assertRaises(provisioning.ProvisioningConflict) as ctx:
+                provisioning.provision_tenant(
+                    name="Email Clinic",
+                    slug="email-clinic",
+                    cnpj=None,
+                    owner_email="taken.owner@clinic.com",
+                    owner_full_name="Dup",
+                    owner_password="Passw0rd!",
+                    host="localhost",
+                    create_subscription=False,
+                    send_welcome=False,
+                )
+        self.assertEqual(ctx.exception.code, "EMAIL_TAKEN")
+        self.assertFalse(Tenant.objects.filter(slug="email-clinic").exists())
+
+
 # ─── Subscription webhook ─────────────────────────────────────────────────────
 
 
@@ -206,6 +264,53 @@ class SubscriptionWebhookTests(TenantTestCase):
         self.subscription.refresh_from_db()
         self.assertEqual(self.tenant.status, Tenant.Status.ACTIVE)
         self.assertEqual(self.subscription.status, Subscription.Status.ACTIVE)
+
+    def test_suspended_tenant_not_reactivated_by_payment(self):
+        """Issue #168: a late/retried payment event must NOT undo an ops
+        suspension. SUSPENDED (and CANCELLED) tenants stay put; the event is
+        ignored (200, no state change) so Asaas stops retrying."""
+        suspended = _schemaless_tenant(
+            name="Suspended Clinic", slug="suspended-clinic", status=Tenant.Status.SUSPENDED
+        )
+        sub = Subscription.objects.create(
+            tenant=suspended,
+            plan=self.plan,
+            active_modules=["emr"],
+            monthly_price="299.00",
+            status=Subscription.Status.PAST_DUE,
+            current_period_start=timezone.now().date(),
+            current_period_end=(timezone.now() + datetime.timedelta(days=14)).date(),
+            asaas_subscription_id="sub_suspended",
+        )
+        resp = self._post(
+            {"event": "PAYMENT_RECEIVED", "payment": {"subscription": "sub_suspended"}}
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        suspended.refresh_from_db()
+        sub.refresh_from_db()
+        self.assertEqual(suspended.status, Tenant.Status.SUSPENDED)  # unchanged
+        self.assertEqual(sub.status, Subscription.Status.PAST_DUE)  # not reactivated
+
+    def test_cancelled_tenant_not_reactivated_by_payment(self):
+        cancelled = _schemaless_tenant(
+            name="Cancelled Clinic", slug="cancelled-clinic", status=Tenant.Status.CANCELLED
+        )
+        Subscription.objects.create(
+            tenant=cancelled,
+            plan=self.plan,
+            active_modules=["emr"],
+            monthly_price="299.00",
+            status=Subscription.Status.CANCELLED,
+            current_period_start=timezone.now().date(),
+            current_period_end=(timezone.now() + datetime.timedelta(days=14)).date(),
+            asaas_subscription_id="sub_cancelled",
+        )
+        resp = self._post(
+            {"event": "PAYMENT_CONFIRMED", "payment": {"subscription": "sub_cancelled"}}
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        cancelled.refresh_from_db()
+        self.assertEqual(cancelled.status, Tenant.Status.CANCELLED)
 
 
 # ─── Admin tenant list ────────────────────────────────────────────────────────
@@ -403,6 +508,71 @@ class SelfServeSignupEndpointTests(TenantTestCase):
         resp = self.client.post(self.URL, self._payload(), format="json")
         self.assertEqual(resp.status_code, 500)
         self.assertEqual(resp.json()["error"]["code"], "SIGNUP_FAILED")
+
+    def test_duplicate_cnpj_returns_409(self):
+        """Issue #167: a CNPJ already in use → friendly 409, never a 500 — and
+        the expensive schema build never starts (rejected up front)."""
+        _schemaless_tenant(
+            name="Existing",
+            slug="existing-cnpj-clinic",
+            status=Tenant.Status.TRIAL,
+            cnpj=VALID_CNPJ_FORMATTED,
+        )
+        resp = self.client.post(self.URL, self._payload(), format="json")
+        self.assertEqual(resp.status_code, 409, resp.content)
+        self.assertEqual(resp.json()["error"]["code"], "CNPJ_TAKEN")
+
+    @patch("apps.core.views_signup._attach_asaas_billing")
+    @patch("apps.core.views_signup.provision_tenant")
+    def test_provisioning_conflict_returns_409(self, mock_provision, _mock_billing):
+        """Issue #167: a concurrent signup that slips past the up-front checks
+        raises ProvisioningConflict inside provision_tenant → 409, not 500."""
+        for code in ("CNPJ_TAKEN", "EMAIL_TAKEN", "SLUG_TAKEN"):
+            from django.core.cache import cache
+
+            cache.clear()  # avoid the 5/hour throttle across loop iterations
+            mock_provision.side_effect = provisioning.ProvisioningConflict(code)
+            resp = self.client.post(self.URL, self._payload(), format="json")
+            self.assertEqual(resp.status_code, 409, (code, resp.content))
+            self.assertEqual(resp.json()["error"]["code"], code)
+
+    @patch("apps.core.views_signup._attach_asaas_billing")
+    @patch("apps.core.views_signup.provision_tenant")
+    def test_forged_xff_does_not_bypass_throttle(self, mock_provision, _mock_billing):
+        """Issue #169: with NUM_PROXIES=1, get_ident keys the throttle on the
+        real client IP (last XFF entry, appended by nginx). An attacker rotating
+        the client-controlled portion of X-Forwarded-For cannot mint fresh
+        buckets — the 5/hour signup limit still bites on the 6th request."""
+
+        def _fake(**kwargs):
+            slug = kwargs["slug"]
+            return provisioning.ProvisionResult(
+                tenant=SimpleNamespace(
+                    id="00000000-0000-0000-0000-000000000000",
+                    name=kwargs["name"],
+                    slug=slug,
+                    status=Tenant.Status.PENDING,
+                    trial_ends_at=None,
+                ),
+                domain=SimpleNamespace(domain=f"{slug}.localhost"),
+                owner=SimpleNamespace(email=kwargs["owner_email"]),
+                subscription=None,
+            )
+
+        mock_provision.side_effect = _fake
+        # "203.0.113.9" simulates the real client IP nginx appends as the LAST
+        # XFF hop; the leading value is the spoofable, client-controlled portion.
+        statuses = []
+        for i in range(6):
+            resp = self.client.post(
+                self.URL,
+                self._payload(email=f"owner{i}@clinic.com"),
+                format="json",
+                HTTP_X_FORWARDED_FOR=f"66.66.66.{i}, 203.0.113.9",
+            )
+            statuses.append(resp.status_code)
+        self.assertEqual(statuses[:5], [201, 201, 201, 201, 201], statuses)
+        self.assertEqual(statuses[5], 429, statuses)
 
 
 class AttachAsaasBillingTests(TenantTestCase):

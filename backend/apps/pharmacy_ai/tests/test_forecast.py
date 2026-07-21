@@ -95,6 +95,44 @@ class DemandForecastServiceTest(TenantTestCase):
         with self.assertRaises(ValueError):
             forecast_for_drug(self.drug, target_days=-3)
 
+    def test_no_history_falls_back_to_baseline_model(self):
+        # No dispensation history → learned model cannot train → baseline.
+        result = forecast_for_drug(self.drug, window_days=30, target_days=60)
+        self.assertEqual(result.model, "moving_average_baseline")
+        self.assertIsNone(result.seasonality_period_days)
+        self.assertEqual(result.predicted_avg_daily_consumption, 0.0)
+        self.assertEqual(result.recommended_reorder_quantity_model, 0.0)
+
+    def test_seasonal_history_adopts_learned_model(self):
+        """#131 acceptance: with weekly-seasonal history the learned model wins."""
+        # Top up the dispensing lot so 10 weeks of dispenses never go negative
+        # (the per-lot ledger guard rejects movements that would underflow).
+        StockMovement.objects.create(
+            stock_item=self.stock,
+            movement_type="entry",
+            quantity=Decimal("5000"),
+            performed_by=self.user,
+        )
+        weekly_pattern = [20, 22, 21, 23, 25, 8, 5]  # busy weekdays, quiet weekend
+        # 10 weeks (70 days) of one dispense per day following the weekly shape.
+        for days_ago in range(1, 71):
+            self._dispense(weekly_pattern[days_ago % 7], days_ago=days_ago)
+
+        result = forecast_for_drug(self.drug, window_days=30, target_days=60)
+
+        self.assertEqual(result.model, "holt_winters_seasonal")
+        self.assertEqual(result.seasonality_period_days, 7)
+        self.assertIsNotNone(result.accuracy)
+        self.assertIsNotNone(result.accuracy["mape_learned"])
+        self.assertIsNotNone(result.accuracy["mape_baseline"])
+        # The criterion itself: learned beats the arithmetic baseline on hold-out.
+        self.assertLess(result.accuracy["mape_learned"], result.accuracy["mape_baseline"])
+        self.assertTrue(result.accuracy["improved"])
+        # The learned recommendation is populated and seasonally-informed (> 0).
+        self.assertGreater(result.predicted_avg_daily_consumption, 0.0)
+        # Baseline fields remain present for backward-compatible comparison.
+        self.assertGreaterEqual(result.recommended_reorder_quantity, 0.0)
+
 
 class DemandForecastEndpointTest(TenantTestCase):
     def setUp(self):
@@ -125,6 +163,22 @@ class DemandForecastEndpointTest(TenantTestCase):
         self.assertEqual(resp.data["current_stock"], 50.0)
         self.assertEqual(resp.data["avg_daily_consumption"], 0.0)
         self.assertIsNone(resp.data["projected_days_of_supply"])
+
+    def test_payload_exposes_learned_model_fields(self):
+        # Same endpoint, same shape — now also carries the learned-model block
+        # (issue #131). With no history it reports the baseline.
+        resp = self.client.get(FORECAST_URL, {"drug": str(self.drug.pk)})
+        self.assertEqual(resp.status_code, 200)
+        for key in (
+            "model",
+            "seasonality_period_days",
+            "predicted_avg_daily_consumption",
+            "projected_days_of_supply_model",
+            "recommended_reorder_quantity_model",
+            "accuracy",
+        ):
+            self.assertIn(key, resp.data)
+        self.assertEqual(resp.data["model"], "moving_average_baseline")
 
     def test_get_respects_custom_window_and_target(self):
         resp = self.client.get(

@@ -42,6 +42,9 @@ urlpatterns = [
     # so the browser's report-uri (no slash) resolves here after proxying.
     path("api/v1/security/csp-report/", csp_report, name="csp-report"),
     path("api/v1/", include("apps.core.urls_public")),
+    # Orthanc PACS webhook (E-012) — PACS-wide feed, must fan out across all
+    # tenants, so it runs from the public schema (like the Celery poller).
+    path("api/v1/", include("apps.imaging.urls_public")),
     # TUSSSyncLog lives in public schema — must be routable from public schema URL conf
     path(
         "api/v1/ai/tuss-sync-status/", TUSSSyncStatusView.as_view(), name="tuss-sync-status-public"

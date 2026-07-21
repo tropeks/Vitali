@@ -285,6 +285,12 @@ jobs:
       - name: Validate staging compose config
         run: STAGING_ENV_FILE=.env.staging.example GHCR_REPO=${{ github.repository_owner }} IMAGE_TAG=ci docker compose -f docker-compose.staging.yml --env-file .env.staging.example config
 
+      - name: Validate prod compose config
+        # The release pipeline (release-deploy.yml) deploys prod via this file, so
+        # keep it parseable. Point PROD_ENV_FILE at the example so the env_file
+        # default (/etc/vitali/secrets.env) doesn't trip the validation.
+        run: PROD_ENV_FILE=.env.staging.example GHCR_REPO=${{ github.repository_owner }} IMAGE_TAG=ci docker compose -f docker-compose.prod.yml --env-file .env.staging.example config
+
       - name: Build backend image
         run: docker build ./backend -t vitali-backend:ci
 
