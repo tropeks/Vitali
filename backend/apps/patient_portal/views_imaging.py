@@ -64,9 +64,9 @@ class MeImagingViewerAuthorizationView(APIView):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
         # Clinical users retain their tenant module + RBAC authorization.
-        if self._STAFF_MODULE.has_permission(request, self) and self._STAFF_PERMISSION.has_permission(
+        if self._STAFF_MODULE.has_permission(
             request, self
-        ):
+        ) and self._STAFF_PERMISSION.has_permission(request, self):
             return Response(status=status.HTTP_204_NO_CONTENT)
 
         # Patient users are confined to the active portal binding below.
