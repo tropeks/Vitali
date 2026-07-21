@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
-import { PageShell, SectionState } from '@/components/shared'
+import { Badge, Button, PageShell, SectionState } from '@/components/shared'
 
 interface DoseRule {
   id: string
@@ -89,11 +90,19 @@ export default function FormularioPage() {
 
   return (
     <PageShell variant="operational">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Formulário (doses)</h1>
-        <p className="text-sm text-slate-500 mt-0.5">
-          Revise e valide as regras de dose antes que entrem em vigor.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-neu-ink">Formulário (doses)</h1>
+          <p className="text-sm text-neu-inkMuted mt-0.5">
+            Revise e valide as regras de dose antes que entrem em vigor.
+          </p>
+        </div>
+        <Link
+          href="/configuracoes/farmacia/formulario/upload"
+          className="inline-flex items-center px-4 py-2 text-xs font-bold text-white bg-gradient-to-b from-neu-brand to-neu-brandDeep rounded-lg border-t border-neu-brandEdge shadow-neu-btn-primary hover:shadow-neu-btn-primary-hover transition-all"
+        >
+          Importar CSV
+        </Link>
       </div>
 
       {error && (
@@ -104,7 +113,7 @@ export default function FormularioPage() {
         />
       )}
 
-      {loading && <p className="text-sm text-slate-500">Carregando...</p>}
+      {loading && <p className="text-sm text-neu-inkMuted">Carregando...</p>}
 
       {!loading && !error && rules.length === 0 && (
         <SectionState
@@ -114,10 +123,10 @@ export default function FormularioPage() {
       )}
 
       {!loading && !error && rules.length > 0 && (
-        <div className="rounded-lg border border-slate-200 bg-white overflow-x-auto">
+        <div className="bg-neu-panelAlt rounded-xl border border-white shadow-neu-panel overflow-x-auto">
           <table className="w-full text-sm min-w-[900px]">
             <thead>
-              <tr className="border-b border-slate-100 bg-slate-50">
+              <tr className="border-b border-white bg-neu-panel">
                 {[
                   'Medicamento',
                   'Base',
@@ -130,7 +139,7 @@ export default function FormularioPage() {
                 ].map((h) => (
                   <th
                     key={h}
-                    className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500"
+                    className="text-left px-4 py-3 text-xs font-semibold text-neu-inkSoft uppercase tracking-wide"
                   >
                     {h}
                   </th>
@@ -139,49 +148,42 @@ export default function FormularioPage() {
             </thead>
             <tbody>
               {rules.map((rule) => (
-                <tr key={rule.id} className="border-b border-slate-100 last:border-0">
-                  <td className="px-4 py-3 font-medium text-slate-900">{rule.drug_name}</td>
-                  <td className="px-4 py-3 text-slate-600">{rule.basis}</td>
-                  <td className="px-4 py-3 text-slate-600">{rule.dose_unit}</td>
-                  <td className="px-4 py-3 text-slate-600 text-xs">{formatLimits(rule)}</td>
+                <tr key={rule.id} className="border-b border-white last:border-0">
+                  <td className="px-4 py-3 font-medium text-neu-ink">{rule.drug_name}</td>
+                  <td className="px-4 py-3 text-neu-inkSoft">{rule.basis}</td>
+                  <td className="px-4 py-3 text-neu-inkSoft">{rule.dose_unit}</td>
+                  <td className="px-4 py-3 text-neu-inkSoft text-xs">{formatLimits(rule)}</td>
                   <td className="px-4 py-3">
                     {rule.active ? (
-                      <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-                        Sim
-                      </span>
+                      <Badge variant="success">Sim</Badge>
                     ) : (
-                      <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                        Não
-                      </span>
+                      <Badge variant="neutral">Não</Badge>
                     )}
                   </td>
                   <td className="px-4 py-3">
                     {rule.validated ? (
-                      <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-                        Validada
-                      </span>
+                      <Badge variant="success">Validada</Badge>
                     ) : (
-                      <span className="inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700">
-                        Pendente
-                      </span>
+                      <Badge variant="warning">Pendente</Badge>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-slate-600 text-xs">
+                  <td className="px-4 py-3 text-neu-inkSoft text-xs">
                     {rule.validated && rule.validated_by
                       ? `${rule.validated_by}${rule.validated_at ? ' · ' + formatDate(rule.validated_at) : ''}`
                       : '—'}
                   </td>
                   <td className="px-4 py-3">
                     {!rule.validated ? (
-                      <button
+                      <Button
+                        type="button"
+                        variant="primary"
                         onClick={() => handleValidar(rule.id)}
                         disabled={validatingId === rule.id}
-                        className="inline-flex items-center rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {validatingId === rule.id ? 'Validando…' : 'Validar'}
-                      </button>
+                      </Button>
                     ) : (
-                      <span className="text-xs text-slate-400">—</span>
+                      <span className="text-xs text-neu-inkMuted">—</span>
                     )}
                   </td>
                 </tr>

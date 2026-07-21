@@ -51,6 +51,7 @@ class TenantEnforcementProductionCheckTests(SimpleTestCase):
         with self.settings(ENFORCE_TENANT_MEMBERSHIP=False):
             # Temporarily remove ENVIRONMENT if it exists
             from django.conf import settings as dj_settings
+
             original = getattr(dj_settings, "ENVIRONMENT", None)
             had_environment = hasattr(dj_settings, "ENVIRONMENT")
             if had_environment:

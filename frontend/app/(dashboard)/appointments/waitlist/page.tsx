@@ -175,7 +175,7 @@ export default function WaitlistPage() {
           {activeEntries.length > 0 && (
             <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
               <div className="px-4 py-3 border-b border-slate-100">
-                <h2 className=" block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide ">Em andamento</h2>
+                <h2 className="neu-label">Em andamento</h2>
               </div>
               <div className="divide-y divide-slate-100">
                 {activeEntries.map(entry => (
@@ -224,13 +224,13 @@ export default function WaitlistPage() {
           {otherEntries.length > 0 && (
             <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
               <div className="px-4 py-3 border-b border-slate-100">
-                <h2 className=" block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide text-slate-400">Histórico</h2>
+                <h2 className=" block text-[11px] font-bold text-neu-inkSoft mb-1.5 uppercase tracking-wide text-slate-400">Histórico</h2>
               </div>
               <div className="divide-y divide-slate-100">
                 {otherEntries.map(entry => (
                   <div key={entry.id} className="px-4 py-3 flex items-center justify-between gap-4 flex-wrap opacity-60">
                     <div className="space-y-0.5 min-w-0">
-                      <p className=" block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide truncate">
+                      <p className="neu-label truncate">
                         {entry.patient_name ?? "—"}
                       </p>
                       <p className="text-xs text-slate-400 truncate">

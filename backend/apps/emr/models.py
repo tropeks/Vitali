@@ -543,7 +543,9 @@ class Prescription(models.Model):
         self.status = "signed"
         self.is_icp_brasil = is_icp_brasil
         self.signature_hash = signature_hash
-        self.save(update_fields=["signed_at", "signed_by", "status", "is_icp_brasil", "signature_hash"])
+        self.save(
+            update_fields=["signed_at", "signed_by", "status", "is_icp_brasil", "signature_hash"]
+        )
 
     def __str__(self):
         return f"Receita {self.id} — {self.patient} ({self.get_status_display()})"
@@ -864,6 +866,12 @@ class EscalationConfig(models.Model):
     Controls who is notified when a DeteriorationAlert of severity ESCALATION
     is raised. NEVER blocks clinical flow — the router is always fail-safe.
     One active config per tenant is the expected usage; service reads .first().
+
+    TODO: enforce "one active config" with a partial UniqueConstraint
+    (fields=["is_active"], condition=Q(is_active=True)) + a data migration
+    deactivating all but the newest active row. Today multiple is_active=True
+    rows can coexist and readers silently pick the newest — surprising for
+    operators editing an older row.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
