@@ -574,7 +574,7 @@ class TenantRegistrationView(APIView):
                 base = host.split(".", 1)[-1] if "." in host else host
                 domain_url = f"{tenant.slug}.{base}"
 
-            domain, _ = Domain.objects.get_or_create(
+            domain, _domain_created = Domain.objects.get_or_create(
                 domain=domain_url,
                 defaults={"tenant": tenant, "is_primary": True},
             )
@@ -586,7 +586,7 @@ class TenantRegistrationView(APIView):
 
                 roles_created = {}
                 for role_name, perms in DEFAULT_ROLES.items():
-                    role, _ = Role.objects.get_or_create(
+                    role, _role_created = Role.objects.get_or_create(
                         name=role_name,
                         defaults={"permissions": perms, "is_system": True},
                     )
