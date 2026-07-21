@@ -19,6 +19,10 @@ vi.mock('@/lib/api', () => ({
   apiFetch: vi.fn(),
 }))
 
+vi.mock('@/components/shared/LanguageSwitcher', () => ({
+  LanguageSwitcher: () => <div data-testid="language-switcher" />,
+}))
+
 const user: UserDTO = {
   id: 'u-1',
   full_name: 'E2E Admin',
@@ -41,6 +45,10 @@ describe('DashboardShell', () => {
     )
 
     expect(screen.getByRole('link', { name: /Pacientes/ })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Laboratório/ })).toHaveAttribute(
+      'href',
+      '/laboratorio',
+    )
     expect(screen.getByRole('heading', { name: 'Centro operacional' })).toBeInTheDocument()
   })
 

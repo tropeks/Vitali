@@ -488,6 +488,126 @@ class ClinicalDocument(models.Model):
         return f"{self.get_doc_type_display()} — {self.encounter}"
 
 
+class LabTest(models.Model):
+    """Tenant-scoped laboratory test catalog entry."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    code = models.CharField(max_length=40, unique=True)
+    name = models.CharField(max_length=160)
+    specimen_type = models.CharField(max_length=80, blank=True)
+    unit = models.CharField(max_length=32, blank=True)
+    reference_range = models.CharField(max_length=160, blank=True)
+    active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return f"{self.code} — {self.name}"
+
+
+class LabOrder(models.Model):
+    """A laboratory order created during or outside an encounter."""
+
+    class Status(models.TextChoices):
+        ORDERED = "ordered", "Solicitado"
+        COLLECTED = "collected", "Coletado"
+        IN_PROGRESS = "in_progress", "Em análise"
+        COMPLETED = "completed", "Concluído"
+        CANCELLED = "cancelled", "Cancelado"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    patient = models.ForeignKey(Patient, on_delete=models.PROTECT, related_name="lab_orders")
+    encounter = models.ForeignKey(
+        Encounter,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="lab_orders",
+    )
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.ORDERED, db_index=True
+    )
+    clinical_indication = EncryptedTextField(blank=True)
+    notes = EncryptedTextField(blank=True)
+    requested_by = models.ForeignKey(
+        "core.User", on_delete=models.PROTECT, related_name="requested_lab_orders"
+    )
+    requested_at = models.DateTimeField(auto_now_add=True)
+    collected_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-requested_at"]
+        indexes = [
+            models.Index(fields=["patient", "-requested_at"], name="emr_lab_pat_date_idx"),
+            models.Index(fields=["status", "-requested_at"], name="emr_lab_status_idx"),
+        ]
+
+    def __str__(self):
+        return f"Exames {self.patient_id} — {self.get_status_display()}"
+
+
+class LabOrderItem(models.Model):
+    """One ordered test and its validated result."""
+
+    class AbnormalFlag(models.TextChoices):
+        NORMAL = "normal", "Normal"
+        LOW = "low", "Baixo"
+        HIGH = "high", "Alto"
+        CRITICAL = "critical", "Crítico"
+        UNDETERMINED = "undetermined", "Indeterminado"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    order = models.ForeignKey(LabOrder, on_delete=models.CASCADE, related_name="items")
+    test = models.ForeignKey(LabTest, on_delete=models.PROTECT, related_name="order_items")
+    test_name = models.CharField(max_length=160)
+    unit = models.CharField(max_length=32, blank=True)
+    reference_range = models.CharField(max_length=160, blank=True)
+    result_value = EncryptedTextField(blank=True)
+    abnormal_flag = models.CharField(
+        max_length=14,
+        choices=AbnormalFlag.choices,
+        default=AbnormalFlag.UNDETERMINED,
+    )
+    result_notes = EncryptedTextField(blank=True)
+    resulted_at = models.DateTimeField(null=True, blank=True)
+    validated_at = models.DateTimeField(null=True, blank=True)
+    validated_by = models.ForeignKey(
+        "core.User",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="validated_lab_results",
+    )
+
+    class Meta:
+        ordering = ["test_name"]
+        constraints = [
+            models.UniqueConstraint(fields=["order", "test"], name="emr_lab_order_test_unique"),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(validated_at__isnull=True, validated_by__isnull=True)
+                    | models.Q(
+                        validated_at__isnull=False,
+                        validated_by__isnull=False,
+                        resulted_at__isnull=False,
+                    )
+                ),
+                name="emr_lab_validation_consistent",
+            ),
+        ]
+
+    @property
+    def is_validated(self):
+        return self.validated_at is not None
+
+    def __str__(self):
+        return f"{self.test_name} — {self.order_id}"
+
+
 # ─── Sprint 7 (minimal S-015): Prescription ──────────────────────────────────
 
 

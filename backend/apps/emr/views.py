@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 
+from django.db import transaction
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, status, viewsets
@@ -18,6 +19,9 @@ from .models import (
     ClinicalDocument,
     Encounter,
     EncounterProcedure,
+    LabOrder,
+    LabOrderItem,
+    LabTest,
     Patient,
     PatientInsurance,
     Prescription,
@@ -34,6 +38,9 @@ from .serializers import (
     EncounterListSerializer,
     EncounterProcedureSerializer,
     EncounterSerializer,
+    LabOrderItemSerializer,
+    LabOrderSerializer,
+    LabTestSerializer,
     MedicalHistorySerializer,
     PatientCreateSerializer,
     PatientInsuranceSerializer,
@@ -774,6 +781,162 @@ class ClinicalDocumentViewSet(viewsets.ModelViewSet):
             new_data={"signed_by": str(request.user.id), "signed_at": str(doc.signed_at)},
         )
         return Response(ClinicalDocumentSerializer(doc).data)
+
+
+class LabTestViewSet(viewsets.ModelViewSet):
+    """Catálogo tenant-scoped de exames laboratoriais."""
+
+    serializer_class = LabTestSerializer
+    permission_classes = [IsAuthenticated, HasPermission("emr.read")]  # type: ignore[list-item]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ["active", "specimen_type"]
+    search_fields = ["code", "name"]
+
+    def get_queryset(self):
+        return LabTest.objects.all()
+
+    def get_permissions(self):
+        if self.action in ("create", "update", "partial_update", "destroy"):
+            return [IsAuthenticated(), HasPermission("emr.write")]
+        return super().get_permissions()
+
+    def perform_destroy(self, instance):
+        instance.active = False
+        instance.save(update_fields=["active", "updated_at"])
+
+
+class LabOrderViewSet(viewsets.ModelViewSet):
+    """Pedido, coleta, resultado e validação de exames laboratoriais."""
+
+    serializer_class = LabOrderSerializer
+    permission_classes = [IsAuthenticated, HasPermission("emr.read")]  # type: ignore[list-item]
+    http_method_names = ["get", "post", "patch", "head", "options"]
+
+    def get_queryset(self):
+        qs = LabOrder.objects.select_related(
+            "patient", "encounter", "requested_by"
+        ).prefetch_related("items__test", "items__validated_by")
+        for param, field in (
+            ("patient", "patient_id"),
+            ("encounter", "encounter_id"),
+            ("status", "status"),
+        ):
+            value = self.request.query_params.get(param)
+            if value:
+                qs = qs.filter(**{field: value})
+        return qs
+
+    def get_permissions(self):
+        if self.action in (
+            "create",
+            "partial_update",
+            "collect",
+            "result",
+            "validate_result",
+            "cancel",
+        ):
+            return [IsAuthenticated(), HasPermission("emr.write")]
+        return super().get_permissions()
+
+    def perform_create(self, serializer):
+        order = serializer.save(requested_by=self.request.user)
+        log_audit(
+            self.request,
+            "lab_order_create",
+            "LabOrder",
+            order.id,
+            new_data={"patient": str(order.patient_id), "tests": order.items.count()},
+        )
+
+    def _locked_order(self):
+        """Resolve through the scoped queryset, then lock only the order row.
+
+        Locking ``get_queryset()`` would also lock its nullable encounter outer
+        join, which PostgreSQL rejects.
+        """
+        order_id = self.get_object().pk
+        return LabOrder.objects.select_for_update().get(pk=order_id)
+
+    @action(detail=True, methods=["post"])
+    @transaction.atomic
+    def collect(self, request, pk=None):
+        order = self._locked_order()
+        if order.status != LabOrder.Status.ORDERED:
+            return Response(
+                {"detail": "Apenas pedidos solicitados podem ser coletados."}, status=409
+            )
+        order.status = LabOrder.Status.COLLECTED
+        order.collected_at = timezone.now()
+        order.save(update_fields=["status", "collected_at"])
+        log_audit(request, "lab_order_collect", "LabOrder", order.id)
+        return Response(self.get_serializer(order).data)
+
+    @action(detail=True, methods=["post"])
+    @transaction.atomic
+    def cancel(self, request, pk=None):
+        order = self._locked_order()
+        if order.status in (LabOrder.Status.COMPLETED, LabOrder.Status.CANCELLED):
+            return Response({"detail": "Pedido finalizado não pode ser cancelado."}, status=409)
+        order.status = LabOrder.Status.CANCELLED
+        order.save(update_fields=["status"])
+        log_audit(request, "lab_order_cancel", "LabOrder", order.id)
+        return Response(self.get_serializer(order).data)
+
+    def _item(self, order, item_id):
+        try:
+            return order.items.get(pk=item_id)
+        except (LabOrderItem.DoesNotExist, ValueError):
+            return None
+
+    @action(detail=True, methods=["post"], url_path=r"items/(?P<item_id>[^/.]+)/result")
+    @transaction.atomic
+    def result(self, request, pk=None, item_id=None):
+        order = self._locked_order()
+        if order.status not in (LabOrder.Status.COLLECTED, LabOrder.Status.IN_PROGRESS):
+            return Response({"detail": "O pedido precisa estar coletado e em aberto."}, status=409)
+        item = self._item(order, item_id)
+        if item is None:
+            return Response({"detail": "Item não encontrado."}, status=404)
+        item = LabOrderItem.objects.select_for_update().get(pk=item.pk)
+        if item.is_validated:
+            return Response({"detail": "Resultado validado não pode ser alterado."}, status=409)
+        serializer = LabOrderItemSerializer(
+            item,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        item = serializer.save(resulted_at=timezone.now(), validated_at=None, validated_by=None)
+        order.status = LabOrder.Status.IN_PROGRESS
+        order.save(update_fields=["status"])
+        log_audit(request, "lab_result_record", "LabOrderItem", item.id)
+        return Response(LabOrderItemSerializer(item).data)
+
+    @action(detail=True, methods=["post"], url_path=r"items/(?P<item_id>[^/.]+)/validate")
+    @transaction.atomic
+    def validate_result(self, request, pk=None, item_id=None):
+        order = self._locked_order()
+        if order.status != LabOrder.Status.IN_PROGRESS:
+            return Response(
+                {"detail": "O pedido não possui resultados pendentes de validação."}, status=409
+            )
+        item = self._item(order, item_id)
+        if item is None:
+            return Response({"detail": "Item não encontrado."}, status=404)
+        item = LabOrderItem.objects.select_for_update().get(pk=item.pk)
+        if item.is_validated:
+            return Response({"detail": "Resultado já validado."}, status=409)
+        if not item.resulted_at or not item.result_value.strip():
+            return Response({"detail": "Lance o resultado antes de validá-lo."}, status=409)
+        item.validated_at = timezone.now()
+        item.validated_by = request.user
+        item.save(update_fields=["validated_at", "validated_by"])
+        log_audit(request, "lab_result_validate", "LabOrderItem", item.id)
+        if not order.items.filter(validated_at__isnull=True).exists():
+            order.status = LabOrder.Status.COMPLETED
+            order.completed_at = timezone.now()
+            order.save(update_fields=["status", "completed_at"])
+        return Response(self.get_serializer(order).data)
 
 
 # ─── Sprint 7 (S-015): Prescription ───────────────────────────────────────────
