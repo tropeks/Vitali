@@ -59,6 +59,90 @@ Subsequent deploys are handled automatically by `.github/workflows/deploy-stagin
 
 ---
 
+## Beta via Cloudflare Tunnel (no public host required)
+
+Field-tested recipe (first run: 2026-07-21, `vitali.qtec.me` on a homelab PVE box)
+for exposing a beta from any box with outbound internet — no port-forwarding, no
+public IP. Pain points found on the way are called out inline so the next person
+doesn't rediscover them.
+
+### 1. Stack
+
+Run the standard staging compose under an isolated project name so it can coexist
+with a dev stack, with a host-local override file (never committed) for anything
+host-specific — e.g. remapping nginx's published port when 80 is taken:
+
+```bash
+docker compose -p vitali-staging \
+  -f docker-compose.staging.yml -f ~/vitali-staging-local.yml \
+  --env-file .env.staging up -d
+```
+
+`.env.staging` gotchas (beyond the `.env.staging.example` comments):
+- `ALLOWED_HOSTS` needs every public host **and** the tenant hosts
+  (a leading-dot entry like `.example.com` covers one level of subdomains).
+- `CSRF_TRUSTED_ORIGINS` likewise, with `https://` prefixes.
+- `.env.staging` is gitignored — keep the real file on the host only.
+
+> **PAIN (fixed):** `vitali/settings/production.py` used to lose the
+> `django_tenants.postgresql_backend` engine when applying `DATABASE_URL`
+> (`env.db()` emits its own `ENGINE` key), crashing `migrate_schemas` with
+> `'DatabaseWrapper' object has no attribute 'set_schema'`. It was latent for
+> weeks because no host had ever booted the production settings module. Fixed
+> by re-pinning the engine after the update.
+
+### 2. Database bootstrap
+
+```bash
+docker compose -p vitali-staging ... exec django python manage.py migrate_schemas --shared
+BOOTSTRAP_ADMIN_PASSWORD='<generated>' docker compose -p vitali-staging ... exec \
+  -e BOOTSTRAP_ADMIN_PASSWORD django python manage.py bootstrap_beta \
+  --public-domain vitali.example.com \
+  --clinic-slug demo --clinic-domain vitali-demo.example.com \
+  --admin-email admin@demo.example.com
+```
+
+`bootstrap_beta` is idempotent (public tenant + domain, clinic tenant + domain,
+default roles, clinic admin). It replaces the `manage.py shell -c` blobs that
+used to live only in the CI workflow.
+
+### 3. Tunnel + DNS
+
+Add ingress rules to the tunnel config (`/etc/cloudflared/config.yml`) pointing
+every public hostname at the nginx port, `cloudflared tunnel ingress validate`,
+restart the service, then create one **proxied CNAME per hostname** targeting
+`<tunnel-id>.cfargotunnel.com` (via `cloudflared tunnel route dns` — requires
+the origin `cert.pem` from `cloudflared tunnel login` — or manually in the
+Cloudflare dashboard).
+
+> **PAIN (constraint, not a bug):** Cloudflare's free universal certificate
+> only covers **one** subdomain level (`*.example.com`). A tenant at
+> `demo.vitali.example.com` gets TLS handshake failures at the edge. For betas
+> under a shared zone, put tenants on first-level hosts (`vitali-demo.example.com`)
+> and register that as the tenant's `Domain` row — `bootstrap_beta
+> --clinic-domain` exists for exactly this. (Paid plans can use Advanced
+> Certificate Manager / Total TLS instead.)
+
+> **PAIN (self-serve signup caveat):** tenant provisioning derives new tenant
+> domains from the request host (`<slug>.<host>`), so self-serve signups on a
+> tunneled beta will mint second-level hosts with the TLS limitation above.
+> Fine for testing the flow itself; add DNS + a first-level `Domain` row per
+> tenant you actually want to use.
+
+### 4. Verify
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' https://vitali.example.com/login          # 200
+curl -s -o /dev/null -w '%{http_code}\n' https://vitali-demo.example.com/login    # 200
+```
+
+Cloudflare error cheat-sheet seen during setup: **530** = hostname's DNS record
+doesn't target this tunnel (missing/wrong CNAME); **502** = tunnel fine, origin
+port wrong or app down; TLS handshake failure = the wildcard-depth constraint
+above.
+
+---
+
 ## Release Pipeline — Semver Tag Deploy (staging → prod)
 
 Tagged releases run an end-to-end deploy with **zero manual SSH** via

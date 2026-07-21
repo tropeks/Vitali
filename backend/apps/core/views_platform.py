@@ -502,7 +502,7 @@ class WedgeValueDashboardView(APIView):
 
 class TenantSubscriptionView(APIView):
     """
-    GET /api/v1/core/subscription/
+    GET /api/v1/subscription/
     Returns the current tenant's subscription details including pricing.
     Restricted to staff/admin users — pricing data is business-sensitive.
     """

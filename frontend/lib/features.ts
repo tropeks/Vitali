@@ -1,16 +1,7 @@
-import { getAccessToken } from '@/lib/auth';
+import { apiFetch } from '@/lib/api';
 
 export async function getActiveModules(): Promise<string[]> {
-  const token = getAccessToken();
-  if (!token) return [];
-  try {
-    const res = await fetch('/api/v1/features/', {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.active_modules ?? [];
-  } catch {
-    return [];
-  }
+  const data = await apiFetch<{ active_modules?: unknown }>('/api/v1/features/');
+  if (!Array.isArray(data.active_modules)) return [];
+  return data.active_modules.filter((module): module is string => typeof module === 'string');
 }

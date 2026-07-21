@@ -9,6 +9,22 @@ const TTL_MS = 5 * 60 * 1000; // 5 minutes
 interface CacheEntry {
   modules: string[];
   expiresAt: number;
+  subject: string | null;
+}
+
+function currentSubject(): string | null {
+  if (typeof document === 'undefined') return null;
+  const raw = document.cookie
+    .split('; ')
+    .find((cookie) => cookie.startsWith('vitali_user='))
+    ?.slice('vitali_user='.length);
+  if (!raw) return null;
+  try {
+    const user = JSON.parse(decodeURIComponent(raw));
+    return user?.id == null ? null : String(user.id);
+  } catch {
+    return null;
+  }
 }
 
 function readCache(): string[] | null {
@@ -16,7 +32,7 @@ function readCache(): string[] | null {
     const raw = sessionStorage.getItem(CACHE_KEY);
     if (!raw) return null;
     const entry: CacheEntry = JSON.parse(raw);
-    if (Date.now() > entry.expiresAt) {
+    if (Date.now() > entry.expiresAt || entry.subject !== currentSubject()) {
       sessionStorage.removeItem(CACHE_KEY);
       return null;
     }
@@ -28,7 +44,11 @@ function readCache(): string[] | null {
 
 function writeCache(modules: string[]): void {
   try {
-    const entry: CacheEntry = { modules, expiresAt: Date.now() + TTL_MS };
+    const entry: CacheEntry = {
+      modules,
+      expiresAt: Date.now() + TTL_MS,
+      subject: currentSubject(),
+    };
     sessionStorage.setItem(CACHE_KEY, JSON.stringify(entry));
   } catch {
     // sessionStorage unavailable — continue without caching
@@ -51,8 +71,9 @@ async function fetchModules(): Promise<string[]> {
       })
       .catch(() => {
         inflight = null;
-        // Fail-open: return a sentinel that makes all modules available
-        return ['__fail_open__'];
+        // FeatureFlag is the authority. On an unavailable API, do not expose
+        // module UI based on the stale login-cookie snapshot.
+        return ['__unavailable__'];
       });
   }
 
@@ -64,7 +85,7 @@ async function fetchModules(): Promise<string[]> {
  *
  * Returns true if the tenant has the given module enabled.
  * - Caches the result in sessionStorage for 5 minutes.
- * - Fail-open: returns true on network error or while loading (no layout shift).
+ * - Returns false on API failure; backend permissions remain the final guard.
  */
 export function useHasModule(moduleKey: string): boolean {
   // null = loading; string[] = resolved
@@ -89,9 +110,9 @@ export function useHasModule(moduleKey: string): boolean {
     };
   }, []);
 
-  // While loading OR on error (sentinel), return true (fail-open)
+  // Keep existing items stable while loading, then fail closed on API failure.
   if (modules === null) return true;
-  if (modules.includes('__fail_open__')) return true;
+  if (modules.includes('__unavailable__')) return false;
 
   return modules.includes(moduleKey);
 }
@@ -100,7 +121,7 @@ export function useHasModule(moduleKey: string): boolean {
  * useActiveModules()
  *
  * Returns the full set of active module keys for the current tenant.
- * - Fail-open: returns null while loading (callers treat null as "all visible").
+ * - Returns null while loading and [] when the authoritative API is unavailable.
  * - Uses the same cache and dedup logic as useHasModule.
  */
 export function useActiveModules(): string[] | null {
@@ -125,6 +146,6 @@ export function useActiveModules(): string[] | null {
   }, []);
 
   if (modules === null) return null;
-  if (modules.includes('__fail_open__')) return null; // treat as "all visible"
+  if (modules.includes('__unavailable__')) return [];
   return modules;
 }
