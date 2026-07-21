@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from django.conf import settings
+from django.db import IntegrityError
 from django.utils import timezone
 from django_tenants.utils import schema_context
 
@@ -33,6 +34,37 @@ logger = logging.getLogger(__name__)
 
 class ProvisioningError(Exception):
     """Raised when tenant provisioning fails after the schema is created."""
+
+
+class ProvisioningConflict(ProvisioningError):
+    """A recoverable, user-caused collision (duplicate CNPJ/email, slug race).
+
+    Carries a machine-readable ``code`` so the caller can map it to a friendly
+    409 response instead of a generic 500. Subclasses :class:`ProvisioningError`
+    so existing broad ``except ProvisioningError`` handlers still catch it — but
+    catch this *first* to branch on the conflict.
+    """
+
+    def __init__(self, code: str, message: str = ""):
+        self.code = code
+        super().__init__(message or code)
+
+
+def _classify_integrity_error(exc: Exception) -> str:
+    """Map a unique-constraint ``IntegrityError`` to a signup conflict code.
+
+    Postgres puts the violated column/constraint name in the message; we sniff
+    it rather than pre-querying so this also covers genuine concurrent races
+    (two POSTs with the same CNPJ/email landing between check and INSERT).
+    """
+    text = str(exc).lower()
+    if "cnpj" in text:
+        return "CNPJ_TAKEN"
+    if "email" in text:
+        return "EMAIL_TAKEN"
+    if "slug" in text or "schema_name" in text:
+        return "SLUG_TAKEN"
+    return "CONFLICT"
 
 
 @dataclass
@@ -108,7 +140,7 @@ def provision_tenant(
     if User.objects.filter(email=owner_email).exists():
         # Caller should have checked, but guard so we never build a schema we'd
         # only have to roll back (User.email is globally unique in public schema).
-        raise ProvisioningError("OWNER_EMAIL_TAKEN")
+        raise ProvisioningConflict("EMAIL_TAKEN", "OWNER_EMAIL_TAKEN")
 
     if trial_days is None:
         trial_days = getattr(settings, "SELF_SERVE_TRIAL_DAYS", 14)
@@ -121,7 +153,16 @@ def provision_tenant(
         status=status,
         trial_ends_at=trial_ends_at,
     )
-    tenant.save()  # triggers schema creation (auto_create_schema=True)
+    try:
+        tenant.save()  # triggers schema creation (auto_create_schema=True)
+    except IntegrityError as exc:
+        # Duplicate CNPJ (unique) or a slug/schema_name race: the INSERT fails
+        # *before* the PG schema is built, so there's nothing to roll back — but
+        # the raw error must become a friendly 409, not a generic 500. This is
+        # the most common real-world re-signup path.
+        code = _classify_integrity_error(exc)
+        logger.warning("provisioning.conflict slug=%s code=%s err=%s", slug, code, exc)
+        raise ProvisioningConflict(code) from exc
 
     try:
         domain_url = build_domain_url(host, tenant.slug)
@@ -143,13 +184,18 @@ def provision_tenant(
             _, invitation_token = issue_password_set_invitation(
                 owner, tenant=tenant, created_by=created_by
             )
+    except IntegrityError as exc:
+        # A concurrent signup won the race between our up-front email pre-check
+        # and the owner INSERT (or any other unique collision inside the schema).
+        # Roll the half-built schema back and surface a friendly 409, not a 500.
+        code = _classify_integrity_error(exc)
+        logger.warning("provisioning.conflict slug=%s code=%s err=%s", slug, code, exc)
+        _drop_tenant(tenant, slug)
+        raise ProvisioningConflict(code) from exc
     except Exception as exc:  # noqa: BLE001 — re-raised after rollback
         logger.error("provisioning.failed slug=%s err=%s", slug, exc)
         # Drop the half-built schema + tenant row so a retry starts clean.
-        try:
-            tenant.delete(force_drop=True)  # type: ignore[call-arg]
-        except Exception as cleanup_exc:  # noqa: BLE001
-            logger.error("provisioning.rollback_failed slug=%s err=%s", slug, cleanup_exc)
+        _drop_tenant(tenant, slug)
         raise ProvisioningError(str(exc)) from exc
 
     logger.info(
@@ -162,6 +208,14 @@ def provision_tenant(
         subscription=subscription,
         owner_invitation_token=invitation_token,
     )
+
+
+def _drop_tenant(tenant: Tenant, slug: str) -> None:
+    """Drop the half-built schema + tenant row so a retry starts clean."""
+    try:
+        tenant.delete(force_drop=True)  # type: ignore[call-arg]
+    except Exception as cleanup_exc:  # noqa: BLE001
+        logger.error("provisioning.rollback_failed slug=%s err=%s", slug, cleanup_exc)
 
 
 def _create_owner(tenant, email, full_name, password):
