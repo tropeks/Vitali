@@ -50,6 +50,7 @@ interface ImportSummary {
   formularies_updated: number
   rules_created: number
   rules_updated: number
+  revalidation_required: number
 }
 
 interface PreviewResponse {
@@ -259,6 +260,20 @@ export default function FormularioUploadPage() {
               `${preview.summary.rules_updated} a atualizar. Confira antes de confirmar.`
             }
           />
+
+          {preview.summary.revalidation_required > 0 && (
+            <SectionState
+              tone="warning"
+              title={
+                `${preview.summary.revalidation_required} regra(s) validada(s) ` +
+                'terão valores alterados e voltarão a pendente.'
+              }
+              detail={
+                'Os novos valores só entram em vigor no dose_safety depois que um ' +
+                'farmacêutico assinar cada regra novamente na tela de validação.'
+              }
+            />
+          )}
 
           <div className="rounded-lg border border-slate-200 bg-white overflow-x-auto">
             <table className="w-full text-sm min-w-[1100px]">

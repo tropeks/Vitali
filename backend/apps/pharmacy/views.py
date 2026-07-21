@@ -1314,14 +1314,23 @@ class FormularyUploadCommitView(APIView):
             "formulary_imported",
             "MedicationFormulary",
             "",
-            new_data=summary.as_dict(),
+            # changed_rules carries per-rule before/after for every clinically
+            # changed existing rule (forensics for the revalidation reset).
+            new_data={**summary.as_dict(), "changed_rules": summary.changed_rules},
         )
 
+        revalidation_note = (
+            f" {summary.revalidation_required} regra(s) validada(s) tiveram valores "
+            "clínicos alterados e voltaram a pendente de validação."
+            if summary.revalidation_required
+            else ""
+        )
         return Response(
             {
                 "message": (
                     f"Importação concluída: {summary.rules_created} regra(s) criada(s), "
-                    f"{summary.rules_updated} atualizada(s). "
+                    f"{summary.rules_updated} atualizada(s)."
+                    f"{revalidation_note} "
                     "Revise e valide cada regra antes de ativar o dose_safety."
                 ),
                 "summary": summary.as_dict(),

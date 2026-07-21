@@ -34,8 +34,7 @@ docstring for the full per-column contract.
 from __future__ import annotations
 
 import csv
-import io
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 
 from django.core.exceptions import ValidationError
@@ -59,6 +58,24 @@ _DOSERULE_NATURAL_KEY = (
     "weight_max_kg",
 )
 
+# Clinical fields of a DoseRule whose change INVALIDATES a prior pharmacist
+# sign-off. If a re-imported CSV changes any of these on an existing rule, the
+# rule's ``validated`` flag (and by/at trail) MUST be reset: the new numbers
+# were never signed off, so they may not enter the DoseChecker armed, and the
+# audit trail may not keep pointing at the pharmacist who validated the OLD
+# values. ``dose_unit`` is included deliberately — same numbers in a different
+# unit are a different clinical rule.
+_DOSERULE_CLINICAL_FIELDS = (
+    "dose_unit",
+    "enforcement",
+    "min_per_dose",
+    "max_per_dose",
+    "min_per_kg",
+    "max_per_kg",
+    "absolute_max_dose",
+    "max_per_day",
+)
+
 
 class FormularyImportError(Exception):
     """Raised when a CSV fails to parse or validate.
@@ -74,13 +91,23 @@ class FormularyImportError(Exception):
 
 @dataclass
 class ImportSummary:
-    """Counts returned by a preview (dry-run) or a committed import."""
+    """Counts returned by a preview (dry-run) or a committed import.
+
+    ``revalidation_required`` counts existing VALIDATED rules whose clinical
+    fields changed in this import — each one is de-armed (validated=False,
+    by/at cleared) and needs a fresh pharmacist sign-off.
+    ``changed_rules`` carries per-rule before/after detail for every existing
+    rule whose clinical fields changed (validated or not); it is meant for the
+    commit audit log, not for the JSON summary (hence excluded from as_dict).
+    """
 
     row_count: int
     formularies_created: int
     formularies_updated: int
     rules_created: int
     rules_updated: int
+    revalidation_required: int = 0
+    changed_rules: list[dict] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return {
@@ -89,6 +116,7 @@ class ImportSummary:
             "formularies_updated": self.formularies_updated,
             "rules_created": self.rules_created,
             "rules_updated": self.rules_updated,
+            "revalidation_required": self.revalidation_required,
         }
 
 
@@ -243,7 +271,37 @@ def parse_and_validate(content: str, *, delimiter: str = ",") -> list[dict]:
 
     # ── Pass 2: model-layer validation (full_clean) — still pre-commit ────────
     validation_errors: list[str] = []
+    drug_name_max = Drug._meta.get_field("name").max_length
+    drug_generic_max = Drug._meta.get_field("generic_name").max_length
     for entry in parsed_rows:
+        # Drug field lengths — checked here so an oversized cell is a per-line
+        # error instead of a DB-level DataError (HTTP 500) inside the atomic
+        # block of write_rows.
+        if drug_name_max and len(entry["drug_name"]) > drug_name_max:
+            validation_errors.append(
+                f"Line {entry['_line_number']}: column 'drug_name' exceeds "
+                f"{drug_name_max} characters"
+            )
+        if drug_generic_max and len(entry.get("drug_generic", "")) > drug_generic_max:
+            validation_errors.append(
+                f"Line {entry['_line_number']}: column 'drug_generic' exceeds "
+                f"{drug_generic_max} characters"
+            )
+
+        # MedicationFormulary constraints (strength_value max_digits/decimal_places,
+        # strength_unit max_length/choices, route choices) — same fail-loud
+        # per-line contract; without this a bad strength blows up mid-transaction.
+        formulary_instance = MedicationFormulary(
+            strength_value=entry["strength_value"],
+            strength_unit=entry["strength_unit"],
+            route=entry["route"],
+            active=True,
+        )
+        try:
+            formulary_instance.full_clean(exclude=["drug"])
+        except ValidationError as exc:
+            validation_errors.append(f"Line {entry['_line_number']}: {exc.message_dict}")
+
         rule_instance = DoseRule(
             # formulary FK intentionally left unset for this in-memory pass;
             # full_clean(exclude=["formulary"]) checks field-level + clean()
@@ -280,17 +338,32 @@ def parse_and_validate(content: str, *, delimiter: str = ",") -> list[dict]:
 
 
 def decode_csv(raw: bytes) -> str:
-    """Decode uploaded CSV bytes as UTF-8 (BOM tolerant).
+    """Decode uploaded CSV bytes: UTF-8 (BOM tolerant) with a Windows fallback.
 
-    Raises ``FormularyImportError`` with a friendly message on a decode failure
-    rather than letting a raw UnicodeDecodeError escape to the API layer.
+    Excel on Windows PT-BR exports CSV as cp1252, not UTF-8 — the primary user
+    of this upload is a pharmacist on exactly that setup, so we fall back to
+    cp1252 (then latin-1) when strict UTF-8 fails. The fallback is safe for the
+    numeric/clinical columns (ASCII is identical in all three encodings); only
+    accented free-text like drug names is affected, and cp1252 is the correct
+    guess for those files. Binary/UTF-16 uploads are rejected via the NUL check
+    rather than being silently mojibake'd. Raises ``FormularyImportError`` with
+    a friendly message instead of letting a raw UnicodeDecodeError escape.
     """
-    try:
-        return io.TextIOWrapper(io.BytesIO(raw), encoding="utf-8-sig", newline="").read()
-    except UnicodeDecodeError:
+    text: str | None = None
+    for encoding in ("utf-8-sig", "cp1252", "latin-1"):
+        try:
+            text = raw.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    if text is None or "\x00" in text:
         raise FormularyImportError(
-            ["Não foi possível ler o arquivo como UTF-8. Salve o CSV em UTF-8 e tente novamente."]
-        ) from None
+            [
+                "Não foi possível ler o arquivo como texto CSV (UTF-8 ou Windows-1252). "
+                "Salve o CSV em UTF-8 e tente novamente."
+            ]
+        )
+    return text
 
 
 # ── parsed rows → DB (upsert) ────────────────────────────────────────────────
@@ -304,6 +377,8 @@ def write_rows(parsed_rows: list[dict], *, dry_run: bool = False) -> ImportSumma
     WOULD do without persisting anything (used by the preview endpoint).
     """
     formularies_created = formularies_updated = rules_created = rules_updated = 0
+    revalidation_required = 0
+    changed_rules: list[dict] = []
 
     with transaction.atomic():
         for entry in parsed_rows:
@@ -358,6 +433,45 @@ def write_rows(parsed_rows: list[dict], *, dry_run: bool = False) -> ImportSumma
                 "active": True,
                 # validated stays False — human sign-off only, NEVER set by importer
             }
+
+            # Detect clinically-changed fields BEFORE the upsert so a re-import
+            # can (a) de-arm a previously validated rule and (b) leave a
+            # before/after trail for the audit log.
+            existing_rule = DoseRule.objects.filter(**natural_key).first()
+            changed_fields: dict[str, dict] = {}
+            if existing_rule is not None:
+                for clinical_field in _DOSERULE_CLINICAL_FIELDS:
+                    old = getattr(existing_rule, clinical_field)
+                    new = rule_defaults[clinical_field]
+                    if old != new:
+                        changed_fields[clinical_field] = {
+                            "before": None if old is None else str(old),
+                            "after": None if new is None else str(new),
+                        }
+                if changed_fields:
+                    changed_rules.append(
+                        {
+                            "drug": entry["drug_name"],
+                            "route": entry.get("route", ""),
+                            "basis": entry["basis"],
+                            "dose_role": entry["dose_role"],
+                            "was_validated": existing_rule.validated,
+                            "changes": changed_fields,
+                        }
+                    )
+
+            # SAFETY GATE: a validated rule whose clinical numbers changed goes
+            # BACK to pending. The new values were never signed off — they must
+            # not enter the DoseChecker armed, and validated_by/at must not keep
+            # pointing at the pharmacist who approved the OLD values.
+            if existing_rule is not None and existing_rule.validated and changed_fields:
+                rule_defaults.update(
+                    validated=False,
+                    validated_by=None,
+                    validated_at=None,
+                )
+                revalidation_required += 1
+
             _rule, r_created = DoseRule.objects.update_or_create(
                 **natural_key,
                 defaults=rule_defaults,
@@ -376,6 +490,8 @@ def write_rows(parsed_rows: list[dict], *, dry_run: bool = False) -> ImportSumma
         formularies_updated=formularies_updated,
         rules_created=rules_created,
         rules_updated=rules_updated,
+        revalidation_required=revalidation_required,
+        changed_rules=changed_rules,
     )
 
 
