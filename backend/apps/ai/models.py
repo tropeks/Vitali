@@ -109,6 +109,22 @@ class GlosaPrediction(models.Model):
     guide is null until the guide form is submitted — the backlink is set by the guide
     create view using the glosa_prediction_ids payload field.
     was_denied is backfilled by retorno_parser when a denial is confirmed (guide-level).
+
+    GROUND-TRUTH CAVEAT (multi-item guides, #126)
+    ---------------------------------------------
+    `was_denied` is only a trustworthy label for guides that carry a SINGLE
+    item. TISS 4.01.00 retornos often express a denial only at guide level
+    (no per-procedure context), so for a multi-item guide the parser cannot
+    tell which line was actually denied — the label would be smeared across
+    every item. Any consumer that trains on or measures against `was_denied`
+    (e.g. GlosaAccuracyView, a future training pipeline) MUST exclude
+    predictions belonging to multi-item guides, e.g.::
+
+        single = TISSGuide.objects.annotate(n=Count("items")).filter(n=1)
+        GlosaPrediction.objects.filter(guide__in=single, was_denied__isnull=False)
+
+    This filter can be dropped once TISS 4.02.00+ item-level denial codes
+    (negativa por item) are parsed end-to-end and labels are set per line.
     """
 
     class RiskLevel(models.TextChoices):

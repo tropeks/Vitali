@@ -120,6 +120,66 @@ class TestPrescriptionSignAPI(TenantTestCase):
         rx.refresh_from_db()
         self.assertEqual(rx.status, "signed")
 
+    def test_prescription_sign_with_valid_pfx_creates_digital_signature(self):
+        """Issue #119: signing with a PKCS#12 cert persists a DigitalSignature row.
+
+        Mirrors the encounter-level coverage for the prescription endpoint —
+        the issue explicitly scopes the prescription signing endpoint. A
+        self-signed cert does not chain to a trusted ICP-Brasil anchor, so the
+        row is recorded with is_icp_brasil=False, but it IS recorded.
+        """
+        import base64
+
+        from apps.signatures.models import DigitalSignature
+        from apps.signatures.tests.test_icp_brasil_signer import _make_self_signed_pkcs12
+
+        pfx, _cert, _key = _make_self_signed_pkcs12(subject_cn="Dr. Rx Signer")
+        pfx_b64 = base64.b64encode(pfx).decode("ascii")
+
+        rx = Prescription.objects.create(
+            encounter=self.encounter, patient=self.patient, prescriber=self.prescriber
+        )
+        resp = self._client(self.medico_user).post(
+            f"/api/v1/prescriptions/{rx.id}/sign/",
+            {"pkcs12_b64": pfx_b64, "pkcs12_password": "test-pass"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+        rx.refresh_from_db()
+        self.assertEqual(rx.status, "signed")
+        self.assertNotEqual(rx.signature_hash, "")
+
+        sig = DigitalSignature.objects.filter(
+            document_type="prescription", document_id=str(rx.id)
+        ).first()
+        self.assertIsNotNone(sig)
+        self.assertEqual(sig.signer_id, self.medico_user.id)
+        self.assertEqual(sig.document_hash_hex, rx.signature_hash)
+        # Self-signed cert → not a trusted chain, persisted as non-ICP-Brasil.
+        self.assertFalse(sig.is_icp_brasil)
+        self.assertEqual(rx.is_icp_brasil, sig.is_icp_brasil)
+
+    def test_prescription_sign_without_cert_fails_open(self):
+        """Issue #119: no cert → prescription still signs, no DigitalSignature row (fail-open)."""
+        from apps.signatures.models import DigitalSignature
+
+        rx = Prescription.objects.create(
+            encounter=self.encounter, patient=self.patient, prescriber=self.prescriber
+        )
+        resp = self._client(self.medico_user).post(f"/api/v1/prescriptions/{rx.id}/sign/")
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+        rx.refresh_from_db()
+        self.assertEqual(rx.status, "signed")
+        self.assertFalse(rx.is_icp_brasil)
+        self.assertEqual(rx.signature_hash, "")
+        self.assertFalse(
+            DigitalSignature.objects.filter(
+                document_type="prescription", document_id=str(rx.id)
+            ).exists()
+        )
+
     def test_add_item_to_signed_prescription_rejected(self):
         """Adding a PrescriptionItem to a signed Rx must return 400."""
         drug = Drug.objects.create(name="Drug For Signed Rx Test")

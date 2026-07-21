@@ -11,8 +11,8 @@ from django.core.cache import cache as django_cache
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from apps.billing.models import InsuranceProvider, TISSBatch, TISSGuide
-from apps.core.models import FeatureFlag, Role, User
+from apps.billing.models import InsuranceProvider, TISSBatch, TISSGuide, TISSGuideItem
+from apps.core.models import FeatureFlag, Role, TUSSCode, User
 from apps.emr.models import Encounter, Patient, Professional
 from apps.test_utils import TenantTestCase
 
@@ -354,10 +354,33 @@ class BatchThroughputTests(BillingAnalyticsBaseCase):
 
 
 class GlosaAccuracyTests(BillingAnalyticsBaseCase):
-    def _make_prediction(self, ans_code, risk_level, was_denied):
+    _tuss_seq = 0
+
+    def _add_items(self, guide, n):
+        """Attach ``n`` real TISSGuideItem rows to ``guide``."""
+        for _ in range(n):
+            GlosaAccuracyTests._tuss_seq += 1
+            tuss = TUSSCode.objects.create(
+                code=f"9999{GlosaAccuracyTests._tuss_seq:04d}",
+                description="Procedimento de teste",
+                group="procedimento",
+                version="2024-01",
+            )
+            TISSGuideItem.objects.create(
+                guide=guide,
+                tuss_code=tuss,
+                description="Item de teste",
+                quantity=1,
+                unit_value=Decimal("100.00"),
+            )
+
+    def _make_prediction(self, ans_code, risk_level, was_denied, n_items=1):
         from apps.ai.models import GlosaPrediction
 
+        # Predictions in production always belong to a guide with at least one
+        # item; default to a single-item guide so it counts toward the metric.
         guide = self._guide(status="paid")
+        self._add_items(guide, n_items)
         return GlosaPrediction.objects.create(
             guide=guide,
             insurer_ans_code=ans_code,
@@ -402,6 +425,7 @@ class GlosaAccuracyTests(BillingAnalyticsBaseCase):
         from apps.ai.models import GlosaPrediction
 
         guide = self._guide(status="paid")
+        self._add_items(guide, 1)
         # Resolved prediction
         GlosaPrediction.objects.create(
             guide=guide,
@@ -437,3 +461,25 @@ class GlosaAccuracyTests(BillingAnalyticsBaseCase):
         self.assertAlmostEqual(row["recall"], 0.667, places=2)
         # precision = 2/2 = 1.0
         self.assertAlmostEqual(row["precision"], 1.0, places=2)
+
+    def test_multi_item_guides_excluded(self):
+        """Predictions on multi-item guides must NOT count — their was_denied
+        label is corrupted by guide-level denial smearing (#126)."""
+        # Single-item guide → counted.
+        self._make_prediction("111000", "high", True, n_items=1)
+        # Multi-item guide → excluded.
+        self._make_prediction("111000", "high", True, n_items=3)
+        resp = self.client.get("/api/v1/analytics/billing/glosa-accuracy/")
+        data = resp.json()
+        self.assertEqual(len(data), 1)
+        row = data[0]
+        self.assertEqual(row["total_predictions"], 1)
+        self.assertEqual(row["true_positives"], 1)
+
+    def test_all_multi_item_guides_returns_empty(self):
+        """If every prediction belongs to a multi-item guide, the metric is empty."""
+        self._make_prediction("111000", "high", True, n_items=2)
+        self._make_prediction("111000", "low", False, n_items=4)
+        resp = self.client.get("/api/v1/analytics/billing/glosa-accuracy/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json(), [])
