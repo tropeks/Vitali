@@ -10,6 +10,7 @@ import {
   ClipboardList,
   Stethoscope,
   Activity,
+  ScanLine,
   FlaskConical,
   CalendarX,
   Pill,
@@ -48,6 +49,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Sala de Espera", href: "/waiting-room", icon: ClipboardList, module: "emr" },
   { label: "Consultas", href: "/encounters", icon: Stethoscope, module: "emr" },
   { label: "Laboratório", href: "/laboratorio", icon: FlaskConical, module: "emr" },
+  { label: "Imagem / PACS", href: "/imagens", icon: ScanLine, module: "imaging" },
   { label: "Deterioração", href: "/deterioracao", icon: Activity, module: "emr" },
   { label: "Faltas", href: "/faltas", icon: CalendarX, module: "emr" },
   {
