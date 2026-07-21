@@ -55,23 +55,16 @@ function EmptyState() {
 export default function AssinaturaPage() {
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
-  const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
     async function load() {
-      const token = getAccessToken();
-      if (!token) {
+      if (!getAccessToken()) {
         setLoading(false);
         return;
       }
       try {
-        const res = await fetch('/api/v1/core/subscription/', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.status === 404) {
-          setNotFound(true);
-          return;
-        }
+        const res = await fetch('/api/subscription', { cache: 'no-store' });
+        if (res.status === 204) return;
         if (!res.ok) return;
         const data = await res.json();
         setSubscription(data);
@@ -98,7 +91,7 @@ export default function AssinaturaPage() {
     );
   }
 
-  if (notFound || !subscription) {
+  if (!subscription) {
     return <EmptyState />;
   }
 

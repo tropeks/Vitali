@@ -14,6 +14,7 @@ from .views_mfa import (
 )
 from .views_onboarding import OnboardingView
 from .views_platform import TenantSubscriptionView
+from .views_privacy import PrivacySettingsView
 from .views_telemetry import WedgeTelemetryView
 from .views_test_helpers import IssueInvitationTokenView
 
@@ -61,6 +62,7 @@ urlpatterns = [
     # DPA (S-070)
     path("settings/dpa/", DPAStatusView.as_view(), name="dpa-status"),
     path("settings/dpa/sign/", DPASignView.as_view(), name="dpa-sign"),
+    path("tenant/privacy-settings/", PrivacySettingsView.as_view(), name="privacy-settings"),
     # Test-only — gated by E2E_MODE + superuser + _test DB suffix (S-084)
     path(
         "_test/invitations/issue-token/",

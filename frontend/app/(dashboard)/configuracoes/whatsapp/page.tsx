@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { RefreshCw, MessageCircle, Phone, Clock, Loader2, X } from 'lucide-react'
 import { PageShell, SectionState, StatusBadge, Button } from '@/components/shared'
+import { apiFetch } from '@/lib/api'
 import {
   WA_CONNECTION_STATUS_META,
   getOptInMeta,
@@ -53,8 +54,7 @@ function ConnectionTab() {
 
   const fetchHealth = useCallback(async () => {
     try {
-      const r = await fetch('/api/v1/whatsapp/health/')
-      const data = await r.json()
+      const data = await apiFetch<HealthStatus>('/api/v1/whatsapp/health/')
       setHealth(data)
     } catch {
       setHealth({ status: 'error', detail: 'Falha ao conectar com a API.' })
@@ -72,7 +72,7 @@ function ConnectionTab() {
   const handleReconnect = async () => {
     setReconnecting(true)
     try {
-      await fetch('/api/v1/whatsapp/setup-webhook/', { method: 'POST' })
+      await apiFetch('/api/v1/whatsapp/setup-webhook/', { method: 'POST' })
       await fetchHealth()
     } catch {
       // ignore
@@ -192,9 +192,8 @@ function ConversationsTab() {
   const fetchContacts = useCallback(async (query: string) => {
     try {
       const q = query ? `?search=${encodeURIComponent(query)}` : ''
-      const r = await fetch(`/api/v1/whatsapp/contacts/${q}`)
-      const d = await r.json()
-      setContacts(d.results ?? d)
+      const d = await apiFetch<{ results?: Contact[] } | Contact[]>(`/api/v1/whatsapp/contacts/${q}`)
+      setContacts(Array.isArray(d) ? d : (d.results ?? []))
     } catch {
       setContacts([])
     } finally {
@@ -215,9 +214,8 @@ function ConversationsTab() {
     setSelectedContact(contact)
     setLogsLoading(true)
     try {
-      const r = await fetch(`/api/v1/whatsapp/message-logs/?contact=${contact.id}`)
-      const d = await r.json()
-      setLogs(d.results ?? d)
+      const d = await apiFetch<{ results?: MessageLog[] } | MessageLog[]>(`/api/v1/whatsapp/message-logs/?contact=${contact.id}`)
+      setLogs(Array.isArray(d) ? d : (d.results ?? []))
     } catch {
       setLogs([])
     } finally {
