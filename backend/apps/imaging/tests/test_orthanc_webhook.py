@@ -114,7 +114,7 @@ class OrthancWebhookTest(TenantTestCase):
 
     def test_webhook_accepts_orthanc_native_id_key(self):
         """Orthanc's Lua hook may send the raw ``ID`` key — accept it too."""
-        with self._patch_client(studies={"orth-2": _study_payload(UID_CT, "")}):
+        with self._patch_client(studies={"orth-2": _study_payload(UID_CT, ACC_CT)}):
             resp = self._post({"ID": "orth-2"})
 
         self.assertEqual(resp.status_code, 200, resp.data)

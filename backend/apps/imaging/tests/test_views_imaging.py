@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+from unittest.mock import patch
 
 from rest_framework.test import APIClient
 
@@ -295,15 +296,33 @@ class ImagingViewsTest(TenantTestCase):
     # ─── Orthanc backfill ────────────────────────────────────────────────────
 
     def test_orthanc_patch_sets_uid_and_counts(self):
-        resp = self.client.patch(
-            _orthanc_url(self.ct_study.pk),
-            {
-                "orthanc_study_id": "f9d8a7b6-c5e4-3210-9876-fedcba012345",
-                "number_of_series": 3,
-                "number_of_instances": 240,
-            },
-            format="json",
-        )
+        orthanc_id = "f9d8a7b6-c5e4-3210-9876-fedcba012345"
+
+        def verified_link(study, requested_orthanc_id):
+            self.assertEqual(requested_orthanc_id, orthanc_id)
+            study.orthanc_study_id = requested_orthanc_id
+            study.dicom_identity_verified = True
+            study.number_of_series = 3
+            study.number_of_instances = 240
+            study.save(
+                update_fields=[
+                    "orthanc_study_id",
+                    "dicom_identity_verified",
+                    "number_of_series",
+                    "number_of_instances",
+                ]
+            )
+            return "matched"
+
+        with patch(
+            "apps.imaging.services.orthanc_sync.verify_and_link_study",
+            side_effect=verified_link,
+        ):
+            resp = self.client.patch(
+                _orthanc_url(self.ct_study.pk),
+                {"orthanc_study_id": orthanc_id},
+                format="json",
+            )
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data["orthanc_study_id"], "f9d8a7b6-c5e4-3210-9876-fedcba012345")
         self.assertTrue(resp.data["has_pixel_data"])
