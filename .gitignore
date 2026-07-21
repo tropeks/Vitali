@@ -147,3 +147,6 @@ cache/
 graphify-out/
 cache/
 .shrimp/
+
+# Local staging secrets (real values live only on the host)
+.env.staging
