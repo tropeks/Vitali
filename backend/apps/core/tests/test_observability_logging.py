@@ -22,6 +22,7 @@ from apps.core.observability_logging import OTelTraceLogFilter
 # Helper
 # ---------------------------------------------------------------------------
 
+
 def _make_record() -> logging.LogRecord:
     return logging.LogRecord(
         name="test",
@@ -86,13 +87,13 @@ class OTelTraceLogFilterActiveSpanTests(TestCase):
         # Skip the entire class if the OTel SDK is not installed.
         try:
             import opentelemetry  # noqa: F401
-        except ImportError as exc:
+        except ImportError:
             import unittest
 
             raise unittest.SkipTest(
                 "opentelemetry SDK not installed — active-span OTel log filter "
                 "tests skipped. Rebuild the image to run these."
-            ) from exc
+            ) from None
         super().setUpClass()
 
     def test_filter_populates_from_active_span(self):

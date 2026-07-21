@@ -220,6 +220,7 @@ class TestEncounterSigningService(TenantTestCase):
         self.assertEqual(encounter.status, "signed")
         self.assertIsNotNone(encounter.signed_at)
         self.assertEqual(encounter.signed_by_id, self.requester.id)
+
     def test_sign_encounter_with_valid_pfx_stores_digital_signature(self):
         """Encounter with valid certificate creates DigitalSignature and sets is_icp_brasil=True."""
         import base64
@@ -241,7 +242,9 @@ class TestEncounterSigningService(TenantTestCase):
         self.assertFalse(result.is_icp_brasil)
         self.assertNotEqual(result.signature_hash, "")
 
-        sig = DigitalSignature.objects.filter(document_type="encounter", document_id=str(encounter.id)).first()
+        sig = DigitalSignature.objects.filter(
+            document_type="encounter", document_id=str(encounter.id)
+        ).first()
         self.assertIsNotNone(sig)
         self.assertEqual(sig.document_hash_hex, result.signature_hash)
 
@@ -259,5 +262,7 @@ class TestEncounterSigningService(TenantTestCase):
         self.assertFalse(result.is_icp_brasil)
         self.assertEqual(result.signature_hash, "")
 
-        sig = DigitalSignature.objects.filter(document_type="encounter", document_id=str(encounter.id)).first()
+        sig = DigitalSignature.objects.filter(
+            document_type="encounter", document_id=str(encounter.id)
+        ).first()
         self.assertIsNone(sig)

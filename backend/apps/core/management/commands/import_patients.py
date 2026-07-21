@@ -8,6 +8,7 @@ from django.db import transaction
 
 logger = logging.getLogger(__name__)
 
+
 class Command(BaseCommand):
     help = "Import Patients from a CSV file into the specified tenant."
 
@@ -27,6 +28,7 @@ class Command(BaseCommand):
         dry_run = options["dry_run"]
 
         from apps.core.models import Tenant
+
         try:
             tenant = Tenant.objects.get(schema_name=schema)
         except Tenant.DoesNotExist as exc:
@@ -35,7 +37,11 @@ class Command(BaseCommand):
         with open(csv_path, encoding="utf-8-sig", newline="") as fh:
             lines = list(fh)
 
-        physical_lines = [(i + 1, ln) for i, ln in enumerate(lines) if not ln.lstrip().startswith("#") and ln.strip()]
+        physical_lines = [
+            (i + 1, ln)
+            for i, ln in enumerate(lines)
+            if not ln.lstrip().startswith("#") and ln.strip()
+        ]
         if not physical_lines:
             raise CommandError("CSV file is empty or contains only comments.")
 
@@ -47,7 +53,11 @@ class Command(BaseCommand):
             raise CommandError("CSV file is empty or header is missing.")
 
         def _phys(data_idx):
-            return physical_lines[data_idx + 1][0] if data_idx + 1 < len(physical_lines) else data_idx + 2
+            return (
+                physical_lines[data_idx + 1][0]
+                if data_idx + 1 < len(physical_lines)
+                else data_idx + 2
+            )
 
         line_errors = []
         for idx, row in enumerate(rows):
@@ -65,7 +75,9 @@ class Command(BaseCommand):
                 try:
                     datetime.strptime(birth_date.strip(), "%Y-%m-%d")
                 except ValueError:
-                    line_errors.append(f"Line {phys_line}: birth_date invalid format, expected YYYY-MM-DD")
+                    line_errors.append(
+                        f"Line {phys_line}: birth_date invalid format, expected YYYY-MM-DD"
+                    )
 
         if line_errors:
             error_report = "\n".join(line_errors)
@@ -74,14 +86,18 @@ class Command(BaseCommand):
         created = updated = 0
 
         from django_tenants.utils import tenant_context
+
         with tenant_context(tenant):
             from apps.emr.models import Patient
+
             with transaction.atomic():
                 existing_patients = {p.cpf: p for p in Patient.objects.all() if p.cpf}
 
                 for row in rows:
                     cpf = (row.get("cpf") or row.get("CPF")).strip()
-                    full_name = (row.get("full_name") or row.get("nome") or row.get("nome_completo")).strip()
+                    full_name = (
+                        row.get("full_name") or row.get("nome") or row.get("nome_completo")
+                    ).strip()
                     birth_date_str = (row.get("birth_date") or row.get("data_nascimento")).strip()
                     birth_date = datetime.strptime(birth_date_str, "%Y-%m-%d").date()
                     gender = (row.get("gender") or row.get("sexo") or "N").strip().upper()
@@ -104,7 +120,7 @@ class Command(BaseCommand):
                             birth_date=birth_date,
                             gender=gender,
                             phone=phone,
-                            email=email
+                            email=email,
                         )
                         created += 1
 
@@ -112,6 +128,8 @@ class Command(BaseCommand):
                     transaction.set_rollback(True)
 
         if dry_run:
-            self.stdout.write(self.style.SUCCESS(f"Dry run complete: {created} created, {updated} updated"))
+            self.stdout.write(
+                self.style.SUCCESS(f"Dry run complete: {created} created, {updated} updated")
+            )
         else:
             self.stdout.write(self.style.SUCCESS(f"Done: {created} created, {updated} updated"))

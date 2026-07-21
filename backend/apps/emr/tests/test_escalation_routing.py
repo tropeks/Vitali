@@ -50,6 +50,7 @@ class EscalationRoutingTests(TenantTestCase):
 
     def _make_encounter(self, patient):
         from apps.emr.models import Encounter
+
         return Encounter.objects.create(
             patient=patient,
             professional=self.prof,
@@ -58,6 +59,7 @@ class EscalationRoutingTests(TenantTestCase):
     def _make_vitals(self, encounter, *, high=True):
         """High score → NEWS2 high band (escalation); low score → advise."""
         from apps.emr.models import VitalSigns
+
         if high:
             # Respiratory rate 25 (3pts), heart rate 125 (3pts), temp 39.5 (1pt) = 7 → high
             return VitalSigns.objects.create(
@@ -115,6 +117,7 @@ class EscalationRoutingTests(TenantTestCase):
         # Score that yields medium band (advise, no single param = 3):
         # RR=21 → 2pts (21-24); SBP=100 → 2pts (91-100); HR=100 → 1pt (91-110) = 5 → MEDIUM
         from apps.emr.models import VitalSigns  # noqa: PLC0415
+
         vs = VitalSigns.objects.create(
             encounter=enc,
             respiratory_rate=Decimal("21"),
@@ -174,6 +177,7 @@ class EscalationRoutingTests(TenantTestCase):
 
         self.assertIsNotNone(alert, "Alert must still be created on routing failure")
         from apps.emr.models import VitalSigns
+
         self.assertTrue(VitalSigns.objects.filter(pk=vs.pk).exists())
 
     def test_inactive_config_does_not_route(self):

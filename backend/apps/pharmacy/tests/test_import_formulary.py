@@ -189,7 +189,9 @@ class TestImportFormularyAgeBandedRules(TenantTestCase):
         # Re-import must NOT raise MultipleObjectsReturned and must NOT add rows.
         call_command("import_formulary", file=_BANDED_CSV)
 
-        self.assertEqual(DoseRule.objects.count(), 2, "Re-import must be idempotent (no extra rows).")
+        self.assertEqual(
+            DoseRule.objects.count(), 2, "Re-import must be idempotent (no extra rows)."
+        )
         self.assertEqual(MedicationFormulary.objects.count(), 1)
 
 

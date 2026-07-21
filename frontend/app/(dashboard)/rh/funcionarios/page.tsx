@@ -93,12 +93,12 @@ export default function FuncionariosPage() {
     <PageShell variant="operational">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Funcionários</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Gerencie a equipe da sua clínica.</p>
+          <h1 className="text-2xl font-semibold text-neu-ink">Funcionários</h1>
+          <p className="text-sm text-neu-inkMuted mt-0.5">Gerencie a equipe da sua clínica.</p>
         </div>
         <button
           onClick={() => setAddModalOpen(true)}
-          className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+          className="px-4 py-2 bg-gradient-to-b from-neu-brand to-neu-brandDeep border-t border-neu-brandEdge shadow-neu-btn-primary text-white text-sm font-medium rounded-lg hover:shadow-neu-btn-primary-hover transition-all"
         >
           + Adicionar Funcionário
         </button>
@@ -120,7 +120,7 @@ export default function FuncionariosPage() {
         />
       )}
 
-      {loading && <p className="text-sm text-slate-500">Carregando...</p>}
+      {loading && <p className="text-sm text-neu-inkMuted">Carregando...</p>}
 
       {!loading && !error && employees.length === 0 && (
         <SectionState
@@ -129,7 +129,7 @@ export default function FuncionariosPage() {
           action={
             <button
               onClick={() => setAddModalOpen(true)}
-              className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+              className="px-4 py-2 bg-gradient-to-b from-neu-brand to-neu-brandDeep border-t border-neu-brandEdge shadow-neu-btn-primary text-white text-sm font-medium rounded-lg hover:shadow-neu-btn-primary-hover transition-all"
             >
               + Adicionar Funcionário
             </button>
@@ -138,15 +138,15 @@ export default function FuncionariosPage() {
       )}
 
       {!loading && !error && employees.length > 0 && (
-        <div className="rounded-lg border border-slate-200 bg-white overflow-x-auto">
+        <div className="bg-neu-panel rounded-lg border border-slate-200 overflow-x-auto">
           <table className="w-full text-sm min-w-[720px]">
             <thead>
-              <tr className="border-b border-slate-100 bg-slate-50">
+              <tr className="border-b border-slate-100 bg-neu-panel">
                 {['Nome', 'Email', 'Função', 'Vínculo', 'Status', 'Admissão', 'Ações'].map(
                   (h) => (
                     <th
                       key={h}
-                      className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500"
+                      className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-neu-inkMuted"
                     >
                       {h}
                     </th>
@@ -154,18 +154,15 @@ export default function FuncionariosPage() {
                 )}
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-slate-50">
               {employees.map((emp) => (
-                <tr
-                  key={emp.id}
-                  className="border-b border-slate-100 hover:bg-slate-50"
-                >
-                  <td className="px-4 py-3 font-medium text-slate-900">{emp.full_name}</td>
-                  <td className="px-4 py-3 text-slate-600">{emp.email}</td>
-                  <td className="px-4 py-3 text-slate-600">
+                <tr key={emp.id} className="hover:bg-neu-panelAlt transition-colors">
+                  <td className="px-4 py-3 font-medium text-neu-ink">{emp.full_name}</td>
+                  <td className="px-4 py-3 text-neu-inkSoft">{emp.email}</td>
+                  <td className="px-4 py-3 text-neu-inkSoft">
                     {ROLE_LABELS[emp.role] ?? emp.role ?? '—'}
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="px-4 py-3 text-neu-inkSoft">
                     {CONTRACT_LABELS[emp.contract_type] ?? emp.contract_type ?? '—'}
                   </td>
                   <td className="px-4 py-3">
@@ -173,11 +170,11 @@ export default function FuncionariosPage() {
                       meta={resolveBadgeMeta(EMPLOYMENT_STATUS_META, emp.employment_status)}
                     />
                   </td>
-                  <td className="px-4 py-3 text-slate-600">{formatDate(emp.hire_date)}</td>
+                  <td className="px-4 py-3 text-neu-inkSoft">{formatDate(emp.hire_date)}</td>
                   <td className="px-4 py-3">
                     <button
                       onClick={() => setEditingEmployee(emp)}
-                      className="text-blue-600 hover:text-blue-700 text-sm font-semibold"
+                      className="text-neu-brand hover:underline text-xs font-semibold"
                     >
                       Editar
                     </button>

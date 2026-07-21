@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { getAccessToken } from '@/lib/auth';
 
 const APPEAL_BADGE: Record<string, string> = {
-  none: 'bg-[#DFE5EB] text-[#57606A]',
+  none: 'bg-neu-app text-neu-inkSoft',
   pending: 'bg-yellow-100 text-yellow-700',
   accepted: 'bg-green-100 text-green-700',
   rejected: 'bg-red-100 text-red-700',
@@ -76,20 +76,20 @@ export default function GlosasPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-[#24292F]">Glosas</h1>
-        <p className="text-sm text-[#8C959F] mt-1">{glosas.length} glosa{glosas.length !== 1 ? 's' : ''}</p>
+        <h1 className="text-2xl font-semibold text-neu-ink">Glosas</h1>
+        <p className="text-sm text-neu-inkMuted mt-1">{glosas.length} glosa{glosas.length !== 1 ? 's' : ''}</p>
       </div>
 
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">{error}</div>
       )}
 
-      <div className="bg-[#F4F7FA] rounded-lg border border-slate-200 overflow-hidden">
+      <div className="bg-neu-panel rounded-lg border border-slate-200 overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-[#F4F7FA] border-b border-slate-100">
+          <thead className="bg-neu-panel border-b border-slate-100">
             <tr>
               {['Guia', 'Paciente', 'Motivo', 'Valor Glosado', 'Status Recurso', ''].map(h => (
-                <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-[#8C959F] uppercase tracking-wide">{h}</th>
+                <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-neu-inkMuted uppercase tracking-wide">{h}</th>
               ))}
             </tr>
           </thead>
@@ -99,7 +99,7 @@ export default function GlosasPage() {
                 <tr key={i}>
                   {Array.from({ length: 6 }).map((_, j) => (
                     <td key={j} className="px-4 py-3">
-                      <div className="h-4 bg-[#DFE5EB] rounded animate-pulse" />
+                      <div className="h-4 bg-neu-app rounded animate-pulse" />
                     </td>
                   ))}
                 </tr>
@@ -111,22 +111,22 @@ export default function GlosasPage() {
                 </td>
               </tr>
             ) : glosas.map(g => (
-              <tr key={g.id} className="hover:bg-[#F4F7FA] transition-colors">
+              <tr key={g.id} className="hover:bg-neu-panel transition-colors">
                 <td className="px-4 py-3">
                   <button
                     onClick={() => g.guide_id && router.push(`/billing/guides/${g.guide_id}`)}
-                    className="font-mono text-[#0066A1] hover:underline text-xs"
+                    className="font-mono text-neu-brand hover:underline text-xs"
                   >
                     {g.guide_number ?? g.guide ?? '—'}
                   </button>
                 </td>
-                <td className="px-4 py-3 text-[#24292F]">{g.patient_name ?? g.patient ?? '—'}</td>
-                <td className="px-4 py-3 text-[#57606A] max-w-xs">
+                <td className="px-4 py-3 text-neu-ink">{g.patient_name ?? g.patient ?? '—'}</td>
+                <td className="px-4 py-3 text-neu-inkSoft max-w-xs">
                   <span className="line-clamp-2">{g.reason ?? g.motivo ?? '—'}</span>
                 </td>
                 <td className="px-4 py-3 text-red-600 font-medium">{fmtCurrency(g.value ?? g.valor_glosado)}</td>
                 <td className="px-4 py-3">
-                  <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${APPEAL_BADGE[g.appeal_status ?? 'none'] ?? 'bg-[#DFE5EB] text-[#57606A]'}`}>
+                  <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${APPEAL_BADGE[g.appeal_status ?? 'none'] ?? 'bg-neu-app text-neu-inkSoft'}`}>
                     {APPEAL_LABEL[g.appeal_status ?? 'none'] ?? g.appeal_status}
                   </span>
                 </td>
@@ -149,13 +149,13 @@ export default function GlosasPage() {
       {/* Appeal modal */}
       {appealModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#F4F7FA] rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] w-full max-w-md p-4 space-y-4">
-            <h2 className="text-lg font-semibold text-[#24292F]">Recurso — Guia {appealModal.guideNumber}</h2>
+          <div className="bg-neu-panel rounded-xl shadow-neu-panel w-full max-w-md p-4 space-y-4">
+            <h2 className="text-lg font-semibold text-neu-ink">Recurso — Guia {appealModal.guideNumber}</h2>
             {appealError && (
               <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">{appealError}</div>
             )}
             <div>
-              <label className="block text-sm font-medium text-[#57606A] mb-1">Justificativa do Recurso *</label>
+              <label className="block text-sm font-medium text-neu-inkSoft mb-1">Justificativa do Recurso *</label>
               <textarea
                 value={appealText}
                 onChange={e => setAppealText(e.target.value)}
@@ -167,7 +167,7 @@ export default function GlosasPage() {
             <div className="flex gap-2 justify-end pt-2">
               <button
                 onClick={() => { setAppealModal(null); setAppealText(''); }}
-                className="px-4 py-2 text-sm text-[#57606A] hover:text-slate-800"
+                className="px-4 py-2 text-sm text-neu-inkSoft hover:text-slate-800"
               >
                 Cancelar
               </button>

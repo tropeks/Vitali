@@ -5,13 +5,14 @@ from apps.signatures.services.icp_brasil import ICPBrasilSigner, ICPBrasilSigner
 
 logger = logging.getLogger(__name__)
 
+
 def sign_with_icp_brasil(
     user,
     document_type: str,
     document_id: str,
     document_content: bytes,
     pkcs12_b64: str | None,
-    pkcs12_password: str | None
+    pkcs12_password: str | None,
 ) -> tuple[bool, str]:
     """
     Tries to sign the document with ICP-Brasil.
@@ -19,14 +20,19 @@ def sign_with_icp_brasil(
     If pkcs12_b64 is not provided, or chain validation fails, fail-open (returns False, "").
     """
     if not pkcs12_b64:
-        logger.warning(f"No certificate provided for signing {document_type} {document_id}. Failing open.")
+        logger.warning(
+            f"No certificate provided for signing {document_type} {document_id}. Failing open."
+        )
         return False, ""
 
     try:
         import base64
+
         pfx_bytes = base64.b64decode(pkcs12_b64, validate=True)
     except Exception as e:
-        logger.warning(f"Invalid base64 certificate provided for {document_type} {document_id}: {e}. Failing open.")
+        logger.warning(
+            f"Invalid base64 certificate provided for {document_type} {document_id}: {e}. Failing open."
+        )
         return False, ""
 
     try:
@@ -36,7 +42,9 @@ def sign_with_icp_brasil(
             password=pkcs12_password or None,
         )
     except ICPBrasilSignerError as exc:
-        logger.warning(f"ICP-Brasil signature failed for {document_type} {document_id}: {exc}. Failing open.")
+        logger.warning(
+            f"ICP-Brasil signature failed for {document_type} {document_id}: {exc}. Failing open."
+        )
         return False, ""
 
     # Persist the DigitalSignature row

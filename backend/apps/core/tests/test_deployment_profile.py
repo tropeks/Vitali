@@ -104,9 +104,7 @@ class DeploymentProfileSettingTests(SimpleTestCase):
 
     def test_is_dedicated_instance_true_for_dedicated(self):
         """IS_DEDICATED_INSTANCE must be True when DEPLOYMENT_PROFILE is 'dedicated'."""
-        with override_settings(
-            DEPLOYMENT_PROFILE="dedicated", IS_DEDICATED_INSTANCE=True
-        ):
+        with override_settings(DEPLOYMENT_PROFILE="dedicated", IS_DEDICATED_INSTANCE=True):
             from django.conf import settings
 
             self.assertTrue(settings.IS_DEDICATED_INSTANCE)

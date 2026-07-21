@@ -741,9 +741,7 @@ class ClinicalDocumentViewSet(viewsets.ModelViewSet):
         """POST /documents/{id}/sign/ — assina o documento"""
         doc = self.get_object()
         if doc.is_signed:
-            return Response(
-                {"error": "Documento já assinado."}, status=status.HTTP_409_CONFLICT
-            )
+            return Response({"error": "Documento já assinado."}, status=status.HTTP_409_CONFLICT)
 
         from apps.emr.services.icp_brasil_integration import sign_with_icp_brasil
 
@@ -861,11 +859,14 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
             from apps.emr.services.icp_brasil_integration import sign_with_icp_brasil
 
             # Serialize prescription to sign
-            doc_content = json.dumps({
-                "prescription_id": str(locked_rx.id),
-                "patient_id": str(locked_rx.patient_id),
-                "notes": locked_rx.notes,
-            }, sort_keys=True).encode("utf-8")
+            doc_content = json.dumps(
+                {
+                    "prescription_id": str(locked_rx.id),
+                    "patient_id": str(locked_rx.patient_id),
+                    "notes": locked_rx.notes,
+                },
+                sort_keys=True,
+            ).encode("utf-8")
 
             is_icp, sig_hash = sign_with_icp_brasil(
                 user=request.user,

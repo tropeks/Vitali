@@ -241,10 +241,24 @@ class MeExportView(_SelfView):
         export_format = request.query_params.get("export_format", "json")
 
         patient_data = PortalPatientSerializer(patient).data
-        appointments = PortalAppointmentSerializer(Appointment.objects.filter(patient=patient).order_by("-start_time")[:100], many=True).data
-        encounters = PortalEncounterSerializer(Encounter.objects.filter(patient=patient, status="signed").order_by("-encounter_date")[:100], many=True).data
-        prescriptions = PortalPrescriptionSerializer(Prescription.objects.filter(patient=patient, status__in=["signed", "partially_dispensed", "dispensed"]).order_by("-created_at")[:100], many=True).data
-        allergies = PortalAllergySerializer(Allergy.objects.filter(patient=patient).order_by("-created_at"), many=True).data
+        appointments = PortalAppointmentSerializer(
+            Appointment.objects.filter(patient=patient).order_by("-start_time")[:100], many=True
+        ).data
+        encounters = PortalEncounterSerializer(
+            Encounter.objects.filter(patient=patient, status="signed").order_by("-encounter_date")[
+                :100
+            ],
+            many=True,
+        ).data
+        prescriptions = PortalPrescriptionSerializer(
+            Prescription.objects.filter(
+                patient=patient, status__in=["signed", "partially_dispensed", "dispensed"]
+            ).order_by("-created_at")[:100],
+            many=True,
+        ).data
+        allergies = PortalAllergySerializer(
+            Allergy.objects.filter(patient=patient).order_by("-created_at"), many=True
+        ).data
 
         data = {
             "patient": patient_data,
@@ -260,12 +274,18 @@ class MeExportView(_SelfView):
             html_string = render_to_string("patient_portal/export.html", {"data": data})
             try:
                 from weasyprint import HTML
+
                 pdf_bytes = HTML(string=html_string).write_pdf()
-                response = HttpResponse(pdf_bytes, content_type='application/pdf')
-                response['Content-Disposition'] = f'attachment; filename="patient_export_{patient.id}.pdf"'
+                response = HttpResponse(pdf_bytes, content_type="application/pdf")
+                response["Content-Disposition"] = (
+                    f'attachment; filename="patient_export_{patient.id}.pdf"'
+                )
                 return response
             except ImportError:
-                return Response({"detail": "Gerador de PDF indisponível."}, status=status.HTTP_501_NOT_IMPLEMENTED)
+                return Response(
+                    {"detail": "Gerador de PDF indisponível."},
+                    status=status.HTTP_501_NOT_IMPLEMENTED,
+                )
         else:
             return Response({"detail": "Formato inválido."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -283,10 +303,12 @@ class MeDeletionRequestView(_SelfView):
             old_data={},
             new_data={
                 "reason": reason,
-                "note": "Retenção legal de 20 anos se aplica. Nenhuma exclusão física realizada."
-            }
+                "note": "Retenção legal de 20 anos se aplica. Nenhuma exclusão física realizada.",
+            },
         )
         return Response(
-            {"detail": "Solicitação registrada com sucesso. A retenção legal de 20 anos se aplica."},
-            status=status.HTTP_200_OK
+            {
+                "detail": "Solicitação registrada com sucesso. A retenção legal de 20 anos se aplica."
+            },
+            status=status.HTTP_200_OK,
         )

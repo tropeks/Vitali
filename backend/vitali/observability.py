@@ -33,6 +33,7 @@ _INSTRUMENTED: bool = False
 # PHI Scrubbing Span Processor (lazy factory)
 # ---------------------------------------------------------------------------
 
+
 def PHIScrubbingSpanProcessor():  # noqa: N802 — intentional CamelCase factory
     """
     Factory that builds and returns a SpanProcessor that redacts PHI/PII
@@ -104,6 +105,7 @@ def PHIScrubbingSpanProcessor():  # noqa: N802 — intentional CamelCase factory
 # Bootstrap
 # ---------------------------------------------------------------------------
 
+
 def setup_observability(service_role: str) -> None:
     """
     Bootstrap OpenTelemetry for the current process.
@@ -156,6 +158,7 @@ def setup_observability(service_role: str) -> None:
         from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (  # noqa: PLC0415
             OTLPSpanExporter,
         )
+
         exporter = OTLPSpanExporter(endpoint=endpoint)
     else:
         # ── P2 Hardening: ConsoleExporter blocked in production ───────────────

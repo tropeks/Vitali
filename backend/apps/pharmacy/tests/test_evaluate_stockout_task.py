@@ -45,9 +45,7 @@ class EvaluateStockoutTaskTests(TenantTestCase):
             )
 
     def _receive(self, item, qty):
-        StockMovement.objects.create(
-            stock_item=item, movement_type="entry", quantity=Decimal(qty)
-        )
+        StockMovement.objects.create(stock_item=item, movement_type="entry", quantity=Decimal(qty))
 
     def test_evaluate_all_without_lead_time_is_graceful(self):
         """Drug with no lead_time_days → engine inert → no StockAlert, no exception."""

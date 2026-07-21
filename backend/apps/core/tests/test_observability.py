@@ -21,6 +21,7 @@ from django.test import TestCase, override_settings
 # Helpers — reset state between test runs
 # ---------------------------------------------------------------------------
 
+
 def _reset_otel_guard():
     """Reset the module-global _INSTRUMENTED flag so each test starts clean."""
     import vitali.observability as obs_mod  # already loaded; just grab it
@@ -123,13 +124,13 @@ class OtelGateOnTests(TestCase):
         # Skip the entire class if the OTel SDK is not installed.
         try:
             import opentelemetry  # noqa: F401
-        except ImportError as exc:
+        except ImportError:
             import unittest
 
             raise unittest.SkipTest(
                 "opentelemetry SDK not installed — OTel ON tests skipped. "
                 "Rebuild the image after adding requirements to run these."
-            ) from exc
+            ) from None
 
         super().setUpClass()
 
@@ -230,9 +231,7 @@ class OtelGateOnTests(TestCase):
         A span with http.target='/api/x?cpf=123' must have the query string
         stripped so only the path component remains after scrubbing.
         """
-        finished = self._make_scrubbed_span(
-            {"http.target": "/api/patients?cpf=123&nome=Joao"}
-        )
+        finished = self._make_scrubbed_span({"http.target": "/api/patients?cpf=123&nome=Joao"})
         self.assertEqual(len(finished), 1)
         attrs = finished[0].attributes or {}
         http_target = attrs.get("http.target", "")
@@ -287,8 +286,7 @@ class OtelGateOnTests(TestCase):
                 return "otlp"
             if not debug:
                 raise ImproperlyConfigured(
-                    "OTEL_ENABLED=True but OTEL_EXPORTER_OTLP_ENDPOINT is not set "
-                    "and DEBUG=False."
+                    "OTEL_ENABLED=True but OTEL_EXPORTER_OTLP_ENDPOINT is not set and DEBUG=False."
                 )
             return "console"
 
@@ -296,9 +294,7 @@ class OtelGateOnTests(TestCase):
         try:
             result = _check_exporter_guard(debug=True, endpoint="")
         except ImproperlyConfigured as exc:  # pragma: no cover
-            self.fail(
-                f"Guard raised ImproperlyConfigured in DEBUG=True mode: {exc!r}"
-            )
+            self.fail(f"Guard raised ImproperlyConfigured in DEBUG=True mode: {exc!r}")
         self.assertEqual(result, "console")
 
         # Sanity: DEBUG=False, no endpoint → must raise (mirrors blocked-in-prod test).

@@ -7,6 +7,7 @@ from django.db import transaction
 
 logger = logging.getLogger(__name__)
 
+
 class Command(BaseCommand):
     help = "Import InsuranceProviders from a CSV file into the specified tenant."
 
@@ -26,6 +27,7 @@ class Command(BaseCommand):
         dry_run = options["dry_run"]
 
         from apps.core.models import Tenant
+
         try:
             tenant = Tenant.objects.get(schema_name=schema)
         except Tenant.DoesNotExist as exc:
@@ -34,7 +36,11 @@ class Command(BaseCommand):
         with open(csv_path, encoding="utf-8-sig", newline="") as fh:
             lines = list(fh)
 
-        physical_lines = [(i + 1, ln) for i, ln in enumerate(lines) if not ln.lstrip().startswith("#") and ln.strip()]
+        physical_lines = [
+            (i + 1, ln)
+            for i, ln in enumerate(lines)
+            if not ln.lstrip().startswith("#") and ln.strip()
+        ]
         if not physical_lines:
             raise CommandError("CSV file is empty or contains only comments.")
 
@@ -46,7 +52,11 @@ class Command(BaseCommand):
             raise CommandError("CSV file is empty or header is missing.")
 
         def _phys(data_idx):
-            return physical_lines[data_idx + 1][0] if data_idx + 1 < len(physical_lines) else data_idx + 2
+            return (
+                physical_lines[data_idx + 1][0]
+                if data_idx + 1 < len(physical_lines)
+                else data_idx + 2
+            )
 
         line_errors = []
         for idx, row in enumerate(rows):
@@ -62,26 +72,25 @@ class Command(BaseCommand):
         created = updated = 0
 
         from django_tenants.utils import tenant_context
+
         with tenant_context(tenant):
             from apps.billing.models import InsuranceProvider
+
             with transaction.atomic():
                 for row in rows:
                     ans_code = row.get("ans_code") or row.get("codigo_ans") or row.get("ANS_CODE")
                     ans_code = ans_code.strip()
                     name = row.get("name") or row.get("nome") or row.get("NAME") or ""
                     cnpj = row.get("cnpj") or row.get("CNPJ") or ""
-                    is_active_raw = (row.get("is_active") or row.get("ativo") or "true").strip().lower()
+                    is_active_raw = (
+                        (row.get("is_active") or row.get("ativo") or "true").strip().lower()
+                    )
                     is_active = is_active_raw in ("true", "1", "yes", "sim", "t", "y")
 
-                    defaults = {
-                        "name": name.strip(),
-                        "cnpj": cnpj.strip(),
-                        "is_active": is_active
-                    }
+                    defaults = {"name": name.strip(), "cnpj": cnpj.strip(), "is_active": is_active}
 
                     obj, was_created = InsuranceProvider.objects.update_or_create(
-                        ans_code=ans_code,
-                        defaults=defaults
+                        ans_code=ans_code, defaults=defaults
                     )
                     if was_created:
                         created += 1
@@ -92,6 +101,8 @@ class Command(BaseCommand):
                     transaction.set_rollback(True)
 
         if dry_run:
-            self.stdout.write(self.style.SUCCESS(f"Dry run complete: {created} created, {updated} updated"))
+            self.stdout.write(
+                self.style.SUCCESS(f"Dry run complete: {created} created, {updated} updated")
+            )
         else:
             self.stdout.write(self.style.SUCCESS(f"Done: {created} created, {updated} updated"))

@@ -7,6 +7,7 @@ from django.db import transaction
 
 logger = logging.getLogger(__name__)
 
+
 class Command(BaseCommand):
     help = "Import Professionals/Users from a CSV file into the specified tenant."
 
@@ -26,6 +27,7 @@ class Command(BaseCommand):
         dry_run = options["dry_run"]
 
         from apps.core.models import Tenant, User
+
         try:
             tenant = Tenant.objects.get(schema_name=schema)
         except Tenant.DoesNotExist as exc:
@@ -34,7 +36,11 @@ class Command(BaseCommand):
         with open(csv_path, encoding="utf-8-sig", newline="") as fh:
             lines = list(fh)
 
-        physical_lines = [(i + 1, ln) for i, ln in enumerate(lines) if not ln.lstrip().startswith("#") and ln.strip()]
+        physical_lines = [
+            (i + 1, ln)
+            for i, ln in enumerate(lines)
+            if not ln.lstrip().startswith("#") and ln.strip()
+        ]
         if not physical_lines:
             raise CommandError("CSV file is empty or contains only comments.")
 
@@ -46,7 +52,11 @@ class Command(BaseCommand):
             raise CommandError("CSV file is empty or header is missing.")
 
         def _phys(data_idx):
-            return physical_lines[data_idx + 1][0] if data_idx + 1 < len(physical_lines) else data_idx + 2
+            return (
+                physical_lines[data_idx + 1][0]
+                if data_idx + 1 < len(physical_lines)
+                else data_idx + 2
+            )
 
         line_errors = []
         for idx, row in enumerate(rows):
@@ -74,8 +84,10 @@ class Command(BaseCommand):
         # Since it's a script, we can get the first system admin or just any admin.
         # It's better to fetch a user or pass None if allowed. We will just get the first active user of the tenant as fallback.
         from django_tenants.utils import tenant_context
+
         with tenant_context(tenant):
             from apps.core.models import UserTenantMembership
+
             try:
                 admin_user = UserTenantMembership.objects.filter(tenant=tenant).first().user
             except AttributeError:
@@ -91,10 +103,16 @@ class Command(BaseCommand):
                     cpf = (row.get("cpf") or row.get("CPF") or "").strip()
                     role = (row.get("role") or row.get("cargo")).strip()
                     hire_date = (row.get("hire_date") or row.get("data_contratacao")).strip()
-                    contract_type = (row.get("contract_type") or row.get("contrato") or "clt").strip()
+                    contract_type = (
+                        row.get("contract_type") or row.get("contrato") or "clt"
+                    ).strip()
                     council_type = (row.get("council_type") or row.get("conselho") or "").strip()
-                    council_number = (row.get("council_number") or row.get("numero_conselho") or "").strip()
-                    council_state = (row.get("council_state") or row.get("uf_conselho") or "").strip()
+                    council_number = (
+                        row.get("council_number") or row.get("numero_conselho") or ""
+                    ).strip()
+                    council_state = (
+                        row.get("council_state") or row.get("uf_conselho") or ""
+                    ).strip()
                     specialty = (row.get("specialty") or row.get("especialidade") or "").strip()
 
                     user_exists = User.objects.filter(email=email).first()
@@ -108,7 +126,7 @@ class Command(BaseCommand):
                         emp = Employee.objects.filter(user=user_exists).first()
                         if emp:
                             updated += 1
-                            continue # skip if already fully created
+                            continue  # skip if already fully created
                         else:
                             # User exists but not employee? Not supported by simple onboarding, but we could handle it.
                             # We just skip updating existing records for simplicity or we can update.
@@ -125,12 +143,14 @@ class Command(BaseCommand):
                             "council_type": council_type,
                             "council_number": council_number,
                             "council_state": council_state,
-                            "specialty": specialty
+                            "specialty": specialty,
                         }
                         service = EmployeeOnboardingService(requesting_user=admin_user)
                         try:
                             employee = service.onboard(payload)
-                            UserTenantMembership.objects.get_or_create(user=employee.user, tenant=tenant)
+                            UserTenantMembership.objects.get_or_create(
+                                user=employee.user, tenant=tenant
+                            )
                             created += 1
                         except Exception as e:
                             raise CommandError(f"Failed to onboard {email}: {e}") from e
@@ -139,6 +159,12 @@ class Command(BaseCommand):
                     transaction.set_rollback(True)
 
         if dry_run:
-            self.stdout.write(self.style.SUCCESS(f"Dry run complete: {created} created, {updated} updated (skipped)"))
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"Dry run complete: {created} created, {updated} updated (skipped)"
+                )
+            )
         else:
-            self.stdout.write(self.style.SUCCESS(f"Done: {created} created, {updated} updated (skipped)"))
+            self.stdout.write(
+                self.style.SUCCESS(f"Done: {created} created, {updated} updated (skipped)")
+            )

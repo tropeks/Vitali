@@ -97,7 +97,7 @@ export default function PortalHomePage() {
   }, []);
 
   if (state.loading) {
-    return <p className="text-sm text-[#8C959F]">Carregando suas informações…</p>;
+    return <p className="text-sm text-neu-inkMuted">Carregando suas informações…</p>;
   }
   if (state.error) {
     return (
@@ -110,10 +110,10 @@ export default function PortalHomePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-[#24292F]">
+        <h1 className="text-2xl font-semibold text-neu-ink">
           Olá, {state.patient?.social_name || state.patient?.full_name?.split(" ")[0] || "paciente"}
         </h1>
-        <p className="mt-1 text-sm text-[#57606A]">
+        <p className="mt-1 text-sm text-neu-inkSoft">
           Aqui você acompanha suas consultas, prontuário e receitas.
         </p>
       </div>
@@ -124,10 +124,10 @@ export default function PortalHomePage() {
       )}
 
       {/* Next appointment */}
-      <section className="rounded-lg border border-slate-200 bg-[#F4F7FA]">
+      <section className="rounded-lg border border-slate-200 bg-neu-panel">
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-          <h2 className="inline-flex items-center gap-2 text-base font-semibold text-[#24292F]">
-            <CalendarDays size={18} className="text-[#0066A1]" />
+          <h2 className="inline-flex items-center gap-2 text-base font-semibold text-neu-ink">
+            <CalendarDays size={18} className="text-neu-brand" />
             Próxima consulta
           </h2>
           <Link
@@ -141,10 +141,10 @@ export default function PortalHomePage() {
           {state.nextAppointment ? (
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-semibold text-[#24292F]">
+                <p className="text-sm font-semibold text-neu-ink">
                   {formatDateTimeBR(state.nextAppointment.start_time)}
                 </p>
-                <p className="text-xs text-[#8C959F]">
+                <p className="text-xs text-neu-inkMuted">
                   Tipo: {state.nextAppointment.type || "consulta"}
                 </p>
               </div>
@@ -156,7 +156,7 @@ export default function PortalHomePage() {
               />
             </div>
           ) : (
-            <p className="text-sm text-[#8C959F]">
+            <p className="text-sm text-neu-inkMuted">
               Você não tem consultas agendadas no momento.
             </p>
           )}
@@ -187,19 +187,19 @@ export default function PortalHomePage() {
 
       {/* Recent prescriptions */}
       {state.recentPrescriptions.length > 0 && (
-        <section className="rounded-lg border border-slate-200 bg-[#F4F7FA]">
+        <section className="rounded-lg border border-slate-200 bg-neu-panel">
           <div className="border-b border-slate-100 px-4 py-3">
-            <h2 className="text-base font-semibold text-[#24292F]">Receitas recentes</h2>
+            <h2 className="text-base font-semibold text-neu-ink">Receitas recentes</h2>
           </div>
           <ul className="divide-y divide-slate-100">
             {state.recentPrescriptions.map((rx) => (
               <li key={rx.id} className="flex items-center justify-between px-4 py-3">
                 <div>
-                  <p className="text-sm font-medium text-[#24292F]">
+                  <p className="text-sm font-medium text-neu-ink">
                     {formatDateBR(rx.signed_at ?? rx.created_at)}
                   </p>
                   {rx.notes && (
-                    <p className="mt-0.5 text-xs text-[#8C959F] line-clamp-1">{rx.notes}</p>
+                    <p className="mt-0.5 text-xs text-neu-inkMuted line-clamp-1">{rx.notes}</p>
                   )}
                 </div>
                 <StatusBadge
@@ -266,14 +266,14 @@ function QuickLink({
   return (
     <Link
       href={href}
-      className="group flex items-center gap-3 rounded-lg border border-slate-200 bg-[#F4F7FA] p-4 transition-colors hover:border-blue-300 hover:bg-blue-50/40"
+      className="group flex items-center gap-3 rounded-lg border border-slate-200 bg-neu-panel p-4 transition-colors hover:border-blue-300 hover:bg-blue-50/40"
     >
       <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-blue-700 group-hover:bg-blue-100">
         <Icon size={20} />
       </span>
       <div>
-        <p className="text-sm font-semibold text-[#24292F]">{title}</p>
-        <p className="text-xs text-[#8C959F]">{subtitle}</p>
+        <p className="text-sm font-semibold text-neu-ink">{title}</p>
+        <p className="text-xs text-neu-inkMuted">{subtitle}</p>
       </div>
     </Link>
   );

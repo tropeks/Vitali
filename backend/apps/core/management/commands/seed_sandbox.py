@@ -33,10 +33,16 @@ class Command(BaseCommand):
     help = "Seed sandbox tenant with mock data for all 7 wedges and call telemetry endpoint."
 
     def add_arguments(self, parser):
-        parser.add_argument("--reset", action="store_true",
-                            help="Drop existing sandbox schema and re-create from zero.")
-        parser.add_argument("--test-only", action="store_true",
-                            help="Skip seeding; only call the telemetry endpoint.")
+        parser.add_argument(
+            "--reset",
+            action="store_true",
+            help="Drop existing sandbox schema and re-create from zero.",
+        )
+        parser.add_argument(
+            "--test-only",
+            action="store_true",
+            help="Skip seeding; only call the telemetry endpoint.",
+        )
 
     def handle(self, *args, **options):
         reset = options["reset"]
@@ -130,10 +136,12 @@ class Command(BaseCommand):
 
     def _get_prof(self, user):
         from apps.emr.models import Professional
+
         return Professional.objects.get(user=user)
 
     def _make_patient(self, i):
         from apps.emr.models import Patient
+
         return Patient.objects.create(
             full_name=f"[SANDBOX] Paciente {i}",
             birth_date=date(1970 + i, 1, 1),
@@ -143,6 +151,7 @@ class Command(BaseCommand):
 
     def _make_drug(self, name, *, lead_time_days=None):
         from apps.pharmacy.models import Drug
+
         drug, _ = Drug.objects.get_or_create(
             name=f"[SANDBOX] {name}",
             defaults={"lead_time_days": lead_time_days, "unit_of_measure": "un"},
@@ -151,21 +160,25 @@ class Command(BaseCommand):
 
     def _make_encounter(self, patient, prof):
         from apps.emr.models import Encounter
+
         return Encounter.objects.create(patient=patient, professional=prof)
 
     def _make_prescription(self, patient, prof):
         from apps.emr.models import Prescription
+
         enc = self._make_encounter(patient, prof)
         return Prescription.objects.create(encounter=enc, patient=patient, prescriber=prof)
 
     def _make_prescription_item(self, rx, drug):
         from apps.emr.models import PrescriptionItem
+
         return PrescriptionItem.objects.create(
             prescription=rx, drug=drug, quantity=Decimal("1"), unit_of_measure="un"
         )
 
     def _make_dispensation(self, rx, item, patient, user):
         from apps.pharmacy.models import Dispensation
+
         return Dispensation.objects.create(
             prescription=rx, prescription_item=item, patient=patient, dispensed_by=user
         )
@@ -185,6 +198,7 @@ class Command(BaseCommand):
         # Fixed anchor so re-runs don't generate overlapping slots on the same professional.
         # Slots are 1 h apart (appointment duration 30 min) → no overlaps ever.
         import datetime as _dt
+
         anchor = _dt.datetime(2027, 1, 10, 8, 0, 0, tzinfo=_dt.UTC)
         specs = [
             ("0.80", "high", "open", "pending"),
@@ -322,7 +336,11 @@ class Command(BaseCommand):
         prof = self._get_prof(user)
         specs = [
             ("flagged", "caution", "Alergia cruzada: penicilina / amoxicilina."),
-            ("flagged", "contraindication", "NSAID contraindicado: alergia grave a AAS registrada."),
+            (
+                "flagged",
+                "contraindication",
+                "NSAID contraindicado: alergia grave a AAS registrada.",
+            ),
         ]
         for i, (status, severity, msg) in enumerate(specs):
             patient = self._make_patient(40 + i)
@@ -393,7 +411,12 @@ class Command(BaseCommand):
         specs = [
             ("refill_too_soon", "open", "pending", "Refill 8 dias antes do intervalo mínimo."),
             ("multiple_prescribers", "open", "pending", "3 prescritores distintos em 30 dias."),
-            ("quantity_escalation", "acknowledged", "true_positive", "Escalada 40%: diversion confirmada."),
+            (
+                "quantity_escalation",
+                "acknowledged",
+                "true_positive",
+                "Escalada 40%: diversion confirmada.",
+            ),
         ]
         for i, (signal, status, outcome, msg) in enumerate(specs):
             patient = self._make_patient(60 + i)
@@ -425,7 +448,9 @@ class Command(BaseCommand):
 
         user = User.objects.filter(email=USER_EMAIL).first()
         if not user:
-            self.stdout.write(self.style.ERROR("Sandbox user not found — run without --test-only first."))
+            self.stdout.write(
+                self.style.ERROR("Sandbox user not found — run without --test-only first.")
+            )
             return
 
         factory = APIRequestFactory()

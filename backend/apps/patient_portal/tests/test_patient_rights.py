@@ -12,11 +12,13 @@ from apps.test_utils import TenantTestCase
 EXPORT_URL = "/api/v1/portal/me/export/"
 DELETE_REQ_URL = "/api/v1/portal/me/delete-request/"
 
+
 def _make_user(*, role_name: str, perms: list[str], email: str, full_name: str) -> User:
     role, _ = Role.objects.get_or_create(name=role_name, defaults={"permissions": perms})
     role.permissions = perms
     role.save()
     return User.objects.create_user(email=email, password="pw", role=role, full_name=full_name)
+
 
 class PatientRightsTest(TenantTestCase):
     def setUp(self):
@@ -29,9 +31,7 @@ class PatientRightsTest(TenantTestCase):
         )
 
         self.patient = Patient.objects.create(
-            full_name="Carlos Mendes",
-            cpf="99988877766",
-            birth_date="1980-01-01"
+            full_name="Carlos Mendes", cpf="99988877766", birth_date="1980-01-01"
         )
         self.portal_user = _make_user(
             role_name="portal_user",

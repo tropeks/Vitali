@@ -251,9 +251,7 @@ class WorkerDsnOverrideTests(SimpleTestCase):
             text=True,
             env=env,
         )
-        self.assertEqual(
-            proc.returncode, 0, f"subprocess failed: {proc.stderr or proc.stdout}"
-        )
+        self.assertEqual(proc.returncode, 0, f"subprocess failed: {proc.stderr or proc.stdout}")
         return json.loads(proc.stdout.strip().splitlines()[-1])
 
     def test_worker_override_preserves_tenants_engine(self):
@@ -262,16 +260,12 @@ class WorkerDsnOverrideTests(SimpleTestCase):
         Regression guard: env.db() returns ENGINE=django.db.backends.postgresql;
         the override must re-assert django_tenants.postgresql_backend afterward.
         """
-        db = self._load_settings_db(
-            VITALI_ROLE="worker", CELERY_DATABASE_URL=self._DSN_WORKER
-        )
+        db = self._load_settings_db(VITALI_ROLE="worker", CELERY_DATABASE_URL=self._DSN_WORKER)
         self.assertEqual(db["ENGINE"], "django_tenants.postgresql_backend")
 
     def test_worker_override_applies_worker_dsn(self):
         """The worker DSN actually takes effect (distinct user from the web tier)."""
-        db = self._load_settings_db(
-            VITALI_ROLE="worker", CELERY_DATABASE_URL=self._DSN_WORKER
-        )
+        db = self._load_settings_db(VITALI_ROLE="worker", CELERY_DATABASE_URL=self._DSN_WORKER)
         self.assertEqual(db["USER"], "vitali_worker")
 
     def test_web_role_keeps_default_dsn_and_engine(self):

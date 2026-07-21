@@ -29,8 +29,11 @@ class TestImportProfessionals(TenantTestCase):
         if not User.objects.filter(email="admin@example.com").exists():
             u = User.objects.create(email="admin@example.com", full_name="Admin")
             from apps.core.models import UserTenantMembership
+
             UserTenantMembership.objects.create(user=u, tenant=self.tenant)
-        call_command("import_professionals", file=self.csv_file, tenant=self.tenant.schema_name, stdout=out)
+        call_command(
+            "import_professionals", file=self.csv_file, tenant=self.tenant.schema_name, stdout=out
+        )
         self.assertIn("Done: 1 created", out.getvalue())
         self.assertEqual(Employee.objects.count(), 1)
         e = Employee.objects.first()
