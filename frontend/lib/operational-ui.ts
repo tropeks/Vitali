@@ -25,7 +25,7 @@ export const APPOINTMENT_STATUS_META: Record<string, StatusMeta> = {
   },
   waiting: {
     label: 'Aguardando',
-    badgeClass: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+    badgeClass: 'bg-neu-warning/10 text-neu-warning border-neu-warning/20',
     borderClass: 'border-l-yellow-500',
     rowClass: 'bg-yellow-50/50',
     tone: 'attention',
@@ -192,23 +192,23 @@ export function formatPtTime(value?: string | null): string {
 // Every workflow status the operational UI renders resolves through one of the
 // maps below. Screens must not re-declare status colours inline. `badgeClass`
 // is the bordered pill recipe over the neumorphic tokens (token/10-bg /
-// token-text / token/20-border; yellow/orange keep the stock Tailwind palette
-// until an amber token exists); `tone` maps to the soft TONE_CLASSES chip used
-// for non-status signals.
+// token-text / token/20-border; semantic amber uses `neu-warning`, orange keeps
+// the stock Tailwind palette until an orange token exists); `tone` maps to the
+// soft TONE_CLASSES chip used for non-status signals.
 // ---------------------------------------------------------------------------
 
 /**
  * Soft tinted chip used for operational *signals* (not workflow status).
  *
  * Superfície = tokens neumórficos (`neu-*` de tailwind.config.ts): bg no token
- * /10, borda /20, texto no token. Desvio anotado: não há token âmbar/laranja
- * no namespace `neu`, então `attention` (e as receitas orange abaixo) mantêm a
- * paleta Tailwind padrão yellow/orange até existir um token.
+ * /10, borda /20, texto no token. Desvio anotado: não há token laranja no
+ * namespace `neu`, então as receitas orange abaixo mantêm a paleta Tailwind
+ * padrão até existir um token.
  */
 export const TONE_CLASSES: Record<OperationalTone, string> = {
   neutral: 'border-neu-inkMuted/20 bg-white text-neu-inkSoft',
   info: 'border-neu-brand/20 bg-neu-brand/10 text-neu-brand',
-  attention: 'border-yellow-200 bg-yellow-50 text-yellow-800',
+  attention: 'border-neu-warning/20 bg-neu-warning/10 text-neu-warning',
   success: 'border-neu-success/20 bg-neu-success/10 text-neu-success',
   critical: 'border-neu-danger/20 bg-neu-danger/10 text-neu-danger',
 }
@@ -254,7 +254,7 @@ export function resolveBadgeMeta(
 /** TISS guide: draft -> pending -> submitted -> paid / denied -> appeal */
 export const GUIDE_STATUS_META: Record<string, BadgeMeta> = {
   draft: badge('Rascunho', 'bg-neu-inkMuted/10 text-neu-inkSoft border-neu-inkMuted/20', 'neutral'),
-  pending: badge('Pendente', 'bg-yellow-100 text-yellow-800 border-yellow-200', 'attention'),
+  pending: badge('Pendente', 'bg-neu-warning/10 text-neu-warning border-neu-warning/20', 'attention'),
   submitted: badge('Enviada', 'bg-neu-brand/10 text-neu-brand border-neu-brand/20', 'info'),
   paid: badge('Paga', 'bg-neu-success/10 text-neu-success border-neu-success/20', 'success'),
   denied: badge('Glosada', 'bg-neu-danger/10 text-neu-danger border-neu-danger/20', 'critical'),
@@ -272,7 +272,7 @@ export const PRESCRIPTION_STATUS_META: Record<string, BadgeMeta> = {
   signed: badge('Assinada', 'bg-neu-brand/10 text-neu-brand border-neu-brand/20', 'info'),
   partially_dispensed: badge(
     'Parcial',
-    'bg-yellow-100 text-yellow-800 border-yellow-200',
+    'bg-neu-warning/10 text-neu-warning border-neu-warning/20',
     'attention',
   ),
   dispensed: badge('Dispensada', 'bg-neu-success/10 text-neu-success border-neu-success/20', 'success'),
@@ -280,7 +280,7 @@ export const PRESCRIPTION_STATUS_META: Record<string, BadgeMeta> = {
 }
 
 export const ENCOUNTER_STATUS_META: Record<string, BadgeMeta> = {
-  open: badge('Em aberto', 'bg-yellow-100 text-yellow-800 border-yellow-200', 'attention'),
+  open: badge('Em aberto', 'bg-neu-warning/10 text-neu-warning border-neu-warning/20', 'attention'),
   signed: badge('Assinada', 'bg-neu-success/10 text-neu-success border-neu-success/20', 'success'),
   cancelled: badge('Cancelada', 'bg-neu-danger/10 text-neu-danger border-neu-danger/20', 'critical'),
 }
@@ -289,7 +289,7 @@ export const ENCOUNTER_STATUS_META: Record<string, BadgeMeta> = {
 export const ALLERGY_SEVERITY_META: Record<string, BadgeMeta> = {
   life_threatening: badge('Risco de vida', 'bg-neu-danger/10 text-neu-danger border-neu-danger/20', 'critical'),
   severe: badge('Grave', 'bg-orange-100 text-orange-800 border-orange-200', 'critical'),
-  moderate: badge('Moderada', 'bg-yellow-100 text-yellow-800 border-yellow-200', 'attention'),
+  moderate: badge('Moderada', 'bg-neu-warning/10 text-neu-warning border-neu-warning/20', 'attention'),
   mild: badge('Leve', 'bg-neu-success/10 text-neu-success border-neu-success/20', 'success'),
 }
 
@@ -311,14 +311,14 @@ export const SUBSCRIPTION_STATUS_META: Record<string, BadgeMeta> = {
 /** Employee `employment_status` lifecycle on /rh/funcionarios. */
 export const EMPLOYMENT_STATUS_META: Record<string, BadgeMeta> = {
   active: badge('Ativo', 'bg-neu-success/10 text-neu-success border-neu-success/20', 'success'),
-  on_leave: badge('Afastado', 'bg-yellow-100 text-yellow-800 border-yellow-200', 'attention'),
+  on_leave: badge('Afastado', 'bg-neu-warning/10 text-neu-warning border-neu-warning/20', 'attention'),
   terminated: badge('Desligado', 'bg-neu-danger/10 text-neu-danger border-neu-danger/20', 'critical'),
 }
 
 /** Evolution API connection state from /api/v1/whatsapp/health/ — open/connecting/close. */
 export const WA_CONNECTION_STATUS_META: Record<string, BadgeMeta> = {
   open: badge('Conectado', 'bg-neu-success/10 text-neu-success border-neu-success/20', 'success'),
-  connecting: badge('Aguardando', 'bg-yellow-100 text-yellow-800 border-yellow-200', 'attention'),
+  connecting: badge('Aguardando', 'bg-neu-warning/10 text-neu-warning border-neu-warning/20', 'attention'),
   close: badge('Desconectado', 'bg-neu-danger/10 text-neu-danger border-neu-danger/20', 'critical'),
 }
 
@@ -337,7 +337,7 @@ export function getActivenessMeta(isActive: boolean | null | undefined): BadgeMe
 export function getDpaStatusMeta(isSigned: boolean | null | undefined): BadgeMeta {
   return isSigned
     ? badge('DPA assinado', 'bg-neu-success/10 text-neu-success border-neu-success/20', 'success')
-    : badge('DPA não assinado', 'bg-yellow-100 text-yellow-800 border-yellow-200', 'attention')
+    : badge('DPA não assinado', 'bg-neu-warning/10 text-neu-warning border-neu-warning/20', 'attention')
 }
 
 export function getMfaStatusMeta(isActive: boolean | null | undefined): BadgeMeta {
@@ -369,7 +369,7 @@ export function getStockStatusMeta(item: StockStatusInput): BadgeMeta | null {
     const target = new Date(`${item.expiry_date}T00:00:00`)
     const days = Math.ceil((target.getTime() - today.getTime()) / 86_400_000)
     if (days >= 0 && days <= 30) {
-      return badge(`Vence em ${days}d`, 'bg-yellow-100 text-yellow-800 border-yellow-200', 'attention')
+      return badge(`Vence em ${days}d`, 'bg-neu-warning/10 text-neu-warning border-neu-warning/20', 'attention')
     }
   }
   if (item.is_low_stock) {

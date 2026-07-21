@@ -155,9 +155,7 @@ export default function FormularioPage() {
                     {rule.validated ? (
                       <Badge variant="success">Validada</Badge>
                     ) : (
-                      <span className="inline-flex items-center rounded-full border border-yellow-200 bg-yellow-100 px-2.5 py-1 text-xs font-semibold text-yellow-800">
-                        Pendente
-                      </span>
+                      <Badge variant="warning">Pendente</Badge>
                     )}
                   </td>
                   <td className="px-4 py-3 text-neu-inkSoft text-xs">

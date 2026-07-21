@@ -11,12 +11,11 @@ import {
 import { Button, PageShell } from '@/components/shared'
 
 // Mesma semântica de cor de sempre (low=neutro, medium=atenção, high=crítico),
-// só que sobre os tokens/recipes neu-* — `attention` mantém a paleta Tailwind
-// yellow padrão (mesmo desvio documentado em lib/operational-ui: não existe
-// token âmbar no namespace `neu` ainda).
+// só que sobre os tokens/recipes neu-* — `medium` usa o token âmbar
+// `neu-warning`, mesma anatomia /10 /20 dos demais.
 const BAND_STYLES: Record<NoShowBand, string> = {
   low: 'border border-neu-inkMuted/20 bg-neu-inkMuted/10 text-neu-inkSoft',
-  medium: 'border border-yellow-200 bg-yellow-50 text-yellow-800',
+  medium: 'border border-neu-warning/20 bg-neu-warning/10 text-neu-warning',
   high: 'border border-neu-danger/20 bg-neu-danger/10 text-neu-danger',
 }
 
@@ -100,6 +99,10 @@ export default function FaltasPage() {
               key={f.value || 'all'}
               type="button"
               variant={bandFilter === f.value ? 'primary' : 'secondary'}
+              // Mesmo tamanho nos dois estados (primary já é px-6 py-2; a
+              // utility sobrescreve o px-4 py-1.5 do recipe secondary) para o
+              // grupo de filtros não "pular" ao trocar a seleção.
+              className="px-6 py-2"
               onClick={() => setBandFilter(f.value)}
             >
               {f.label}
