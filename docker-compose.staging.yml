@@ -141,6 +141,52 @@ services:
     mem_limit: 512m
     cpus: 1.0
 
+  # ─── Orthanc archive (DICOM + DICOMweb only) ──────────────────────────────
+  orthanc:
+    image: orthancteam/orthanc:26.6.1@sha256:83a1f988c9790a8ec018d00bad2d23d29703313e10ec59ecbeb827b5fa8e0aee
+    restart: always
+    environment:
+      ORTHANC_USERNAME: ${ORTHANC_USERNAME}
+      ORTHANC_PASSWORD: ${ORTHANC_PASSWORD}
+      ORTHANC__REGISTERED_USERS: |
+        {"${ORTHANC_USERNAME}": "${ORTHANC_PASSWORD}"}
+      VITALI_WEBHOOK_URL: http://django:8000/api/v1/imaging/orthanc/webhook/
+      VITALI_WEBHOOK_SECRET: ${ORTHANC_WEBHOOK_SECRET}
+    volumes:
+      - ./docker/orthanc/orthanc.json:/etc/orthanc/orthanc.json:ro
+      - ./docker/orthanc/vitali-webhook.lua:/etc/orthanc/vitali-webhook.lua:ro
+      - orthanc_data:/var/lib/orthanc/db
+    ports:
+      - "127.0.0.1:8042:8042"
+      - "127.0.0.1:4242:4242"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -u $${ORTHANC_USERNAME}:$${ORTHANC_PASSWORD} http://127.0.0.1:8042/system || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 4
+      start_period: 30s
+    depends_on:
+      django:
+        condition: service_started
+    mem_limit: 1g
+    cpus: 1.0
+
+  # ─── Vitali Imagem (OHIF 3.12.8 standalone) ───────────────────────────────
+  vitali-viewer:
+    image: ghcr.io/${GHCR_REPO}/vitali-viewer:${IMAGE_TAG:-latest}
+    restart: always
+    # PVE's nested AppArmor profile blocks nginx-unprivileged socketpair().
+    security_opt:
+      - apparmor=unconfined
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8080/visualizador/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    mem_limit: 256m
+    cpus: 0.25
+
   # ─── Evolution API (WhatsApp) ─────────────────────────────────────────────
   evolution-api:
     image: evoapicloud/evolution-api:v2.2.3
@@ -221,6 +267,8 @@ services:
     depends_on:
       - django
       - nextjs
+      - orthanc
+      - vitali-viewer
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/login || exit 1"]
       interval: 30s
@@ -236,3 +284,4 @@ volumes:
   static_files:
   media_files:
   backups:
+  orthanc_data:

@@ -15,16 +15,12 @@
   "DicomPort": 4242,
   "StableAge": 60,
 
-  // ─── DICOMweb + OHIF viewer ───────────────────────────────────────────────
-  // Upstream plugin names stay internal. Browser-facing routes use Vitali's
-  // product paths through nginx: /visualizador/ and /imagens-dicom/.
+  // ─── DICOMweb ─────────────────────────────────────────────────────────────
+  // The archive exposes no browser UI. Vitali Imagem runs in a separate,
+  // version-pinned service and reaches this root only through the SSO proxy.
   "DicomWeb": {
     "Enable": true,
     "Root": "/imagens-dicom/"
-  },
-  "OHIF": {
-    "DataSource": "dicom-web",
-    "RouterBasename": "/visualizador/"
   },
 
   // ─── Push ingestion (E-012) ───────────────────────────────────────────────
