@@ -28,12 +28,12 @@ function EmptyState() {
   return (
     <PageShell variant="operational">
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-5 text-center px-4">
-        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center">
-          <AlertCircle size={32} className="text-slate-400" />
+        <div className="w-16 h-16 bg-neu-input rounded-full flex items-center justify-center border border-transparent shadow-neu-inset">
+          <AlertCircle size={32} className="text-neu-inkMuted" />
         </div>
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Nenhuma assinatura ativa</h1>
-          <p className="text-slate-500 text-sm mt-2 max-w-md">
+          <h1 className="text-2xl font-semibold text-neu-ink">Nenhuma assinatura ativa</h1>
+          <p className="text-neu-inkSoft text-sm mt-2 max-w-md">
             Sua conta ainda não possui um plano ativo. Entre em contato para configurar sua
             assinatura.
           </p>
@@ -42,7 +42,7 @@ function EmptyState() {
           href="https://calendly.com/vitali-saude"
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-b from-neu-brand to-neu-brandDeep border-t border-neu-brandEdge shadow-neu-btn-primary text-white text-sm font-semibold rounded-lg hover:shadow-neu-btn-primary-hover transition-all"
         >
           Agendar conversa
           <ExternalLink size={14} />
@@ -88,10 +88,10 @@ export default function AssinaturaPage() {
     return (
       <PageShell variant="operational">
         <div className="space-y-5 animate-pulse">
-          <div className="h-8 bg-slate-100 rounded w-48" />
+          <div className="h-8 bg-neu-app rounded w-48" />
           <div className="grid md:grid-cols-2 gap-4">
-            <div className="h-40 bg-slate-100 rounded-lg" />
-            <div className="h-40 bg-slate-100 rounded-lg" />
+            <div className="h-40 bg-neu-app rounded-lg" />
+            <div className="h-40 bg-neu-app rounded-lg" />
           </div>
         </div>
       </PageShell>
@@ -111,8 +111,8 @@ export default function AssinaturaPage() {
       <div className="max-w-3xl space-y-5">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-2xl font-semibold text-slate-900">{subscription.plan_name}</h1>
-            <p className="text-slate-500 text-sm mt-1">Informações da sua assinatura Vitali</p>
+            <h1 className="text-2xl font-semibold text-neu-ink">{subscription.plan_name}</h1>
+            <p className="text-neu-inkSoft text-sm mt-1">Informações da sua assinatura Vitali</p>
           </div>
           <StatusBadge meta={statusMeta} />
         </div>
@@ -127,7 +127,7 @@ export default function AssinaturaPage() {
                 href="https://pay.vitali-saude.com.br/regularizar"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center px-4 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 transition-colors"
+                className="inline-flex items-center px-4 py-2 bg-gradient-to-b from-neu-danger to-red-800 border-t border-red-400 shadow-md hover:shadow-lg text-white text-sm font-semibold rounded-lg transition-all"
               >
                 Regularizar pagamento
               </a>
@@ -141,13 +141,13 @@ export default function AssinaturaPage() {
             value={formatCurrency(subscription.monthly_price)}
             hint={`Próxima cobrança em ${formatDate(subscription.current_period_end)}`}
           />
-          <section className="rounded-lg border border-slate-200 bg-white">
-            <div className="border-b border-slate-100 px-4 py-3">
-              <h2 className="text-base font-semibold text-slate-900">Módulos ativos</h2>
+          <section className="bg-neu-panel rounded-xl shadow-neu-panel border border-white">
+            <div className="border-b border-neu-app/50 px-4 py-3">
+              <h2 className="text-base font-semibold text-neu-ink">Módulos ativos</h2>
             </div>
             <div className="p-4">
               {subscription.active_modules.length === 0 ? (
-                <p className="text-sm text-slate-500">Nenhum módulo ativo.</p>
+                <p className="text-sm text-neu-inkMuted">Nenhum módulo ativo.</p>
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {subscription.active_modules.map((mod) => (
@@ -155,7 +155,7 @@ export default function AssinaturaPage() {
                       key={mod}
                       meta={{
                         label: mod,
-                        badgeClass: 'bg-green-100 text-green-800 border-green-200',
+                        badgeClass: 'bg-neu-success/10 text-neu-success border-neu-success/20',
                       }}
                     />
                   ))}
@@ -166,13 +166,13 @@ export default function AssinaturaPage() {
         </div>
 
         {isActive && (
-          <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 flex items-center justify-between gap-4 flex-wrap">
-            <p className="text-sm text-blue-800">Precisa de um módulo adicional?</p>
+          <div className="rounded-lg border border-neu-brand/20 bg-neu-brand/10 p-4 flex items-center justify-between gap-4 flex-wrap">
+            <p className="text-sm text-neu-brand">Precisa de um módulo adicional?</p>
             <a
               href="https://calendly.com/vitali-saude/modulos"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-sm font-semibold text-blue-700 hover:underline inline-flex items-center gap-1"
+              className="text-sm font-semibold text-neu-brand hover:underline inline-flex items-center gap-1"
             >
               Agendar conversa
               <span aria-hidden="true"> →</span>
