@@ -245,7 +245,9 @@ def ingest_one_study(orthanc_id: str, *, client: OrthancClient | None = None) ->
     )
 
 
-def verify_and_link_study(study_row, orthanc_id: str, *, client: OrthancClient | None = None) -> str:
+def verify_and_link_study(
+    study_row, orthanc_id: str, *, client: OrthancClient | None = None
+) -> str:
     """Server-side verification used by the manual PATCH endpoint.
 
     This intentionally uses the same global uniqueness and patient-identity

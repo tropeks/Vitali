@@ -37,11 +37,15 @@ class MeImagingStudyAuthorizationView(_SelfView):
 
     def get(self, request, study_id):
         patient = self._patient(request)
-        exists = _patient_studies(patient).filter(
-            pk=study_id,
-            orthanc_study_id__gt="",
-            dicom_identity_verified=True,
-        ).exists()
+        exists = (
+            _patient_studies(patient)
+            .filter(
+                pk=study_id,
+                orthanc_study_id__gt="",
+                dicom_identity_verified=True,
+            )
+            .exists()
+        )
         if not exists:
             # Deliberately indistinguishable from a missing study (anti-IDOR).
             return Response({"detail": "Exame não encontrado."}, status=status.HTTP_404_NOT_FOUND)
