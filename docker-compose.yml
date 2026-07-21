@@ -155,6 +155,7 @@ services:
       VITALI_WEBHOOK_SECRET: ${ORTHANC_WEBHOOK_SECRET:-change-me-orthanc-webhook}
     volumes:
       - ./docker/orthanc/orthanc.json:/etc/orthanc/orthanc.json:ro
+      - ./docker/orthanc/vitali-viewer.js:/etc/orthanc/vitali-viewer.js:ro
       - ./docker/orthanc/vitali-webhook.lua:/etc/orthanc/vitali-webhook.lua:ro
       - orthanc_data:/var/lib/orthanc/db
     ports:

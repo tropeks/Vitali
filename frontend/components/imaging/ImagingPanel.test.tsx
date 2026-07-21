@@ -42,7 +42,7 @@ describe('ImagingPanel', () => {
       ),
     );
     expect(await screen.findByText('Aguardando PACS')).toBeInTheDocument();
-    expect(screen.queryByTitle(/OHIF Viewer/)).not.toBeInTheDocument();
+    expect(screen.queryByTitle(/Vitali Imagem/)).not.toBeInTheDocument();
   });
 
   it('queries a specific laboratory item', async () => {
@@ -94,9 +94,9 @@ describe('ImagingPanel', () => {
         expect.objectContaining({ headers: { Authorization: 'Bearer token' } }),
       ),
     );
-    expect(await screen.findByTitle(/OHIF Viewer/)).toHaveAttribute(
+    expect(await screen.findByTitle(/Vitali Imagem/)).toHaveAttribute(
       'src',
-      '/ohif/viewer?StudyInstanceUIDs=1.2.826.1',
+      '/visualizador/viewer?StudyInstanceUIDs=1.2.826.1',
     );
   });
 });

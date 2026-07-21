@@ -1,5 +1,5 @@
 {
-  "Name": "Vitali PACS",
+  "Name": "Vitali Imagem",
 
   // ─── HTTP / DICOM access ──────────────────────────────────────────────────
   // RemoteAccessAllowed is required because Vitali (Django + nginx) reaches
@@ -16,15 +16,16 @@
   "StableAge": 60,
 
   // ─── DICOMweb + OHIF viewer ───────────────────────────────────────────────
-  // The OHIF plugin (bundled in orthancteam/orthanc) is served at /ohif/ and
-  // resolves pixel data through the DICOMweb endpoint at /dicom-web/. Vitali's
-  // viewer URL is /ohif/viewer?StudyInstanceUIDs=<StudyInstanceUID>.
+  // Upstream plugin names stay internal. Browser-facing routes use Vitali's
+  // product paths through nginx: /visualizador/ and /imagens-dicom/.
   "DicomWeb": {
     "Enable": true,
-    "Root": "/dicom-web/"
+    "Root": "/imagens-dicom/"
   },
   "OHIF": {
-    "DataSource": "dicom-web"
+    "DataSource": "dicom-web",
+    "RouterBasename": "/visualizador/",
+    "UserConfiguration": "/etc/orthanc/vitali-viewer.js"
   },
 
   // ─── Push ingestion (E-012) ───────────────────────────────────────────────
