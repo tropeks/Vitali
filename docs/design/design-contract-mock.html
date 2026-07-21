@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Vitali — Mock dos Contratos de Design (v2.0)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script>
+  tailwind.config = {
+    theme: { extend: { fontFamily: {
+      sans: ['Inter', 'system-ui', 'sans-serif'],
+      mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+    } } },
+  }
+</script>
+<style>
+  body { font-family: Inter, system-ui, sans-serif; }
+  .spec { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8C959F; }
+</style>
+</head>
+<body class="bg-[#F4F7FA] text-slate-900">
+
+<!-- ══════════════════ HEADER ══════════════════ -->
+<header class="border-b border-slate-200 bg-white">
+  <div class="mx-auto max-w-[1500px] px-6 py-5">
+    <h1 class="text-2xl font-semibold text-slate-900">Vitali — Mock dos Contratos de Design</h1>
+    <p class="mt-1 text-sm text-slate-700">
+      Gerado a partir de <span class="font-mono text-xs">DESIGN.md v2.0</span>,
+      <span class="font-mono text-xs">components/shared/*</span> e
+      <span class="font-mono text-xs">lib/operational-ui.ts</span>.
+      Cada bloco mostra a recipe exata de classes usada em produção.
+    </p>
+    <div class="mt-3 flex flex-wrap gap-2">
+      <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-blue-100 text-blue-800 border-blue-200">Clinical-clean SaaS</span>
+      <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-slate-100 text-slate-600 border-slate-200">Flat · denso · status-first</span>
+      <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-green-100 text-green-800 border-green-200">v2.0 reconciliado</span>
+    </div>
+  </div>
+</header>
+
+<main class="mx-auto max-w-[1500px] space-y-10 px-6 py-8">
+
+<!-- ══════════════════ 1. COR ══════════════════ -->
+<section>
+  <h2 class="text-base font-semibold text-slate-900">1. Sistema de cor</h2>
+  <p class="mt-1 text-sm text-slate-700">Telas usam <code class="font-mono text-xs">blue-*</code> / <code class="font-mono text-xs">slate-*</code> literais. O token <code class="font-mono text-xs">brand-*</code> existe no config mas <strong>não</strong> é usado em telas operacionais.</p>
+
+  <div class="mt-4 grid gap-4 lg:grid-cols-2">
+    <div class="rounded-lg border border-slate-200 bg-white">
+      <div class="border-b border-slate-100 px-4 py-3"><h3 class="text-base font-semibold text-slate-900">Primária — Clinical Blue</h3></div>
+      <div class="p-4 space-y-2">
+        <div class="flex items-center gap-3"><div class="h-8 w-16 rounded border border-slate-200 bg-blue-50"></div><span class="font-mono text-xs text-slate-700">blue-50</span><span class="text-xs text-slate-500">hover de botão, bg de form in-context, linha selecionada</span></div>
+        <div class="flex items-center gap-3"><div class="h-8 w-16 rounded border border-slate-200 bg-blue-100"></div><span class="font-mono text-xs text-slate-700">blue-100</span><span class="text-xs text-slate-500">badge claro, callout info</span></div>
+        <div class="flex items-center gap-3"><div class="h-8 w-16 rounded border border-slate-200 bg-blue-600"></div><span class="font-mono text-xs text-slate-700">blue-600</span><span class="text-xs text-slate-500"><strong>botão primário</strong>, nav ativa, link</span></div>
+        <div class="flex items-center gap-3"><div class="h-8 w-16 rounded border border-slate-200 bg-blue-700"></div><span class="font-mono text-xs text-slate-700">blue-700</span><span class="text-xs text-slate-500">hover do primário</span></div>
+        <div class="flex items-center gap-3"><div class="h-8 w-16 rounded border border-slate-200 bg-blue-900"></div><span class="font-mono text-xs text-slate-700">blue-900</span><span class="text-xs text-slate-500">numeral de KPI tintado</span></div>
+      </div>
+    </div>
+
+    <div class="rounded-lg border border-slate-200 bg-white">
+      <div class="border-b border-slate-100 px-4 py-3"><h3 class="text-base font-semibold text-slate-900">Neutros — escala Slate</h3></div>
+      <div class="p-4 space-y-2">
+        <div class="flex items-center gap-3"><div class="h-8 w-16 rounded border border-slate-200 bg-slate-50"></div><span class="font-mono text-xs text-slate-700">slate-50</span><span class="text-xs text-slate-500">bg de página, header de tabela, tile de lote/código</span></div>
+        <div class="flex items-center gap-3"><div class="h-8 w-16 rounded border border-slate-200 bg-slate-100"></div><span class="font-mono text-xs text-slate-700">slate-100</span><span class="text-xs text-slate-500">hover, divisor entre linhas</span></div>
+        <div class="flex items-center gap-3"><div class="h-8 w-16 rounded border border-slate-200 bg-slate-200"></div><span class="font-mono text-xs text-slate-700">slate-200</span><span class="text-xs text-slate-500"><strong>bordas</strong> de card / input / tabela</span></div>
+        <div class="flex items-center gap-3"><div class="h-8 w-16 rounded border border-slate-200 bg-slate-400"></div><span class="font-mono text-xs text-slate-700">slate-400</span><span class="text-xs text-slate-500">placeholder, disabled, ícone decorativo</span></div>
+        <div class="flex items-center gap-3"><div class="h-8 w-16 rounded border border-slate-200 bg-slate-500"></div><span class="font-mono text-xs text-slate-700">slate-500</span><span class="text-xs text-slate-500">label secundário, caption</span></div>
+        <div class="flex items-center gap-3"><div class="h-8 w-16 rounded border border-slate-200 bg-slate-700"></div><span class="font-mono text-xs text-slate-700">slate-700</span><span class="text-xs text-slate-500">texto de corpo, botão secundário</span></div>
+        <div class="flex items-center gap-3"><div class="h-8 w-16 rounded border border-slate-200 bg-slate-900"></div><span class="font-mono text-xs text-slate-700">slate-900</span><span class="text-xs text-slate-500">títulos, bg da sidebar</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- drift real entre doc e código -->
+  <div class="mt-4 rounded-lg border px-4 py-3 border-yellow-200 bg-yellow-50 text-yellow-800">
+    <p class="text-sm font-semibold">Divergência doc ↔ código</p>
+    <p class="mt-1 text-xs opacity-80">
+      O <span class="font-mono">DESIGN.md</span> descreve tudo em <span class="font-mono">slate-*</span>, mas os primitivos usam
+      hex arbitrários: <span class="font-mono">#F4F7FA</span> (bg de página, tile neutro),
+      <span class="font-mono">#8C959F</span> (label de KPI neutro),
+      <span class="font-mono">#57606A</span> (texto de SectionState neutro),
+      <span class="font-mono">#24292F</span> (título de ReadinessPanel).
+      Este mock reproduz o <strong>código</strong>. Vale decidir qual vence e alinhar os dois.
+    </p>
+  </div>
+
+  <div class="mt-4 rounded-lg border border-slate-200 bg-white">
+    <div class="border-b border-slate-100 px-4 py-3">
+      <h3 class="text-base font-semibold text-slate-900">Semântica — <span class="font-mono text-sm">OperationalTone</span></h3>
+      <p class="mt-1 text-xs text-slate-500">Nunca decorativa. Todo status resolve para um destes tons via <span class="font-mono">lib/operational-ui</span>.</p>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <tr>
+            <th class="px-4 py-2 text-left">Tone</th>
+            <th class="px-4 py-2 text-left">Pill — <span class="font-mono normal-case">badgeClass</span> (100-bg)</th>
+            <th class="px-4 py-2 text-left">Chip — <span class="font-mono normal-case">TONE_CLASSES</span> (50-bg)</th>
+            <th class="px-4 py-2 text-left">Significado</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100 text-slate-700">
+          <tr>
+            <td class="px-4 py-3 font-mono text-xs">critical</td>
+            <td class="px-4 py-3"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 border-red-200">Glosada</span></td>
+            <td class="px-4 py-3"><span class="inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold border-red-200 bg-red-50 text-red-700">Atraso 40min</span></td>
+            <td class="px-4 py-3 text-xs">Alergia com risco de vida, guia glosada, falta, estoque vencido</td>
+          </tr>
+          <tr>
+            <td class="px-4 py-3 font-mono text-xs">attention</td>
+            <td class="px-4 py-3"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-yellow-100 text-yellow-800 border-yellow-200">Pendente</span></td>
+            <td class="px-4 py-3"><span class="inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold border-yellow-200 bg-yellow-50 text-yellow-800">Espera 18min</span></td>
+            <td class="px-4 py-3 text-xs">Pendente, aguardando, parcial, vencendo/estoque baixo, recurso</td>
+          </tr>
+          <tr>
+            <td class="px-4 py-3 font-mono text-xs">success</td>
+            <td class="px-4 py-3"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-green-100 text-green-800 border-green-200">Paga</span></td>
+            <td class="px-4 py-3"><span class="inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold border-green-200 bg-green-50 text-green-800">No horário</span></td>
+            <td class="px-4 py-3 text-xs">Paga, dispensada, em atendimento, resolvida</td>
+          </tr>
+          <tr>
+            <td class="px-4 py-3 font-mono text-xs">info</td>
+            <td class="px-4 py-3"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-blue-100 text-blue-800 border-blue-200">Assinada</span></td>
+            <td class="px-4 py-3"><span class="inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold border-blue-200 bg-blue-50 text-blue-800">WhatsApp</span></td>
+            <td class="px-4 py-3 text-xs">Enviada, <strong>receita assinada (acionável)</strong>, confirmado</td>
+          </tr>
+          <tr>
+            <td class="px-4 py-3 font-mono text-xs">neutral</td>
+            <td class="px-4 py-3"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-slate-100 text-slate-600 border-slate-200">Rascunho</span></td>
+            <td class="px-4 py-3"><span class="inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold border-slate-200 bg-white text-slate-700">Sem sinal</span></td>
+            <td class="px-4 py-3 text-xs">Rascunho, agendado, histórico/inativo</td>
+          </tr>
+          <tr>
+            <td class="px-4 py-3 font-mono text-xs text-slate-500">severe <span class="text-slate-400">(fora do enum)</span></td>
+            <td class="px-4 py-3"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-orange-100 text-orange-800 border-orange-200">Grave</span></td>
+            <td class="px-4 py-3"><span class="inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold border-orange-200 bg-orange-50 text-orange-800">Recurso</span></td>
+            <td class="px-4 py-3 text-xs">Alergia grave (sem risco de vida), recurso de glosa</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="border-t border-slate-100 px-4 py-3">
+      <p class="text-xs text-slate-500"><strong>Conflito resolvido:</strong> receita <span class="font-mono">signed</span> é <span class="text-blue-700 font-semibold">info/azul</span> ("liberada, acionável"); verde é reservado para <span class="font-mono">dispensed</span> ("concluída"). Azul é canônico em todo lugar.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════ 2. MAPAS CANÔNICOS ══════════════════ -->
+<section>
+  <h2 class="text-base font-semibold text-slate-900">2. Mapas canônicos — <span class="font-mono text-sm">lib/operational-ui.ts</span></h2>
+  <p class="mt-1 text-sm text-slate-700">Fonte única de verdade. Telas <strong>nunca</strong> declaram status→cor inline.</p>
+
+  <div class="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+
+    <div class="rounded-lg border border-slate-200 bg-white">
+      <div class="border-b border-slate-100 px-4 py-3"><h3 class="font-mono text-sm font-semibold text-slate-900">APPOINTMENT_STATUS_META</h3><p class="mt-1 text-xs text-slate-500">Ciclo do agendamento</p></div>
+      <div class="p-4 flex flex-wrap gap-2">
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-slate-100 text-slate-700 border-slate-200">Agendado</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-blue-100 text-blue-800 border-blue-200">Confirmado</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-yellow-100 text-yellow-800 border-yellow-200">Aguardando</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-green-100 text-green-800 border-green-200">Em atendimento</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-slate-100 text-slate-600 border-slate-200">Concluído</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 border-red-200">Cancelado</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 border-red-200">Não compareceu</span>
+      </div>
+    </div>
+
+    <div class="rounded-lg border border-slate-200 bg-white">
+      <div class="border-b border-slate-100 px-4 py-3"><h3 class="font-mono text-sm font-semibold text-slate-900">GUIDE_STATUS_META</h3><p class="mt-1 text-xs text-slate-500">Guia TISS: draft → pending → submitted → paid/denied → appeal</p></div>
+      <div class="p-4 flex flex-wrap gap-2">
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-slate-100 text-slate-600 border-slate-200">Rascunho</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-yellow-100 text-yellow-800 border-yellow-200">Pendente</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-blue-100 text-blue-800 border-blue-200">Enviada</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-green-100 text-green-800 border-green-200">Paga</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 border-red-200">Glosada</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-orange-100 text-orange-800 border-orange-200">Recurso</span>
+      </div>
+    </div>
+
+    <div class="rounded-lg border border-slate-200 bg-white">
+      <div class="border-b border-slate-100 px-4 py-3"><h3 class="font-mono text-sm font-semibold text-slate-900">PRESCRIPTION_STATUS_META</h3><p class="mt-1 text-xs text-slate-500">Receita — assinada é <strong>azul</strong>, dispensada é verde</p></div>
+      <div class="p-4 flex flex-wrap gap-2">
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-slate-100 text-slate-600 border-slate-200">Rascunho</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-blue-100 text-blue-800 border-blue-200">Assinada</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-yellow-100 text-yellow-800 border-yellow-200">Parcial</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-green-100 text-green-800 border-green-200">Dispensada</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 border-red-200">Cancelada</span>
+      </div>
+    </div>
+
+    <div class="rounded-lg border border-slate-200 bg-white">
+      <div class="border-b border-slate-100 px-4 py-3"><h3 class="font-mono text-sm font-semibold text-slate-900">ENCOUNTER_STATUS_META</h3><p class="mt-1 text-xs text-slate-500">Prontuário / consulta</p></div>
+      <div class="p-4 flex flex-wrap gap-2">
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-yellow-100 text-yellow-800 border-yellow-200">Em aberto</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-green-100 text-green-800 border-green-200">Assinada</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 border-red-200">Cancelada</span>
+      </div>
+    </div>
+
+    <div class="rounded-lg border border-slate-200 bg-white">
+      <div class="border-b border-slate-100 px-4 py-3"><h3 class="font-mono text-sm font-semibold text-slate-900">ALLERGY_SEVERITY_META</h3><p class="mt-1 text-xs text-slate-500">Gravidade como pill</p></div>
+      <div class="p-4 flex flex-wrap gap-2">
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-800 border-red-200">Risco de vida</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-orange-100 text-orange-800 border-orange-200">Grave</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-yellow-100 text-yellow-800 border-yellow-200">Moderada</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-green-100 text-green-800 border-green-200">Leve</span>
+      </div>
+    </div>
+
+    <div class="rounded-lg border border-slate-200 bg-white">
+      <div class="border-b border-slate-100 px-4 py-3"><h3 class="font-mono text-sm font-semibold text-slate-900">getStockStatusMeta()</h3><p class="mt-1 text-xs text-slate-500">Derivado de validade / estoque baixo · <span class="font-mono">null</span> quando OK</p></div>
+      <div class="p-4 flex flex-wrap gap-2">
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 border-red-200">Vencido</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-yellow-100 text-yellow-800 border-yellow-200">Vence em 12d</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-orange-100 text-orange-700 border-orange-200">Estoque baixo</span>
+      </div>
+    </div>
+
+    <div class="rounded-lg border border-slate-200 bg-white">
+      <div class="border-b border-slate-100 px-4 py-3"><h3 class="font-mono text-sm font-semibold text-slate-900">SUBSCRIPTION / EMPLOYMENT</h3><p class="mt-1 text-xs text-slate-500">Assinatura · funcionário (RH)</p></div>
+      <div class="p-4 flex flex-wrap gap-2">
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-green-100 text-green-800 border-green-200">Ativo</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 border-red-200">Em atraso</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-slate-100 text-slate-600 border-slate-200">Cancelado</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-yellow-100 text-yellow-800 border-yellow-200">Afastado</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 border-red-200">Desligado</span>
+      </div>
+    </div>
+
+    <div class="rounded-lg border border-slate-200 bg-white">
+      <div class="border-b border-slate-100 px-4 py-3"><h3 class="font-mono text-sm font-semibold text-slate-900">WA_CONNECTION_STATUS_META</h3><p class="mt-1 text-xs text-slate-500">Evolution API — open/connecting/close</p></div>
+      <div class="p-4 flex flex-wrap gap-2">
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-green-100 text-green-800 border-green-200">Conectado</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-yellow-100 text-yellow-800 border-yellow-200">Aguardando</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 border-red-200">Desconectado</span>
+      </div>
+    </div>
+
+    <div class="rounded-lg border border-slate-200 bg-white">
+      <div class="border-b border-slate-100 px-4 py-3"><h3 class="font-mono text-sm font-semibold text-slate-900">Adaptadores booleanos</h3><p class="mt-1 text-xs text-slate-500">getActivenessMeta · getDpaStatusMeta · getMfaStatusMeta · getOptInMeta</p></div>
+      <div class="p-4 flex flex-wrap gap-2">
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-green-100 text-green-800 border-green-200">Ativo</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 border-red-200">Inativo</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-green-100 text-green-800 border-green-200">DPA assinado</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-yellow-100 text-yellow-800 border-yellow-200">DPA não assinado</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-green-100 text-green-800 border-green-200">Opt-in</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-slate-100 text-slate-600 border-slate-200">Sem opt-in</span>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="mt-4 rounded-lg border border-slate-200 bg-white p-4">
+    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Regra do resolver</p>
+    <p class="mt-2 text-sm text-slate-700">
+      <span class="font-mono text-xs">resolveBadgeMeta(map, status, fallbackLabel?)</span> — o <strong>label canônico sempre vence</strong> para um status conhecido.
+      O <span class="font-mono text-xs">status_display</span> do servidor só entra quando o status é desconhecido ao mapa.
+      Status desconhecido sem fallback → <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-slate-100 text-slate-600 border-slate-200">Indefinido</span>
+    </p>
+  </div>
+</section>
+
+<!-- ══════════════════ 3. PRIMITIVOS ══════════════════ -->
+<section>
+  <h2 class="text-base font-semibold text-slate-900">3. Primitivos compartilhados — <span class="font-mono text-sm">components/shared</span></h2>
+
+  <!-- KpiTile -->
+  <div class="mt-4 rounded-lg border border-slate-200 bg-white">
+    <div class="border-b border-slate-100 px-4 py-3">
+      <h3 class="text-base font-semibold text-slate-900">&lt;KpiTile label value hint? icon? tone? /&gt;</h3>
+      <p class="mt-1 spec">valor: text-2xl font-semibold (nunca font-bold) · label: text-xs font-semibold uppercase tracking-wide · flat, sem shadow</p>
+    </div>
+    <div class="p-4">
+      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <div class="rounded-lg border p-4 border-slate-200 bg-[#F4F7FA]">
+          <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[#8C959F]">Pacientes ativos</div>
+          <p class="mt-2 text-2xl font-semibold text-slate-800">1.284</p>
+          <p class="mt-1 text-xs text-[#8C959F]">neutral</p>
+        </div>
+        <div class="rounded-lg border p-4 border-blue-200 bg-blue-50">
+          <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-blue-700">Confirmados hoje</div>
+          <p class="mt-2 text-2xl font-semibold text-blue-900">37</p>
+          <p class="mt-1 text-xs text-blue-700">info</p>
+        </div>
+        <div class="rounded-lg border p-4 border-yellow-200 bg-yellow-50">
+          <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-yellow-700">Fila assistencial</div>
+          <p class="mt-2 text-2xl font-semibold text-yellow-800">9</p>
+          <p class="mt-1 text-xs text-yellow-700">attention · espera média 18 min</p>
+        </div>
+        <div class="rounded-lg border p-4 border-green-200 bg-green-50">
+          <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-green-700">Guias pagas</div>
+          <p class="mt-2 text-2xl font-semibold text-green-800">R$ 84.320</p>
+          <p class="mt-1 text-xs text-green-700">success</p>
+        </div>
+        <div class="rounded-lg border p-4 border-red-200 bg-red-50">
+          <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-red-700">Agenda com atrito</div>
+          <p class="mt-2 text-2xl font-semibold text-red-700">6</p>
+          <p class="mt-1 text-xs text-red-700">critical · 4 canceladas · 2 faltas</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SectionState + ReadinessPanel -->
+  <div class="mt-4 grid gap-4 lg:grid-cols-2">
+    <div class="rounded-lg border border-slate-200 bg-white">
+      <div class="border-b border-slate-100 px-4 py-3">
+        <h3 class="text-base font-semibold text-slate-900">&lt;SectionState title detail tone? action? /&gt;</h3>
+        <p class="mt-1 spec">vazio / degradado / informativo · tone: neutral | success | warning | critical</p>
+      </div>
+      <div class="p-4 space-y-3">
+        <div class="rounded-lg border px-4 py-3 border-slate-200 bg-[#F4F7FA] text-[#57606A]">
+          <p class="text-sm font-semibold">Nenhum paciente na fila</p>
+          <p class="mt-1 text-xs opacity-80">A sala de espera está vazia no momento. Novos check-ins aparecem aqui automaticamente.</p>
+          <div class="mt-3"><button class="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors focus:ring-2 focus:ring-blue-500">Ver agenda do dia</button></div>
+        </div>
+        <div class="rounded-lg border px-4 py-3 border-green-200 bg-green-50 text-green-800">
+          <p class="text-sm font-semibold">Faturamento em dia</p>
+          <p class="mt-1 text-xs opacity-80">Todas as guias do lote 2026-07 foram transmitidas e reconciliadas.</p>
+        </div>
+        <div class="rounded-lg border px-4 py-3 border-yellow-200 bg-yellow-50 text-yellow-800">
+          <p class="text-sm font-semibold">Integração TISS degradada</p>
+          <p class="mt-1 text-xs opacity-80">O webservice do convênio respondeu com latência acima de 8s nas últimas 3 tentativas.</p>
+        </div>
+        <div class="rounded-lg border px-4 py-3 border-red-200 bg-red-50 text-red-800">
+          <p class="text-sm font-semibold">Falha ao carregar prontuários</p>
+          <p class="mt-1 text-xs opacity-80">Não foi possível consultar o serviço de EMR. Nenhum dado clínico foi perdido.</p>
+          <div class="mt-3"><button class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors focus:ring-2 focus:ring-blue-500">Tentar novamente</button></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="rounded-lg border border-slate-200 bg-white">
+      <div class="border-b border-slate-100 px-4 py-3">
+        <h3 class="text-base font-semibold text-slate-900">&lt;ReadinessPanel blockers readyText title? /&gt;</h3>
+        <p class="mt-1 spec">painel "Prontidão" dos closing panels de workbench · sem bloqueio → verde; com bloqueio → lista tudo</p>
+      </div>
+      <div class="p-4 space-y-3">
+        <div class="rounded-lg border border-slate-200 p-3">
+          <div class="mb-2 flex items-center gap-2 text-sm font-semibold text-[#24292F]">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            Prontidão
+          </div>
+          <p class="text-sm text-green-700">Guia pronta para transmissão ao convênio.</p>
+        </div>
+        <div class="rounded-lg border border-slate-200 p-3">
+          <div class="mb-2 flex items-center gap-2 text-sm font-semibold text-[#24292F]">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            Prontidão
+          </div>
+          <ul class="space-y-1 text-sm text-yellow-800">
+            <li class="flex gap-2"><span aria-hidden="true">-</span><span>Número da carteirinha do beneficiário não informado</span></li>
+            <li class="flex gap-2"><span aria-hidden="true">-</span><span>Procedimento 40304361 sem CID-10 principal</span></li>
+            <li class="flex gap-2"><span aria-hidden="true">-</span><span>Guia sem assinatura do profissional executante</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════ 4. TIPOGRAFIA ══════════════════ -->
+<section>
+  <h2 class="text-base font-semibold text-slate-900">4. Tipografia</h2>
+  <p class="mt-1 text-sm text-slate-700"><strong>Inter</strong> para UI · <strong>JetBrains Mono</strong> para todo código médico/registro. Nunca serifada.</p>
+  <div class="mt-4 rounded-lg border border-slate-200 bg-white divide-y divide-slate-100">
+    <div class="flex items-baseline gap-6 px-4 py-3"><span class="w-40 shrink-0 spec">h1 · page title</span><span class="text-2xl font-semibold text-slate-900">Sala de espera</span></div>
+    <div class="flex items-baseline gap-6 px-4 py-3"><span class="w-40 shrink-0 spec">h2/h3 · section</span><span class="text-base font-semibold text-slate-900">Pacientes aguardando</span></div>
+    <div class="flex items-baseline gap-6 px-4 py-3"><span class="w-40 shrink-0 spec">body · célula</span><span class="text-sm text-slate-700">Maria Aparecida de Souza — retorno cardiologia</span></div>
+    <div class="flex items-baseline gap-6 px-4 py-3"><span class="w-40 shrink-0 spec">KPI value</span><span class="text-2xl font-semibold text-slate-800">1.284</span></div>
+    <div class="flex items-baseline gap-6 px-4 py-3"><span class="w-40 shrink-0 spec">label</span><span class="text-xs font-semibold uppercase tracking-wide text-slate-500">Convênio</span></div>
+    <div class="flex items-baseline gap-6 px-4 py-3"><span class="w-40 shrink-0 spec">caption</span><span class="text-xs text-slate-500">Atualizado há 2 minutos</span></div>
+    <div class="flex items-baseline gap-6 px-4 py-3"><span class="w-40 shrink-0 spec">mono ID</span><span class="font-mono text-xs text-slate-700">MRN 00184223 · ANS 326305 · CID-10 I10 · TUSS 40304361 · lote L-2409A</span></div>
+  </div>
+</section>
+
+<!-- ══════════════════ 5. COMPONENTES ══════════════════ -->
+<section>
+  <h2 class="text-base font-semibold text-slate-900">5. Componentes</h2>
+  <div class="mt-4 grid gap-4 lg:grid-cols-2">
+
+    <div class="rounded-lg border border-slate-200 bg-white">
+      <div class="border-b border-slate-100 px-4 py-3"><h3 class="text-base font-semibold text-slate-900">Botões</h3></div>
+      <div class="p-4 space-y-4">
+        <div class="flex flex-wrap items-center gap-3">
+          <button class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 focus:ring-2 focus:ring-blue-500">Transmitir guia</button>
+          <button class="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 focus:ring-2 focus:ring-blue-500">Salvar rascunho</button>
+          <button class="text-sm font-semibold text-blue-600 hover:underline focus:ring-2 focus:ring-blue-500">Ver histórico</button>
+          <button class="text-sm font-semibold text-red-600 hover:underline focus:ring-2 focus:ring-blue-500">Cancelar guia</button>
+          <button disabled class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">Desabilitado</button>
+        </div>
+        <p class="spec">primary bg-blue-600 · secondary border-slate-200 bg-white · ghost text-blue-600 · danger text-red-600 · sempre px-4 py-2 rounded-lg text-sm font-semibold</p>
+      </div>
+    </div>
+
+    <div class="rounded-lg border border-slate-200 bg-white">
+      <div class="border-b border-slate-100 px-4 py-3"><h3 class="text-base font-semibold text-slate-900">Inputs &amp; form in-context</h3></div>
+      <div class="p-4 space-y-4">
+        <div class="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label for="m-nome" class="block text-xs font-medium text-slate-700">Nome do beneficiário <span class="text-red-600">*</span></label>
+            <input id="m-nome" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500" placeholder="Nome completo" />
+          </div>
+          <div>
+            <label for="m-cart" class="block text-xs font-medium text-slate-700">Carteirinha</label>
+            <input id="m-cart" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-sm outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500" placeholder="0000 0000 0000 0000" />
+          </div>
+        </div>
+        <div class="rounded-lg border border-blue-200 bg-blue-50 p-4">
+          <p class="text-sm font-semibold text-slate-900">Adicionar convênio</p>
+          <p class="mt-1 text-xs text-slate-700">Form in-context — <span class="font-mono">rounded-lg border border-blue-200 bg-blue-50 p-4</span></p>
+          <div class="mt-3 flex gap-2">
+            <input class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" placeholder="Operadora" aria-label="Operadora" />
+            <button class="shrink-0 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700">Adicionar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="rounded-lg border border-slate-200 bg-white">
+      <div class="border-b border-slate-100 px-4 py-3"><h3 class="text-base font-semibold text-slate-900">Tabs — underline</h3></div>
+      <div class="p-4">
+        <nav class="flex gap-6 border-b border-slate-200">
+          <button class="border-b-2 border-blue-600 pb-2 text-sm font-semibold text-blue-700">Resumo</button>
+          <button class="border-b-2 border-transparent pb-2 text-sm font-semibold text-slate-500 transition-colors hover:text-slate-800">SOAP</button>
+          <button class="border-b-2 border-transparent pb-2 text-sm font-semibold text-slate-500 transition-colors hover:text-slate-800">CPOE</button>
+          <button class="border-b-2 border-transparent pb-2 text-sm font-semibold text-slate-500 transition-colors hover:text-slate-800">Sinais vitais</button>
+          <button class="border-b-2 border-transparent pb-2 text-sm font-semibold text-slate-500 transition-colors hover:text-slate-800">Documentos</button>
+          <button class="border-b-2 border-transparent pb-2 text-sm font-semibold text-slate-500 transition-colors hover:text-slate-800">Faturamento</button>
+        </nav>
+        <p class="mt-4 spec">ativo border-blue-600 text-blue-700 · inativo border-transparent text-slate-500 · sempre border-b-2</p>
+      </div>
+    </div>
+
+    <div class="rounded-lg border border-slate-200 bg-white">
+      <div class="border-b border-slate-100 px-4 py-3"><h3 class="text-base font-semibold text-slate-900">Skeletons</h3><p class="mt-1 spec">animate-pulse sobre bg-slate-100 · nunca um branco indefinido</p></div>
+      <div class="p-4 space-y-3">
+        <div class="animate-pulse space-y-3">
+          <div class="h-8 w-1/3 rounded bg-slate-100"></div>
+          <div class="grid grid-cols-3 gap-3">
+            <div class="h-20 rounded-lg bg-slate-100"></div>
+            <div class="h-20 rounded-lg bg-slate-100"></div>
+            <div class="h-20 rounded-lg bg-slate-100"></div>
+          </div>
+          <div class="h-4 rounded bg-slate-100"></div>
+          <div class="h-4 w-5/6 rounded bg-slate-100"></div>
+          <div class="h-4 w-2/3 rounded bg-slate-100"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ══════════════════ 6. SHELL OPERACIONAL ══════════════════ -->
+<section>
+  <h2 class="text-base font-semibold text-slate-900">6. <span class="font-mono text-sm">&lt;PageShell variant="operational"&gt;</span> — sala de espera</h2>
+  <p class="mt-1 spec">full-bleed · space-y-5 · tabela densa com faixa lateral por status (borderClass) e tint de linha (rowClass)</p>
+
+  <div class="mt-4 rounded-lg border border-slate-200 bg-white p-5">
+    <div class="space-y-5">
+
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 class="text-2xl font-semibold text-slate-900">Sala de espera</h3>
+          <p class="mt-1 text-xs text-slate-500">Unidade Centro · sexta, 19 de julho · atualizado há 40 s</p>
+        </div>
+        <div class="flex gap-2">
+          <button class="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50">Imprimir fila</button>
+          <button class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700">Novo check-in</button>
+        </div>
+      </div>
+
+      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div class="rounded-lg border p-4 border-yellow-200 bg-yellow-50">
+          <div class="text-xs font-semibold uppercase tracking-wide text-yellow-700">Aguardando</div>
+          <p class="mt-2 text-2xl font-semibold text-yellow-800">4</p>
+          <p class="mt-1 text-xs text-yellow-700">Espera média 18 min</p>
+        </div>
+        <div class="rounded-lg border p-4 border-green-200 bg-green-50">
+          <div class="text-xs font-semibold uppercase tracking-wide text-green-700">Em atendimento</div>
+          <p class="mt-2 text-2xl font-semibold text-green-800">3</p>
+          <p class="mt-1 text-xs text-green-700">2 consultórios livres</p>
+        </div>
+        <div class="rounded-lg border p-4 border-blue-200 bg-blue-50">
+          <div class="text-xs font-semibold uppercase tracking-wide text-blue-700">Confirmados</div>
+          <p class="mt-2 text-2xl font-semibold text-blue-900">12</p>
+          <p class="mt-1 text-xs text-blue-700">Próximas 3 horas</p>
+        </div>
+        <div class="rounded-lg border p-4 border-red-200 bg-red-50">
+          <div class="text-xs font-semibold uppercase tracking-wide text-red-700">Atrito</div>
+          <p class="mt-2 text-2xl font-semibold text-red-700">2</p>
+          <p class="mt-1 text-xs text-red-700">1 cancelada · 1 falta</p>
+        </div>
+      </div>
+
+      <section class="rounded-lg border border-slate-200 bg-white">
+        <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+          <h4 class="text-base font-semibold text-slate-900">Fila assistencial</h4>
+          <span class="inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold border-blue-200 bg-blue-50 text-blue-800">9 pacientes</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <tr>
+                <th class="px-4 py-2 text-left">Hora</th>
+                <th class="px-4 py-2 text-left">Paciente</th>
+                <th class="px-4 py-2 text-left">MRN</th>
+                <th class="px-4 py-2 text-left">Profissional</th>
+                <th class="px-4 py-2 text-left">Convênio</th>
+                <th class="px-4 py-2 text-left">Sinais</th>
+                <th class="px-4 py-2 text-left">Status</th>
+                <th class="px-4 py-2 text-right">Ação</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 text-slate-700">
+              <tr class="border-l-4 border-l-green-500 bg-green-50/50">
+                <td class="px-4 py-3 font-mono text-xs">08:30</td>
+                <td class="px-4 py-3 font-medium text-slate-900">Maria Aparecida de Souza</td>
+                <td class="px-4 py-3 font-mono text-xs text-slate-500">00184223</td>
+                <td class="px-4 py-3">Dra. Helena Prado</td>
+                <td class="px-4 py-3">Unimed <span class="font-mono text-xs text-slate-500">ANS 326305</span></td>
+                <td class="px-4 py-3"><span class="inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold border-red-200 bg-red-50 text-red-700">Alergia: dipirona</span></td>
+                <td class="px-4 py-3"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-green-100 text-green-800 border-green-200">Em atendimento</span></td>
+                <td class="px-4 py-3 text-right"><button class="text-sm font-semibold text-blue-600 hover:underline">Abrir prontuário</button></td>
+              </tr>
+              <tr class="border-l-4 border-l-yellow-500 bg-yellow-50/50">
+                <td class="px-4 py-3 font-mono text-xs">08:45</td>
+                <td class="px-4 py-3 font-medium text-slate-900">João Batista Ferreira</td>
+                <td class="px-4 py-3 font-mono text-xs text-slate-500">00190471</td>
+                <td class="px-4 py-3">Dr. Caio Meneses</td>
+                <td class="px-4 py-3">Bradesco Saúde <span class="font-mono text-xs text-slate-500">ANS 005711</span></td>
+                <td class="px-4 py-3"><span class="inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold border-yellow-200 bg-yellow-50 text-yellow-800">Espera 22 min</span></td>
+                <td class="px-4 py-3"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-yellow-100 text-yellow-800 border-yellow-200">Aguardando</span></td>
+                <td class="px-4 py-3 text-right"><button class="text-sm font-semibold text-blue-600 hover:underline">Chamar</button></td>
+              </tr>
+              <tr class="border-l-4 border-l-blue-500 bg-blue-50/40">
+                <td class="px-4 py-3 font-mono text-xs">09:00</td>
+                <td class="px-4 py-3 font-medium text-slate-900">Antônio Carlos Nogueira</td>
+                <td class="px-4 py-3 font-mono text-xs text-slate-500">00177032</td>
+                <td class="px-4 py-3">Dra. Helena Prado</td>
+                <td class="px-4 py-3">Particular</td>
+                <td class="px-4 py-3"><span class="inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold border-blue-200 bg-blue-50 text-blue-800">WhatsApp</span></td>
+                <td class="px-4 py-3"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-blue-100 text-blue-800 border-blue-200">Confirmado</span></td>
+                <td class="px-4 py-3 text-right"><button class="text-sm font-semibold text-blue-600 hover:underline">Check-in</button></td>
+              </tr>
+              <tr class="border-l-4 border-l-slate-300 bg-white">
+                <td class="px-4 py-3 font-mono text-xs">09:15</td>
+                <td class="px-4 py-3 font-medium text-slate-900">Luzia dos Santos Pereira</td>
+                <td class="px-4 py-3 font-mono text-xs text-slate-500">00201889</td>
+                <td class="px-4 py-3">Dr. Caio Meneses</td>
+                <td class="px-4 py-3">SulAmérica <span class="font-mono text-xs text-slate-500">ANS 006246</span></td>
+                <td class="px-4 py-3"><span class="text-xs text-slate-500">—</span></td>
+                <td class="px-4 py-3"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-slate-100 text-slate-700 border-slate-200">Agendado</span></td>
+                <td class="px-4 py-3 text-right"><button class="text-sm font-semibold text-blue-600 hover:underline">Confirmar</button></td>
+              </tr>
+              <tr class="border-l-4 border-l-red-500 bg-red-50/40">
+                <td class="px-4 py-3 font-mono text-xs">08:00</td>
+                <td class="px-4 py-3 font-medium text-slate-900">Rafael Amorim Lopes</td>
+                <td class="px-4 py-3 font-mono text-xs text-slate-500">00166540</td>
+                <td class="px-4 py-3">Dra. Helena Prado</td>
+                <td class="px-4 py-3">Unimed <span class="font-mono text-xs text-slate-500">ANS 326305</span></td>
+                <td class="px-4 py-3"><span class="inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold border-red-200 bg-red-50 text-red-700">Atraso 55 min</span></td>
+                <td class="px-4 py-3"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 border-red-200">Não compareceu</span></td>
+                <td class="px-4 py-3 text-right"><button class="text-sm font-semibold text-blue-600 hover:underline">Reagendar</button></td>
+              </tr>
+              <tr class="border-l-4 border-l-slate-300 bg-slate-50/50">
+                <td class="px-4 py-3 font-mono text-xs">07:30</td>
+                <td class="px-4 py-3 font-medium text-slate-900">Beatriz Camargo Vieira</td>
+                <td class="px-4 py-3 font-mono text-xs text-slate-500">00159218</td>
+                <td class="px-4 py-3">Dr. Caio Meneses</td>
+                <td class="px-4 py-3">Particular</td>
+                <td class="px-4 py-3"><span class="text-xs text-slate-500">—</span></td>
+                <td class="px-4 py-3"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-slate-100 text-slate-600 border-slate-200">Concluído</span></td>
+                <td class="px-4 py-3 text-right"><button class="text-sm font-semibold text-blue-600 hover:underline">Ver consulta</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════ 7. SHELL WORKBENCH ══════════════════ -->
+<section>
+  <h2 class="text-base font-semibold text-slate-900">7. <span class="font-mono text-sm">&lt;PageShell variant="workbench"&gt;</span> — guia TISS</h2>
+  <p class="mt-1 spec">max-w-[1500px] centrado · space-y-4 · faixa de contexto → grade de trabalho → painel de fechamento sticky (única superfície com shadow-sm)</p>
+
+  <div class="mt-4 rounded-lg border border-slate-200 bg-[#F4F7FA] p-5">
+    <div class="space-y-4">
+
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 class="text-2xl font-semibold text-slate-900">Nova guia SP/SADT</h3>
+          <p class="mt-1 text-xs text-slate-500">Rascunho · <span class="font-mono">GUIA-2026-004182</span> · salvo automaticamente há 12 s</p>
+        </div>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-slate-100 text-slate-600 border-slate-200">Rascunho</span>
+      </div>
+
+      <!-- faixa de contexto -->
+      <section class="rounded-lg border border-slate-200 bg-white">
+        <div class="grid gap-4 p-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Beneficiário</p>
+            <p class="mt-1 text-sm text-slate-900">Maria Aparecida de Souza</p>
+            <p class="mt-0.5 font-mono text-xs text-slate-500">MRN 00184223</p>
+          </div>
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Operadora</p>
+            <p class="mt-1 text-sm text-slate-900">Unimed</p>
+            <p class="mt-0.5 font-mono text-xs text-slate-500">ANS 326305</p>
+          </div>
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Executante</p>
+            <p class="mt-1 text-sm text-slate-900">Dra. Helena Prado</p>
+            <p class="mt-0.5 font-mono text-xs text-slate-500">CRM-SP 148223</p>
+          </div>
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Indicação clínica</p>
+            <p class="mt-1 text-sm text-slate-900">Hipertensão essencial</p>
+            <p class="mt-0.5 font-mono text-xs text-slate-500">CID-10 I10</p>
+          </div>
+        </div>
+      </section>
+
+      <div class="grid gap-4 xl:grid-cols-3">
+        <!-- grade de trabalho -->
+        <section class="rounded-lg border border-slate-200 bg-white xl:col-span-2">
+          <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+            <h4 class="text-base font-semibold text-slate-900">Procedimentos</h4>
+            <button class="text-sm font-semibold text-blue-600 hover:underline">+ Adicionar procedimento</button>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th class="px-4 py-2 text-left">TUSS</th>
+                  <th class="px-4 py-2 text-left">Descrição</th>
+                  <th class="px-4 py-2 text-right">Qtd</th>
+                  <th class="px-4 py-2 text-right">Valor</th>
+                  <th class="px-4 py-2 text-left">Situação</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 text-slate-700">
+                <tr>
+                  <td class="px-4 py-3 font-mono text-xs">40304361</td>
+                  <td class="px-4 py-3">Consulta em consultório</td>
+                  <td class="px-4 py-3 text-right font-mono text-xs">1</td>
+                  <td class="px-4 py-3 text-right font-mono text-xs">R$ 180,00</td>
+                  <td class="px-4 py-3"><span class="inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold border-yellow-200 bg-yellow-50 text-yellow-800">Sem CID vinculado</span></td>
+                </tr>
+                <tr>
+                  <td class="px-4 py-3 font-mono text-xs">40301397</td>
+                  <td class="px-4 py-3">Eletrocardiograma convencional</td>
+                  <td class="px-4 py-3 text-right font-mono text-xs">1</td>
+                  <td class="px-4 py-3 text-right font-mono text-xs">R$ 62,40</td>
+                  <td class="px-4 py-3"><span class="inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold border-green-200 bg-green-50 text-green-800">OK</span></td>
+                </tr>
+                <tr>
+                  <td class="px-4 py-3 font-mono text-xs">40302016</td>
+                  <td class="px-4 py-3">Holter 24 horas — 3 canais</td>
+                  <td class="px-4 py-3 text-right font-mono text-xs">1</td>
+                  <td class="px-4 py-3 text-right font-mono text-xs">R$ 240,00</td>
+                  <td class="px-4 py-3"><span class="inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold border-blue-200 bg-blue-50 text-blue-800">Requer autorização</span></td>
+                </tr>
+              </tbody>
+              <tfoot class="border-t border-slate-200 bg-slate-50">
+                <tr>
+                  <td colspan="3" class="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Total da guia</td>
+                  <td class="px-4 py-3 text-right font-mono text-sm font-semibold text-slate-900">R$ 482,40</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </section>
+
+        <!-- painel de fechamento sticky: única superfície com elevação -->
+        <aside class="h-fit rounded-lg border border-slate-200 bg-white shadow-sm xl:sticky xl:top-4">
+          <div class="border-b border-slate-100 px-4 py-3">
+            <h4 class="text-base font-semibold text-slate-900">Fechamento</h4>
+            <p class="mt-1 spec">shadow-sm permitido: superfície flutuante</p>
+          </div>
+          <div class="space-y-3 p-4">
+            <div class="rounded-lg border border-slate-200 p-3">
+              <div class="mb-2 flex items-center gap-2 text-sm font-semibold text-[#24292F]">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                Prontidão
+              </div>
+              <ul class="space-y-1 text-sm text-yellow-800">
+                <li class="flex gap-2"><span aria-hidden="true">-</span><span>Procedimento 40304361 sem CID-10 principal</span></li>
+                <li class="flex gap-2"><span aria-hidden="true">-</span><span>Holter 24h exige senha de autorização</span></li>
+              </ul>
+            </div>
+            <div class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              <span class="text-xs font-semibold uppercase tracking-wide text-slate-500">Lote</span>
+              <span class="font-mono text-xs text-slate-700">L-2026-07A</span>
+            </div>
+            <button disabled class="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">Transmitir ao convênio</button>
+            <button class="w-full rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50">Salvar rascunho</button>
+          </div>
+        </aside>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════ 8. DO / DON'T ══════════════════ -->
+<section>
+  <h2 class="text-base font-semibold text-slate-900">8. Do / Don't</h2>
+  <div class="mt-4 grid gap-4 lg:grid-cols-2">
+    <div class="rounded-lg border border-green-200 bg-green-50 p-4">
+      <p class="text-sm font-semibold text-green-800">Do</p>
+      <ul class="mt-2 space-y-1.5 text-sm text-green-800">
+        <li>• <span class="font-mono text-xs">&lt;PageShell variant&gt;</span> em toda tela</li>
+        <li>• Resolver status pelos mapas de <span class="font-mono text-xs">lib/operational-ui</span></li>
+        <li>• <span class="font-mono text-xs">StatusBadge / KpiTile / SectionState / ReadinessPanel</span></li>
+        <li>• <span class="font-mono text-xs">rounded-lg border border-slate-200</span>, flat</li>
+        <li>• <span class="font-mono text-xs">&lt;h1&gt; text-2xl font-semibold</span> como título de página</li>
+        <li>• Label canônico em português</li>
+        <li>• <span class="font-mono text-xs">font-mono</span> em todo código médico</li>
+      </ul>
+    </div>
+    <div class="rounded-lg border border-red-200 bg-red-50 p-4">
+      <p class="text-sm font-semibold text-red-800">Don't</p>
+      <ul class="mt-2 space-y-1.5 text-sm text-red-800">
+        <li>• Escrever <span class="font-mono text-xs">min-h-full / max-w / space-y</span> na mão</li>
+        <li>• Ternário status→cor inline no call site</li>
+        <li>• Reimplementar pill / tile / empty / prontidão por página</li>
+        <li>• <span class="font-mono text-xs">rounded-xl</span>, <span class="font-mono text-xs">shadow-sm</span> em card estático, borda <span class="font-mono text-xs">gray-200</span></li>
+        <li>• <span class="font-mono text-xs">&lt;h2&gt;</span> como título de página, <span class="font-mono text-xs">font-bold</span> em título ou KPI</li>
+        <li>• Deixar <span class="font-mono text-xs">status_display</span> do servidor mandar num status conhecido</li>
+        <li>• Cor semântica sem texto ao lado · animação de entrada · serifada</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="border-t border-slate-200 bg-white">
+  <div class="mx-auto max-w-[1500px] px-6 py-5">
+    <p class="text-xs text-slate-500">
+      Mock estático dos contratos de design do Vitali · fontes: <span class="font-mono">DESIGN.md v2.0.0</span> (2026-05-17),
+      <span class="font-mono">frontend/components/shared/*.tsx</span>, <span class="font-mono">frontend/lib/operational-ui.ts</span>.
+      Requer internet (Tailwind CDN + Google Fonts).
+    </p>
+  </div>
+</footer>
+
+</body>
+</html>

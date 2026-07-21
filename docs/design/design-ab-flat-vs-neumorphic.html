@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Vitali — Flat (DESIGN.md) vs Tasy Neumorphic (FRONTEND_GUIDELINES)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script>
+  tailwind.config = { theme: { extend: { fontFamily: {
+    sans: ['Inter', 'system-ui', 'sans-serif'],
+    mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+  } } } }
+</script>
+<style>
+  body { font-family: Inter, system-ui, sans-serif; }
+  .spec { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; line-height: 1.5; word-break: break-all; }
+  /* moldura de cada lado do A/B */
+  .pane-flat { background: #F4F7FA; }
+  .pane-neu  { background: #DFE5EB; }
+</style>
+</head>
+<body class="bg-white text-slate-900">
+
+<!-- ══════════════ HEADER ══════════════ -->
+<header class="border-b border-slate-200 bg-white">
+  <div class="mx-auto max-w-[1600px] px-6 py-6">
+    <h1 class="text-2xl font-semibold text-slate-900">Flat vs Tasy Neumorphic — os dois contratos de design do Vitali</h1>
+    <p class="mt-2 max-w-4xl text-sm text-slate-700">
+      O repo tem <strong>dois</strong> documentos de design que se contradizem sobre a estética. Este mock renderiza os mesmos
+      elementos nas duas linguagens, lado a lado, com a recipe exata de cada uma. Coluna esquerda = o que o
+      <span class="font-mono text-xs">DESIGN.md</span> manda. Coluna direita = o que está em produção.
+    </p>
+
+    <div class="mt-5 grid gap-4 lg:grid-cols-2">
+      <div class="rounded-lg border border-slate-200 bg-white p-4">
+        <div class="flex items-center gap-2">
+          <span class="h-3 w-3 rounded-full bg-blue-600"></span>
+          <h2 class="text-base font-semibold text-slate-900">A · Flat "Clinical-clean SaaS"</h2>
+        </div>
+        <p class="mt-2 spec text-slate-500">DESIGN.md v2.0.0 · commit f1c9355 (18/jun) · 278 linhas</p>
+        <p class="mt-2 text-sm text-slate-700">Tasy citado <strong>só</strong> como benchmark de UX (§ "Enterprise/Tasy-grade UX contract"): denso, integrado, status-first. Estética própria: flat, <span class="font-mono text-xs">blue-600</span>, <span class="font-mono text-xs">slate-*</span>, <span class="font-mono text-xs">rounded-lg</span>, sem sombra.</p>
+        <p class="mt-2 text-xs text-slate-500">Aplicado em: <span class="font-mono">components/shared/*</span>, <span class="font-mono">lib/operational-ui.ts</span>, telas reconciliadas (agenda, sala de espera, workbench TISS).</p>
+      </div>
+      <div class="rounded-lg border border-slate-200 bg-white p-4">
+        <div class="flex items-center gap-2">
+          <span class="h-3 w-3 rounded-full" style="background:#0066A1"></span>
+          <h2 class="text-base font-semibold text-slate-900">B · Tasy Neumorphic</h2>
+        </div>
+        <p class="mt-2 spec text-slate-500">docs/FRONTEND_GUIDELINES.md · commit f1c9355 (18/jun) · 58 componentes</p>
+        <p class="mt-2 text-sm text-slate-700">Identidade visual explícita: "ERP Médico Corporativo + Neumorfismo Suave". <span class="font-mono text-xs">#0066A1</span> em gradiente, fundos <span class="font-mono text-xs">#DFE5EB/#EBF0F5</span>, sombras <span class="font-mono text-xs">inset</span>, <span class="font-mono text-xs">rounded-xl</span>, <span class="font-mono text-xs">font-bold</span>, <span class="font-mono text-xs">text-xs</span>.</p>
+        <p class="mt-2 text-xs text-slate-500">Golden standard: <span class="font-mono">frontend/app/setup/page.tsx</span>. Vazou pros primitivos flat via <span class="font-mono">#F4F7FA / #24292F / #57606A / #8C959F</span>.</p>
+      </div>
+    </div>
+
+    <div class="mt-4 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3">
+      <p class="text-sm font-semibold text-yellow-800">Os dois nasceram no mesmo commit</p>
+      <p class="mt-1 text-xs text-yellow-800 opacity-90">
+        <span class="font-mono">f1c9355</span> — <em>"feat(ui): apply Tasy Neumorphic UI system globally across 58 frontend components"</em> (18/jun/2026)
+        — <strong>criou</strong> o <span class="font-mono">DESIGN.md</span> (arquivo novo, +278 linhas, descrevendo o sistema flat) no mesmo commit que aplicou o neumórfico em 58 componentes.
+        O rodapé "Last updated: 2026-05-17 | v2.0.0" é conteúdo retroativo. Nenhum dos dois foi marcado como superseded.
+      </p>
+    </div>
+  </div>
+</header>
+
+<main class="mx-auto max-w-[1600px] space-y-8 px-6 py-8">
+
+<!-- cabeçalho fixo das colunas -->
+<div class="grid gap-6 lg:grid-cols-2">
+  <div class="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2">
+    <p class="text-xs font-semibold uppercase tracking-wide text-blue-800">A · Flat — DESIGN.md v2.0</p>
+  </div>
+  <div class="rounded-lg border px-4 py-2" style="background:#EBF0F5;border-color:#D0D7DE">
+    <p class="text-xs font-semibold uppercase tracking-wide" style="color:#0066A1">B · Tasy Neumorphic — em produção</p>
+  </div>
+</div>
+
+<!-- ══════════════ 1. CARD / PAINEL ══════════════ -->
+<section>
+  <h2 class="text-base font-semibold text-slate-900">1. Card / painel de conteúdo</h2>
+  <div class="mt-3 grid gap-6 lg:grid-cols-2">
+
+    <div class="rounded-lg border border-slate-200 p-6 pane-flat">
+      <section class="rounded-lg border border-slate-200 bg-white">
+        <div class="border-b border-slate-100 px-4 py-3">
+          <h3 class="text-base font-semibold text-slate-900">Convênios do paciente</h3>
+        </div>
+        <div class="p-4">
+          <p class="text-sm text-slate-700">Unimed — carteirinha ativa até 12/2027.</p>
+          <p class="mt-1 text-xs text-slate-500">Atualizado há 2 minutos</p>
+        </div>
+      </section>
+      <p class="mt-3 spec text-slate-500">rounded-lg border border-slate-200 bg-white<br/>header: border-b border-slate-100 px-4 py-3 · body: p-4<br/><strong>flat — shadow proibido em card estático</strong></p>
+    </div>
+
+    <div class="rounded-lg border p-6 pane-neu" style="border-color:#D0D7DE">
+      <div class="rounded-xl border border-white p-4" style="background:#F4F7FA;box-shadow:inset 0 1px 2px rgba(255,255,255,0.8), 0 2px 8px rgba(0,0,0,0.03)">
+        <div class="mb-4 flex items-center gap-2">
+          <span class="h-4 w-1.5 rounded-full" style="background:#0066A1;box-shadow:0 0 6px rgba(0,102,161,0.4)"></span>
+          <h3 class="text-sm font-bold tracking-wide" style="color:#1f2937">Convênios do paciente</h3>
+        </div>
+        <p class="text-xs font-semibold" style="color:#24292F">Unimed — carteirinha ativa até 12/2027.</p>
+        <p class="mt-1 text-[10px] font-semibold uppercase tracking-wider" style="color:#57606A">Atualizado há 2 minutos</p>
+      </div>
+      <p class="mt-3 spec" style="color:#57606A">bg-[#F4F7FA] p-4 rounded-xl border border-white<br/>shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)]<br/><strong>relevo é a identidade — sombra é obrigatória</strong></p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ══════════════ 2. BOTÕES ══════════════ -->
+<section>
+  <h2 class="text-base font-semibold text-slate-900">2. Botões</h2>
+  <div class="mt-3 grid gap-6 lg:grid-cols-2">
+
+    <div class="rounded-lg border border-slate-200 p-6 pane-flat">
+      <div class="flex flex-wrap items-center gap-3">
+        <button class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700">Transmitir guia</button>
+        <button class="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50">Cancelar</button>
+        <button class="text-sm font-semibold text-blue-600 hover:underline">Ver histórico</button>
+      </div>
+      <p class="mt-4 spec text-slate-500">primário: bg-blue-600 hover:bg-blue-700 text-white<br/>text-sm font-semibold px-4 py-2 rounded-lg · <strong>cor chapada</strong><br/>secundário: border-slate-200 bg-white text-slate-700</p>
+    </div>
+
+    <div class="rounded-lg border p-6 pane-neu" style="border-color:#D0D7DE">
+      <div class="flex flex-wrap items-center gap-3">
+        <button class="rounded-lg px-8 py-2 text-xs font-bold text-white transition-all" style="background:linear-gradient(to bottom,#0066A1,#005282);border-top:1px solid #3385b5;box-shadow:0 3px 10px rgba(0,102,161,0.3)">Transmitir guia</button>
+        <button class="rounded-lg px-5 py-2 text-xs font-bold transition-all" style="background:#E8EDF2;color:#57606A;box-shadow:inset 0 1px 1px rgba(255,255,255,0.5), 0 2px 5px rgba(0,0,0,0.05)">Cancelar</button>
+        <button class="rounded-lg px-6 py-2 text-xs font-bold text-white transition-all" style="background:linear-gradient(to bottom,#2DA44E,#248f42);border-top:1px solid #4ac26c;box-shadow:0 3px 8px rgba(45,164,78,0.3)">Concluir</button>
+      </div>
+      <p class="mt-4 spec" style="color:#57606A">primário: bg-gradient-to-b from-[#0066A1] to-[#005282]<br/>border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)]<br/>text-xs <strong>font-bold</strong> px-6/8 py-2 · secundário: bg-[#E8EDF2] escavado</p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ══════════════ 3. INPUTS ══════════════ -->
+<section>
+  <h2 class="text-base font-semibold text-slate-900">3. Inputs &amp; labels</h2>
+  <div class="mt-3 grid gap-6 lg:grid-cols-2">
+
+    <div class="rounded-lg border border-slate-200 p-6 pane-flat">
+      <div class="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label for="a1" class="block text-xs font-medium text-slate-700">Beneficiário <span class="text-red-600">*</span></label>
+          <input id="a1" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500" placeholder="Nome completo" />
+        </div>
+        <div>
+          <label for="a2" class="block text-xs font-medium text-slate-700">Carteirinha</label>
+          <input id="a2" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-sm outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500" placeholder="0000 0000 0000" />
+        </div>
+      </div>
+      <p class="mt-4 spec text-slate-500">w-full rounded-lg border border-slate-200 px-3 py-2 text-sm<br/>focus:ring-2 focus:ring-blue-500 · <strong>borda visível, fundo branco</strong><br/>label: text-xs font-medium text-slate-700</p>
+    </div>
+
+    <div class="rounded-lg border p-6 pane-neu" style="border-color:#D0D7DE">
+      <div class="grid grid-cols-12 gap-4">
+        <div class="col-span-12 md:col-span-6">
+          <label for="b1" class="mb-1.5 block text-[11px] font-bold uppercase tracking-wide" style="color:#57606A">Beneficiário</label>
+          <input id="b1" class="h-8 w-full rounded-md border-transparent px-2 py-1.5 text-xs outline-none transition-all focus:bg-white" style="background:#E8EDF2;color:#24292F;box-shadow:inset 0 2px 4px rgba(0,0,0,0.06)" placeholder="Nome completo" />
+        </div>
+        <div class="col-span-12 md:col-span-6">
+          <label for="b2" class="mb-1.5 block text-[11px] font-bold uppercase tracking-wide" style="color:#57606A">Carteirinha</label>
+          <input id="b2" class="h-8 w-full rounded-md border-transparent px-2 py-1.5 font-mono text-xs outline-none transition-all focus:bg-white" style="background:#E8EDF2;color:#24292F;box-shadow:inset 0 2px 4px rgba(0,0,0,0.06)" placeholder="0000 0000 0000" />
+        </div>
+      </div>
+      <p class="mt-4 spec" style="color:#57606A">bg-[#E8EDF2] border-transparent rounded-md text-xs h-8 px-2 py-1.5<br/>shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] focus:bg-white<br/>label: text-[11px] <strong>font-bold uppercase</strong> · <strong>escavado, sem borda</strong> · grid-cols-12</p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ══════════════ 4. KPI ══════════════ -->
+<section>
+  <h2 class="text-base font-semibold text-slate-900">4. KPI tile</h2>
+  <div class="mt-3 grid gap-6 lg:grid-cols-2">
+
+    <div class="rounded-lg border border-slate-200 p-6 pane-flat">
+      <div class="grid grid-cols-2 gap-3">
+        <div class="rounded-lg border p-4" style="border-color:#e2e8f0;background:#F4F7FA">
+          <div class="text-xs font-semibold uppercase tracking-wide" style="color:#8C959F">Pacientes ativos</div>
+          <p class="mt-2 text-2xl font-semibold text-slate-800">1.284</p>
+        </div>
+        <div class="rounded-lg border border-yellow-200 bg-yellow-50 p-4">
+          <div class="text-xs font-semibold uppercase tracking-wide text-yellow-700">Fila</div>
+          <p class="mt-2 text-2xl font-semibold text-yellow-800">9</p>
+          <p class="mt-1 text-xs text-yellow-700">Espera média 18 min</p>
+        </div>
+      </div>
+      <p class="mt-4 spec text-slate-500">&lt;KpiTile&gt; · rounded-lg border p-4 · <strong>flat</strong><br/>valor: text-2xl <strong>font-semibold</strong> (font-bold é Don't explícito)<br/>label: text-xs font-semibold uppercase tracking-wide</p>
+    </div>
+
+    <div class="rounded-lg border p-6 pane-neu" style="border-color:#D0D7DE">
+      <div class="grid grid-cols-2 gap-4">
+        <div class="rounded-xl border border-white p-4" style="background:#F4F7FA;box-shadow:inset 0 1px 2px rgba(255,255,255,0.8), 0 2px 8px rgba(0,0,0,0.03)">
+          <div class="text-[10px] font-bold uppercase tracking-wider" style="color:#57606A">Pacientes ativos</div>
+          <p class="mt-2 text-xl font-bold" style="color:#0066A1">1.284</p>
+        </div>
+        <div class="rounded-xl border border-white p-4" style="background:#fefce8;box-shadow:inset 0 1px 2px rgba(255,255,255,0.8), 0 2px 8px rgba(0,0,0,0.03)">
+          <div class="text-[10px] font-bold uppercase tracking-wider" style="color:#57606A">Fila</div>
+          <p class="mt-2 text-xl font-bold" style="color:#a16207">9</p>
+          <p class="mt-1 text-[10px] font-semibold" style="color:#57606A">Espera média 18 min</p>
+        </div>
+      </div>
+      <p class="mt-4 spec" style="color:#57606A">rounded-<strong>xl</strong> border border-white p-4 + inset shadow<br/>valor: <strong>font-bold</strong> · label: text-[10px] font-bold uppercase tracking-wider<br/>tints próprios (#eefcf1 / #fef2f2 / #E8EDF2), fora da escala Tailwind</p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ══════════════ 5. STATUS BADGE ══════════════ -->
+<section>
+  <h2 class="text-base font-semibold text-slate-900">5. Status badge</h2>
+  <p class="mt-1 text-sm text-slate-700">Aqui os dois <strong>convergem</strong>: o neumórfico não redefiniu status. <span class="font-mono text-xs">lib/operational-ui.ts</span> segue sendo fonte única — só o chrome ao redor mudou.</p>
+  <div class="mt-3 grid gap-6 lg:grid-cols-2">
+
+    <div class="rounded-lg border border-slate-200 p-6 pane-flat">
+      <div class="flex flex-wrap gap-2">
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-slate-100 text-slate-600 border-slate-200">Rascunho</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-yellow-100 text-yellow-800 border-yellow-200">Pendente</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-blue-100 text-blue-800 border-blue-200">Enviada</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-green-100 text-green-800 border-green-200">Paga</span>
+        <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 border-red-200">Glosada</span>
+      </div>
+      <p class="mt-4 spec text-slate-500">&lt;StatusBadge&gt; · inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold<br/>badgeClass vem de GUIDE_STATUS_META</p>
+    </div>
+
+    <div class="rounded-lg border p-6 pane-neu" style="border-color:#D0D7DE">
+      <div class="flex flex-wrap gap-2">
+        <span class="rounded-md px-2 py-1 text-[10px] font-bold" style="background:#E8EDF2;color:#57606A;box-shadow:inset 0 1px 2px rgba(0,0,0,0.05)">Rascunho</span>
+        <span class="rounded-md px-2 py-1 text-[10px] font-bold" style="background:#fef9c3;color:#854d0e;box-shadow:inset 0 1px 2px rgba(0,0,0,0.05)">Pendente</span>
+        <span class="rounded-md px-2 py-1 text-[10px] font-bold" style="background:#dbeafe;color:#1e40af;box-shadow:inset 0 1px 2px rgba(0,0,0,0.05)">Enviada</span>
+        <span class="rounded-md px-2 py-1 text-[10px] font-bold" style="background:#dcfce7;color:#166534;box-shadow:inset 0 1px 2px rgba(0,0,0,0.05)">Paga</span>
+        <span class="rounded-md px-2 py-1 text-[10px] font-bold" style="background:#FFEBE9;color:#CF222E;box-shadow:inset 0 1px 2px rgba(0,0,0,0.05)">Glosada</span>
+      </div>
+      <p class="mt-4 spec" style="color:#57606A">chip escavado: rounded-md px-2 py-1 text-[10px] font-bold<br/>shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)] · <strong>rounded-md, não rounded-full</strong><br/>mesmos tons semânticos — só o formato/relevo muda</p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ══════════════ 6. TELA INTEIRA ══════════════ -->
+<section>
+  <h2 class="text-base font-semibold text-slate-900">6. Mesma tela, duas linguagens — sala de espera</h2>
+  <p class="mt-1 text-sm text-slate-700">O teste decisivo: mesma informação, mesma densidade, mesmos status.</p>
+
+  <div class="mt-3 grid gap-6 lg:grid-cols-2">
+
+    <!-- A: FLAT -->
+    <div class="rounded-lg border border-slate-200 p-5 pane-flat">
+      <div class="space-y-5">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <h3 class="text-2xl font-semibold text-slate-900">Sala de espera</h3>
+            <p class="mt-1 text-xs text-slate-500">Unidade Centro · atualizado há 40 s</p>
+          </div>
+          <button class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Novo check-in</button>
+        </div>
+
+        <div class="grid grid-cols-3 gap-3">
+          <div class="rounded-lg border border-yellow-200 bg-yellow-50 p-4">
+            <div class="text-xs font-semibold uppercase tracking-wide text-yellow-700">Aguardando</div>
+            <p class="mt-2 text-2xl font-semibold text-yellow-800">4</p>
+          </div>
+          <div class="rounded-lg border border-green-200 bg-green-50 p-4">
+            <div class="text-xs font-semibold uppercase tracking-wide text-green-700">Em atend.</div>
+            <p class="mt-2 text-2xl font-semibold text-green-800">3</p>
+          </div>
+          <div class="rounded-lg border border-red-200 bg-red-50 p-4">
+            <div class="text-xs font-semibold uppercase tracking-wide text-red-700">Atrito</div>
+            <p class="mt-2 text-2xl font-semibold text-red-700">2</p>
+          </div>
+        </div>
+
+        <section class="rounded-lg border border-slate-200 bg-white">
+          <div class="border-b border-slate-100 px-4 py-3">
+            <h4 class="text-base font-semibold text-slate-900">Fila assistencial</h4>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <tr><th class="px-3 py-2 text-left">Hora</th><th class="px-3 py-2 text-left">Paciente</th><th class="px-3 py-2 text-left">MRN</th><th class="px-3 py-2 text-left">Status</th></tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 text-slate-700">
+                <tr class="border-l-4 border-l-green-500 bg-green-50/50">
+                  <td class="px-3 py-3 font-mono text-xs">08:30</td>
+                  <td class="px-3 py-3 font-medium text-slate-900">Maria A. de Souza</td>
+                  <td class="px-3 py-3 font-mono text-xs text-slate-500">00184223</td>
+                  <td class="px-3 py-3"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-green-100 text-green-800 border-green-200">Em atendimento</span></td>
+                </tr>
+                <tr class="border-l-4 border-l-yellow-500 bg-yellow-50/50">
+                  <td class="px-3 py-3 font-mono text-xs">08:45</td>
+                  <td class="px-3 py-3 font-medium text-slate-900">João B. Ferreira</td>
+                  <td class="px-3 py-3 font-mono text-xs text-slate-500">00190471</td>
+                  <td class="px-3 py-3"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-yellow-100 text-yellow-800 border-yellow-200">Aguardando</span></td>
+                </tr>
+                <tr class="border-l-4 border-l-blue-500 bg-blue-50/40">
+                  <td class="px-3 py-3 font-mono text-xs">09:00</td>
+                  <td class="px-3 py-3 font-medium text-slate-900">Antônio C. Nogueira</td>
+                  <td class="px-3 py-3 font-mono text-xs text-slate-500">00177032</td>
+                  <td class="px-3 py-3"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-blue-100 text-blue-800 border-blue-200">Confirmado</span></td>
+                </tr>
+                <tr class="border-l-4 border-l-red-500 bg-red-50/40">
+                  <td class="px-3 py-3 font-mono text-xs">08:00</td>
+                  <td class="px-3 py-3 font-medium text-slate-900">Rafael A. Lopes</td>
+                  <td class="px-3 py-3 font-mono text-xs text-slate-500">00166540</td>
+                  <td class="px-3 py-3"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 border-red-200">Não compareceu</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <!-- B: NEUMÓRFICO -->
+    <div class="rounded-lg border p-5 pane-neu" style="border-color:#D0D7DE">
+      <div class="space-y-4">
+        <div class="flex items-start justify-between gap-3">
+          <div class="flex items-center gap-3">
+            <div class="flex h-8 w-8 items-center justify-center rounded-lg text-xs font-bold text-white" style="background:linear-gradient(to bottom right,#0066A1,#004b7a);box-shadow:0 2px 8px rgba(0,102,161,0.4)">V</div>
+            <div>
+              <h3 class="text-sm font-bold tracking-wide" style="color:#1f2937">Sala de espera</h3>
+              <p class="text-[10px] font-semibold uppercase tracking-wider" style="color:#57606A">Unidade Centro · há 40 s</p>
+            </div>
+          </div>
+          <button class="rounded-lg px-6 py-2 text-xs font-bold text-white transition-all" style="background:linear-gradient(to bottom,#0066A1,#005282);border-top:1px solid #3385b5;box-shadow:0 3px 10px rgba(0,102,161,0.3)">Novo check-in</button>
+        </div>
+
+        <div class="grid grid-cols-3 gap-4">
+          <div class="rounded-xl border border-white p-4" style="background:#fefce8;box-shadow:inset 0 1px 2px rgba(255,255,255,0.8), 0 2px 8px rgba(0,0,0,0.03)">
+            <div class="text-[10px] font-bold uppercase tracking-wider" style="color:#57606A">Aguardando</div>
+            <p class="mt-2 text-xl font-bold" style="color:#a16207">4</p>
+          </div>
+          <div class="rounded-xl border border-white p-4" style="background:#eefcf1;box-shadow:inset 0 1px 2px rgba(255,255,255,0.8), 0 2px 8px rgba(0,0,0,0.03)">
+            <div class="text-[10px] font-bold uppercase tracking-wider" style="color:#57606A">Em atend.</div>
+            <p class="mt-2 text-xl font-bold" style="color:#2DA44E">3</p>
+          </div>
+          <div class="rounded-xl border border-white p-4" style="background:#fef2f2;box-shadow:inset 0 1px 2px rgba(255,255,255,0.8), 0 2px 8px rgba(0,0,0,0.03)">
+            <div class="text-[10px] font-bold uppercase tracking-wider" style="color:#57606A">Atrito</div>
+            <p class="mt-2 text-xl font-bold" style="color:#CF222E">2</p>
+          </div>
+        </div>
+
+        <div class="rounded-xl border border-white p-4" style="background:#F4F7FA;box-shadow:inset 0 1px 2px rgba(255,255,255,0.8), 0 2px 8px rgba(0,0,0,0.03)">
+          <div class="mb-3 flex items-center gap-2">
+            <span class="h-4 w-1.5 rounded-full" style="background:#0066A1;box-shadow:0 0 6px rgba(0,102,161,0.4)"></span>
+            <h4 class="text-xs font-bold uppercase tracking-wide" style="color:#57606A">Fila assistencial</h4>
+          </div>
+          <div class="overflow-x-auto rounded-lg" style="background:#E8EDF2;box-shadow:inset 0 2px 4px rgba(0,0,0,0.04)">
+            <table class="w-full text-xs">
+              <thead>
+                <tr class="text-[10px] font-bold uppercase tracking-wider" style="color:#57606A">
+                  <th class="px-3 py-2 text-left">Hora</th><th class="px-3 py-2 text-left">Paciente</th><th class="px-3 py-2 text-left">MRN</th><th class="px-3 py-2 text-left">Status</th>
+                </tr>
+              </thead>
+              <tbody style="color:#24292F">
+                <tr class="border-t border-white/70">
+                  <td class="px-3 py-2 font-mono">08:30</td>
+                  <td class="px-3 py-2 font-bold">Maria A. de Souza</td>
+                  <td class="px-3 py-2 font-mono" style="color:#57606A">00184223</td>
+                  <td class="px-3 py-2"><span class="rounded-md px-2 py-1 text-[10px] font-bold" style="background:#dcfce7;color:#166534;box-shadow:inset 0 1px 2px rgba(0,0,0,0.05)">Em atendimento</span></td>
+                </tr>
+                <tr class="border-t border-white/70">
+                  <td class="px-3 py-2 font-mono">08:45</td>
+                  <td class="px-3 py-2 font-bold">João B. Ferreira</td>
+                  <td class="px-3 py-2 font-mono" style="color:#57606A">00190471</td>
+                  <td class="px-3 py-2"><span class="rounded-md px-2 py-1 text-[10px] font-bold" style="background:#fef9c3;color:#854d0e;box-shadow:inset 0 1px 2px rgba(0,0,0,0.05)">Aguardando</span></td>
+                </tr>
+                <tr class="border-t border-white/70">
+                  <td class="px-3 py-2 font-mono">09:00</td>
+                  <td class="px-3 py-2 font-bold">Antônio C. Nogueira</td>
+                  <td class="px-3 py-2 font-mono" style="color:#57606A">00177032</td>
+                  <td class="px-3 py-2"><span class="rounded-md px-2 py-1 text-[10px] font-bold" style="background:#dbeafe;color:#1e40af;box-shadow:inset 0 1px 2px rgba(0,0,0,0.05)">Confirmado</span></td>
+                </tr>
+                <tr class="border-t border-white/70">
+                  <td class="px-3 py-2 font-mono">08:00</td>
+                  <td class="px-3 py-2 font-bold">Rafael A. Lopes</td>
+                  <td class="px-3 py-2 font-mono" style="color:#57606A">00166540</td>
+                  <td class="px-3 py-2"><span class="rounded-md px-2 py-1 text-[10px] font-bold" style="background:#FFEBE9;color:#CF222E;box-shadow:inset 0 1px 2px rgba(0,0,0,0.05)">Não compareceu</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ══════════════ 7. TABELA DE CONFLITOS ══════════════ -->
+<section>
+  <h2 class="text-base font-semibold text-slate-900">7. Onde exatamente eles se contradizem</h2>
+  <div class="mt-3 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <tr>
+          <th class="px-4 py-2 text-left">Dimensão</th>
+          <th class="px-4 py-2 text-left">A · Flat (DESIGN.md)</th>
+          <th class="px-4 py-2 text-left">B · Neumorphic (GUIDELINES)</th>
+          <th class="px-4 py-2 text-left">Conflito</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100 text-slate-700">
+        <tr>
+          <td class="px-4 py-3 font-semibold text-slate-900">Elevação</td>
+          <td class="px-4 py-3 text-xs">Flat. <span class="font-mono">shadow-sm</span> só em modal / painel sticky</td>
+          <td class="px-4 py-3 text-xs">Sombra <span class="font-mono">inset</span> + outer em tudo</td>
+          <td class="px-4 py-3"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 border-red-200">Direto</span></td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-semibold text-slate-900">Raio</td>
+          <td class="px-4 py-3 text-xs"><span class="font-mono">rounded-lg</span> — "nunca rounded-xl"</td>
+          <td class="px-4 py-3 text-xs"><span class="font-mono">rounded-xl</span> em painéis, <span class="font-mono">rounded-2xl</span> no shell</td>
+          <td class="px-4 py-3"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 border-red-200">Direto</span></td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-semibold text-slate-900">Primária</td>
+          <td class="px-4 py-3 text-xs"><span class="font-mono">blue-600</span> chapado (#2563EB)</td>
+          <td class="px-4 py-3 text-xs">Gradiente <span class="font-mono">#0066A1 → #005282</span></td>
+          <td class="px-4 py-3"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 border-red-200">Direto</span></td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-semibold text-slate-900">Peso de fonte</td>
+          <td class="px-4 py-3 text-xs"><span class="font-mono">font-semibold</span> — font-bold é Don't</td>
+          <td class="px-4 py-3 text-xs"><span class="font-mono">font-bold</span> em quase tudo</td>
+          <td class="px-4 py-3"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 border-red-200">Direto</span></td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-semibold text-slate-900">Título de página</td>
+          <td class="px-4 py-3 text-xs"><span class="font-mono">&lt;h1&gt; text-2xl font-semibold</span></td>
+          <td class="px-4 py-3 text-xs">"não use maior que <span class="font-mono">text-base</span>"</td>
+          <td class="px-4 py-3"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 border-red-200">Direto</span></td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-semibold text-slate-900">Input</td>
+          <td class="px-4 py-3 text-xs">Borda <span class="font-mono">slate-200</span>, fundo branco, <span class="font-mono">py-2</span></td>
+          <td class="px-4 py-3 text-xs">Escavado <span class="font-mono">#E8EDF2</span>, sem borda, <span class="font-mono">h-8</span></td>
+          <td class="px-4 py-3"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 border-red-200">Direto</span></td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-semibold text-slate-900">Fundo de app</td>
+          <td class="px-4 py-3 text-xs"><span class="font-mono">slate-50</span> / <span class="font-mono">#F4F7FA</span></td>
+          <td class="px-4 py-3 text-xs"><span class="font-mono">#DFE5EB</span> → <span class="font-mono">#EBF0F5</span> → <span class="font-mono">#F4F7FA</span></td>
+          <td class="px-4 py-3"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-yellow-100 text-yellow-800 border-yellow-200">Parcial</span></td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-semibold text-slate-900">Mapas de status</td>
+          <td class="px-4 py-3 text-xs"><span class="font-mono">lib/operational-ui</span> como fonte única</td>
+          <td class="px-4 py-3 text-xs">Não redefine status</td>
+          <td class="px-4 py-3"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-green-100 text-green-800 border-green-200">Compatível</span></td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-semibold text-slate-900">Densidade / UX</td>
+          <td class="px-4 py-3 text-xs">Denso, status-first, tabela &gt; card</td>
+          <td class="px-4 py-3 text-xs">Denso, <span class="font-mono">grid-cols-12</span>, text-xs</td>
+          <td class="px-4 py-3"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-green-100 text-green-800 border-green-200">Compatível</span></td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-semibold text-slate-900">Ícones</td>
+          <td class="px-4 py-3 text-xs">lucide-react, nav 18 / inline 14-16</td>
+          <td class="px-4 py-3 text-xs">lucide-react, 14 ou 16</td>
+          <td class="px-4 py-3"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold bg-green-100 text-green-800 border-green-200">Compatível</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="mt-4 grid gap-4 lg:grid-cols-2">
+    <div class="rounded-lg border border-slate-200 bg-white p-4">
+      <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Leitura</p>
+      <p class="mt-2 text-sm text-slate-700">
+        O conflito é <strong>só de chrome</strong> — elevação, raio, peso, gradiente, tratamento de input.
+        A camada de <strong>significado</strong> (mapas de status, labels PT canônicos, densidade, status-first, tabela sobre card)
+        é idêntica nos dois. Isso quer dizer que reconciliar não exige rediscutir UX: é escolher uma pele e aplicar.
+      </p>
+    </div>
+    <div class="rounded-lg border border-slate-200 bg-white p-4">
+      <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Terceira camada, ainda não codificada</p>
+      <p class="mt-2 text-sm text-slate-700">
+        <span class="font-mono text-xs">docs/PLAN_UI_UX_RECONCILIATION.md:155</span> registra uma "Tasy-grade visual direction" aprovada em 17/mai
+        com idiomas Philips-Tasy — barra do paciente, pasta tabs, grid toolbars, campos com lupa, semáforo de status, barra de teclas F.
+        A referência citada (<span class="font-mono text-xs">output/design/vitali-tasy.html</span>) <strong>não existe no repo</strong> (era gitignored).
+      </p>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="border-t border-slate-200 bg-white">
+  <div class="mx-auto max-w-[1600px] px-6 py-5">
+    <p class="text-xs text-slate-500">
+      Comparativo A/B gerado das fontes do repo: <span class="font-mono">DESIGN.md</span>, <span class="font-mono">docs/FRONTEND_GUIDELINES.md</span>,
+      <span class="font-mono">frontend/components/shared/*.tsx</span>, <span class="font-mono">frontend/lib/operational-ui.ts</span>,
+      <span class="font-mono">frontend/app/setup/page.tsx</span> (golden standard neumórfico), commit <span class="font-mono">f1c9355</span>.
+      Requer internet (Tailwind CDN + Google Fonts).
+    </p>
+  </div>
+</footer>
+
+</body>
+</html>

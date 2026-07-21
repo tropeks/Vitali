@@ -6,5 +6,5 @@
  * inherit the brand background from this wrapper.
  */
 export default function PortalRootLayout({ children }: { children: React.ReactNode }) {
-  return <div className="min-h-screen bg-[#F4F7FA]">{children}</div>;
+  return <div className="min-h-screen bg-neu-panel">{children}</div>;
 }

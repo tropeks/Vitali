@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { apiFetch } from '@/lib/api'
-import { PageShell, SectionState } from '@/components/shared'
+import { Badge, Button, PageShell, SectionState } from '@/components/shared'
 
 interface AllergenClass {
   id: string
@@ -115,8 +115,8 @@ export default function InteracoesPage() {
   return (
     <PageShell variant="operational">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Interações</h1>
-        <p className="text-sm text-slate-500 mt-0.5">
+        <h1 className="text-2xl font-semibold text-neu-ink">Interações</h1>
+        <p className="text-sm text-neu-inkMuted mt-0.5">
           Revise e ative as classes de reatividade cruzada e as interações medicamentosas.
         </p>
       </div>
@@ -129,13 +129,13 @@ export default function InteracoesPage() {
         />
       )}
 
-      {loading && <p className="text-sm text-slate-500">Carregando...</p>}
+      {loading && <p className="text-sm text-neu-inkMuted">Carregando...</p>}
 
       {!loading && !error && (
         <>
           {/* ── Classes de reatividade cruzada ── */}
           <section className="space-y-3">
-            <h2 className="text-base font-semibold text-slate-800">
+            <h2 className="text-base font-semibold text-neu-ink">
               Classes de reatividade cruzada
             </h2>
 
@@ -145,14 +145,14 @@ export default function InteracoesPage() {
                 detail="Adicione classes no painel administrativo para que apareçam aqui."
               />
             ) : (
-              <div className="rounded-lg border border-slate-200 bg-white overflow-x-auto">
+              <div className="bg-neu-panelAlt rounded-xl border border-white shadow-neu-panel overflow-x-auto">
                 <table className="w-full text-sm min-w-[800px]">
                   <thead>
-                    <tr className="border-b border-slate-100 bg-slate-50">
+                    <tr className="border-b border-white bg-neu-panel">
                       {['Nome', 'Membros', 'Descrição', 'Fonte/Versão', 'Ativo', 'Ação'].map((h) => (
                         <th
                           key={h}
-                          className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500"
+                          className="text-left px-4 py-3 text-xs font-semibold text-neu-inkSoft uppercase tracking-wide"
                         >
                           {h}
                         </th>
@@ -161,33 +161,26 @@ export default function InteracoesPage() {
                   </thead>
                   <tbody>
                     {allergenClasses.map((row) => (
-                      <tr key={row.id} className="border-b border-slate-100 last:border-0">
-                        <td className="px-4 py-3 font-medium text-slate-900">{row.name}</td>
-                        <td className="px-4 py-3 text-slate-600 text-xs">{row.members}</td>
-                        <td className="px-4 py-3 text-slate-600 text-xs">{row.description}</td>
-                        <td className="px-4 py-3 text-slate-600 text-xs">
+                      <tr key={row.id} className="border-b border-white last:border-0">
+                        <td className="px-4 py-3 font-medium text-neu-ink">{row.name}</td>
+                        <td className="px-4 py-3 text-neu-inkSoft text-xs">{row.members}</td>
+                        <td className="px-4 py-3 text-neu-inkSoft text-xs">{row.description}</td>
+                        <td className="px-4 py-3 text-neu-inkSoft text-xs">
                           {row.source} / {row.version}
                         </td>
                         <td className="px-4 py-3">
                           {row.active ? (
-                            <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-                              Sim
-                            </span>
+                            <Badge variant="success">Sim</Badge>
                           ) : (
-                            <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                              Não
-                            </span>
+                            <Badge variant="neutral">Não</Badge>
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          <button
+                          <Button
+                            type="button"
+                            variant={row.active ? 'danger' : 'primary'}
                             onClick={() => handleToggleAllergen(row)}
                             disabled={togglingAllergenId === row.id}
-                            className={`inline-flex items-center rounded-md px-3 py-1.5 text-xs font-semibold text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed ${
-                              row.active
-                                ? 'bg-red-600 hover:bg-red-500'
-                                : 'bg-blue-600 hover:bg-blue-500'
-                            }`}
                           >
                             {togglingAllergenId === row.id
                               ? row.active
@@ -196,7 +189,7 @@ export default function InteracoesPage() {
                               : row.active
                               ? 'Desativar'
                               : 'Ativar'}
-                          </button>
+                          </Button>
                         </td>
                       </tr>
                     ))}
@@ -208,7 +201,7 @@ export default function InteracoesPage() {
 
           {/* ── Interações medicamentosas ── */}
           <section className="space-y-3">
-            <h2 className="text-base font-semibold text-slate-800">
+            <h2 className="text-base font-semibold text-neu-ink">
               Interações medicamentosas
             </h2>
 
@@ -218,10 +211,10 @@ export default function InteracoesPage() {
                 detail="Adicione interações no painel administrativo para que apareçam aqui."
               />
             ) : (
-              <div className="rounded-lg border border-slate-200 bg-white overflow-x-auto">
+              <div className="bg-neu-panelAlt rounded-xl border border-white shadow-neu-panel overflow-x-auto">
                 <table className="w-full text-sm min-w-[800px]">
                   <thead>
-                    <tr className="border-b border-slate-100 bg-slate-50">
+                    <tr className="border-b border-white bg-neu-panel">
                       {[
                         'Princípio A',
                         'Princípio B',
@@ -232,7 +225,7 @@ export default function InteracoesPage() {
                       ].map((h) => (
                         <th
                           key={h}
-                          className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500"
+                          className="text-left px-4 py-3 text-xs font-semibold text-neu-inkSoft uppercase tracking-wide"
                         >
                           {h}
                         </th>
@@ -241,33 +234,26 @@ export default function InteracoesPage() {
                   </thead>
                   <tbody>
                     {drugInteractions.map((row) => (
-                      <tr key={row.id} className="border-b border-slate-100 last:border-0">
-                        <td className="px-4 py-3 font-medium text-slate-900">{row.ingredient_a}</td>
-                        <td className="px-4 py-3 text-slate-600">{row.ingredient_b}</td>
-                        <td className="px-4 py-3 text-slate-600">{row.severity_display}</td>
-                        <td className="px-4 py-3 text-slate-600 text-xs">
+                      <tr key={row.id} className="border-b border-white last:border-0">
+                        <td className="px-4 py-3 font-medium text-neu-ink">{row.ingredient_a}</td>
+                        <td className="px-4 py-3 text-neu-inkSoft">{row.ingredient_b}</td>
+                        <td className="px-4 py-3 text-neu-inkSoft">{row.severity_display}</td>
+                        <td className="px-4 py-3 text-neu-inkSoft text-xs">
                           {row.source} / {row.version}
                         </td>
                         <td className="px-4 py-3">
                           {row.active ? (
-                            <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-                              Sim
-                            </span>
+                            <Badge variant="success">Sim</Badge>
                           ) : (
-                            <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                              Não
-                            </span>
+                            <Badge variant="neutral">Não</Badge>
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          <button
+                          <Button
+                            type="button"
+                            variant={row.active ? 'danger' : 'primary'}
                             onClick={() => handleToggleInteraction(row)}
                             disabled={togglingInteractionId === row.id}
-                            className={`inline-flex items-center rounded-md px-3 py-1.5 text-xs font-semibold text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed ${
-                              row.active
-                                ? 'bg-red-600 hover:bg-red-500'
-                                : 'bg-blue-600 hover:bg-blue-500'
-                            }`}
                           >
                             {togglingInteractionId === row.id
                               ? row.active
@@ -276,7 +262,7 @@ export default function InteracoesPage() {
                               : row.active
                               ? 'Desativar'
                               : 'Ativar'}
-                          </button>
+                          </Button>
                         </td>
                       </tr>
                     ))}

@@ -188,11 +188,11 @@ export default function NovaCompraPage() {
       <div>
         <button
           onClick={() => router.back()}
-          className="text-xs text-[#0066A1] hover:underline mb-2 inline-block"
+          className="text-xs text-neu-brand hover:underline mb-2 inline-block"
         >
           ← Voltar
         </button>
-        <h2 className="text-lg font-semibold text-[#24292F]">Nova Ordem de Compra</h2>
+        <h2 className="text-lg font-semibold text-neu-ink">Nova Ordem de Compra</h2>
       </div>
 
       {error && (
@@ -206,11 +206,11 @@ export default function NovaCompraPage() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Supplier search */}
-        <div className="bg-[#F4F7FA] rounded-lg border border-slate-200 p-4 space-y-4">
+        <div className="bg-neu-panel rounded-lg border border-slate-200 p-4 space-y-4">
           <h3 className="text-sm font-semibold text-slate-800">Dados Gerais</h3>
 
           <div className="space-y-1">
-            <label className="block text-xs font-medium text-[#57606A]">
+            <label className="block text-xs font-medium text-neu-inkSoft">
               Fornecedor *
             </label>
             {selectedSupplier ? (
@@ -224,7 +224,7 @@ export default function NovaCompraPage() {
                     setSelectedSupplier(null);
                     setSupplierQuery('');
                   }}
-                  className="text-xs text-[#0066A1] hover:underline"
+                  className="text-xs text-neu-brand hover:underline"
                 >
                   Alterar
                 </button>
@@ -243,7 +243,7 @@ export default function NovaCompraPage() {
                   className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 {supplierOpen && filteredSuppliers.length > 0 && (
-                  <div className="absolute z-10 mt-1 w-full bg-[#F4F7FA] border border-slate-200 rounded-lg shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] max-h-48 overflow-y-auto">
+                  <div className="absolute z-10 mt-1 w-full bg-neu-panel border border-slate-200 rounded-lg shadow-neu-panel max-h-48 overflow-y-auto">
                     {filteredSuppliers.map((s) => (
                       <button
                         key={s.id}
@@ -253,7 +253,7 @@ export default function NovaCompraPage() {
                           setSupplierQuery(s.name);
                           setSupplierOpen(false);
                         }}
-                        className="w-full text-left px-3 py-2 hover:bg-[#F4F7FA] text-sm"
+                        className="w-full text-left px-3 py-2 hover:bg-neu-panel text-sm"
                       >
                         {s.name}
                       </button>
@@ -266,7 +266,7 @@ export default function NovaCompraPage() {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-[#57606A] mb-1">
+              <label className="block text-xs font-medium text-neu-inkSoft mb-1">
                 Data prevista de entrega
               </label>
               <input
@@ -279,7 +279,7 @@ export default function NovaCompraPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-[#57606A] mb-1">
+            <label className="block text-xs font-medium text-neu-inkSoft mb-1">
               Observações
             </label>
             <textarea
@@ -293,7 +293,7 @@ export default function NovaCompraPage() {
         </div>
 
         {/* Items */}
-        <div className="bg-[#F4F7FA] rounded-lg border border-slate-200 p-4 space-y-4">
+        <div className="bg-neu-panel rounded-lg border border-slate-200 p-4 space-y-4">
           <h3 className="text-sm font-semibold text-slate-800">Itens</h3>
 
           {/* Items table */}
@@ -302,13 +302,13 @@ export default function NovaCompraPage() {
               <table className="w-full text-sm min-w-[420px]">
                 <thead>
                   <tr className="border-b border-slate-100">
-                    <th className="text-left py-2 pr-3 text-xs font-medium text-[#8C959F]">
+                    <th className="text-left py-2 pr-3 text-xs font-medium text-neu-inkMuted">
                       Medicamento
                     </th>
-                    <th className="text-left py-2 pr-3 text-xs font-medium text-[#8C959F]">
+                    <th className="text-left py-2 pr-3 text-xs font-medium text-neu-inkMuted">
                       Qtd.
                     </th>
-                    <th className="text-left py-2 pr-3 text-xs font-medium text-[#8C959F]">
+                    <th className="text-left py-2 pr-3 text-xs font-medium text-neu-inkMuted">
                       Preço unit.
                     </th>
                     <th className="py-2" />
@@ -320,10 +320,10 @@ export default function NovaCompraPage() {
                       <td className="py-2 pr-3 font-medium text-slate-800">
                         {item.drug_name}
                       </td>
-                      <td className="py-2 pr-3 font-mono text-[#57606A]">
+                      <td className="py-2 pr-3 font-mono text-neu-inkSoft">
                         {item.quantity}
                       </td>
-                      <td className="py-2 pr-3 font-mono text-[#57606A]">
+                      <td className="py-2 pr-3 font-mono text-neu-inkSoft">
                         {parseFloat(item.unit_price) > 0
                           ? `R$ ${parseFloat(item.unit_price).toFixed(2)}`
                           : '—'}
@@ -347,11 +347,11 @@ export default function NovaCompraPage() {
 
           {/* Add item flow */}
           {addingDrug ? (
-            <div className="bg-[#F4F7FA] border border-slate-200 rounded-lg p-4 space-y-3">
+            <div className="bg-neu-panel border border-slate-200 rounded-lg p-4 space-y-3">
               <p className="text-sm font-medium text-slate-800">{addingDrug.name}</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-[#57606A] mb-1">
+                  <label className="block text-xs font-medium text-neu-inkSoft mb-1">
                     Quantidade *
                   </label>
                   <input
@@ -365,7 +365,7 @@ export default function NovaCompraPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-[#57606A] mb-1">
+                  <label className="block text-xs font-medium text-neu-inkSoft mb-1">
                     Preço unitário (R$)
                   </label>
                   <input
@@ -384,14 +384,14 @@ export default function NovaCompraPage() {
                   type="button"
                   onClick={confirmAddItem}
                   disabled={!addQty}
-                  className="px-4 py-2 bg-gradient-to-b from-[#0066A1] to-[#005282] border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] text-white text-xs font-medium rounded-lg hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] disabled:opacity-50"
+                  className="px-4 py-2 bg-gradient-to-b from-neu-brand to-neu-brandDeep border-t border-neu-brandEdge shadow-neu-btn-primary text-white text-xs font-medium rounded-lg hover:shadow-neu-btn-primary-hover disabled:opacity-50"
                 >
                   Adicionar item
                 </button>
                 <button
                   type="button"
                   onClick={() => setAddingDrug(null)}
-                  className="px-3 py-2 text-xs text-[#57606A] hover:text-[#24292F]"
+                  className="px-3 py-2 text-xs text-neu-inkSoft hover:text-neu-ink"
                 >
                   Cancelar
                 </button>
@@ -399,7 +399,7 @@ export default function NovaCompraPage() {
             </div>
           ) : (
             <div className="space-y-2">
-              <label className="block text-xs font-medium text-[#57606A]">
+              <label className="block text-xs font-medium text-neu-inkSoft">
                 Buscar medicamento para adicionar
               </label>
               <input
@@ -422,9 +422,9 @@ export default function NovaCompraPage() {
                       key={d.id}
                       type="button"
                       onClick={() => selectDrugForAdd(d)}
-                      className="w-full text-left px-3 py-2 hover:bg-[#F4F7FA] text-sm"
+                      className="w-full text-left px-3 py-2 hover:bg-neu-panel text-sm"
                     >
-                      <span className="font-medium text-[#24292F]">{d.name}</span>
+                      <span className="font-medium text-neu-ink">{d.name}</span>
                       {(d.dosage_form || d.concentration) && (
                         <span className="text-slate-400 ml-2 text-xs">
                           {[d.dosage_form, d.concentration].filter(Boolean).join(' ')}
@@ -443,14 +443,14 @@ export default function NovaCompraPage() {
           <button
             type="submit"
             disabled={saving}
-            className="px-4 py-2.5 bg-gradient-to-b from-[#0066A1] to-[#005282] border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] text-white text-sm font-medium rounded-lg hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] disabled:opacity-50 transition-colors"
+            className="px-4 py-2.5 bg-gradient-to-b from-neu-brand to-neu-brandDeep border-t border-neu-brandEdge shadow-neu-btn-primary text-white text-sm font-medium rounded-lg hover:shadow-neu-btn-primary-hover disabled:opacity-50 transition-colors"
           >
             {saving ? 'Salvando...' : 'Criar Ordem de Compra'}
           </button>
           <button
             type="button"
             onClick={() => router.back()}
-            className="px-4 py-2.5 text-sm text-[#57606A] hover:text-[#24292F]"
+            className="px-4 py-2.5 text-sm text-neu-inkSoft hover:text-neu-ink"
           >
             Cancelar
           </button>
