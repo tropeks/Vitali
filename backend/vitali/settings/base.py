@@ -195,6 +195,17 @@ REST_FRAMEWORK = {
         "user": "1000/hour",
         "login": "5/min",
     },
+    # Reverse-proxy hops between the client and Django. Every deployed env sits
+    # behind exactly ONE nginx that appends the real peer IP to X-Forwarded-For,
+    # so NUM_PROXIES=1 makes DRF's BaseThrottle.get_ident use that last XFF entry
+    # (the real client) as the throttle bucket key. Without it, get_ident falls
+    # back to the *entire* XFF string, which the client controls end-to-end —
+    # letting an attacker rotate the header to mint unlimited throttle buckets and
+    # bypass rate limits (critical for the anonymous signup endpoint that
+    # provisions a PG schema per request). Bump this to match if you add another
+    # trusted hop (e.g. Cloudflare in front of nginx → 2); set 0 to ignore XFF
+    # entirely and key on REMOTE_ADDR.
+    "NUM_PROXIES": 1,
 }
 
 # ─── JWT ─────────────────────────────────────────────────────────────────────
@@ -364,6 +375,10 @@ ORTHANC_URL = env.str("ORTHANC_URL", default="")
 ORTHANC_USERNAME = env.str("ORTHANC_USERNAME", default="")
 ORTHANC_PASSWORD = env.str("ORTHANC_PASSWORD", default="")
 ORTHANC_HTTP_TIMEOUT = env.int("ORTHANC_HTTP_TIMEOUT", default=10)
+# Shared secret for the inbound Orthanc → Vitali webhook (OnStableStudy push).
+# Orthanc presents it in the X-Orthanc-Webhook-Secret header; the webhook refuses
+# (503) when this is empty, so it can never run unauthenticated.
+ORTHANC_WEBHOOK_SECRET = env.str("ORTHANC_WEBHOOK_SECRET", default="")
 
 # billing/ migrations directory is root-owned (755). Redirect to writable package.
 MIGRATION_MODULES = {

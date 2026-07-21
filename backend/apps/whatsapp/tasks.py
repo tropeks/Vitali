@@ -187,16 +187,31 @@ def mark_no_shows(self):
 
 
 def _mark_no_shows_for_schema(schema_name: str) -> int:
-    """Mark no-show appointments in the active tenant schema."""
+    """Mark no-show appointments in the active tenant schema.
+
+    F-11 (E-013): after marking, fire the no-show cascade for each newly-marked
+    appointment (re-engagement WhatsApp + reopen slot + consult waitlist). We
+    snapshot the matching IDs first because ``.update()`` returns only a count
+    and bypasses signals — the cascade is dispatched explicitly, once per row.
+    """
     from apps.emr.models import Appointment
+    from apps.emr.tasks_waitlist import cascade_no_show
 
     cutoff = timezone.now() - timedelta(minutes=30)
-    updated = Appointment.objects.filter(
+    qs = Appointment.objects.filter(
         status="scheduled",
         whatsapp_reminder_sent=True,
         whatsapp_confirmed=False,
         end_time__lt=cutoff,
-    ).update(status="no_show")
+    )
+    appointment_ids = [str(pk) for pk in qs.values_list("id", flat=True)]
+    if not appointment_ids:
+        return 0
+
+    updated = Appointment.objects.filter(id__in=appointment_ids).update(status="no_show")
+
+    for appointment_id in appointment_ids:
+        cascade_no_show.delay(appointment_id)
 
     if updated:
         logger.info("Marked %d appointments as no_show in schema=%s", updated, schema_name)
