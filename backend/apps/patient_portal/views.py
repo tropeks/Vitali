@@ -43,6 +43,7 @@ from .serializers import (
     PortalPatientSerializer,
     PortalPrescriptionSerializer,
 )
+from .services import deliver_portal_invite
 
 _PORTAL_MODULE = ModuleRequiredPermission("patient_portal")
 
@@ -101,6 +102,9 @@ class AccessListCreateView(APIView):
         serializer = PatientPortalAccessCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         access = serializer.save(created_by=request.user)
+        # Fire the activation link to the patient (WhatsApp → email fallback).
+        # Fail-open: delivery problems never fail invite creation.
+        deliver_portal_invite(access)
         return Response(
             PatientPortalAccessSerializer(access).data,
             status=status.HTTP_201_CREATED,
