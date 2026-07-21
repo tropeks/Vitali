@@ -93,6 +93,41 @@ Production promotion is gated by a GitHub **Environment**, not a code change:
    approval from a reviewer before any step runs. This is the "prod via aprovação
    manual" gate — no SSH, no manual `docker` commands.
 
+> ⚠️ **Configure the required reviewers BEFORE setting `PROD_ENABLED="true"`.**
+> An Environment with no protection rules does not pause the job — flipping the
+> variable first would make tag pushes deploy production unattended. The safe
+> order is: create the `production` environment → add required reviewers → add
+> the `PROD_*` secrets to that environment → only then set `PROD_ENABLED`.
+
+Additional guard rails:
+
+- `deploy-production` `needs: deploy-staging`, so production only runs after the
+  staging deploy + smoke tests pass on the same release. With
+  `STAGING_ENABLED` unset, production stays dormant too — by design.
+- The whole pipeline only runs in `tropeks/Vitali` (fork guard on the build job).
+- Recommended: add a tag **ruleset** (Settings → Rules) restricting who can
+  create `v*.*.*` tags — anyone who can push a matching tag can start a release.
+
+### Rollback
+
+Each deploy job aliases the previously running images as `:rollback` before
+pulling, and re-deploys them automatically if the deploy or smoke tests fail.
+
+Manual rollback (staging or prod host), if needed later:
+
+```bash
+cd /opt/vitali
+# Preferred: redeploy the last known-good semver tag from GHCR
+IMAGE_TAG=v1.3.9 GHCR_REPO=tropeks docker compose -f docker-compose.prod.yml pull
+IMAGE_TAG=v1.3.9 GHCR_REPO=tropeks docker compose -f docker-compose.prod.yml up -d
+# Or reuse the local alias captured before the failed deploy:
+IMAGE_TAG=rollback GHCR_REPO=tropeks docker compose -f docker-compose.prod.yml up -d
+```
+
+> ⚠️ Rollback restores **images only** — database migrations are not reverted.
+> Migrations must stay backward-compatible with the previous release; if a bad
+> migration ships, roll forward with a fix release instead of rolling back.
+
 ### Release secrets & variables
 
 In addition to the staging secrets above, the `production` environment needs:

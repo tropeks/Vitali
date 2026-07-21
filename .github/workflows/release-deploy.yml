@@ -22,10 +22,11 @@ on:
     tags:
       - "v*.*.*"
 
-# Never run two releases against the same ref concurrently; let an in-flight
-# release finish rather than cancelling a deploy half-way.
+# Serialize releases globally (not per-ref): two tags pushed back-to-back must
+# never SSH-deploy to the same hosts concurrently. Let an in-flight release
+# finish rather than cancelling a deploy half-way.
 concurrency:
-  group: release-deploy-${{ github.ref }}
+  group: release-deploy
   cancel-in-progress: false
 
 env:
@@ -38,6 +39,10 @@ jobs:
   build-and-push:
     name: Build & Push Images
     runs-on: ubuntu-latest
+    # Guard against forks/mirrors: a v*.*.* tag pushed to any fork with Actions
+    # enabled would otherwise run this pipeline there. Downstream deploy jobs
+    # inherit the guard through `needs`.
+    if: github.repository == 'tropeks/Vitali'
     permissions:
       contents: read
       packages: write
@@ -97,6 +102,11 @@ jobs:
     environment: staging
     # Stays dormant until the staging host is provisioned and STAGING_ENABLED="true".
     if: vars.STAGING_ENABLED == 'true'
+    # Shared with deploy-staging.yml so a master push and a tag release never
+    # deploy to the staging host at the same time.
+    concurrency:
+      group: staging-host-deploy
+      cancel-in-progress: false
 
     env:
       IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
@@ -198,6 +208,10 @@ jobs:
     # manual" gate. Stays dormant until the prod host exists and PROD_ENABLED="true".
     environment: production
     if: vars.PROD_ENABLED == 'true'
+    # Only one production deploy at a time, ever.
+    concurrency:
+      group: production-host-deploy
+      cancel-in-progress: false
 
     env:
       IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
