@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { portalApi } from "@/lib/portal-api";
@@ -31,7 +31,9 @@ describe("PortalImagingPage", () => {
     render(<PortalImagingPage />);
 
     expect(await screen.findByRole("heading", { name: "Tomografia de tórax" })).toBeInTheDocument();
-    expect(screen.getByTitle("Visualizador Vitali — Tomografia de tórax")).toHaveAttribute("src", "/viewer/study-1");
+    expect(screen.queryByTitle("Visualizador Vitali — Tomografia de tórax")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Ver imagens" }));
+    expect(await screen.findByTitle("Visualizador Vitali — Tomografia de tórax")).toHaveAttribute("src", "/viewer/study-1");
     expect(screen.getByRole("link", { name: /Ver laudo assinado/ })).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/Orthanc|OHIF|PACS/i);
   });

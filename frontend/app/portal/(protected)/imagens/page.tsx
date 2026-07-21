@@ -28,7 +28,8 @@ export default function PortalImagingPage() {
       .getMyImagingStudies()
       .then((items) => {
         setStudies(items);
-        setActiveId(items.find((item) => item.available)?.id ?? null);
+        // Do not fetch pixels or create the viewer until the patient asks for it.
+        setActiveId(null);
       })
       .catch((err) => {
         if (err instanceof PortalApiError && [401, 403].includes(err.status)) {
