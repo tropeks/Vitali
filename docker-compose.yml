@@ -139,6 +139,37 @@ services:
       redis:
         condition: service_healthy
 
+  # ─── Orthanc PACS (DICOM + OHIF viewer) ───────────────────────────────────
+  orthanc:
+    image: orthancteam/orthanc:24.10.1
+    restart: unless-stopped
+    environment:
+      # Folded into orthanc.json by the orthancteam image at startup. Keeps the
+      # Orthanc REST API behind basic auth; Vitali uses the same creds (ORTHANC_*).
+      ORTHANC__REGISTERED_USERS: |
+        {"${ORTHANC_USERNAME:-vitali}": "${ORTHANC_PASSWORD:-vitali}"}
+      # Push ingestion → Django webhook. The bare host `django` resolves to the
+      # public schema (SHOW_PUBLIC_IF_NO_TENANT_FOUND in dev) so the match fans
+      # out across all tenants. The secret must equal ORTHANC_WEBHOOK_SECRET.
+      VITALI_WEBHOOK_URL: http://django:8000/api/v1/imaging/orthanc/webhook/
+      VITALI_WEBHOOK_SECRET: ${ORTHANC_WEBHOOK_SECRET:-change-me-orthanc-webhook}
+    volumes:
+      - ./docker/orthanc/orthanc.json:/etc/orthanc/orthanc.json:ro
+      - ./docker/orthanc/vitali-webhook.lua:/etc/orthanc/vitali-webhook.lua:ro
+      - orthanc_data:/var/lib/orthanc/db
+    ports:
+      - "8042:8042"  # REST API + OHIF viewer (/ohif/) + DICOMweb (/dicom-web/)
+      - "4242:4242"  # DICOM C-STORE (modalities push studies here)
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -u $${ORTHANC_USERNAME:-vitali}:$${ORTHANC_PASSWORD:-vitali} http://localhost:8042/system || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      django:
+        condition: service_started
+
   # ─── Next.js Frontend ─────────────────────────────────────────────────────
   nextjs:
     build:
@@ -165,6 +196,7 @@ services:
     depends_on:
       - django
       - nextjs
+      - orthanc
     healthcheck:
       # busybox wget ships in nginx:alpine; /health/ proxies to Django.
       test: ["CMD-SHELL", "wget -q --spider http://localhost/health/ || exit 1"]
@@ -178,3 +210,4 @@ volumes:
   redis_data:
   static_files:
   media_files:
+  orthanc_data:

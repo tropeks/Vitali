@@ -14,6 +14,7 @@ from .views_platform import (
     SubscriptionListCreateView,
     SubscriptionWebhookView,
     TenantAdminListView,
+    WedgeValueDashboardView,
 )
 from .views_signup import SelfServeSignupView
 
@@ -66,4 +67,10 @@ urlpatterns = [
     ),
     # S-061: Pilot health dashboard
     path("platform/pilot-health/", PilotHealthView.as_view(), name="platform-pilot-health"),
+    # Issue #123: Wedge business-value (ROI) dashboard
+    path(
+        "platform/wedge-value/",
+        WedgeValueDashboardView.as_view(),
+        name="platform-wedge-value",
+    ),
 ]

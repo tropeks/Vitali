@@ -43,6 +43,11 @@ interface Overview {
   encounters_signed: number;
   revenue: string | number;
   wait_time_avg_min: number | null;
+  // Fill rate (occupancy) — null until the tenant configures Schedule + TimeSlot
+  // capacity, which keeps the KPI hidden until agendas are operational (issue #133).
+  fill_rate: number | null;
+  fill_rate_capacity?: number;
+  fill_rate_booked?: number;
 }
 
 interface DayRow {
@@ -247,6 +252,10 @@ export default function DashboardPage() {
 
   const actionQueue = buildDashboardActionQueue(overview);
 
+  // Show the fill-rate KPI only once the tenant has agenda capacity configured;
+  // the backend returns null otherwise, keeping the card hidden (issue #133).
+  const showFillRate = overview != null && overview.fill_rate != null;
+
   if (!overviewLoading && !chartsLoading && error) {
     return (
       <div className="space-y-6">
@@ -341,7 +350,11 @@ export default function DashboardPage() {
       </div>
 
       {/* ── KPI Cards ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
+      <div
+        className={`grid grid-cols-1 sm:grid-cols-2 gap-4 ${
+          showFillRate ? "xl:grid-cols-6" : "xl:grid-cols-5"
+        }`}
+      >
         {overviewLoading ? (
           Array.from({ length: 5 }).map((_, i) => <KPISkeleton key={i} />)
         ) : (
@@ -371,6 +384,14 @@ export default function DashboardPage() {
               color="text-emerald-600"
             />
             <WaitTimeCard waitTimeAvgMin={overview?.wait_time_avg_min} loading={overviewLoading} />
+            {showFillRate && (
+              <KPICard
+                label="Taxa de Ocupação"
+                value={`${overview?.fill_rate ?? 0}%`}
+                sub={`${overview?.fill_rate_booked ?? 0} de ${overview?.fill_rate_capacity ?? 0} horários`}
+                color="text-indigo-600"
+              />
+            )}
           </>
         )}
       </div>
