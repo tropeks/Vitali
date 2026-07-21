@@ -70,9 +70,7 @@ class InviteDeliveryServiceTest(TenantTestCase):
     # ─── WhatsApp channel ──────────────────────────────────────────────────────
 
     def test_whatsapp_sent_when_contact_opted_in(self):
-        WhatsAppContact.objects.create(
-            phone="5511988887777", patient=self.patient, opt_in=True
-        )
+        WhatsAppContact.objects.create(phone="5511988887777", patient=self.patient, opt_in=True)
         access = self._mint()
 
         with patch(GATEWAY_PATH) as mock_get_gateway:
@@ -91,9 +89,7 @@ class InviteDeliveryServiceTest(TenantTestCase):
 
     def test_no_whatsapp_without_opt_in_falls_back_to_email(self):
         # Contact exists but has NOT opted in → WhatsApp gate closed.
-        WhatsAppContact.objects.create(
-            phone="5511988887777", patient=self.patient, opt_in=False
-        )
+        WhatsAppContact.objects.create(phone="5511988887777", patient=self.patient, opt_in=False)
         access = self._mint()
 
         with patch(GATEWAY_PATH) as mock_get_gateway:
@@ -129,9 +125,7 @@ class InviteDeliveryServiceTest(TenantTestCase):
         self.assertEqual(len(mail.outbox), 0)
 
     def test_whatsapp_send_failure_falls_back_to_email(self):
-        WhatsAppContact.objects.create(
-            phone="5511988887777", patient=self.patient, opt_in=True
-        )
+        WhatsAppContact.objects.create(phone="5511988887777", patient=self.patient, opt_in=True)
         access = self._mint()
 
         with patch(GATEWAY_PATH) as mock_get_gateway:
@@ -184,9 +178,7 @@ class InviteDeliveryViewTest(TenantTestCase):
         )
 
     def test_create_invite_delivers_whatsapp(self):
-        WhatsAppContact.objects.create(
-            phone="5511988887777", patient=self.patient, opt_in=True
-        )
+        WhatsAppContact.objects.create(phone="5511988887777", patient=self.patient, opt_in=True)
         self.client.force_authenticate(user=self.admin)
         with patch(GATEWAY_PATH) as mock_get_gateway:
             gateway = MagicMock()
