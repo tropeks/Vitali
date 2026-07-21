@@ -116,7 +116,7 @@ services:
 
   # ─── Evolution API (WhatsApp Gateway) ────────────────────────────────────────
   evolution-api:
-    image: atendai/evolution-api:latest
+    image: evoapicloud/evolution-api:v2.2.3
     restart: unless-stopped
     environment:
       SERVER_PORT: 8080

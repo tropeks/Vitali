@@ -119,6 +119,12 @@ class OverviewView(APIView):
         wait_avg = wait_qs["avg"]
         wait_time_avg_min = round(wait_avg.total_seconds() / 60, 1) if wait_avg else None
 
+        # Fill rate (occupancy): booked slots / scheduling capacity over [since, today].
+        # Capacity is derived from the active ScheduleConfig agendas (issue #133). The KPI
+        # stays hidden (null) until a tenant configures schedules, so it auto-activates
+        # per tenant once Schedule + TimeSlot capacity exists — no engineering flip needed.
+        fill_rate, fill_rate_capacity, fill_rate_booked = self._fill_rate(appts, since, today)
+
         return Response(
             {
                 "period": period,
@@ -136,8 +142,37 @@ class OverviewView(APIView):
                 "encounters_signed": encounters_signed,
                 "revenue": revenue,
                 "wait_time_avg_min": wait_time_avg_min,
+                "fill_rate": fill_rate,
+                "fill_rate_capacity": fill_rate_capacity,
+                "fill_rate_booked": fill_rate_booked,
             }
         )
+
+    @staticmethod
+    def _fill_rate(appts, since: date, end: date):
+        """Return (fill_rate_pct, capacity, booked) for the period [since, end] inclusive.
+
+        ``fill_rate`` is ``None`` when no active agenda capacity exists, which keeps the
+        dashboard KPI hidden for tenants that have not configured schedules yet. A booked
+        slot is any appointment occupying it (every status except ``cancelled``); the ratio
+        is capped at 100% to stay sane under overbooking.
+        """
+        try:
+            from apps.emr.models import ScheduleConfig
+            from apps.whatsapp.slot_service import count_slots_for_config
+
+            capacity = sum(
+                count_slots_for_config(cfg, since, end)
+                for cfg in ScheduleConfig.objects.filter(is_active=True)
+            )
+            if capacity <= 0:
+                return None, 0, 0
+
+            booked = appts.filter(start_time__date__lte=end).exclude(status="cancelled").count()
+            fill_rate = round(min(booked / capacity, 1.0) * 100, 1)
+            return fill_rate, capacity, booked
+        except Exception:
+            return None, 0, 0
 
 
 class AppointmentsByDayView(APIView):
@@ -563,8 +598,30 @@ class GlosaAccuracyView(APIView):
     def get(self, request):
         from apps.ai.models import GlosaPrediction
 
+        # ── Multi-item guide filter (#126) ────────────────────────────────────
+        # `was_denied` is the per-prediction ground-truth label backfilled by
+        # retorno_parser. For a DENIED guide that carries more than one item,
+        # TISS 4.01.00 retornos frequently express the denial only at guide
+        # level (<glosasGuia> / flat <glosas>) with no per-procedure context,
+        # so the parser cannot attribute the denial to a specific item and the
+        # label cannot be trusted for any single line of that guide. Including
+        # such guides would smear one guide-level denial across every item's
+        # label and corrupt accuracy/precision/recall.
+        #
+        # We therefore restrict the metric to SINGLE-ITEM guides, where a guide
+        # denial unambiguously maps to its one item and `was_denied` is sound.
+        #
+        # LIMITATION / when to remove this filter: TISS 4.02.00+ introduces
+        # reliable item-level denial codes (negativa por item). Once retornos
+        # carry per-item denial reasons end-to-end, multi-item guides can be
+        # labelled per line and included here — drop the `guide__in` filter and
+        # label items directly from item-level glosas instead.
+        single_item_guides = (
+            TISSGuide.objects.annotate(_n_items=Count("items")).filter(_n_items=1).values("pk")
+        )
+
         rows = (
-            GlosaPrediction.objects.filter(guide__isnull=False)
+            GlosaPrediction.objects.filter(guide__isnull=False, guide__in=single_item_guides)
             .values("insurer_ans_code")
             .annotate(
                 total=Count("id", filter=Q(was_denied__isnull=False)),

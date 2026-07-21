@@ -195,6 +195,17 @@ REST_FRAMEWORK = {
         "user": "1000/hour",
         "login": "5/min",
     },
+    # Reverse-proxy hops between the client and Django. Every deployed env sits
+    # behind exactly ONE nginx that appends the real peer IP to X-Forwarded-For,
+    # so NUM_PROXIES=1 makes DRF's BaseThrottle.get_ident use that last XFF entry
+    # (the real client) as the throttle bucket key. Without it, get_ident falls
+    # back to the *entire* XFF string, which the client controls end-to-end —
+    # letting an attacker rotate the header to mint unlimited throttle buckets and
+    # bypass rate limits (critical for the anonymous signup endpoint that
+    # provisions a PG schema per request). Bump this to match if you add another
+    # trusted hop (e.g. Cloudflare in front of nginx → 2); set 0 to ignore XFF
+    # entirely and key on REMOTE_ADDR.
+    "NUM_PROXIES": 1,
 }
 
 # ─── JWT ─────────────────────────────────────────────────────────────────────
@@ -339,6 +350,16 @@ ASAAS_WEBHOOK_TOKEN = env("ASAAS_WEBHOOK_TOKEN", default="")
 ASAAS_ENVIRONMENT = env("ASAAS_ENVIRONMENT", default="sandbox")
 PIX_CHARGE_EXPIRY_MINUTES = env.int("PIX_CHARGE_EXPIRY_MINUTES", default=30)
 
+# ─── Self-serve signup (S-132) ───────────────────────────────────────────────
+# Public marketing URL used to build the welcome/set-password link emailed to
+# new clinic owners. Also consumed by the staff invite flow.
+FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:3000")
+SUPPORT_EMAIL = env("SUPPORT_EMAIL", default="suporte@vitali.app")
+SELF_SERVE_TRIAL_DAYS = env.int("SELF_SERVE_TRIAL_DAYS", default=14)
+SELF_SERVE_DEFAULT_PLAN_NAME = env("SELF_SERVE_DEFAULT_PLAN_NAME", default="Starter")
+SELF_SERVE_DEFAULT_PLAN_PRICE = env("SELF_SERVE_DEFAULT_PLAN_PRICE", default="299.00")
+SELF_SERVE_DEFAULT_MODULES = env.list("SELF_SERVE_DEFAULT_MODULES", default=["emr"])
+
 # ─── MFA — TOTP (S-062) ──────────────────────────────────────────────────────
 MFA_GRACE_PERIOD_DAYS = env.int("MFA_GRACE_PERIOD_DAYS", default=7)
 
@@ -411,9 +432,7 @@ ENFORCE_TENANT_MEMBERSHIP = env.bool("ENFORCE_TENANT_MEMBERSHIP", default=False)
 # (MFA_GRACE_PERIOD_DAYS, defined above) measured from account creation; after it
 # expires they are blocked until they enrol. Role names match
 # apps.core.permissions.DEFAULT_ROLES.
-MFA_REQUIRED_ROLES = set(
-    env.list("MFA_REQUIRED_ROLES", default=["admin", "medico", "dentista"])
-)
+MFA_REQUIRED_ROLES = set(env.list("MFA_REQUIRED_ROLES", default=["admin", "medico", "dentista"]))
 
 # Per-request network timeout (seconds) for CRL/OCSP fetches when revocation
 # checking is enabled. Bounds how long sign() can block on a single fetch.

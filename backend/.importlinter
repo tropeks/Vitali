@@ -44,6 +44,8 @@ ignore_imports =
     apps.analytics.** -> apps.billing.**
     # analytics -> emr
     apps.analytics.** -> apps.emr.**
+    # analytics -> whatsapp
+    apps.analytics.** -> apps.whatsapp.**
     # billing -> ai
     apps.billing.** -> apps.ai.**
     # billing -> emr
@@ -52,8 +54,15 @@ ignore_imports =
     apps.emr.** -> apps.ai.**
     # emr -> pharmacy
     apps.emr.** -> apps.pharmacy.**
+    # emr -> signatures
+    apps.emr.** -> apps.signatures.**
     # emr -> whatsapp
     apps.emr.** -> apps.whatsapp.**
+    # emr -> signatures (S32 Compliance: ICP-Brasil encounter signing — emr.services.
+    # icp_brasil_integration bridges into the signatures domain to produce a
+    # DigitalSignature. Consistent with the existing emr-> orchestration edges above;
+    # tech-debt: extract a signatures service boundary so emr depends on an interface.)
+    apps.emr.** -> apps.signatures.**
     # fhir -> emr
     apps.fhir.** -> apps.emr.**
     # fhir -> pharmacy

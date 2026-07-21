@@ -34,6 +34,9 @@ class Tenant(TenantMixin, models.Model):
     """
 
     class Status(models.TextChoices):
+        # Self-serve signup: tenant provisioned but owner has not yet activated
+        # (welcome link unconsumed) or post-provisioning steps need ops attention.
+        PENDING = "pending", "Pendente"
         TRIAL = "trial", "Trial"
         ACTIVE = "active", "Ativo"
         SUSPENDED = "suspended", "Suspenso"
@@ -44,6 +47,14 @@ class Tenant(TenantMixin, models.Model):
     slug = models.SlugField("Slug", max_length=100, unique=True)
     # schema_name is required by TenantMixin — set equal to slug on save
     cnpj = models.CharField("CNPJ", max_length=18, unique=True, blank=True, null=True)
+    # Onboarding wizard (issue #116) — clinic identity captured in Step 1.
+    razao_social = models.CharField("Razão social", max_length=255, blank=True, default="")
+    address = models.CharField("Endereço", max_length=500, blank=True, default="")
+    dpo_name = models.CharField(
+        "Encarregado de dados (DPO)", max_length=255, blank=True, default=""
+    )
+    dpo_email = models.EmailField("E-mail do DPO", blank=True, default="")
+    dpo_phone = models.CharField("Telefone do DPO", max_length=30, blank=True, default="")
     status = models.CharField("Status", max_length=20, choices=Status.choices, default=Status.TRIAL)
     trial_ends_at = models.DateTimeField("Fim do trial", null=True, blank=True)
     created_at = models.DateTimeField("Criado em", auto_now_add=True)
@@ -137,6 +148,16 @@ class Subscription(models.Model):
     )
     current_period_start = models.DateField("Início do período")
     current_period_end = models.DateField("Fim do período")
+    # Asaas recurring-billing linkage (S-132 self-serve). Populated best-effort
+    # at signup; the subscription webhook resolves a tenant via these IDs to flip
+    # Tenant.status TRIAL → ACTIVE on first confirmed payment. Blank when the
+    # gateway was unavailable at signup — ops can retry without data loss.
+    asaas_customer_id = models.CharField(
+        "Asaas Customer ID", max_length=100, blank=True, default="", db_index=True
+    )
+    asaas_subscription_id = models.CharField(
+        "Asaas Subscription ID", max_length=100, blank=True, default="", db_index=True
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

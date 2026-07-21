@@ -43,6 +43,11 @@ interface Overview {
   encounters_signed: number;
   revenue: string | number;
   wait_time_avg_min: number | null;
+  // Fill rate (occupancy) — null until the tenant configures Schedule + TimeSlot
+  // capacity, which keeps the KPI hidden until agendas are operational (issue #133).
+  fill_rate: number | null;
+  fill_rate_capacity?: number;
+  fill_rate_booked?: number;
 }
 
 interface DayRow {
@@ -121,8 +126,8 @@ function KPICard({
   color: string;
 }) {
   return (
-    <div className="bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white">
-      <p className="text-[11px] font-bold text-[#57606A] uppercase tracking-wide">{label}</p>
+    <div className="neu-panel">
+      <p className="text-[11px] font-bold text-neu-inkSoft uppercase tracking-wide">{label}</p>
       <p className={`mt-1 text-2xl font-bold ${color}`}>{value}</p>
       {sub && <p className="mt-1 text-xs text-slate-500">{sub}</p>}
     </div>
@@ -139,7 +144,7 @@ function Skeleton({ className }: { className?: string }) {
 
 function KPISkeleton() {
   return (
-    <div className="bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white space-y-3">
+    <div className="neu-panel space-y-3">
       <Skeleton className="h-4 w-32" />
       <Skeleton className="h-9 w-20" />
       <Skeleton className="h-3 w-40" />
@@ -247,6 +252,10 @@ export default function DashboardPage() {
 
   const actionQueue = buildDashboardActionQueue(overview);
 
+  // Show the fill-rate KPI only once the tenant has agenda capacity configured;
+  // the backend returns null otherwise, keeping the card hidden (issue #133).
+  const showFillRate = overview != null && overview.fill_rate != null;
+
   if (!overviewLoading && !chartsLoading && error) {
     return (
       <div className="space-y-6">
@@ -275,15 +284,15 @@ export default function DashboardPage() {
         </div>
 
         {/* Period toggle */}
-        <div className="flex items-center gap-1 bg-[#E8EDF2] rounded-lg p-1 shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)]">
+        <div className="flex items-center gap-1 bg-neu-input rounded-lg p-1 shadow-neu-inset">
           {(["today", "week", "month"] as Period[]).map((p) => (
             <button
               key={p}
               onClick={() => setPeriod(p)}
               className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${
                 period === p
-                  ? "bg-white text-[#0066A1] shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
-                  : "text-[#57606A] hover:text-[#24292F]"
+                  ? "bg-white text-neu-brand shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+                  : "text-neu-inkSoft hover:text-neu-ink"
               }`}
             >
               {PERIOD_LABELS[p]}
@@ -298,7 +307,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
         {overviewLoading
           ? Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white">
+              <div key={i} className="neu-panel">
                 <Skeleton className="h-4 w-28" />
                 <Skeleton className="mt-3 h-8 w-12" />
                 <Skeleton className="mt-2 h-3 w-40" />
@@ -341,7 +350,11 @@ export default function DashboardPage() {
       </div>
 
       {/* ── KPI Cards ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
+      <div
+        className={`grid grid-cols-1 sm:grid-cols-2 gap-4 ${
+          showFillRate ? "xl:grid-cols-6" : "xl:grid-cols-5"
+        }`}
+      >
         {overviewLoading ? (
           Array.from({ length: 5 }).map((_, i) => <KPISkeleton key={i} />)
         ) : (
@@ -371,13 +384,21 @@ export default function DashboardPage() {
               color="text-emerald-600"
             />
             <WaitTimeCard waitTimeAvgMin={overview?.wait_time_avg_min} loading={overviewLoading} />
+            {showFillRate && (
+              <KPICard
+                label="Taxa de Ocupação"
+                value={`${overview?.fill_rate ?? 0}%`}
+                sub={`${overview?.fill_rate_booked ?? 0} de ${overview?.fill_rate_capacity ?? 0} horários`}
+                color="text-indigo-600"
+              />
+            )}
           </>
         )}
       </div>
 
       {/* ── Charts Row 1: Line + Donut ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white">
+        <div className="lg:col-span-2 neu-panel">
           <h2 className="font-semibold text-slate-900 mb-4">
             Consultas por Dia{" "}
             <span className="text-xs text-slate-400 font-normal">(últimos 30 dias)</span>
@@ -419,7 +440,7 @@ export default function DashboardPage() {
           )}
         </div>
 
-        <div className="bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white">
+        <div className="neu-panel">
           <h2 className="font-semibold text-slate-900 mb-4">
             Status das Consultas{" "}
             <span className="text-xs text-slate-400 font-normal">(mês atual)</span>
@@ -455,7 +476,7 @@ export default function DashboardPage() {
 
       {/* ── Charts Row 2: Bar + Table ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white">
+        <div className="neu-panel">
           <h2 className="font-semibold text-slate-900 mb-4">
             Novos Pacientes por Mês{" "}
             <span className="text-xs text-slate-400 font-normal">(últimos 6 meses)</span>
@@ -477,7 +498,7 @@ export default function DashboardPage() {
           )}
         </div>
 
-        <div className="bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white">
+        <div className="neu-panel">
           <h2 className="font-semibold text-slate-900 mb-4">
             Top Profissionais{" "}
             <span className="text-xs text-slate-400 font-normal">(consultas concluídas este mês)</span>

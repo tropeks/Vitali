@@ -16,7 +16,7 @@ interface KpiTileProps {
 }
 
 const TILE_TONE: Record<OperationalTone, { wrap: string; label: string; value: string }> = {
-  neutral: { wrap: 'border-slate-200 bg-[#F4F7FA]', label: 'text-[#8C959F]', value: 'text-slate-800' },
+  neutral: { wrap: 'border-slate-200 bg-neu-panel', label: 'text-neu-inkMuted', value: 'text-slate-800' },
   info: { wrap: 'border-blue-200 bg-blue-50', label: 'text-blue-700', value: 'text-blue-900' },
   attention: {
     wrap: 'border-yellow-200 bg-yellow-50',

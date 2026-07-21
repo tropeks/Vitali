@@ -353,7 +353,7 @@ function InsuranceTab({
         </div>
         <button
           onClick={openNew}
-          className="inline-flex items-center justify-center gap-2 px-6 py-2 text-xs font-bold text-white bg-gradient-to-b from-[#0066A1] to-[#005282] rounded-lg border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] transition-all"
+          className="inline-flex items-center justify-center gap-2 neu-btn-primary"
         >
           <WalletCards size={15} />
           Adicionar convênio
@@ -375,39 +375,39 @@ function InsuranceTab({
           {error && <p className="mt-3 text-sm font-medium text-red-700">{error}</p>}
           <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
             <label className="block">
-              <span className=" block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide ">Código ANS *</span>
+              <span className="neu-label">Código ANS *</span>
               <input
                 value={form.provider_ans_code}
                 onChange={(event) => setForm((current) => ({ ...current, provider_ans_code: event.target.value }))}
-                className="w-full px-2 py-1.5 bg-[#E8EDF2] border-transparent rounded-md text-xs shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#0066A1]/50 transition-all text-[#24292F] h-8"
+                className="neu-input"
               />
             </label>
             <label className="block md:col-span-2">
-              <span className=" block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide ">Operadora *</span>
+              <span className="neu-label">Operadora *</span>
               <input
                 value={form.provider_name}
                 onChange={(event) => setForm((current) => ({ ...current, provider_name: event.target.value }))}
-                className="w-full px-2 py-1.5 bg-[#E8EDF2] border-transparent rounded-md text-xs shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#0066A1]/50 transition-all text-[#24292F] h-8"
+                className="neu-input"
               />
             </label>
             <label className="block">
-              <span className=" block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide ">Válida até</span>
+              <span className="neu-label">Válida até</span>
               <input
                 type="date"
                 value={form.valid_until}
                 onChange={(event) => setForm((current) => ({ ...current, valid_until: event.target.value }))}
-                className="w-full px-2 py-1.5 bg-[#E8EDF2] border-transparent rounded-md text-xs shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#0066A1]/50 transition-all text-[#24292F] h-8"
+                className="neu-input"
               />
             </label>
             <label className="block md:col-span-2">
-              <span className=" block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide ">Número da carteirinha *</span>
+              <span className="neu-label">Número da carteirinha *</span>
               <input
                 value={form.card_number}
                 onChange={(event) => setForm((current) => ({ ...current, card_number: event.target.value }))}
-                className="w-full px-2 py-1.5 bg-[#E8EDF2] border-transparent rounded-md text-xs shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#0066A1]/50 transition-all text-[#24292F] h-8"
+                className="neu-input"
               />
             </label>
-            <label className="flex items-center gap-2 pt-6 block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide ">
+            <label className="flex items-center gap-2 pt-6 block text-[11px] font-bold text-neu-inkSoft mb-1.5 uppercase tracking-wide ">
               <input
                 type="checkbox"
                 checked={form.is_active}
@@ -420,14 +420,14 @@ function InsuranceTab({
           <div className="mt-4 flex justify-end gap-2">
             <button
               onClick={() => setShowForm(false)}
-              className=" px-4 py-1.5 text-xs rounded-lg font-bold bg-[#E8EDF2] text-[#57606A] shadow-[inset_0_1px_1px_rgba(255,255,255,0.5),_0_2px_4px_rgba(0,0,0,0.05)] hover:bg-[#dfe5ea] transition-all "
+              className="neu-btn-secondary"
             >
               Cancelar
             </button>
             <button
               onClick={save}
               disabled={saving}
-              className="disabled:opacity-50 px-6 py-2 text-xs font-bold text-white bg-gradient-to-b from-[#0066A1] to-[#005282] rounded-lg border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] transition-all"
+              className="disabled:opacity-50 neu-btn-primary"
             >
               {saving ? 'Salvando...' : 'Salvar convênio'}
             </button>
@@ -487,7 +487,7 @@ function InsuranceTab({
           </div>
           <div className="space-y-2 md:hidden">
             {cards.map((card) => (
-              <div key={card.id} className=" bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white ">
+              <div key={card.id} className="neu-panel">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-slate-900">{card.provider_name}</p>
@@ -696,7 +696,7 @@ export default function PatientDetailPage() {
                   <p className="mt-1 text-sm font-medium text-slate-600">Nome social: {patient.social_name}</p>
                 )}
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-600">
-                  <span className="font-mono block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide ">
+                  <span className="font-mono neu-label">
                     {patient.medical_record_number || 'Prontuário não gerado'}
                   </span>
                   <span className="text-slate-300">|</span>
@@ -723,21 +723,21 @@ export default function PatientDetailPage() {
               </button>
               <button
                 onClick={() => router.push('/encounters')}
-                className="inline-flex items-center justify-center gap-2 px-4 py-1.5 text-xs rounded-lg font-bold bg-[#E8EDF2] text-[#57606A] shadow-[inset_0_1px_1px_rgba(255,255,255,0.5),_0_2px_4px_rgba(0,0,0,0.05)] hover:bg-[#dfe5ea] transition-all "
+                className="inline-flex items-center justify-center gap-2 neu-btn-secondary"
               >
                 <Stethoscope size={15} />
                 Consulta
               </button>
               <button
                 onClick={() => router.push('/billing/guides/new')}
-                className="inline-flex items-center justify-center gap-2 px-4 py-1.5 text-xs rounded-lg font-bold bg-[#E8EDF2] text-[#57606A] shadow-[inset_0_1px_1px_rgba(255,255,255,0.5),_0_2px_4px_rgba(0,0,0,0.05)] hover:bg-[#dfe5ea] transition-all "
+                className="inline-flex items-center justify-center gap-2 neu-btn-secondary"
               >
                 <Receipt size={15} />
                 Guia TISS
               </button>
               <button
                 onClick={() => router.push('/farmacia/dispense')}
-                className="inline-flex items-center justify-center gap-2 px-4 py-1.5 text-xs rounded-lg font-bold bg-[#E8EDF2] text-[#57606A] shadow-[inset_0_1px_1px_rgba(255,255,255,0.5),_0_2px_4px_rgba(0,0,0,0.05)] hover:bg-[#dfe5ea] transition-all "
+                className="inline-flex items-center justify-center gap-2 neu-btn-secondary"
               >
                 <Pill size={15} />
                 Farmácia
@@ -933,7 +933,7 @@ export default function PatientDetailPage() {
                       {related.appointments.slice(0, 4).map((appointment) => {
                         const meta = getAppointmentStatusMeta(appointment.status)
                         return (
-                          <div key={`appointment-mobile-${appointment.id}`} className=" bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white ">
+                          <div key={`appointment-mobile-${appointment.id}`} className="neu-panel">
                             <div className="flex items-start justify-between gap-3">
                               <div>
                                 <p className="text-sm font-semibold text-slate-900">Agenda</p>
@@ -952,7 +952,7 @@ export default function PatientDetailPage() {
                         )
                       })}
                       {related.encounters.slice(0, 4).map((encounter) => (
-                        <div key={`encounter-mobile-${encounter.id}`} className=" bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white ">
+                        <div key={`encounter-mobile-${encounter.id}`} className="neu-panel">
                           <div className="flex items-start justify-between gap-3">
                             <div>
                               <p className="text-sm font-semibold text-slate-900">Consulta</p>
@@ -989,7 +989,7 @@ export default function PatientDetailPage() {
                     <button
                       key={`${event.type}-${event.id}`}
                       onClick={() => event.type === 'encounter' && router.push(`/encounters/${event.id}`)}
-                      className="w-full bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white text-left hover:bg-blue-50"
+                      className="w-full neu-panel text-left hover:bg-blue-50"
                     >
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                         <div>
@@ -1114,7 +1114,7 @@ export default function PatientDetailPage() {
         </main>
 
         <aside className="space-y-5">
-          <div className=" bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white ">
+          <div className="neu-panel">
             <div className="flex items-center gap-2">
               <HeartPulse size={17} className="text-red-600" />
               <h2 className="text-base font-semibold text-slate-900">Contexto permanente</h2>
@@ -1148,7 +1148,7 @@ export default function PatientDetailPage() {
             </div>
           </div>
 
-          <div className=" bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white ">
+          <div className="neu-panel">
             <div className="flex items-center gap-2">
               <Receipt size={17} className="text-blue-600" />
               <h2 className="text-base font-semibold text-slate-900">Faturamento</h2>
@@ -1183,7 +1183,7 @@ export default function PatientDetailPage() {
             </div>
           </div>
 
-          <div className=" bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white ">
+          <div className="neu-panel">
             <div className="flex items-center gap-2">
               <Pill size={17} className="text-blue-600" />
               <h2 className="text-base font-semibold text-slate-900">Prescrições</h2>
@@ -1209,21 +1209,21 @@ export default function PatientDetailPage() {
             </div>
           </div>
 
-          <div className=" bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white ">
+          <div className="neu-panel">
             <div className="flex items-center gap-2">
               <FileText size={17} className="text-blue-600" />
               <h2 className="text-base font-semibold text-slate-900">Ações rápidas</h2>
             </div>
             <div className="mt-4 grid grid-cols-1 gap-2">
-              <button onClick={() => router.push('/appointments')} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide hover:bg-slate-50">
+              <button onClick={() => router.push('/appointments')} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 block text-[11px] font-bold text-neu-inkSoft mb-1.5 uppercase tracking-wide hover:bg-slate-50">
                 Agendar retorno
                 <CalendarPlus size={15} />
               </button>
-              <button onClick={() => router.push('/encounters')} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide hover:bg-slate-50">
+              <button onClick={() => router.push('/encounters')} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 block text-[11px] font-bold text-neu-inkSoft mb-1.5 uppercase tracking-wide hover:bg-slate-50">
                 Abrir consulta
                 <Stethoscope size={15} />
               </button>
-              <button onClick={() => router.push('/billing/guides/new')} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide hover:bg-slate-50">
+              <button onClick={() => router.push('/billing/guides/new')} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 block text-[11px] font-bold text-neu-inkSoft mb-1.5 uppercase tracking-wide hover:bg-slate-50">
                 Criar guia TISS
                 <Receipt size={15} />
               </button>

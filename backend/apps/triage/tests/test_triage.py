@@ -301,5 +301,52 @@ class TriageSessionFSMTest(TenantTestCase):
         self.assertEqual(r.status_code, 409)
 
 
+# ─── Abandonment (partial evaluation) unit tests ──────────────────────────────
+
+
+class TriageAbandonTest(TenantTestCase):
+    """`abandon()` must escalate an emergency visible in partial evidence."""
+
+    def test_abandon_with_emergency_complaint_escalates(self):
+        ts = TriageSession.objects.create(contact_phone="5511999990001")
+        ts.record_chief_complaint("estou com dor no peito")
+        emergency = ts.abandon("session_expired")
+        ts.refresh_from_db()
+        self.assertTrue(emergency)
+        self.assertEqual(ts.status, TriageSession.STATUS_ESCALATED)
+        self.assertEqual(ts.urgency, URGENCY_EMERGENCY)
+        self.assertIsNotNone(ts.escalated_at)
+        self.assertIsNotNone(ts.closed_at)
+        self.assertIn("abandoned: session_expired", ts.rationale)
+
+    def test_abandon_without_emergency_cancels(self):
+        ts = TriageSession.objects.create(contact_phone="5511999990002")
+        ts.record_chief_complaint("dor de garganta leve")
+        emergency = ts.abandon("opted_out")
+        ts.refresh_from_db()
+        self.assertFalse(emergency)
+        self.assertEqual(ts.status, TriageSession.STATUS_CANCELLED)
+        self.assertIsNone(ts.escalated_at)
+        self.assertIsNotNone(ts.closed_at)
+
+    def test_abandon_before_complaint_cancels_quietly(self):
+        ts = TriageSession.objects.create(contact_phone="5511999990003")
+        self.assertFalse(ts.abandon("session_expired"))
+        ts.refresh_from_db()
+        self.assertEqual(ts.status, TriageSession.STATUS_CANCELLED)
+
+    def test_abandon_is_noop_on_terminal_sessions(self):
+        ts = TriageSession.objects.create(contact_phone="5511999990004")
+        ts.record_chief_complaint("estou com dor no peito")
+        self.assertTrue(ts.abandon("first"))
+        ts.refresh_from_db()
+        escalated_at = ts.escalated_at
+        # Second abandon must not double-report the emergency nor mutate state.
+        self.assertFalse(ts.abandon("second"))
+        ts.refresh_from_db()
+        self.assertEqual(ts.status, TriageSession.STATUS_ESCALATED)
+        self.assertEqual(ts.escalated_at, escalated_at)
+
+
 # Use TriageSession to keep the import live for type checkers
 _ = TriageSession

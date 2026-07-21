@@ -193,7 +193,7 @@ function VitalSignsForm({ vs, encounterId, readOnly }: { vs: VitalSigns | null; 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className=" block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide ">Sinais Vitais</h3>
+        <h3 className="neu-label">Sinais Vitais</h3>
         {!readOnly && (
           <button
             onClick={save}
@@ -254,7 +254,7 @@ function DocumentsPanel({ documents, encounterId, readOnly, onRefresh }: {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className=" block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide ">Documentos</h3>
+        <h3 className="neu-label">Documentos</h3>
         {!readOnly && (
           <button
             onClick={() => setShowForm(s => !s)}
@@ -371,7 +371,7 @@ function FaturamentoCard({ encounterId }: { encounterId: string }) {
   return (
     <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className=" block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide ">Faturamento</h3>
+        <h3 className="neu-label">Faturamento</h3>
         <Link
           href={`/billing/guides/new?encounter=${encounterId}`}
           className="text-xs text-blue-600 hover:text-blue-800 font-medium"
@@ -506,7 +506,7 @@ export default function EncounterDetailPage() {
       case 'summary':
         return (
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
-            <section className=" bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white ">
+            <section className="neu-panel">
               <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                 <ClipboardList size={16} className="text-blue-600" />
                 Sumário clínico
@@ -560,7 +560,7 @@ export default function EncounterDetailPage() {
               </div>
             </section>
 
-            <section className=" bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white ">
+            <section className="neu-panel">
               <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                 <UserRound size={16} className="text-blue-600" />
                 Identificação e riscos
@@ -609,7 +609,7 @@ export default function EncounterDetailPage() {
         );
       case 'soap':
         return (
-          <section className=" bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white ">
+          <section className="neu-panel">
             <SOAPEditor soapNote={encounter.soap_note} readOnly={isReadOnly} encounterId={id} />
             {!isReadOnly && (
               <div className="mt-4 border-t border-slate-100 pt-4">
@@ -638,13 +638,13 @@ export default function EncounterDetailPage() {
         );
       case 'vitals':
         return (
-          <section className="max-w-3xl bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white ">
+          <section className="max-w-3xl neu-panel">
             <VitalSignsForm vs={encounter.vital_signs} encounterId={id} readOnly={isReadOnly} />
           </section>
         );
       case 'documents':
         return (
-          <section className="max-w-3xl bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white ">
+          <section className="max-w-3xl neu-panel">
             <DocumentsPanel documents={encounter.documents} encounterId={id} readOnly={isReadOnly} onRefresh={load} />
           </section>
         );

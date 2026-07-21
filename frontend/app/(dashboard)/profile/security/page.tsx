@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { ShieldCheck, ShieldOff, Loader2, Download, QrCode } from "lucide-react";
 import { getAccessToken } from "@/lib/auth";
-import { PageShell, SectionState, StatusBadge } from "@/components/shared";
+import { Button, PageShell, SectionState, StatusBadge } from "@/components/shared";
 import { getMfaStatusMeta } from "@/lib/operational-ui";
 
 type Step = "idle" | "qr" | "verify" | "backup";
@@ -135,7 +135,7 @@ export default function SecurityPage() {
     return (
       <PageShell variant="operational">
         <div className="flex items-center justify-center py-16">
-          <Loader2 className="animate-spin text-slate-500" size={20} />
+          <Loader2 className="animate-spin text-neu-inkMuted" size={20} />
         </div>
       </PageShell>
     );
@@ -145,15 +145,15 @@ export default function SecurityPage() {
     <PageShell variant="operational">
       <div className="max-w-2xl space-y-5">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Segurança da Conta</h1>
-          <p className="text-sm text-slate-500 mt-1">
+          <h1 className="text-2xl font-semibold text-neu-ink">Segurança da Conta</h1>
+          <p className="text-sm text-neu-inkSoft mt-1">
             Gerencie a autenticação de dois fatores (MFA).
           </p>
         </div>
 
-        <section className="rounded-lg border border-slate-200 bg-white">
-          <div className="border-b border-slate-100 px-4 py-3 flex items-center justify-between flex-wrap gap-3">
-            <h2 className="text-base font-semibold text-slate-900">
+        <section className="bg-neu-panel rounded-xl shadow-neu-panel border border-white">
+          <div className="border-b border-neu-app/50 px-4 py-3 flex items-center justify-between flex-wrap gap-3">
+            <h2 className="text-base font-semibold text-neu-ink">
               Autenticação de Dois Fatores
             </h2>
             <StatusBadge meta={getMfaStatusMeta(mfaActive)} />
@@ -161,15 +161,15 @@ export default function SecurityPage() {
           <div className="p-4 space-y-4">
             <div className="flex items-center gap-3">
               {mfaActive ? (
-                <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center border border-green-200">
-                  <ShieldCheck className="text-green-700" size={20} />
+                <div className="w-10 h-10 rounded-lg bg-neu-success/10 flex items-center justify-center border border-neu-success/20">
+                  <ShieldCheck className="text-neu-success" size={20} />
                 </div>
               ) : (
-                <div className="w-10 h-10 rounded-lg bg-slate-50 flex items-center justify-center border border-slate-200">
-                  <ShieldOff className="text-slate-500" size={20} />
+                <div className="w-10 h-10 rounded-lg bg-neu-input flex items-center justify-center border border-transparent shadow-neu-inset">
+                  <ShieldOff className="text-neu-inkMuted" size={20} />
                 </div>
               )}
-              <p className="text-sm text-slate-700">
+              <p className="text-sm text-neu-ink">
                 {mfaActive
                   ? "MFA ativo — sua conta está protegida."
                   : "MFA inativo — recomendamos ativar para maior segurança."}
@@ -177,10 +177,11 @@ export default function SecurityPage() {
             </div>
 
             {!mfaActive && step === "idle" && (
-              <button
+              <Button
+                variant="primary"
                 onClick={startSetup}
                 disabled={working}
-                className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition"
+                className="inline-flex items-center gap-2"
               >
                 {working ? (
                   <Loader2 size={15} className="animate-spin" />
@@ -188,15 +189,15 @@ export default function SecurityPage() {
                   <QrCode size={15} />
                 )}
                 Configurar Autenticação de Dois Fatores
-              </button>
+              </Button>
             )}
           </div>
         </section>
 
         {step !== "idle" && (
-          <section className="rounded-lg border border-slate-200 bg-white">
-            <div className="border-b border-slate-100 px-4 py-3">
-              <div className="flex items-center gap-2 text-xs text-slate-500">
+          <section className="bg-neu-panel rounded-xl shadow-neu-panel border border-white">
+            <div className="border-b border-neu-app/50 px-4 py-3">
+              <div className="flex items-center gap-2 text-xs text-neu-inkMuted">
                 {["Escanear QR", "Verificar Código", "Códigos de Backup"].map((label, i) => {
                   const stepIdx = { qr: 0, verify: 1, backup: 2 }[step] ?? 0;
                   const isActive = i === stepIdx;
@@ -206,13 +207,13 @@ export default function SecurityPage() {
                       key={i}
                       className={`flex items-center gap-1 ${
                         isActive
-                          ? "text-blue-700 font-semibold"
+                          ? "text-neu-brand font-semibold"
                           : isDone
-                            ? "text-green-700"
-                            : "text-slate-400"
+                            ? "text-neu-success"
+                            : "text-neu-inkMuted"
                       }`}
                     >
-                      {i > 0 && <span className="text-slate-300 mx-1">›</span>}
+                      {i > 0 && <span className="text-neu-inkMuted mx-1">›</span>}
                       {isDone ? "✓ " : `${i + 1}. `}
                       {label}
                     </span>
@@ -228,10 +229,10 @@ export default function SecurityPage() {
               {step === "qr" && setupData && (
                 <div className="space-y-4">
                   <div>
-                    <h3 className="text-sm font-semibold text-slate-900">
+                    <h3 className="text-sm font-semibold text-neu-ink">
                       Passo 1 de 3 — Escaneie o QR Code
                     </h3>
-                    <p className="text-xs text-slate-500 mt-1">
+                    <p className="text-xs text-neu-inkSoft mt-1">
                       Abra seu app autenticador (Google Authenticator, Authy, etc.) e escaneie o
                       código abaixo.
                     </p>
@@ -241,34 +242,35 @@ export default function SecurityPage() {
                     <img
                       src={`data:image/png;base64,${setupData.qr_image_base64}`}
                       alt="QR Code para configurar MFA"
-                      className="w-48 h-48 rounded-lg border border-slate-200"
+                      className="w-48 h-48 rounded-lg border border-white shadow-neu-panel"
                     />
                   </div>
                   <div className="text-center">
-                    <p className="text-xs text-slate-500 mb-1">Ou copie o código manualmente:</p>
-                    <code className="text-xs bg-slate-50 border border-slate-200 px-3 py-1.5 rounded font-mono break-all select-all">
+                    <p className="text-xs text-neu-inkSoft mb-1">Ou copie o código manualmente:</p>
+                    <code className="text-xs bg-neu-input border border-transparent shadow-neu-inset px-3 py-1.5 rounded font-mono break-all select-all text-neu-ink">
                       {setupData.secret}
                     </code>
                   </div>
-                  <button
+                  <Button
+                    variant="primary"
                     onClick={() => {
                       setStep("verify");
                       setError(null);
                     }}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold py-2 rounded-lg transition"
+                    className="w-full"
                   >
                     Continuar →
-                  </button>
+                  </Button>
                 </div>
               )}
 
               {step === "verify" && (
                 <div className="space-y-4">
                   <div>
-                    <h3 className="text-sm font-semibold text-slate-900">
+                    <h3 className="text-sm font-semibold text-neu-ink">
                       Passo 2 de 3 — Verificar Código
                     </h3>
-                    <p className="text-xs text-slate-500 mt-1">
+                    <p className="text-xs text-neu-inkSoft mt-1">
                       Digite o código de 6 dígitos exibido no seu app autenticador. O código muda
                       a cada 30 segundos.
                     </p>
@@ -286,35 +288,36 @@ export default function SecurityPage() {
                     placeholder="000000"
                     maxLength={6}
                     autoFocus
-                    className="w-full rounded-lg border border-slate-200 px-4 py-3 text-center text-2xl font-mono tracking-widest outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full rounded-lg border border-transparent bg-neu-input shadow-neu-inset px-4 py-3 text-center text-2xl font-mono tracking-widest text-neu-ink outline-none focus:bg-white focus:ring-2 focus:ring-neu-brand/50 transition-all"
                   />
-                  <button
+                  <Button
+                    variant="primary"
                     onClick={verifyCode}
                     disabled={working || otpCode.length !== 6}
-                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-semibold py-2 rounded-lg transition flex items-center justify-center gap-2"
+                    className="w-full flex items-center justify-center gap-2"
                   >
                     {working && <Loader2 size={15} className="animate-spin" />}
                     Verificar
-                  </button>
+                  </Button>
                 </div>
               )}
 
               {step === "backup" && (
                 <div className="space-y-4">
                   <div>
-                    <h3 className="text-sm font-semibold text-slate-900">
+                    <h3 className="text-sm font-semibold text-neu-ink">
                       Passo 3 de 3 — Códigos de Backup
                     </h3>
-                    <p className="text-xs text-slate-500 mt-1">
+                    <p className="text-xs text-neu-inkSoft mt-1">
                       Guarde estes códigos em local seguro. Cada código pode ser usado apenas uma
                       vez para acessar sua conta se perder o app autenticador.
                     </p>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 bg-slate-50 rounded-lg p-4 border border-slate-200">
+                  <div className="grid grid-cols-2 gap-2 bg-neu-input rounded-lg p-4 shadow-neu-inset border border-transparent">
                     {backupCodes.map((code, i) => (
                       <code
                         key={i}
-                        className="text-sm font-mono text-slate-700 text-center py-1"
+                        className="text-sm font-mono text-neu-ink text-center py-1"
                       >
                         {code}
                       </code>
@@ -324,8 +327,8 @@ export default function SecurityPage() {
                     onClick={handleDownload}
                     className={`w-full flex items-center justify-center gap-2 text-sm font-semibold py-2 rounded-lg transition ${
                       downloaded
-                        ? "bg-green-50 text-green-800 border border-green-200"
-                        : "bg-blue-600 hover:bg-blue-700 text-white"
+                        ? "bg-neu-success/10 text-neu-success border border-neu-success/20"
+                        : "bg-gradient-to-b from-neu-brand to-neu-brandDeep text-white border-t border-neu-brandEdge shadow-neu-btn-primary hover:shadow-neu-btn-primary-hover"
                     }`}
                   >
                     <Download size={15} />
@@ -333,7 +336,7 @@ export default function SecurityPage() {
                   </button>
                   <button
                     onClick={handleFinish}
-                    className="w-full text-sm text-slate-600 hover:text-slate-900 py-2 transition"
+                    className="w-full text-sm text-neu-inkSoft hover:text-neu-ink py-2 transition"
                   >
                     {downloaded ? "Concluir →" : "Fechar sem baixar"}
                   </button>

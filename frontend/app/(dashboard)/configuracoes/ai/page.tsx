@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Bot } from 'lucide-react';
 import { getAccessToken } from '@/lib/auth';
 import { DPASignModal } from '@/components/settings/DPASignModal';
-import { PageShell, StatusBadge, ReadinessPanel } from '@/components/shared';
+import { Button, PageShell, StatusBadge, ReadinessPanel } from '@/components/shared';
 import { getDpaStatusMeta } from '@/lib/operational-ui';
 
 interface DPAStatus {
@@ -104,7 +104,7 @@ export default function AISettingsPage() {
   if (loading) {
     return (
       <PageShell variant="operational">
-        <p className="text-sm text-slate-500">Carregando...</p>
+        <p className="text-sm text-neu-inkMuted">Carregando...</p>
       </PageShell>
     );
   }
@@ -113,30 +113,30 @@ export default function AISettingsPage() {
     <PageShell variant="operational">
       <div className="max-w-3xl space-y-5">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Inteligência Artificial</h1>
-          <p className="text-sm text-slate-500 mt-1">
+          <h1 className="text-2xl font-semibold text-neu-ink">Inteligência Artificial</h1>
+          <p className="text-sm text-neu-inkSoft mt-1">
             Gerencie o Acordo de Processamento de Dados e as configurações de IA da clínica.
           </p>
         </div>
 
-        <section className="rounded-lg border border-slate-200 bg-white">
-          <div className="border-b border-slate-100 px-4 py-3 flex items-center justify-between flex-wrap gap-3">
-            <h2 className="text-base font-semibold text-slate-900">
+        <section className="bg-neu-panel rounded-xl shadow-neu-panel border border-white">
+          <div className="border-b border-neu-app/50 px-4 py-3 flex items-center justify-between flex-wrap gap-3">
+            <h2 className="text-base font-semibold text-neu-ink">
               Acordo de Processamento de Dados (DPA)
             </h2>
             <StatusBadge meta={getDpaStatusMeta(status?.is_signed)} />
           </div>
           <div className="p-4 space-y-4">
             {status?.is_signed ? (
-              <div className="space-y-1.5 text-sm text-slate-700">
+              <div className="space-y-1.5 text-sm text-neu-ink">
                 <p>
-                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-neu-inkSoft">
                     Data de assinatura
                   </span>{' '}
                   <span className="ml-1">{formatDate(status.signed_at)}</span>
                 </p>
                 <p>
-                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-neu-inkSoft">
                     Assinado por
                   </span>{' '}
                   <span className="ml-1">{status.signed_by_name ?? '—'}</span>
@@ -144,54 +144,56 @@ export default function AISettingsPage() {
               </div>
             ) : (
               <div className="space-y-3">
-                <p className="text-sm text-slate-700">
+                <p className="text-sm text-neu-ink">
                   Para utilizar os recursos de Inteligência Artificial (incluindo IA Clínica /
                   Scribe), é necessário assinar o Acordo de Processamento de Dados em conformidade
                   com a LGPD.
                 </p>
                 <div>
                   {canSign ? (
-                    <button
+                    <Button
+                      variant="primary"
                       onClick={() => setShowModal(true)}
-                      className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                      className="inline-flex items-center gap-2"
                     >
                       Assinar DPA
-                    </button>
+                    </Button>
                   ) : (
                     <div className="inline-flex items-center gap-2">
-                      <button
+                      <Button
+                        variant="primary"
                         disabled
                         title="Apenas administradores podem assinar o DPA"
-                        className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg opacity-40 cursor-not-allowed"
+                        className="inline-flex items-center gap-2"
                       >
                         Assinar DPA
-                      </button>
-                      <span className="text-xs text-slate-500">
+                      </Button>
+                      <span className="text-xs text-neu-inkMuted">
                         Apenas administradores podem assinar.
                       </span>
                     </div>
                   )}
                 </div>
-                {error && <p className="text-sm text-red-700">{error}</p>}
+                {error && <p className="text-sm text-neu-danger">{error}</p>}
               </div>
             )}
           </div>
         </section>
 
         {status?.is_signed && status?.ai_scribe_enabled && (
-          <section className="rounded-lg border border-slate-200 bg-white">
-            <div className="border-b border-slate-100 px-4 py-3 flex items-center gap-2 flex-wrap">
-              <Bot size={18} className="text-blue-600" />
-              <h2 className="text-base font-semibold text-slate-900">IA Clínica (Scribe)</h2>
+          <section className="bg-neu-panel rounded-xl shadow-neu-panel border border-white">
+            <div className="border-b border-neu-app/50 px-4 py-3 flex items-center gap-2 flex-wrap">
+              <Bot size={18} className="text-neu-brand" />
+              <h2 className="text-base font-semibold text-neu-ink">IA Clínica (Scribe)</h2>
               <StatusBadge
                 meta={{
                   label: 'Ativo',
-                  badgeClass: 'bg-green-100 text-green-800 border-green-200',
+                  badgeClass: 'bg-neu-success/10 text-neu-success border-neu-success/20',
                 }}
               />
             </div>
             <div className="p-4">
-              <p className="text-sm text-slate-700">
+              <p className="text-sm text-neu-ink">
                 O módulo de IA Clínica está habilitado. As transcrições de consultas são
                 processadas automaticamente para geração de notas SOAP, com armazenamento
                 criptografado em conformidade com a LGPD.
@@ -201,15 +203,15 @@ export default function AISettingsPage() {
         )}
 
         {/* ── Prontidão de curadoria de dados ── */}
-        <section className="rounded-lg border border-slate-200 bg-white">
-          <div className="border-b border-slate-100 px-4 py-3">
-            <h2 className="text-base font-semibold text-slate-900">
+        <section className="bg-neu-panel rounded-xl shadow-neu-panel border border-white">
+          <div className="border-b border-neu-app/50 px-4 py-3">
+            <h2 className="text-base font-semibold text-neu-ink">
               Prontidão de curadoria de dados
             </h2>
           </div>
           <div className="p-4 space-y-4">
             {wedges.length === 0 ? (
-              <p className="text-sm text-slate-500">Nenhum dado de prontidão disponível.</p>
+              <p className="text-sm text-neu-inkMuted">Nenhum dado de prontidão disponível.</p>
             ) : (
               wedges.map((w) => (
                 <div key={w.key} className="space-y-1">
@@ -218,7 +220,7 @@ export default function AISettingsPage() {
                     blockers={w.blockers}
                     readyText={w.ready_text}
                   />
-                  <p className="text-xs text-slate-500 pl-1">
+                  <p className="text-xs text-neu-inkMuted pl-1">
                     {w.ready_count}/{w.total} prontos
                   </p>
                 </div>

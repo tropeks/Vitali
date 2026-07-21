@@ -58,6 +58,29 @@ async function portalFetch<T>(path: string, init: RequestInit = {}): Promise<T> 
   return (await resp.json()) as T;
 }
 
+/**
+ * Fetch a binary/blob response (used for LGPD data exports, which the backend
+ * returns as a JSON payload or a generated PDF rather than the usual decoded
+ * JSON object). Shares the same auth + typed-error handling as `portalFetch`.
+ */
+async function portalFetchBlob(path: string): Promise<Blob> {
+  const token = getAccessToken();
+  const headers: HeadersInit = {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+  const resp = await fetch(`/api/v1${path}`, { headers });
+  if (resp.status === 401) {
+    throw new PortalUnauthorizedError(await resp.json().catch(() => ({})));
+  }
+  if (resp.status === 403) {
+    throw new PortalNotActiveError(await resp.json().catch(() => ({})));
+  }
+  if (!resp.ok) {
+    throw new PortalApiError(resp.status, await resp.json().catch(() => ({})));
+  }
+  return resp.blob();
+}
+
 // ─── Resource types ──────────────────────────────────────────────────────────
 
 export interface PortalPatient {
@@ -123,5 +146,15 @@ export const portalApi = {
     portalFetch<{ id: string; status: string }>("/portal/access/activate/", {
       method: "POST",
       body: JSON.stringify({ invite_token: inviteToken }),
+    }),
+  // LGPD data portability: download the full self-data export as JSON or PDF.
+  exportMyData: (exportFormat: "json" | "pdf") =>
+    portalFetchBlob(`/portal/me/export/?export_format=${exportFormat}`),
+  // LGPD: register an audited account-deletion request. Clinical records are
+  // retained (CFM 20-year rule) — this only files the request for the clinic.
+  requestAccountDeletion: (reason: string) =>
+    portalFetch<{ detail: string }>("/portal/me/delete-request/", {
+      method: "POST",
+      body: JSON.stringify({ reason }),
     }),
 };

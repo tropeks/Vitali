@@ -12,6 +12,8 @@ from .views import (
     DoseRuleViewSet,
     DrugInteractionViewSet,
     DrugViewSet,
+    FormularyUploadCommitView,
+    FormularyUploadPreviewView,
     MaterialViewSet,
     PurchaseOrderViewSet,
     StockAlertsView,
@@ -53,6 +55,17 @@ urlpatterns = [
         "pharmacy/curation/readiness/",
         CurationReadinessView.as_view(),
         name="curation-readiness",
+    ),
+    # D-T1: pharmacist-facing formulary CSV upload (preview + commit).
+    path(
+        "pharmacy/formulary/upload/preview/",
+        FormularyUploadPreviewView.as_view(),
+        name="formulary-upload-preview",
+    ),
+    path(
+        "pharmacy/formulary/upload/commit/",
+        FormularyUploadCommitView.as_view(),
+        name="formulary-upload-commit",
     ),
     # Controlled-diversion wedge C3: compliance surface + ack.
     path("pharmacy/controlled/alerts/", ControlledAlertsView.as_view(), name="controlled-alerts"),
