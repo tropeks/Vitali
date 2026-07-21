@@ -168,6 +168,37 @@ def _cnpj_valid(digits: str) -> bool:
     )
 
 
+class SelfServeSignupSerializer(serializers.Serializer):
+    """
+    Public self-serve signup (S-132). Minimal clinic-facing form: company name,
+    CNPJ and contact email — the heavy provisioning (slug, schema, owner, trial)
+    is derived server-side so the clinic never deals with infra concepts.
+    """
+
+    company_name = serializers.CharField(max_length=255)
+    cnpj = serializers.CharField(max_length=18)
+    email = serializers.EmailField()
+    # Optional: the owner's display name. Falls back to the company name.
+    owner_full_name = serializers.CharField(max_length=255, required=False, allow_blank=True)
+
+    def validate_company_name(self, value: str) -> str:
+        value = value.strip()
+        if len(value) < 2:
+            raise serializers.ValidationError("Informe o nome da clínica.")
+        return value
+
+    def validate_cnpj(self, value: str) -> str:
+        digits = re.sub(r"\D", "", value or "")
+        if len(digits) != 14:
+            raise serializers.ValidationError("CNPJ deve conter 14 dígitos.")
+        if len(set(digits)) == 1 or not _cnpj_valid(digits):
+            raise serializers.ValidationError("CNPJ inválido.")
+        return f"{digits[:2]}.{digits[2:5]}.{digits[5:8]}/{digits[8:12]}-{digits[12:]}"
+
+    def validate_email(self, value: str) -> str:
+        return value.strip().lower()
+
+
 def _validate_strong_password(value: str):
     """Enforce: min 12 chars, uppercase, lowercase, digit, special char."""
     if len(value) < 12:
