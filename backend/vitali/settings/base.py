@@ -375,6 +375,10 @@ ORTHANC_URL = env.str("ORTHANC_URL", default="")
 ORTHANC_USERNAME = env.str("ORTHANC_USERNAME", default="")
 ORTHANC_PASSWORD = env.str("ORTHANC_PASSWORD", default="")
 ORTHANC_HTTP_TIMEOUT = env.int("ORTHANC_HTTP_TIMEOUT", default=10)
+# Shared secret for the inbound Orthanc → Vitali webhook (OnStableStudy push).
+# Orthanc presents it in the X-Orthanc-Webhook-Secret header; the webhook refuses
+# (503) when this is empty, so it can never run unauthenticated.
+ORTHANC_WEBHOOK_SECRET = env.str("ORTHANC_WEBHOOK_SECRET", default="")
 
 # billing/ migrations directory is root-owned (755). Redirect to writable package.
 MIGRATION_MODULES = {
