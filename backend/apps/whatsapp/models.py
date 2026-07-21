@@ -77,6 +77,8 @@ class ConversationSession(models.Model):
         ("SELECTING_TIME", "Selecting time"),
         ("CONFIRMING", "Confirming booking"),
         ("CONFIRMED", "Booking confirmed"),
+        ("TRIAGE_COMPLAINT", "Triage — capturing chief complaint"),
+        ("TRIAGE_QUESTIONS", "Triage — answering red-flag questions"),
         ("FALLBACK_HUMAN", "Fallback to human"),
         ("OPTED_OUT", "Opted out"),
     ]

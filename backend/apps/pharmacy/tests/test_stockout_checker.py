@@ -227,10 +227,10 @@ class TestS2904SupplyConfigConfirmation(unittest.TestCase):
             now=NOW,
         )
         self.assertEqual(v.kind, KIND_NOT_APPLICABLE)
-        self.assertIsNone(v.severity)                  # no advise, no block
-        self.assertNotEqual(v.severity, "block")       # explicit never-block guard
-        self.assertIsNone(v.days_to_stockout)          # no fabricated number
-        self.assertIsNone(v.predicted_date)            # no fabricated date
+        self.assertIsNone(v.severity)  # no advise, no block
+        self.assertNotEqual(v.severity, "block")  # explicit never-block guard
+        self.assertIsNone(v.days_to_stockout)  # no fabricated number
+        self.assertIsNone(v.predicted_date)  # no fabricated date
 
     def test_lead_time_config_present_is_used(self):
         """With lead_time_days=7 and a balance that runs out in 5 days, the

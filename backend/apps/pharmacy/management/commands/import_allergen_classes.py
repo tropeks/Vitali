@@ -61,7 +61,7 @@ def _opt_json_list(row: dict, col: str) -> list:
             raise ValueError(f"column '{col}' must be a JSON array, got {type(parsed).__name__}")
         return parsed
     except json.JSONDecodeError as exc:
-        raise ValueError(f"column '{col}' is not valid JSON: {exc}")
+        raise ValueError(f"column '{col}' is not valid JSON: {exc}") from exc
 
 
 def _parse_row(row: dict, *, line_number: int) -> dict:
@@ -233,7 +233,6 @@ class Command(BaseCommand):
         action = "Would import" if dry_run else "Done"
         self.stdout.write(
             self.style.SUCCESS(
-                f"{action}. "
-                f"AllergenClasses: {created_count} created, {updated_count} updated."
+                f"{action}. AllergenClasses: {created_count} created, {updated_count} updated."
             )
         )

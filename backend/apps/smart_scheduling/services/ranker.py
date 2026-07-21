@@ -103,6 +103,12 @@ def suggest_slots(
     except ScheduleConfig.DoesNotExist:
         return []
 
+    # A deactivated schedule (e.g. a terminated employee — F-15) yields no slots,
+    # mirroring apps.whatsapp.slot_service so the professional is fully removed
+    # from the booking agenda regardless of entry point.
+    if not config.is_active:
+        return []
+
     candidate_slots = list(_enumerate_slots(config, from_date, to_date))
     if not candidate_slots:
         return []

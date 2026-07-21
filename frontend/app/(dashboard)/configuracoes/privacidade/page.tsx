@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { apiFetch } from '@/lib/api'
-import { PageShell, SectionState } from '@/components/shared'
+import { PageShell, SectionState, Button } from '@/components/shared'
 
 interface PrivacySettings {
   dpo_name: string;
@@ -60,8 +60,8 @@ export default function PrivacidadePage() {
   return (
     <PageShell variant="operational">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Privacidade (LGPD)</h1>
-        <p className="text-sm text-slate-500 mt-0.5">Gestão de DPO e Documentos de Proteção de Dados.</p>
+        <h1 className="text-2xl font-semibold text-neu-ink">Privacidade (LGPD)</h1>
+        <p className="text-sm text-neu-inkSoft mt-0.5">Gestão de DPO e Documentos de Proteção de Dados.</p>
       </div>
 
       {error && (
@@ -73,20 +73,20 @@ export default function PrivacidadePage() {
       )}
 
       {success && (
-        <div className="p-4 bg-green-50 text-green-700 rounded-md text-sm mb-4">
+        <div className="p-4 bg-neu-success/10 text-neu-success border border-neu-success/20 rounded-md text-sm mb-4">
           Configurações salvas com sucesso.
         </div>
       )}
 
       {loading ? (
-        <p className="text-sm text-slate-500">Carregando...</p>
+        <p className="text-sm text-neu-inkMuted">Carregando...</p>
       ) : (
-        <div className="bg-white p-6 rounded-lg border border-slate-200 max-w-2xl flex flex-col gap-4">
+        <div className="bg-neu-panel p-6 rounded-xl shadow-neu-panel border border-white max-w-2xl flex flex-col gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Nome do Encarregado (DPO)</label>
+            <label className="neu-label">Nome do Encarregado (DPO)</label>
             <input
               type="text"
-              className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
+              className="neu-input"
               value={settings.dpo_name}
               onChange={e => setSettings({ ...settings, dpo_name: e.target.value })}
               placeholder="Ex: João da Silva"
@@ -94,10 +94,10 @@ export default function PrivacidadePage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Email do DPO</label>
+            <label className="neu-label">Email do DPO</label>
             <input
               type="email"
-              className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
+              className="neu-input"
               value={settings.dpo_email}
               onChange={e => setSettings({ ...settings, dpo_email: e.target.value })}
               placeholder="Ex: dpo@clinica.com"
@@ -108,23 +108,19 @@ export default function PrivacidadePage() {
             <input
               type="checkbox"
               id="dpa_signed"
-              className="h-4 w-4 text-blue-600 rounded border-slate-300"
+              className="h-4 w-4 text-neu-brand rounded border-neu-inkMuted/40"
               checked={settings.dpa_signed}
               onChange={e => setSettings({ ...settings, dpa_signed: e.target.checked })}
             />
-            <label htmlFor="dpa_signed" className="text-sm font-medium text-slate-700">
+            <label htmlFor="dpa_signed" className="text-sm font-medium text-neu-ink">
               Data Processing Agreement (DPA) Assinado
             </label>
           </div>
 
           <div className="mt-4 flex gap-2">
-            <button
-              className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-              onClick={handleSave}
-              disabled={saving}
-            >
+            <Button variant="primary" onClick={handleSave} disabled={saving}>
               {saving ? 'Salvando...' : 'Salvar'}
-            </button>
+            </Button>
           </div>
         </div>
       )}

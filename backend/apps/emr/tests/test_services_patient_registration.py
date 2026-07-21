@@ -12,7 +12,7 @@ Covers:
 
 from datetime import date
 
-from apps.core.models import AuditLog, User
+from apps.core.models import AuditLog, FeatureFlag, User
 from apps.emr.models import Patient
 from apps.emr.services.patient_registration import PatientRegistrationService
 from apps.test_utils import TenantTestCase
@@ -58,6 +58,13 @@ class TestPatientRegistrationService(TenantTestCase):
     def setUp(self):
         self.requester = _requesting_user()
         self.service = PatientRegistrationService(requesting_user=self.requester)
+        # F-04: the WhatsApp cascade is gated on the tenant's whatsapp module.
+        # These tests assert contact creation, so enable the flag for the schema.
+        FeatureFlag.objects.update_or_create(
+            tenant=self.__class__.tenant,
+            module_key="whatsapp",
+            defaults={"is_enabled": True},
+        )
 
     # ── 1. AuditLog with correlation_id ──────────────────────────────────────
 
