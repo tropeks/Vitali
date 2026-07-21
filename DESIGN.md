@@ -1,5 +1,18 @@
 # Vitali Design System
 
+> ⚠️ **SUPERSEDED (2026-07-21).** The flat visual language described below lost
+> the A/B decision of 2026-07-19 — see the decision record at
+> [`docs/design/design-ab-flat-vs-neumorphic.html`](docs/design/design-ab-flat-vs-neumorphic.html).
+> The product's visual skin is now **Tasy Neumorphic**: canonical values and
+> component recipes live in [`docs/FRONTEND_GUIDELINES.md`](docs/FRONTEND_GUIDELINES.md),
+> the token layer lives in `frontend/tailwind.config.ts` (`neu.*` colors,
+> `neu-*` shadows) + `frontend/app/globals.css` (`.neu-*` classes), and the
+> rollout is documented in
+> [`docs/plans/2026-07-21-neumorphic-structural-reskin.md`](docs/plans/2026-07-21-neumorphic-structural-reskin.md).
+> The **structural** content below (semantic status maps via
+> `lib/operational-ui`, shared primitives, density and information-hierarchy
+> principles) remains valid; only the flat surface treatment is retired.
+
 > **Clinical-clean SaaS** — built for Brazilian health clinic operators, doctors, and billing staff.
 > Trust, precision, and clarity above all. Not playful. Not corporate. Professional.
 
