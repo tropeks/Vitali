@@ -300,14 +300,14 @@ export default function NewGuidePage() {
           <button
             type="button"
             onClick={() => router.back()}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-[#F4F7FA] text-[#8C959F] hover:bg-[#DFE5EB] focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-neu-panel text-neu-inkMuted hover:bg-neu-app focus:outline-none focus:ring-2 focus:ring-blue-500"
             aria-label="Voltar"
           >
             <ArrowLeft size={16} />
           </button>
           <div className="min-w-0 flex-1">
-            <h1 className="text-2xl font-semibold text-[#24292F]">Bancada TISS</h1>
-            <p className="text-sm text-[#8C959F]">
+            <h1 className="text-2xl font-semibold text-neu-ink">Bancada TISS</h1>
+            <p className="text-sm text-neu-inkMuted">
               Guia, contexto clínico, TUSS, glosa e total em uma única superfície de faturamento.
             </p>
           </div>
@@ -322,51 +322,51 @@ export default function NewGuidePage() {
         </header>
 
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-lg border border-slate-200 bg-[#F4F7FA] p-4">
+          <div className="rounded-lg border border-slate-200 bg-neu-panel p-4">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase text-slate-400">
               <ClipboardList size={14} />
               Atendimento
             </div>
-            <p className="mt-2 truncate text-sm font-semibold text-[#24292F]">
+            <p className="mt-2 truncate text-sm font-semibold text-neu-ink">
               {loadingEncounter ? 'Carregando atendimento...' : encounterContext?.status_display ?? encounterContext?.status ?? 'Guia avulsa'}
             </p>
-            <p className="mt-1 truncate font-mono text-xs text-[#8C959F]">
+            <p className="mt-1 truncate font-mono text-xs text-neu-inkMuted">
               {form.encounter_id || 'Sem atendimento vinculado'}
             </p>
           </div>
-          <div className="rounded-lg border border-slate-200 bg-[#F4F7FA] p-4">
+          <div className="rounded-lg border border-slate-200 bg-neu-panel p-4">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase text-slate-400">
               <FileText size={14} />
               Paciente
             </div>
-            <p className="mt-2 truncate text-sm font-semibold text-[#24292F]">
+            <p className="mt-2 truncate text-sm font-semibold text-neu-ink">
               {patientName(selectedPatient, encounterContext)}
             </p>
-            <p className="mt-1 truncate font-mono text-xs text-[#8C959F]">
+            <p className="mt-1 truncate font-mono text-xs text-neu-inkMuted">
               {patientMrn(selectedPatient, encounterContext)}
             </p>
           </div>
-          <div className="rounded-lg border border-slate-200 bg-[#F4F7FA] p-4">
+          <div className="rounded-lg border border-slate-200 bg-neu-panel p-4">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase text-slate-400">
               <Receipt size={14} />
               Operadora
             </div>
-            <p className="mt-2 truncate text-sm font-semibold text-[#24292F]">
+            <p className="mt-2 truncate text-sm font-semibold text-neu-ink">
               {providerName(selectedProvider)}
             </p>
-            <p className="mt-1 truncate font-mono text-xs text-[#8C959F]">
+            <p className="mt-1 truncate font-mono text-xs text-neu-inkMuted">
               {selectedProvider?.ans_code ? `ANS ${selectedProvider.ans_code}` : 'ANS pendente'}
             </p>
           </div>
-          <div className="rounded-lg border border-slate-200 bg-[#F4F7FA] p-4">
+          <div className="rounded-lg border border-slate-200 bg-neu-panel p-4">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase text-slate-400">
               <ShieldCheck size={14} />
               Glosa / IA
             </div>
-            <p className="mt-2 text-sm font-semibold text-[#24292F]">
+            <p className="mt-2 text-sm font-semibold text-neu-ink">
               {predictedCount}/{items.length} item(ns) avaliados
             </p>
-            <p className="mt-1 text-xs text-[#8C959F]">Sugestão TUSS e risco inline</p>
+            <p className="mt-1 text-xs text-neu-inkMuted">Sugestão TUSS e risco inline</p>
           </div>
         </section>
 
@@ -380,22 +380,22 @@ export default function NewGuidePage() {
         <form onSubmit={handleSubmit} noValidate>
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
             <div className="space-y-4">
-              <section className="rounded-lg border border-slate-200 bg-[#F4F7FA]">
+              <section className="rounded-lg border border-slate-200 bg-neu-panel">
                 <div className="border-b border-slate-100 px-4 py-3">
-                  <h2 className="text-base font-semibold text-[#24292F]">Contexto da guia</h2>
+                  <h2 className="text-base font-semibold text-neu-ink">Contexto da guia</h2>
                 </div>
                 <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
                   <div>
-                    <label htmlFor="guide-patient" className="mb-1 block text-xs font-medium text-[#57606A]">Paciente *</label>
+                    <label htmlFor="guide-patient" className="mb-1 block text-xs font-medium text-neu-inkSoft">Paciente *</label>
                     {loadingOptions ? (
-                      <div className="h-9 animate-pulse rounded-lg bg-[#DFE5EB]" />
+                      <div className="h-9 animate-pulse rounded-lg bg-neu-app" />
                     ) : (
                       <select
                         id="guide-patient"
                         value={form.patient_id}
                         onChange={(e) => setField('patient_id', e.target.value)}
                         required
-                        className="w-full rounded-lg border border-slate-200 bg-[#F4F7FA] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full rounded-lg border border-slate-200 bg-neu-panel px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="">Selecionar paciente</option>
                         {patients.map((patient) => (
@@ -407,16 +407,16 @@ export default function NewGuidePage() {
                     )}
                   </div>
                   <div>
-                    <label htmlFor="guide-provider" className="mb-1 block text-xs font-medium text-[#57606A]">Operadora *</label>
+                    <label htmlFor="guide-provider" className="mb-1 block text-xs font-medium text-neu-inkSoft">Operadora *</label>
                     {loadingOptions ? (
-                      <div className="h-9 animate-pulse rounded-lg bg-[#DFE5EB]" />
+                      <div className="h-9 animate-pulse rounded-lg bg-neu-app" />
                     ) : (
                       <select
                         id="guide-provider"
                         value={form.provider_id}
                         onChange={(e) => setField('provider_id', e.target.value)}
                         required
-                        className="w-full rounded-lg border border-slate-200 bg-[#F4F7FA] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full rounded-lg border border-slate-200 bg-neu-panel px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="">Selecionar operadora</option>
                         {providers.map((provider) => (
@@ -428,7 +428,7 @@ export default function NewGuidePage() {
                     )}
                   </div>
                   <div>
-                    <label htmlFor="guide-card-number" className="mb-1 block text-xs font-medium text-[#57606A]">Carteirinha</label>
+                    <label htmlFor="guide-card-number" className="mb-1 block text-xs font-medium text-neu-inkSoft">Carteirinha</label>
                     <input
                       id="guide-card-number"
                       type="text"
@@ -439,7 +439,7 @@ export default function NewGuidePage() {
                     />
                   </div>
                   <div>
-                    <label htmlFor="guide-competency" className="mb-1 block text-xs font-medium text-[#57606A]">Competência</label>
+                    <label htmlFor="guide-competency" className="mb-1 block text-xs font-medium text-neu-inkSoft">Competência</label>
                     <input
                       id="guide-competency"
                       type="month"
@@ -449,19 +449,19 @@ export default function NewGuidePage() {
                     />
                   </div>
                   <div>
-                    <label htmlFor="guide-type" className="mb-1 block text-xs font-medium text-[#57606A]">Tipo de guia</label>
+                    <label htmlFor="guide-type" className="mb-1 block text-xs font-medium text-neu-inkSoft">Tipo de guia</label>
                     <select
                       id="guide-type"
                       value={form.guide_type}
                       onChange={(e) => setField('guide_type', e.target.value)}
-                      className="w-full rounded-lg border border-slate-200 bg-[#F4F7FA] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full rounded-lg border border-slate-200 bg-neu-panel px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="sadt">SADT</option>
                       <option value="consulta">Consulta</option>
                     </select>
                   </div>
                   <div>
-                    <label htmlFor="guide-encounter" className="mb-1 block text-xs font-medium text-[#57606A]">Atendimento vinculado</label>
+                    <label htmlFor="guide-encounter" className="mb-1 block text-xs font-medium text-neu-inkSoft">Atendimento vinculado</label>
                     <input
                       id="guide-encounter"
                       type="text"
@@ -474,16 +474,16 @@ export default function NewGuidePage() {
                 </div>
               </section>
 
-              <section className="rounded-lg border border-slate-200 bg-[#F4F7FA]">
+              <section className="rounded-lg border border-slate-200 bg-neu-panel">
                 <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
                   <div className="min-w-0 flex-1">
-                    <h2 className="text-base font-semibold text-[#24292F]">Procedimentos e riscos</h2>
-                    <p className="text-xs text-[#8C959F]">Cada linha precisa sair com TUSS, preço e status de glosa visíveis.</p>
+                    <h2 className="text-base font-semibold text-neu-ink">Procedimentos e riscos</h2>
+                    <p className="text-xs text-neu-inkMuted">Cada linha precisa sair com TUSS, preço e status de glosa visíveis.</p>
                   </div>
                   <button
                     type="button"
                     onClick={addItem}
-                    className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-b from-[#0066A1] to-[#005282] border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] px-3 py-2 text-sm font-medium text-white hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-b from-neu-brand to-neu-brandDeep border-t border-neu-brandEdge shadow-neu-btn-primary px-3 py-2 text-sm font-medium text-white hover:shadow-neu-btn-primary-hover focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <Plus size={16} />
                     Adicionar item
@@ -520,7 +520,7 @@ export default function NewGuidePage() {
                         </div>
 
                         <div className="min-w-0 space-y-2">
-                          <label className="mb-1 block text-xs font-medium text-[#8C959F] lg:hidden">Código TUSS *</label>
+                          <label className="mb-1 block text-xs font-medium text-neu-inkMuted lg:hidden">Código TUSS *</label>
                           <TUSSCodeSearch
                             value={item.tuss_code}
                             onChange={(opt) => handleTUSSSelect(idx, opt)}
@@ -533,7 +533,7 @@ export default function NewGuidePage() {
                             guideType={form.guide_type}
                             onPrediction={(predId) => setGlosaPredictionIds((prev) => ({ ...prev, [idx]: predId }))}
                           />
-                          <label htmlFor={`guide-item-description-${idx}`} className="mb-1 block text-xs font-medium text-[#8C959F] lg:hidden">Descrição</label>
+                          <label htmlFor={`guide-item-description-${idx}`} className="mb-1 block text-xs font-medium text-neu-inkMuted lg:hidden">Descrição</label>
                           <input
                             id={`guide-item-description-${idx}`}
                             type="text"
@@ -555,7 +555,7 @@ export default function NewGuidePage() {
                         </div>
 
                         <div className="min-w-0">
-                          <label htmlFor={`guide-item-quantity-${idx}`} className="mb-1 block text-xs font-medium text-[#8C959F] lg:hidden">Quantidade</label>
+                          <label htmlFor={`guide-item-quantity-${idx}`} className="mb-1 block text-xs font-medium text-neu-inkMuted lg:hidden">Quantidade</label>
                           <input
                             id={`guide-item-quantity-${idx}`}
                             type="number"
@@ -568,7 +568,7 @@ export default function NewGuidePage() {
                         </div>
 
                         <div className="min-w-0">
-                          <label htmlFor={`guide-item-unit-value-${idx}`} className="mb-1 block text-xs font-medium text-[#8C959F] lg:hidden">Valor unitário</label>
+                          <label htmlFor={`guide-item-unit-value-${idx}`} className="mb-1 block text-xs font-medium text-neu-inkMuted lg:hidden">Valor unitário</label>
                           <input
                             id={`guide-item-unit-value-${idx}`}
                             type="number"
@@ -582,8 +582,8 @@ export default function NewGuidePage() {
                         </div>
 
                         <div>
-                          <span className="block text-xs font-medium text-[#8C959F] lg:hidden">Total</span>
-                          <p className="rounded-lg bg-[#F4F7FA] px-3 py-2 text-sm font-semibold text-[#24292F]">
+                          <span className="block text-xs font-medium text-neu-inkMuted lg:hidden">Total</span>
+                          <p className="rounded-lg bg-neu-panel px-3 py-2 text-sm font-semibold text-neu-ink">
                             {fmtBRL(itemTotal(item))}
                           </p>
                         </div>
@@ -608,36 +608,36 @@ export default function NewGuidePage() {
             </div>
 
             <aside className="space-y-4">
-              <div className="sticky top-4 rounded-lg border border-slate-200 bg-[#F4F7FA]">
+              <div className="sticky top-4 rounded-lg border border-slate-200 bg-neu-panel">
                 <div className="border-b border-slate-100 px-4 py-3">
-                  <h2 className="text-base font-semibold text-[#24292F]">Fechamento</h2>
-                  <p className="text-xs text-[#8C959F]">Resumo operacional antes da criação da guia.</p>
+                  <h2 className="text-base font-semibold text-neu-ink">Fechamento</h2>
+                  <p className="text-xs text-neu-inkMuted">Resumo operacional antes da criação da guia.</p>
                 </div>
                 <div className="space-y-4 p-4">
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between gap-3">
-                      <span className="text-[#8C959F]">Paciente</span>
-                      <span className="max-w-[190px] truncate text-right font-medium text-[#24292F]">
+                      <span className="text-neu-inkMuted">Paciente</span>
+                      <span className="max-w-[190px] truncate text-right font-medium text-neu-ink">
                         {patientName(selectedPatient, encounterContext)}
                       </span>
                     </div>
                     <div className="flex justify-between gap-3">
-                      <span className="text-[#8C959F]">Operadora</span>
-                      <span className="max-w-[190px] truncate text-right font-medium text-[#24292F]">
+                      <span className="text-neu-inkMuted">Operadora</span>
+                      <span className="max-w-[190px] truncate text-right font-medium text-neu-ink">
                         {providerName(selectedProvider)}
                       </span>
                     </div>
                     <div className="flex justify-between gap-3">
-                      <span className="text-[#8C959F]">Tipo</span>
-                      <span className="font-medium text-[#24292F]">{form.guide_type === 'sadt' ? 'SADT' : 'Consulta'}</span>
+                      <span className="text-neu-inkMuted">Tipo</span>
+                      <span className="font-medium text-neu-ink">{form.guide_type === 'sadt' ? 'SADT' : 'Consulta'}</span>
                     </div>
                     <div className="flex justify-between gap-3">
-                      <span className="text-[#8C959F]">Competência</span>
-                      <span className="font-medium text-[#24292F]">{form.competency || '-'}</span>
+                      <span className="text-neu-inkMuted">Competência</span>
+                      <span className="font-medium text-neu-ink">{form.competency || '-'}</span>
                     </div>
                     <div className="flex justify-between gap-3">
-                      <span className="text-[#8C959F]">Procedimentos</span>
-                      <span className="font-medium text-[#24292F]">{items.length}</span>
+                      <span className="text-neu-inkMuted">Procedimentos</span>
+                      <span className="font-medium text-neu-ink">{items.length}</span>
                     </div>
                   </div>
 
@@ -654,14 +654,14 @@ export default function NewGuidePage() {
                   <button
                     type="submit"
                     disabled={saving}
-                    className="w-full rounded-lg bg-gradient-to-b from-[#0066A1] to-[#005282] border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] py-2.5 text-sm font-semibold text-white hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full rounded-lg bg-gradient-to-b from-neu-brand to-neu-brandDeep border-t border-neu-brandEdge shadow-neu-btn-primary py-2.5 text-sm font-semibold text-white hover:shadow-neu-btn-primary-hover disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     {saving ? 'Criando guia...' : 'Criar guia TISS'}
                   </button>
                   <button
                     type="button"
                     onClick={() => router.back()}
-                    className="w-full rounded-lg py-2 text-sm font-medium text-[#57606A] hover:bg-[#F4F7FA] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full rounded-lg py-2 text-sm font-medium text-neu-inkSoft hover:bg-neu-panel focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     Cancelar
                   </button>

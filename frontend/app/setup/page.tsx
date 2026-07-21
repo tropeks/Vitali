@@ -109,21 +109,21 @@ const STEPS = [
 
 // ─── Shared UI ────────────────────────────────────────────────────────────────
 
-const inputClasses = "w-full px-2 py-1.5 bg-[#E8EDF2] border-transparent rounded-md text-xs shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#0066A1]/50 transition-all h-8 text-[#24292F]"
-const labelClasses = "block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide"
+const inputClasses = "neu-input"
+const labelClasses = "neu-label"
 
 function StepHeader({ title, accent = '#0066A1' }: { title: string; accent?: string }) {
   return (
     <div className="flex items-center gap-2 mb-4">
       <div className="w-1.5 h-4 rounded-full" style={{ backgroundColor: accent, boxShadow: `0 0 6px ${accent}66` }}></div>
-      <h3 className="text-sm font-bold text-[#1f2937]">{title}</h3>
+      <h3 className="text-sm font-bold text-neu-ink">{title}</h3>
     </div>
   )
 }
 
 function Card({ children }: { children: React.ReactNode }) {
   return (
-    <div className="bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] space-y-4 border border-white">
+    <div className="neu-panel space-y-4">
       {children}
     </div>
   )
@@ -149,7 +149,7 @@ function StepClinic({ data, onChange }: { data: ClinicData; onChange: (d: Partia
   return (
     <div className="space-y-4">
       <StepHeader title="Identificação da Clínica" />
-      <p className="text-[11px] text-[#57606A] -mt-2">
+      <p className="text-[11px] text-neu-inkSoft -mt-2">
         Estes dados aparecem em guias, receituários e no registro LGPD da clínica.
       </p>
 
@@ -279,8 +279,8 @@ function StepSchedule({ data, onChange }: { data: ProfessionalData; onChange: (d
                 onClick={() => toggleDay(d.value)}
                 className={`px-4 py-1.5 text-xs rounded-lg font-bold transition-all ${
                   data.working_days.includes(d.value)
-                    ? 'bg-gradient-to-b from-[#0066A1] to-[#005282] text-white shadow-[0_2px_6px_rgba(0,102,161,0.3)] border-t border-[#3385b5]'
-                    : 'bg-[#E8EDF2] text-[#57606A] shadow-[inset_0_1px_1px_rgba(255,255,255,0.5),_0_2px_4px_rgba(0,0,0,0.05)] hover:bg-[#dfe5ea]'
+                    ? 'bg-gradient-to-b from-neu-brand to-neu-brandDeep text-white shadow-neu-btn-primary border-t border-neu-brandEdge'
+                    : 'bg-neu-input text-neu-inkSoft shadow-neu-btn hover:bg-neu-app'
                 }`}
               >
                 {d.label}
@@ -318,8 +318,8 @@ function StepSchedule({ data, onChange }: { data: ProfessionalData; onChange: (d
                 onClick={() => onChange({ slot_duration_minutes: s })}
                 className={`px-4 py-1.5 text-xs rounded-lg font-bold transition-all ${
                   data.slot_duration_minutes === s
-                    ? 'bg-gradient-to-b from-[#0066A1] to-[#005282] text-white shadow-[0_2px_6px_rgba(0,102,161,0.3)] border-t border-[#3385b5]'
-                    : 'bg-[#E8EDF2] text-[#57606A] shadow-[inset_0_1px_1px_rgba(255,255,255,0.5),_0_2px_4px_rgba(0,0,0,0.05)] hover:bg-[#dfe5ea]'
+                    ? 'bg-gradient-to-b from-neu-brand to-neu-brandDeep text-white shadow-neu-btn-primary border-t border-neu-brandEdge'
+                    : 'bg-neu-input text-neu-inkSoft shadow-neu-btn hover:bg-neu-app'
                 }`}
               >
                 {s} min
@@ -338,7 +338,7 @@ function StepPlan({ data, onChange, onSkip }: { data: PlanData; onChange: (d: Pa
   return (
     <div className="space-y-4">
       <StepHeader title="Primeiro Plano de Saúde (Convênio)" />
-      <p className="text-[11px] text-[#57606A] -mt-2">
+      <p className="text-[11px] text-neu-inkSoft -mt-2">
         Cadastre o convênio mais usado para já emitir guias. <strong>Opcional</strong> — você pode adicionar outros depois em Faturamento.
       </p>
       <Card>
@@ -356,7 +356,7 @@ function StepPlan({ data, onChange, onSkip }: { data: PlanData; onChange: (d: Pa
           <button
             type="button"
             onClick={onSkip}
-            className="text-[11px] font-bold text-[#0066A1] hover:underline"
+            className="text-[11px] font-bold text-neu-brand hover:underline"
           >
             Pular esta etapa →
           </button>
@@ -373,26 +373,26 @@ function StepModules({ active, loading }: { active: string[] | null; loading: bo
   return (
     <div className="space-y-4">
       <StepHeader title="Revisão de Módulos Ativos" />
-      <p className="text-[11px] text-[#57606A] -mt-2">
+      <p className="text-[11px] text-neu-inkSoft -mt-2">
         Estes são os módulos liberados no seu plano. Para ativar outros, fale com o suporte comercial.
       </p>
       <Card>
         {loading ? (
-          <p className="text-xs text-[#57606A]">Carregando módulos...</p>
+          <p className="text-xs text-neu-inkSoft">Carregando módulos...</p>
         ) : (
           <div className="space-y-2">
             {MODULE_CATALOG.map((m) => {
               const on = (active ?? []).includes(m.key)
               return (
-                <div key={m.key} className="flex items-center justify-between bg-[#E8EDF2] rounded-lg px-3 py-2 shadow-[inset_0_2px_4px_rgba(0,0,0,0.04)]">
+                <div key={m.key} className="flex items-center justify-between bg-neu-input rounded-lg px-3 py-2 shadow-neu-inset">
                   <div>
-                    <div className="text-xs font-bold text-[#24292F]">{m.label}</div>
-                    <div className="text-[10px] text-[#57606A]">{m.description}</div>
+                    <div className="text-xs font-bold text-neu-ink">{m.label}</div>
+                    <div className="text-[10px] text-neu-inkSoft">{m.description}</div>
                   </div>
                   <span className={`px-2 py-1 rounded-md text-[10px] font-bold ${
                     on
-                      ? 'bg-gradient-to-b from-[#2DA44E] to-[#248f42] text-white shadow-[0_2px_6px_rgba(45,164,78,0.3)]'
-                      : 'bg-[#D0D7DE] text-[#57606A]'
+                      ? 'bg-gradient-to-b from-neu-success to-[#248f42] text-white shadow-[0_2px_6px_rgba(45,164,78,0.3)]'
+                      : 'bg-neu-app text-neu-inkSoft'
                   }`}>
                     {on ? 'ATIVO' : 'Inativo'}
                   </span>
@@ -400,13 +400,13 @@ function StepModules({ active, loading }: { active: string[] | null; loading: bo
               )
             })}
             {extras.map((k) => (
-              <div key={k} className="flex items-center justify-between bg-[#E8EDF2] rounded-lg px-3 py-2 shadow-[inset_0_2px_4px_rgba(0,0,0,0.04)]">
-                <div className="text-xs font-bold text-[#24292F]">{k}</div>
-                <span className="px-2 py-1 rounded-md text-[10px] font-bold bg-gradient-to-b from-[#2DA44E] to-[#248f42] text-white">ATIVO</span>
+              <div key={k} className="flex items-center justify-between bg-neu-input rounded-lg px-3 py-2 shadow-neu-inset">
+                <div className="text-xs font-bold text-neu-ink">{k}</div>
+                <span className="px-2 py-1 rounded-md text-[10px] font-bold bg-gradient-to-b from-neu-success to-[#248f42] text-white">ATIVO</span>
               </div>
             ))}
             {(active ?? []).length === 0 && (
-              <p className="text-xs text-[#57606A]">Nenhum módulo ativo ainda. O EMR básico é liberado automaticamente após o setup.</p>
+              <p className="text-xs text-neu-inkSoft">Nenhum módulo ativo ainda. O EMR básico é liberado automaticamente após o setup.</p>
             )}
           </div>
         )}
@@ -421,28 +421,28 @@ function StepDpa({ status, loading }: { status: DpaStatus | null; loading: boole
   return (
     <div className="space-y-4">
       <StepHeader title="Termo de Tratamento de Dados (DPA)" accent="#9A6700" />
-      <p className="text-[11px] text-[#57606A] -mt-2">
+      <p className="text-[11px] text-neu-inkSoft -mt-2">
         Exigido pela LGPD (Art. 11) antes de habilitar recursos de IA sobre dados de saúde.
       </p>
       <Card>
         {loading ? (
-          <p className="text-xs text-[#57606A]">Verificando status do DPA...</p>
+          <p className="text-xs text-neu-inkSoft">Verificando status do DPA...</p>
         ) : status?.is_signed ? (
-          <div className="bg-[#E6F4EA] rounded-lg px-4 py-3 shadow-[inset_0_2px_4px_rgba(0,0,0,0.03)]">
-            <p className="text-xs font-bold text-[#1A7F37]">✓ DPA já assinado</p>
-            <p className="text-[11px] text-[#57606A] mt-1">
+          <div className="bg-[#E6F4EA] rounded-lg px-4 py-3 shadow-neu-inset">
+            <p className="text-xs font-bold text-neu-success">✓ DPA já assinado</p>
+            <p className="text-[11px] text-neu-inkSoft mt-1">
               Assinado por {status.signed_by_name ?? 'administrador'}{status.signed_at ? ` em ${status.signed_at}` : ''}.
             </p>
           </div>
         ) : (
           <div className="space-y-3">
-            <p className="text-xs text-[#24292F]">
+            <p className="text-xs text-neu-ink">
               Ao confirmar, você declara que a clínica possui acordo de tratamento de dados (DPA)
               válido com os provedores de IA, conforme a LGPD. Recursos de IA permanecem
               desativados até esta confirmação.
             </p>
             {!status?.current_user_can_sign && (
-              <div className="bg-[#FFF8C5] rounded-lg px-3 py-2 text-[11px] text-[#7D4E00] font-semibold shadow-[inset_0_2px_4px_rgba(0,0,0,0.03)]">
+              <div className="bg-[#FFF8C5] rounded-lg px-3 py-2 text-[11px] text-[#7D4E00] font-semibold shadow-neu-inset">
                 Seu usuário não tem permissão para assinar o DPA. Um administrador precisa concluir esta etapa.
                 Você pode prosseguir e assinar depois em Configurações.
               </div>
@@ -460,14 +460,14 @@ function StepComplete() {
   return (
     <div className="space-y-4">
       <StepHeader title="Provisionamento Concluído" accent="#2DA44E" />
-      <div className="bg-[#F4F7FA] p-5 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white">
-        <p className="text-sm text-[#24292F] font-semibold mb-4">
+      <div className="bg-neu-panel p-5 rounded-xl shadow-neu-panel border border-white">
+        <p className="text-sm text-neu-ink font-semibold mb-4">
           A clínica está pronta para receber o primeiro paciente. Toda a parametrização inicial
           foi registrada com sucesso.
         </p>
-        <div className="bg-[#E8EDF2] rounded-lg p-4 shadow-[inset_0_2px_4px_rgba(0,0,0,0.04)]">
-          <h4 className="text-xs font-bold text-[#57606A] uppercase tracking-wide mb-3">Próximas Ações</h4>
-          <ul className="text-xs text-[#24292F] space-y-2 list-disc list-inside">
+        <div className="bg-neu-input rounded-lg p-4 shadow-neu-inset">
+          <h4 className="text-xs font-bold text-neu-inkSoft uppercase tracking-wide mb-3">Próximas Ações</h4>
+          <ul className="text-xs text-neu-ink space-y-2 list-disc list-inside">
             <li>Cadastrar o <strong>primeiro paciente</strong> no módulo de Recepção.</li>
             <li>Agendar a <strong>primeira consulta</strong> na Agenda.</li>
             <li>Revisar convênios e integrações em <strong>Configurações</strong>.</li>
@@ -477,7 +477,7 @@ function StepComplete() {
       <div className="pt-2 text-right">
         <a
           href="/dashboard"
-          className="inline-block px-6 py-2 bg-gradient-to-b from-[#2DA44E] to-[#248f42] text-white text-xs font-bold rounded-lg border-t border-[#4ac26c] shadow-[0_3px_8px_rgba(45,164,78,0.3)] hover:shadow-[0_4px_12px_rgba(45,164,78,0.4)] transition-all"
+          className="inline-block px-6 py-2 bg-gradient-to-b from-neu-success to-[#248f42] text-white text-xs font-bold rounded-lg border-t border-[#4ac26c] shadow-[0_3px_8px_rgba(45,164,78,0.3)] hover:shadow-[0_4px_12px_rgba(45,164,78,0.4)] transition-all"
         >
           Acessar Workspace Principal
         </a>
@@ -633,28 +633,28 @@ export default function SetupWizardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#DFE5EB] font-sans flex items-center justify-center p-4">
-      <div className="bg-[#EBF0F5] w-full max-w-4xl rounded-2xl shadow-[0_10px_30px_rgba(0,0,0,0.1),_inset_0_2px_4px_rgba(255,255,255,0.8)] overflow-hidden flex flex-col border border-white/50">
+    <div className="min-h-screen bg-neu-app font-sans flex items-center justify-center p-4">
+      <div className="bg-neu-outer w-full max-w-4xl rounded-2xl shadow-neu-elevated overflow-hidden flex flex-col border border-white/50">
 
         {/* Header */}
-        <div className="bg-[#EBF0F5] px-6 py-4 flex justify-between items-center border-b border-[#D0D7DE]/50 shadow-[0_2px_10px_rgba(0,0,0,0.02)] z-10">
+        <div className="bg-neu-outer px-6 py-4 flex justify-between items-center border-b border-neu-app/50 shadow-[0_2px_10px_rgba(0,0,0,0.02)] z-10">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#0066A1] to-[#004b7a] shadow-[0_2px_8px_rgba(0,102,161,0.4)] flex items-center justify-center text-white font-bold text-xs">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-neu-brand to-neu-brandDeep shadow-neu-btn-primary-hover flex items-center justify-center text-white font-bold text-xs">
               V
             </div>
             <div>
-              <h1 className="text-[#1f2937] text-sm font-bold tracking-wide">Vitali EMR Solutions</h1>
-              <h2 className="text-[#57606A] text-[10px] font-semibold uppercase tracking-wider">Onboarding da Clínica</h2>
+              <h1 className="text-neu-ink text-sm font-bold tracking-wide">Vitali EMR Solutions</h1>
+              <h2 className="text-neu-inkSoft text-[10px] font-semibold uppercase tracking-wider">Onboarding da Clínica</h2>
             </div>
           </div>
-          <span className="px-2 py-1 bg-[#E8EDF2] text-[#57606A] rounded-md text-[10px] font-bold shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)]">
+          <span className="px-2 py-1 bg-neu-input text-neu-inkSoft rounded-md text-[10px] font-bold shadow-neu-inset">
             Etapa {Math.min(step + 1, STEPS.length)} de {STEPS.length}
           </span>
         </div>
 
         <div className="flex flex-1 min-h-[440px]">
           {/* Sidebar */}
-          <div className="w-64 bg-[#EBF0F5] p-6 shrink-0 hidden sm:block border-r border-[#D0D7DE]/40">
+          <div className="w-64 bg-neu-outer p-6 shrink-0 hidden sm:block border-r border-neu-app/40">
             <div className="space-y-2.5">
               {STEPS.map((label, i) => {
                 const done = i < step
@@ -664,15 +664,15 @@ export default function SetupWizardPage() {
                     key={i}
                     className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-3 transition-all ${
                       active
-                        ? 'bg-[#F4F7FA] text-[#0066A1] shadow-[inset_0_2px_4px_rgba(255,255,255,0.8),_0_4px_10px_rgba(0,0,0,0.04)] border border-white'
+                        ? 'bg-neu-panel text-neu-brand shadow-neu-panel border border-white'
                         : done
-                        ? 'text-[#57606A] opacity-70'
-                        : 'text-[#8C959F] opacity-50'
+                        ? 'text-neu-inkSoft opacity-70'
+                        : 'text-neu-inkMuted opacity-50'
                     }`}
                   >
                     <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] shrink-0 ${
-                      active ? 'bg-[#0066A1] text-white shadow-[0_2px_6px_rgba(0,102,161,0.3)]' :
-                      done ? 'bg-[#2DA44E] text-white' : 'bg-[#D0D7DE] text-white'
+                      active ? 'bg-neu-brand text-white shadow-neu-btn-primary' :
+                      done ? 'bg-neu-success text-white' : 'bg-neu-app text-white'
                     }`}>
                       {done ? '✓' : i + 1}
                     </div>
@@ -684,7 +684,7 @@ export default function SetupWizardPage() {
           </div>
 
           {/* Content */}
-          <div className="flex-1 flex flex-col bg-[#F8FAFC] shadow-[inset_4px_0_12px_rgba(0,0,0,0.02)]">
+          <div className="flex-1 flex flex-col bg-neu-panelAlt shadow-[inset_4px_0_12px_rgba(0,0,0,0.02)]">
             <div className="flex-1 p-8 overflow-y-auto">
               {step === STEP_CLINIC && <StepClinic data={clinic} onChange={updateClinic} />}
               {step === STEP_PROFESSIONAL && <StepProfessional data={professional} onChange={updateProfessional} />}
@@ -695,7 +695,7 @@ export default function SetupWizardPage() {
               {step === STEP_DONE && <StepComplete />}
 
               {error && (
-                <div className="mt-6 px-4 py-3 bg-[#FFEBE9] border border-[#FF8182]/50 shadow-[inset_0_2px_4px_rgba(255,255,255,0.5),_0_2px_8px_rgba(207,34,46,0.1)] text-[#CF222E] text-xs font-bold rounded-xl">
+                <div className="mt-6 px-4 py-3 bg-[#FFEBE9] border border-[#FF8182]/50 shadow-[inset_0_2px_4px_rgba(255,255,255,0.5),_0_2px_8px_rgba(207,34,46,0.1)] text-neu-danger text-xs font-bold rounded-xl">
                   Não foi possível salvar: {error}
                 </div>
               )}
@@ -703,18 +703,18 @@ export default function SetupWizardPage() {
 
             {/* Footer */}
             {step < STEP_DONE && (
-              <div className="bg-[#F4F7FA] border-t border-white px-8 py-5 flex justify-between items-center shadow-[0_-4px_15px_rgba(0,0,0,0.02)] z-10">
+              <div className="bg-neu-panel border-t border-white px-8 py-5 flex justify-between items-center shadow-[0_-4px_15px_rgba(0,0,0,0.02)] z-10">
                 <button
                   onClick={() => { setError(null); setStep((s) => Math.max(0, s - 1)) }}
                   disabled={step === 0 || saving}
-                  className="px-5 py-2 text-xs font-bold text-[#57606A] bg-[#E8EDF2] rounded-lg shadow-[inset_0_1px_1px_rgba(255,255,255,0.5),_0_2px_5px_rgba(0,0,0,0.05)] hover:bg-[#dfe5ea] disabled:opacity-40 transition-all"
+                  className="px-5 py-2 text-xs font-bold text-neu-inkSoft bg-neu-input rounded-lg shadow-neu-btn hover:bg-neu-app disabled:opacity-40 transition-all"
                 >
                   Voltar
                 </button>
                 <button
                   onClick={handleNext}
                   disabled={!canNext()}
-                  className="px-8 py-2 text-xs font-bold text-white bg-gradient-to-b from-[#0066A1] to-[#005282] rounded-lg border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] disabled:opacity-50 transition-all min-w-[140px]"
+                  className="px-8 py-2 text-xs font-bold text-white bg-gradient-to-b from-neu-brand to-neu-brandDeep rounded-lg border-t border-neu-brandEdge shadow-neu-btn-primary hover:shadow-neu-btn-primary-hover disabled:opacity-50 transition-all min-w-[140px]"
                 >
                   {nextLabel()}
                 </button>

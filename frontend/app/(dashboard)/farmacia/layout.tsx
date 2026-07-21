@@ -17,8 +17,8 @@ export default function FarmaciaLayout({ children }: { children: React.ReactNode
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-[#24292F]">Farmácia</h1>
-        <p className="text-sm text-[#8C959F] mt-1">Catálogo, estoque e dispensação</p>
+        <h1 className="text-2xl font-semibold text-neu-ink">Farmácia</h1>
+        <p className="text-sm text-neu-inkMuted mt-1">Catálogo, estoque e dispensação</p>
       </div>
       <nav className="flex gap-1 overflow-x-auto border-b border-slate-200 whitespace-nowrap">
         {TABS.map(tab => {
@@ -31,8 +31,8 @@ export default function FarmaciaLayout({ children }: { children: React.ReactNode
               href={tab.href}
               className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
                 active
-                  ? 'border-blue-600 text-[#0066A1]'
-                  : 'border-transparent text-[#8C959F] hover:text-[#57606A]'
+                  ? 'border-blue-600 text-neu-brand'
+                  : 'border-transparent text-neu-inkMuted hover:text-neu-inkSoft'
               }`}
             >
               {tab.label}

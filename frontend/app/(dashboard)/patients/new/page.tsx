@@ -100,30 +100,30 @@ export default function NewPatientPage() {
       )}
 
       <form onSubmit={submit} className="space-y-5">
-        <div className="bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white">
+        <div className="neu-panel">
           <h2 className="text-sm font-bold text-slate-800">Identificação</h2>
           <div className="mt-4 grid grid-cols-12 gap-4">
             <label className="col-span-12 md:col-span-6 block">
-              <span className="block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide">Nome completo *</span>
+              <span className="neu-label">Nome completo *</span>
               <input
                 name="full_name"
                 value={form.full_name}
                 onChange={(event) => setField('full_name', event.target.value)}
                 required
-                className="w-full px-2 py-1.5 bg-[#E8EDF2] border-transparent rounded-md text-xs shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#0066A1]/50 transition-all h-8 text-[#24292F]"
+                className="neu-input"
               />
             </label>
             <label className="col-span-12 md:col-span-6 block">
-              <span className="block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide">Nome social</span>
+              <span className="neu-label">Nome social</span>
               <input
                 name="social_name"
                 value={form.social_name}
                 onChange={(event) => setField('social_name', event.target.value)}
-                className="w-full px-2 py-1.5 bg-[#E8EDF2] border-transparent rounded-md text-xs shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#0066A1]/50 transition-all h-8 text-[#24292F]"
+                className="neu-input"
               />
             </label>
             <label className="col-span-12 md:col-span-6 block">
-              <span className="block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide">CPF *</span>
+              <span className="neu-label">CPF *</span>
               <input
                 name="cpf"
                 value={form.cpf}
@@ -131,27 +131,27 @@ export default function NewPatientPage() {
                 required
                 inputMode="numeric"
                 placeholder="00000000000"
-                className="w-full px-2 py-1.5 bg-[#E8EDF2] border-transparent rounded-md text-xs shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#0066A1]/50 transition-all h-8 text-[#24292F]"
+                className="neu-input"
               />
             </label>
             <label className="col-span-12 md:col-span-6 block">
-              <span className="block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide">Data de nascimento *</span>
+              <span className="neu-label">Data de nascimento *</span>
               <input
                 name="birth_date"
                 type="date"
                 value={form.birth_date}
                 onChange={(event) => setField('birth_date', event.target.value)}
                 required
-                className="w-full px-2 py-1.5 bg-[#E8EDF2] border-transparent rounded-md text-xs shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#0066A1]/50 transition-all h-8 text-[#24292F]"
+                className="neu-input"
               />
             </label>
             <label className="col-span-12 md:col-span-6 block">
-              <span className="block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide">Gênero *</span>
+              <span className="neu-label">Gênero *</span>
               <select
                 name="gender"
                 value={form.gender}
                 onChange={(event) => setField('gender', event.target.value)}
-                className="w-full px-2 py-1.5 bg-[#E8EDF2] border-transparent rounded-md text-xs shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#0066A1]/50 transition-all h-8 text-[#24292F]"
+                className="neu-input"
               >
                 {genderOptions.map((option) => (
                   <option key={option.value} value={option.value}>{option.label}</option>
@@ -159,12 +159,12 @@ export default function NewPatientPage() {
               </select>
             </label>
             <label className="col-span-12 md:col-span-6 block">
-              <span className="block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide">Tipo sanguíneo</span>
+              <span className="neu-label">Tipo sanguíneo</span>
               <select
                 name="blood_type"
                 value={form.blood_type}
                 onChange={(event) => setField('blood_type', event.target.value)}
-                className="w-full px-2 py-1.5 bg-[#E8EDF2] border-transparent rounded-md text-xs shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#0066A1]/50 transition-all h-8 text-[#24292F]"
+                className="neu-input"
               >
                 {bloodTypes.map((value) => (
                   <option key={value || 'empty'} value={value}>{value || 'Não informado'}</option>
@@ -174,49 +174,49 @@ export default function NewPatientPage() {
           </div>
         </div>
 
-        <div className="bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white">
+        <div className="neu-panel">
           <h2 className="text-sm font-bold text-slate-800">Contato</h2>
           <div className="mt-4 grid grid-cols-12 gap-4">
             <label className="col-span-12 md:col-span-4 block">
-              <span className="block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide">Telefone</span>
+              <span className="neu-label">Telefone</span>
               <input
                 name="phone"
                 value={form.phone}
                 onChange={(event) => setField('phone', event.target.value)}
-                className="w-full px-2 py-1.5 bg-[#E8EDF2] border-transparent rounded-md text-xs shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#0066A1]/50 transition-all h-8 text-[#24292F]"
+                className="neu-input"
               />
             </label>
             <label className="col-span-12 md:col-span-4 block">
-              <span className="block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide">WhatsApp</span>
+              <span className="neu-label">WhatsApp</span>
               <input
                 name="whatsapp"
                 value={form.whatsapp}
                 onChange={(event) => setField('whatsapp', event.target.value)}
-                className="w-full px-2 py-1.5 bg-[#E8EDF2] border-transparent rounded-md text-xs shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#0066A1]/50 transition-all h-8 text-[#24292F]"
+                className="neu-input"
               />
             </label>
             <label className="col-span-12 md:col-span-4 block">
-              <span className="block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide">E-mail</span>
+              <span className="neu-label">E-mail</span>
               <input
                 name="email"
                 type="email"
                 value={form.email}
                 onChange={(event) => setField('email', event.target.value)}
-                className="w-full px-2 py-1.5 bg-[#E8EDF2] border-transparent rounded-md text-xs shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#0066A1]/50 transition-all h-8 text-[#24292F]"
+                className="neu-input"
               />
             </label>
           </div>
         </div>
 
-        <div className="bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white">
+        <div className="neu-panel">
           <label className="block">
-            <span className="block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide">Observações</span>
+            <span className="neu-label">Observações</span>
             <textarea
               name="notes"
               rows={4}
               value={form.notes}
               onChange={(event) => setField('notes', event.target.value)}
-              className="w-full resize-y px-2 py-1.5 bg-[#E8EDF2] border-transparent rounded-md text-xs shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#0066A1]/50 transition-all text-[#24292F]"
+              className="w-full resize-y px-2 py-1.5 bg-neu-input border-transparent rounded-md text-xs shadow-neu-inset focus:outline-none focus:bg-white focus:ring-2 focus:ring-neu-brand/50 transition-all text-neu-ink"
             />
           </label>
         </div>
@@ -225,14 +225,14 @@ export default function NewPatientPage() {
           <button
             type="button"
             onClick={() => router.push('/patients')}
-            className="px-4 py-1.5 text-xs rounded-lg font-bold bg-[#E8EDF2] text-[#57606A] shadow-[inset_0_1px_1px_rgba(255,255,255,0.5),_0_2px_4px_rgba(0,0,0,0.05)] hover:bg-[#dfe5ea] transition-all"
+            className="neu-btn-secondary"
           >
             Cancelar
           </button>
           <button
             type="submit"
             disabled={saving}
-            className="px-6 py-2 text-xs font-bold text-white bg-gradient-to-b from-[#0066A1] to-[#005282] rounded-lg border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] transition-all disabled:opacity-50"
+            className="neu-btn-primary disabled:opacity-50"
           >
             {saving ? 'Salvando...' : 'Cadastrar paciente'}
           </button>
