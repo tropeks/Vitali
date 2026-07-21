@@ -326,11 +326,6 @@ SCRIBE_SESSION_RETENTION_DAYS = env.int("SCRIBE_SESSION_RETENTION_DAYS", default
 # (module_key="dose_safety", default OFF), NOT a setting.
 DOSE_SAFETY_WEIGHT_STALENESS_DAYS = env.int("DOSE_SAFETY_WEIGHT_STALENESS_DAYS", default=90)
 
-# ─── Frontend / patient-facing links ────────────────────────────────────────
-# Base URL of the Next.js app. Used to build invite/activation links delivered
-# to users and patients (set-password, patient portal activation, etc.).
-FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:3000")
-
 # ─── WhatsApp / Evolution API (S-032) ───────────────────────────────────────
 WHATSAPP_EVOLUTION_URL = env("WHATSAPP_EVOLUTION_URL", default="http://evolution-api:8080")
 WHATSAPP_EVOLUTION_API_KEY = env("WHATSAPP_EVOLUTION_API_KEY", default="")
@@ -346,7 +341,8 @@ PIX_CHARGE_EXPIRY_MINUTES = env.int("PIX_CHARGE_EXPIRY_MINUTES", default=30)
 
 # ─── Self-serve signup (S-132) ───────────────────────────────────────────────
 # Public marketing URL used to build the welcome/set-password link emailed to
-# new clinic owners. Also consumed by the staff invite flow.
+# new clinic owners. Also consumed by the staff invite flow and the patient
+# portal invite delivery (WhatsApp/email activation links, issue #117).
 FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:3000")
 SUPPORT_EMAIL = env("SUPPORT_EMAIL", default="suporte@vitali.app")
 SELF_SERVE_TRIAL_DAYS = env.int("SELF_SERVE_TRIAL_DAYS", default=14)

@@ -34,7 +34,6 @@ from apps.core.permissions import HasPermission, ModuleRequiredPermission
 from apps.emr.models import Allergy, Appointment, Encounter, Prescription
 
 from .models import PatientPortalAccess
-from .services import deliver_portal_invite
 from .serializers import (
     PatientPortalAccessCreateSerializer,
     PatientPortalAccessSerializer,
@@ -44,6 +43,7 @@ from .serializers import (
     PortalPatientSerializer,
     PortalPrescriptionSerializer,
 )
+from .services import deliver_portal_invite
 
 _PORTAL_MODULE = ModuleRequiredPermission("patient_portal")
 
