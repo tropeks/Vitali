@@ -91,7 +91,7 @@ export function SOAPEditor({ soapNote, readOnly = false, encounterId }: SOAPEdit
 
       {FIELDS.map(({ key, label, placeholder }) => (
         <div key={key} className="space-y-1">
-          <label className="block block text-[11px] font-bold text-[#57606A] mb-1.5 uppercase tracking-wide ">{label}</label>
+          <label className="block block text-[11px] font-bold text-neu-inkSoft mb-1.5 uppercase tracking-wide ">{label}</label>
           {key === 'assessment' && encounterId && !readOnly ? (
             <CID10Suggest
               encounterId={encounterId}

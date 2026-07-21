@@ -114,8 +114,8 @@ describe('operational-ui', () => {
 
   it('keeps a signed prescription blue (actionable), not green (completed)', () => {
     expect(PRESCRIPTION_STATUS_META.signed.tone).toBe('info')
-    expect(PRESCRIPTION_STATUS_META.signed.badgeClass).toContain('blue')
-    expect(PRESCRIPTION_STATUS_META.dispensed.badgeClass).toContain('green')
+    expect(PRESCRIPTION_STATUS_META.signed.badgeClass).toContain('neu-brand')
+    expect(PRESCRIPTION_STATUS_META.dispensed.badgeClass).toContain('neu-success')
   })
 
   it('maps R5 enum statuses (subscription, employment, whatsapp) to canonical tones', () => {

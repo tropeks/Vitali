@@ -1,34 +1,46 @@
 """Core URLs — public schema routes (platform admin + tenant onboarding)."""
 
 from django.urls import path
-from rest_framework import generics, permissions
 
-from .models import Tenant
-from .permissions import IsPlatformAdmin
-from .serializers import TenantSerializer
-from .views import TenantRegistrationView
+from .views import SetPasswordView, TenantRegistrationView
 from .views_platform import (
     ActivateModuleView,
     DeactivateModuleView,
     PilotHealthView,
     PlanDetailView,
     PlanListCreateView,
+    ResendWelcomeView,
     SubscriptionDetailView,
     SubscriptionListCreateView,
+    SubscriptionWebhookView,
+    TenantAdminListView,
     WedgeValueDashboardView,
 )
-
-
-class TenantListView(generics.ListAPIView):
-    serializer_class = TenantSerializer
-    permission_classes = [permissions.IsAuthenticated, IsPlatformAdmin]
-    queryset = Tenant.objects.all()
-
+from .views_signup import SelfServeSignupView
 
 urlpatterns = [
-    # Tenant provisioning
+    # S-132: Public self-serve signup (no auth) + subscription billing webhook.
+    path("public/signup/", SelfServeSignupView.as_view(), name="self-serve-signup"),
+    path(
+        "public/billing/subscription-webhook/",
+        SubscriptionWebhookView.as_view(),
+        name="subscription-webhook",
+    ),
+    # Owner activation: welcome link lands on the main (public) domain, so the
+    # set-password endpoint must resolve here too (User lives in public schema).
+    path(
+        "auth/set-password/<str:token>/",
+        SetPasswordView.as_view(),
+        name="auth-set-password-public",
+    ),
+    # Tenant provisioning (engineer/platform-admin flow)
     path("platform/tenants", TenantRegistrationView.as_view(), name="tenant-register"),
-    path("platform/tenants/", TenantListView.as_view(), name="tenant-list"),
+    path("platform/tenants/", TenantAdminListView.as_view(), name="tenant-list"),
+    path(
+        "platform/tenants/<uuid:pk>/resend-welcome/",
+        ResendWelcomeView.as_view(),
+        name="tenant-resend-welcome",
+    ),
     # Plans
     path("platform/plans/", PlanListCreateView.as_view(), name="platform-plan-list"),
     path("platform/plans/<uuid:pk>/", PlanDetailView.as_view(), name="platform-plan-detail"),

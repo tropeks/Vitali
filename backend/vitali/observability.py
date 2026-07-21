@@ -33,6 +33,7 @@ _INSTRUMENTED: bool = False
 # PHI Scrubbing Span Processor (lazy factory)
 # ---------------------------------------------------------------------------
 
+
 def PHIScrubbingSpanProcessor():  # noqa: N802 — intentional CamelCase factory
     """
     Factory that builds and returns a SpanProcessor that redacts PHI/PII
@@ -104,6 +105,7 @@ def PHIScrubbingSpanProcessor():  # noqa: N802 — intentional CamelCase factory
 # Bootstrap
 # ---------------------------------------------------------------------------
 
+
 def setup_observability(service_role: str) -> None:
     """
     Bootstrap OpenTelemetry for the current process.
@@ -134,18 +136,18 @@ def setup_observability(service_role: str) -> None:
 
     # ── Lazy imports (only reached when OTEL_ENABLED=True) ───────────────────
     from opentelemetry import trace  # noqa: PLC0415
+    from opentelemetry.baggage.propagation import W3CBaggagePropagator  # noqa: PLC0415
+    from opentelemetry.propagate import set_global_textmap  # noqa: PLC0415
+    from opentelemetry.propagators.composite import CompositePropagator  # noqa: PLC0415
     from opentelemetry.sdk.resources import Resource  # noqa: PLC0415
     from opentelemetry.sdk.trace import TracerProvider  # noqa: PLC0415
     from opentelemetry.sdk.trace.export import (  # noqa: PLC0415
         BatchSpanProcessor,
         ConsoleSpanExporter,
     )
-    from opentelemetry.propagators.composite import CompositePropagator  # noqa: PLC0415
-    from opentelemetry.propagate import set_global_textmap  # noqa: PLC0415
     from opentelemetry.trace.propagation.tracecontext import (  # noqa: PLC0415
         TraceContextTextMapPropagator,
     )
-    from opentelemetry.baggage.propagation import W3CBaggagePropagator  # noqa: PLC0415
 
     # ── Provider & exporter ───────────────────────────────────────────────────
     service_name = getattr(settings, "OTEL_SERVICE_NAME", "vitali-backend")
@@ -156,6 +158,7 @@ def setup_observability(service_role: str) -> None:
         from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (  # noqa: PLC0415
             OTLPSpanExporter,
         )
+
         exporter = OTLPSpanExporter(endpoint=endpoint)
     else:
         # ── P2 Hardening: ConsoleExporter blocked in production ───────────────

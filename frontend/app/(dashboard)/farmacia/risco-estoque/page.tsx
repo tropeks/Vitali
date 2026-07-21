@@ -83,8 +83,8 @@ export default function RiscoEstoquePage() {
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-lg font-semibold text-[#24292F]">Risco de Estoque</h2>
-          <p className="text-sm text-[#8C959F]">
+          <h2 className="text-lg font-semibold text-neu-ink">Risco de Estoque</h2>
+          <p className="text-sm text-neu-inkMuted">
             Previsões proativas de ruptura e desperdício por validade. Apenas aviso — nunca
             bloqueia a dispensa.
           </p>
@@ -96,8 +96,8 @@ export default function RiscoEstoquePage() {
               onClick={() => setKindFilter(f.value)}
               className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
                 kindFilter === f.value
-                  ? 'bg-gradient-to-b from-[#0066A1] to-[#005282] border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] text-white border-blue-600'
-                  : 'bg-[#F4F7FA] text-[#57606A] border-slate-200 hover:bg-[#F4F7FA]'
+                  ? 'bg-gradient-to-b from-neu-brand to-neu-brandDeep border-t border-neu-brandEdge shadow-neu-btn-primary text-white border-blue-600'
+                  : 'bg-neu-panel text-neu-inkSoft border-slate-200 hover:bg-neu-panel'
               }`}
             >
               {f.label}
@@ -114,7 +114,7 @@ export default function RiscoEstoquePage() {
       )}
 
       {!enabled && !loading && (
-        <div className="bg-[#F4F7FA] border border-slate-200 text-[#8C959F] text-sm rounded-lg px-4 py-3 text-center">
+        <div className="bg-neu-panel border border-slate-200 text-neu-inkMuted text-sm rounded-lg px-4 py-3 text-center">
           A predição de risco de estoque está desativada para este estabelecimento.
         </div>
       )}
@@ -122,10 +122,10 @@ export default function RiscoEstoquePage() {
       {loading && <p className="text-sm text-slate-400">Carregando...</p>}
 
       {!loading && enabled && (
-        <div className="bg-[#F4F7FA] rounded-lg border border-slate-200 overflow-x-auto">
+        <div className="bg-neu-panel rounded-lg border border-slate-200 overflow-x-auto">
           <table className="w-full text-sm min-w-[760px]">
             <thead>
-              <tr className="border-b border-slate-100 bg-[#F4F7FA]">
+              <tr className="border-b border-slate-100 bg-neu-panel">
                 {[
                   'Produto',
                   'Tipo',
@@ -137,7 +137,7 @@ export default function RiscoEstoquePage() {
                 ].map((h, i) => (
                   <th
                     key={h || `col-${i}`}
-                    className="text-left px-4 py-3 text-xs font-medium text-[#8C959F] uppercase tracking-wide"
+                    className="text-left px-4 py-3 text-xs font-medium text-neu-inkMuted uppercase tracking-wide"
                   >
                     {h}
                   </th>
@@ -155,27 +155,27 @@ export default function RiscoEstoquePage() {
               {alerts.map((a) => (
                 <tr key={a.id} className="border-b border-slate-50 align-top">
                   <td className="px-4 py-3">
-                    <p className="font-medium text-[#24292F]">{a.product_name}</p>
+                    <p className="font-medium text-neu-ink">{a.product_name}</p>
                     <p className="text-xs text-slate-400 mt-1 max-w-md">{a.message}</p>
                   </td>
                   <td className="px-4 py-3">
                     <KindBadge kind={a.kind} />
                   </td>
-                  <td className="px-4 py-3 text-[#57606A]">{formatDate(a.predicted_date)}</td>
-                  <td className="px-4 py-3 text-[#57606A]">
+                  <td className="px-4 py-3 text-neu-inkSoft">{formatDate(a.predicted_date)}</td>
+                  <td className="px-4 py-3 text-neu-inkSoft">
                     {a.days_to_stockout ?? '—'}
                   </td>
-                  <td className="px-4 py-3 text-[#57606A]">
+                  <td className="px-4 py-3 text-neu-inkSoft">
                     {a.predicted_waste_qty ?? '—'}
                   </td>
-                  <td className="px-4 py-3 font-medium text-[#24292F]">
+                  <td className="px-4 py-3 font-medium text-neu-ink">
                     {a.suggested_reorder_qty ?? '—'}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <button
                       onClick={() => handleAcknowledge(a.id)}
                       disabled={acking === a.id}
-                      className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 text-[#57606A] hover:bg-[#F4F7FA] disabled:opacity-50"
+                      className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 text-neu-inkSoft hover:bg-neu-panel disabled:opacity-50"
                     >
                       {acking === a.id ? 'Reconhecendo...' : 'Reconhecer'}
                     </button>

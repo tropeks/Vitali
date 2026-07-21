@@ -21,17 +21,17 @@ export function CookieBanner() {
   if (!show) return null;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 p-2 bg-[#F4F6F8] border-t border-[#D0D7DE] text-[#24292F] flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-sans shadow-[0_-2px_4px_rgba(0,0,0,0.05)]">
+    <div className="fixed bottom-0 left-0 right-0 z-50 p-2 bg-neu-panel border-t border-neu-app text-neu-ink flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-sans shadow-[0_-2px_4px_rgba(0,0,0,0.05)]">
       <div className="pl-4">
         <strong>Aviso de Privacidade:</strong> Este sistema EMR utiliza cookies estritamente necessários para autenticação e auditoria clínica. Ao continuar, você concorda com a nossa{' '}
-        <Link href="/privacidade" className="font-semibold text-[#0066A1] hover:underline">
+        <Link href="/privacidade" className="font-semibold text-neu-brand hover:underline">
           Política de Privacidade
         </Link>.
       </div>
       <div className="pr-4 pb-1 sm:pb-0 shrink-0">
         <button
           onClick={acceptCookies}
-          className="px-4 py-1 bg-[#0066A1] hover:bg-[#004b7a] text-white border border-[#004b7a] rounded-sm font-semibold transition-colors"
+          className="px-4 py-1 bg-neu-brand hover:bg-neu-brandDeep text-white border border-neu-brandDeep rounded-sm font-semibold transition-colors"
         >
           Ciente e de acordo
         </button>
