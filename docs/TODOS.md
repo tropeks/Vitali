@@ -26,9 +26,12 @@ Last reconciled with shipped state: 2026-05-20
 - [x] **Server-side transcription (Whisper API)**: `WhisperGateway`
   (`apps/emr/services/whisper.py`) wired into `views_scribe.py` behind the
   `FEATURE_WHISPER_FALLBACK` flag.
-- [ ] **Fill rate metric rollout**: query path is live; flipping the dashboard
-  KPI on depends on operational `Schedule` + `TimeSlot` configuration in the
-  pilot tenants, not on engineering work.
+- [x] **Fill rate metric rollout**: shipped (issue #133). `OverviewView` now
+  derives an occupancy `fill_rate` from active `ScheduleConfig` capacity
+  (`count_slots_for_config` in `apps/whatsapp/slot_service.py`) vs. booked
+  appointments. The dashboard KPI auto-activates per tenant — the card stays
+  hidden while `fill_rate` is `null` and appears once agendas are configured,
+  so no engineering flip is needed.
 
 ## Process / Non-Code
 

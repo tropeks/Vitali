@@ -7,7 +7,9 @@ import { ptBR } from 'date-fns/locale';
 import { SOAPEditor } from '@/components/encounters/SOAPEditor';
 import { PrescriptionBuilder } from '@/components/prescriptions/PrescriptionBuilder';
 import { ScribeButton } from '@/components/emr/ScribeButton';
+import { ImagingPanel } from '@/components/imaging/ImagingPanel';
 import { getAccessToken } from '@/lib/auth';
+import { useHasModule } from '@/hooks/useHasModule';
 import Link from 'next/link';
 import {
   AlertTriangle,
@@ -17,6 +19,7 @@ import {
   HeartPulse,
   Pill,
   Receipt,
+  ScanLine,
   ShieldAlert,
   UserRound,
   X,
@@ -88,7 +91,7 @@ const STATUS_STYLES: Record<string, string> = {
   cancelled: 'bg-slate-100 text-slate-500 border-slate-200',
 };
 
-type EncounterTab = 'summary' | 'soap' | 'cpoe' | 'vitals' | 'documents' | 'billing';
+type EncounterTab = 'summary' | 'soap' | 'cpoe' | 'vitals' | 'documents' | 'imaging' | 'billing';
 
 const ENCOUNTER_TABS: {
   id: EncounterTab;
@@ -101,6 +104,7 @@ const ENCOUNTER_TABS: {
   { id: 'cpoe', label: 'CPOE', description: 'Prescrição e ordens', icon: Pill },
   { id: 'vitals', label: 'Sinais vitais', description: 'Parâmetros clínicos', icon: HeartPulse },
   { id: 'documents', label: 'Documentos', description: 'Atestados e laudos', icon: FileText },
+  { id: 'imaging', label: 'Imagem', description: 'Estudos DICOM / OHIF', icon: ScanLine },
   { id: 'billing', label: 'Faturamento', description: 'Guia TISS', icon: Receipt },
 ];
 
@@ -419,6 +423,12 @@ export default function EncounterDetailPage() {
   const [activeTab, setActiveTab] = useState<EncounterTab>('summary');
   const [workspaceTabs, setWorkspaceTabs] = useState<ClinicalWorkspaceTab[]>([]);
 
+  // Imaging tab is gated by the `imaging` module FeatureFlag (fail-open while loading).
+  const hasImaging = useHasModule('imaging');
+  const visibleTabs = hasImaging
+    ? ENCOUNTER_TABS
+    : ENCOUNTER_TABS.filter((tab) => tab.id !== 'imaging');
+
   const load = useCallback(async () => {
     try {
       const data = await apiFetch(`/encounters/${id}/`);
@@ -636,6 +646,12 @@ export default function EncounterDetailPage() {
         return (
           <section className="max-w-3xl neu-panel">
             <DocumentsPanel documents={encounter.documents} encounterId={id} readOnly={isReadOnly} onRefresh={load} />
+          </section>
+        );
+      case 'imaging':
+        return (
+          <section className="bg-[#F4F7FA] p-4 rounded-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),_0_2px_8px_rgba(0,0,0,0.03)] border border-white ">
+            <ImagingPanel encounterId={id} />
           </section>
         );
       case 'billing':
