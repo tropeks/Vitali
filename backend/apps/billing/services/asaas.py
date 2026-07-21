@@ -122,7 +122,9 @@ class AsaasService:
         data = self._request("POST", "/customers", json=payload)
         return data["id"]
 
-    def create_clinic_customer(self, *, name: str, email: str, cnpj: str = "", external_ref: str = "") -> str:
+    def create_clinic_customer(
+        self, *, name: str, email: str, cnpj: str = "", external_ref: str = ""
+    ) -> str:
         """
         Create an Asaas customer for a CLINIC (tenant-level subscription billing).
 
