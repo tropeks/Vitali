@@ -51,26 +51,26 @@ function ActivateContent() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#F4F7FA] px-4 py-12">
+    <div className="flex min-h-screen items-center justify-center bg-neu-panel px-4 py-12">
       <div className="w-full max-w-md">
         <div className="mb-6 text-center">
-          <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-b from-[#0066A1] to-[#005282] border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] text-white">
+          <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-b from-neu-brand to-neu-brandDeep border-t border-neu-brandEdge shadow-neu-btn-primary text-white">
             <Mail size={26} />
           </div>
-          <h1 className="mt-4 text-2xl font-semibold text-[#24292F]">Ativar convite</h1>
-          <p className="mt-1 text-sm text-[#57606A]">
+          <h1 className="mt-4 text-2xl font-semibold text-neu-ink">Ativar convite</h1>
+          <p className="mt-1 text-sm text-neu-inkSoft">
             Cole o código que você recebeu por e-mail ou WhatsApp.
           </p>
         </div>
 
         <form
           onSubmit={onSubmit}
-          className="space-y-4 rounded-lg border border-slate-200 bg-[#F4F7FA] p-4"
+          className="space-y-4 rounded-lg border border-slate-200 bg-neu-panel p-4"
         >
           <div>
             <label
               htmlFor="token"
-              className="text-xs font-semibold uppercase tracking-wide text-[#8C959F]"
+              className="text-xs font-semibold uppercase tracking-wide text-neu-inkMuted"
             >
               Código do convite
             </label>
@@ -107,13 +107,13 @@ function ActivateContent() {
           <button
             type="submit"
             disabled={!token || state === "submitting" || state === "success"}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-[#0066A1] to-[#005282] border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-neu-brand to-neu-brandDeep border-t border-neu-brandEdge shadow-neu-btn-primary px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:shadow-neu-btn-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
             {state === "submitting" && <Loader2 size={16} className="animate-spin" />}
             Ativar e entrar no portal
           </button>
 
-          <p className="pt-2 text-center text-xs text-[#8C959F]">
+          <p className="pt-2 text-center text-xs text-neu-inkMuted">
             Já tem conta?{" "}
             <Link
               href="/portal/login"
@@ -132,7 +132,7 @@ export default function PortalActivatePage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-screen items-center justify-center text-sm text-[#8C959F]">
+        <div className="flex min-h-screen items-center justify-center text-sm text-neu-inkMuted">
           Carregando…
         </div>
       }
