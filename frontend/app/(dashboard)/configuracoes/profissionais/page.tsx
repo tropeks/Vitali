@@ -35,8 +35,8 @@ export default function ProfissionaisPage() {
   return (
     <PageShell variant="operational">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Profissionais</h1>
-        <p className="text-sm text-slate-500 mt-0.5">Equipe clínica cadastrada na clínica.</p>
+        <h1 className="text-2xl font-semibold text-neu-ink">Profissionais</h1>
+        <p className="text-sm text-neu-inkMuted mt-0.5">Equipe clínica cadastrada na clínica.</p>
       </div>
 
       {error && (
@@ -47,7 +47,7 @@ export default function ProfissionaisPage() {
         />
       )}
 
-      {loading && <p className="text-sm text-slate-500">Carregando...</p>}
+      {loading && <p className="text-sm text-neu-inkMuted">Carregando...</p>}
 
       {!loading && !error && professionals.length === 0 && (
         <SectionState
@@ -57,21 +57,21 @@ export default function ProfissionaisPage() {
       )}
 
       {!loading && !error && professionals.length > 0 && (
-        <div className="rounded-lg border border-slate-200 bg-white overflow-x-auto">
+        <div className="bg-neu-panel rounded-lg border border-slate-200 overflow-x-auto">
           <table className="w-full text-sm min-w-[720px]">
             <thead>
-              <tr className="border-b border-slate-100 bg-slate-50">
+              <tr className="border-b border-slate-100 bg-neu-panel">
                 {['Nome', 'Email', 'Conselho', 'Especialidade', 'Status'].map((h) => (
                   <th
                     key={h}
-                    className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500"
+                    className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-neu-inkMuted"
                   >
                     {h}
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-slate-50">
               {professionals.map((pro) => (
                 <ProfessionalRow key={pro.id} professional={pro} />
               ))}

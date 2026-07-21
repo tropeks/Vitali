@@ -65,15 +65,15 @@ export default function ChangePasswordPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-      <div className="w-full max-w-md bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
+    <main className="min-h-screen bg-neu-app flex items-center justify-center p-6">
+      <div className="w-full max-w-md bg-neu-outer border border-white rounded-2xl shadow-neu-modal p-8">
         <div className="flex items-center gap-3 mb-2">
-          <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
+          <div className="w-10 h-10 rounded-full bg-neu-input shadow-neu-inset flex items-center justify-center text-neu-brand">
             <Lock size={20} />
           </div>
-          <h1 className="text-xl font-semibold text-slate-900">Altere sua senha temporária</h1>
+          <h1 className="text-xl font-semibold text-neu-ink">Altere sua senha temporária</h1>
         </div>
-        <p className="text-sm text-slate-500 mb-6">
+        <p className="text-sm text-neu-inkSoft mb-6">
           Sua senha foi definida pelo administrador da clínica. Por segurança, você precisa
           escolher uma nova senha antes de continuar.
         </p>
@@ -102,7 +102,7 @@ export default function ChangePasswordPage() {
           {error && (
             <div
               role="alert"
-              className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2"
+              className="text-sm text-neu-danger bg-neu-danger/10 border border-neu-danger/20 rounded-lg px-3 py-2"
             >
               {error}
             </div>
@@ -111,7 +111,7 @@ export default function ChangePasswordPage() {
           <button
             type="submit"
             disabled={submitting || !currentPassword || !newPassword || !confirmPassword}
-            className="w-full px-4 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="w-full neu-btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {submitting ? 'Alterando...' : 'Alterar senha'}
           </button>
@@ -143,7 +143,7 @@ function Field({
     .replace(/(^-|-$)/g, '')}`
   return (
     <div>
-      <label htmlFor={id} className="block text-xs font-medium text-slate-700 mb-1">
+      <label htmlFor={id} className="neu-label">
         {label}
       </label>
       <input
@@ -153,9 +153,9 @@ function Field({
         onChange={(e) => onChange(e.target.value)}
         autoComplete={autoComplete}
         required
-        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="neu-input"
       />
-      {hint && <p className="mt-1 text-xs text-slate-400">{hint}</p>}
+      {hint && <p className="mt-1 text-xs text-neu-inkMuted">{hint}</p>}
     </div>
   )
 }

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { RefreshCw, MessageCircle, Phone, Clock, Loader2, X } from 'lucide-react'
-import { PageShell, SectionState, StatusBadge } from '@/components/shared'
+import { PageShell, SectionState, StatusBadge, Button } from '@/components/shared'
 import {
   WA_CONNECTION_STATUS_META,
   getOptInMeta,
@@ -83,7 +83,7 @@ function ConnectionTab() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20 gap-3 text-slate-500">
+      <div className="flex items-center justify-center py-20 gap-3 text-neu-inkMuted">
         <Loader2 size={18} className="animate-spin" />
         <span className="text-sm">Verificando conexão...</span>
       </div>
@@ -119,9 +119,9 @@ function ConnectionTab() {
 
   return (
     <div className="max-w-lg space-y-5">
-      <section className="rounded-lg border border-slate-200 bg-white">
-        <div className="border-b border-slate-100 px-4 py-3 flex items-center justify-between gap-3">
-          <h2 className="text-base font-semibold text-slate-900">Integração Evolution API</h2>
+      <section className="bg-neu-panel rounded-xl shadow-neu-panel border border-white">
+        <div className="border-b border-neu-app/50 px-4 py-3 flex items-center justify-between gap-3">
+          <h2 className="text-base font-semibold text-neu-ink">Integração Evolution API</h2>
           <StatusBadge meta={connectionMeta} />
         </div>
         <div className="p-4 space-y-3">
@@ -132,13 +132,13 @@ function ConnectionTab() {
             action={
               <div className="flex items-center gap-2 flex-wrap">
                 {isConnected && health?.evolution_api?.phone && (
-                  <span className="inline-flex items-center gap-1 text-xs text-slate-700">
+                  <span className="inline-flex items-center gap-1 text-xs text-neu-ink">
                     <Phone size={12} />
                     {health.evolution_api.phone}
                   </span>
                 )}
                 {isConnected && health?.evolution_api?.last_seen && (
-                  <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+                  <span className="inline-flex items-center gap-1 text-xs text-neu-inkMuted">
                     <Clock size={12} />
                     {new Date(health.evolution_api.last_seen).toLocaleString('pt-BR')}
                   </span>
@@ -146,32 +146,33 @@ function ConnectionTab() {
               </div>
             }
           />
-          <button
+          <Button
+            variant="secondary"
             onClick={handleReconnect}
             disabled={reconnecting}
-            className="inline-flex items-center gap-2 px-4 py-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-semibold disabled:opacity-50"
+            className="inline-flex items-center gap-2"
           >
             <RefreshCw size={15} className={reconnecting ? 'animate-spin' : ''} />
             {isConnected ? 'Reconectar' : 'Conectar'}
-          </button>
+          </Button>
         </div>
       </section>
 
       {!isConnected && !isConnecting && (
-        <div className="rounded-lg border border-slate-200 bg-white p-6 text-center space-y-3">
-          <div className="mx-auto w-40 h-40 bg-slate-50 rounded-lg flex items-center justify-center">
-            <MessageCircle size={48} className="text-slate-300" />
+        <div className="bg-neu-panel rounded-xl shadow-neu-panel border border-white p-6 text-center space-y-3">
+          <div className="mx-auto w-40 h-40 bg-neu-input rounded-lg shadow-neu-inset flex items-center justify-center">
+            <MessageCircle size={48} className="text-neu-inkMuted" />
           </div>
-          <p className="text-sm text-slate-700">
+          <p className="text-sm text-neu-ink">
             Inicie a conexão e escaneie o QR code com o WhatsApp da clínica.
           </p>
         </div>
       )}
 
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-neu-inkMuted">
         A URL do webhook é configurada automaticamente ao conectar. Para desenvolvimento local,
         configure um túnel (ngrok) e defina{' '}
-        <code className="bg-slate-100 px-1 rounded font-mono">WHATSAPP_EVOLUTION_URL</code> no
+        <code className="bg-neu-input text-neu-ink px-1 rounded font-mono">WHATSAPP_EVOLUTION_URL</code> no
         .env.
       </p>
     </div>
@@ -226,7 +227,7 @@ function ConversationsTab() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20 gap-3 text-slate-500">
+      <div className="flex items-center justify-center py-20 gap-3 text-neu-inkMuted">
         <Loader2 size={18} className="animate-spin" />
         <span className="text-sm">Carregando conversas...</span>
       </div>
@@ -238,7 +239,7 @@ function ConversationsTab() {
       <input
         type="text"
         placeholder="Buscar por nome ou telefone..."
-        className="w-full max-w-sm rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-slate-400"
+        className="neu-input max-w-sm placeholder-neu-inkMuted"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
       />
@@ -254,21 +255,21 @@ function ConversationsTab() {
             <button
               key={c.id}
               onClick={() => openContact(c)}
-              className="w-full text-left px-4 py-3 bg-white border border-slate-200 rounded-lg hover:border-blue-300 hover:bg-blue-50/30 transition-colors"
+              className="w-full text-left px-4 py-3 bg-neu-panel border border-white shadow-neu-panel rounded-lg hover:bg-neu-panelAlt transition-colors"
             >
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <span className="font-medium text-slate-900 text-sm">
+                  <span className="font-medium text-neu-ink text-sm">
                     {c.patient_name ?? c.phone}
                   </span>
                   {c.patient_name && (
-                    <span className="ml-2 font-mono text-xs text-slate-500">{c.phone}</span>
+                    <span className="ml-2 font-mono text-xs text-neu-inkMuted">{c.phone}</span>
                   )}
                 </div>
                 <StatusBadge meta={getOptInMeta(c.opt_in)} />
               </div>
               {c.opt_in_at && (
-                <p className="text-xs text-slate-500 mt-1">
+                <p className="text-xs text-neu-inkMuted mt-1">
                   Consentimento em {new Date(c.opt_in_at).toLocaleDateString('pt-BR')}
                 </p>
               )}
@@ -279,19 +280,19 @@ function ConversationsTab() {
 
       {selectedContact && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 shrink-0">
+          <div className="bg-neu-outer rounded-lg shadow-neu-modal w-full max-w-lg max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-neu-app/50 shrink-0">
               <div>
-                <h3 className="text-base font-semibold text-slate-900">
+                <h3 className="text-base font-semibold text-neu-ink">
                   {selectedContact.patient_name ?? selectedContact.phone}
                 </h3>
                 {selectedContact.patient_name && (
-                  <p className="text-xs font-mono text-slate-500">{selectedContact.phone}</p>
+                  <p className="text-xs font-mono text-neu-inkMuted">{selectedContact.phone}</p>
                 )}
               </div>
               <button
                 onClick={() => setSelectedContact(null)}
-                className="text-slate-500 hover:text-slate-700 p-1"
+                className="text-neu-inkMuted hover:text-neu-ink p-1"
                 aria-label="Fechar"
               >
                 <X size={18} />
@@ -300,10 +301,10 @@ function ConversationsTab() {
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
               {logsLoading ? (
                 <div className="flex justify-center py-10">
-                  <Loader2 size={18} className="animate-spin text-slate-500" />
+                  <Loader2 size={18} className="animate-spin text-neu-inkMuted" />
                 </div>
               ) : logs.length === 0 ? (
-                <p className="text-sm text-slate-500 text-center py-10">
+                <p className="text-sm text-neu-inkMuted text-center py-10">
                   Sem mensagens registradas.
                 </p>
               ) : (
@@ -315,14 +316,14 @@ function ConversationsTab() {
                     <div
                       className={`max-w-xs px-3 py-2 rounded-lg text-xs ${
                         log.direction === 'inbound'
-                          ? 'bg-slate-100 text-slate-800'
-                          : 'bg-blue-600 text-white'
+                          ? 'bg-neu-input text-neu-ink'
+                          : 'bg-neu-brand text-white'
                       }`}
                     >
                       <p>{log.content_preview}</p>
                       <p
                         className={`mt-1 text-right ${
-                          log.direction === 'inbound' ? 'text-slate-500' : 'text-blue-100'
+                          log.direction === 'inbound' ? 'text-neu-inkMuted' : 'text-white/70'
                         }`}
                       >
                         {new Date(log.created_at).toLocaleTimeString('pt-BR', {
@@ -352,8 +353,8 @@ export default function WhatsAppSettingsPage() {
   return (
     <PageShell variant="operational">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">WhatsApp</h1>
-        <p className="text-sm text-slate-500 mt-1">
+        <h1 className="text-2xl font-semibold text-neu-ink">WhatsApp</h1>
+        <p className="text-sm text-neu-inkSoft mt-1">
           Configuração da integração WhatsApp e histórico de conversas com pacientes.
         </p>
       </div>
@@ -365,8 +366,8 @@ export default function WhatsAppSettingsPage() {
             onClick={() => setTab(t)}
             className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors capitalize ${
               tab === t
-                ? 'border-blue-600 text-blue-700'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
+                ? 'border-neu-brand text-neu-brand'
+                : 'border-transparent text-neu-inkMuted hover:text-neu-ink'
             }`}
           >
             {t === 'conexao' ? 'Conexão' : 'Conversas'}
