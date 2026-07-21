@@ -44,6 +44,8 @@ ignore_imports =
     apps.analytics.** -> apps.billing.**
     # analytics -> emr
     apps.analytics.** -> apps.emr.**
+    # analytics -> whatsapp
+    apps.analytics.** -> apps.whatsapp.**
     # billing -> ai
     apps.billing.** -> apps.ai.**
     # billing -> emr
@@ -52,6 +54,8 @@ ignore_imports =
     apps.emr.** -> apps.ai.**
     # emr -> pharmacy
     apps.emr.** -> apps.pharmacy.**
+    # emr -> signatures
+    apps.emr.** -> apps.signatures.**
     # emr -> whatsapp
     apps.emr.** -> apps.whatsapp.**
     # emr -> signatures (S32 Compliance: ICP-Brasil encounter signing — emr.services.

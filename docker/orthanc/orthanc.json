@@ -1,0 +1,35 @@
+{
+  "Name": "Vitali PACS",
+
+  // ─── HTTP / DICOM access ──────────────────────────────────────────────────
+  // RemoteAccessAllowed is required because Vitali (Django + nginx) reaches
+  // Orthanc over the Docker network. Authentication stays ON: credentials come
+  // from the ORTHANC__REGISTERED_USERS env override in docker-compose, which the
+  // orthancteam image folds into this config at startup.
+  "RemoteAccessAllowed": true,
+  "AuthenticationEnabled": true,
+  "HttpPort": 8042,
+
+  "DicomServerEnabled": true,
+  "DicomAet": "VITALI",
+  "DicomPort": 4242,
+  "StableAge": 60,
+
+  // ─── DICOMweb + OHIF viewer ───────────────────────────────────────────────
+  // The OHIF plugin (bundled in orthancteam/orthanc) is served at /ohif/ and
+  // resolves pixel data through the DICOMweb endpoint at /dicom-web/. Vitali's
+  // viewer URL is /ohif/viewer?StudyInstanceUIDs=<StudyInstanceUID>.
+  "DicomWeb": {
+    "Enable": true,
+    "Root": "/dicom-web/"
+  },
+  "OHIF": {
+    "DataSource": "dicom-web"
+  },
+
+  // ─── Push ingestion (E-012) ───────────────────────────────────────────────
+  // OnStableStudy POSTs the new study's Orthanc id to Vitali's webhook so
+  // DicomStudy.orthanc_study_id is backfilled the instant a study becomes
+  // stable. The Celery poller remains the catch-up/replay path.
+  "LuaScripts": ["/etc/orthanc/vitali-webhook.lua"]
+}
