@@ -89,6 +89,19 @@ class StudyListCreateView(APIView):
         return Response(DicomStudySerializer(study).data, status=status.HTTP_201_CREATED)
 
 
+class ViewerAuthorizationView(APIView):
+    """Cheap nginx ``auth_request`` target for OHIF and DICOMweb access."""
+
+    permission_classes = [
+        IsAuthenticated,
+        _IMAGING_MODULE,
+        HasPermission("imaging.read"),
+    ]
+
+    def get(self, request):
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class StudyDetailView(APIView):
     """GET `/api/v1/imaging/studies/{id}/`."""
 
