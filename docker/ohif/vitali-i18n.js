@@ -51,6 +51,12 @@
   function fetchPreferredLocale() {
     if (typeof window.fetch !== 'function') return Promise.resolve('');
 
+    // Vitali mirrors the short-lived access token into this JS-readable cookie
+    // specifically for same-origin API clients (see frontend/lib/auth.ts).
+    var accessToken = readCookie('access_token_js');
+    var headers = { Accept: 'application/json' };
+    if (accessToken) headers.Authorization = 'Bearer ' + accessToken;
+
     var controller = typeof window.AbortController === 'function'
       ? new window.AbortController()
       : null;
@@ -60,7 +66,7 @@
 
     return window.fetch(PREFERENCE_ENDPOINT, {
       credentials: 'same-origin',
-      headers: { Accept: 'application/json' },
+      headers: headers,
       signal: controller ? controller.signal : undefined,
     }).then(function parsePreference(response) {
       if (!response.ok) return '';

@@ -8,6 +8,7 @@ const source = fs.readFileSync(require.resolve('./vitali-i18n.js'), 'utf8');
 async function run({ cookie = '', stored = {}, preferred = '', fetchOk = true } = {}) {
   const storage = new Map(Object.entries(stored));
   const scripts = [];
+  const fetches = [];
   let currentUrl = 'https://vitali-demo.qtec.me/visualizador/viewer?StudyInstanceUIDs=1.2.3';
   const document = {
     cookie,
@@ -27,10 +28,13 @@ async function run({ cookie = '', stored = {}, preferred = '', fetchOk = true } 
       getItem: key => storage.get(key) || null,
       setItem: (key, value) => storage.set(key, value),
     },
-    fetch: async () => ({
-      ok: fetchOk,
-      json: async () => ({ preferred_language: preferred }),
-    }),
+    fetch: async (url, options) => {
+      fetches.push({ url, options });
+      return {
+        ok: fetchOk,
+        json: async () => ({ preferred_language: preferred }),
+      };
+    },
     AbortController,
     setTimeout,
     clearTimeout,
@@ -38,7 +42,7 @@ async function run({ cookie = '', stored = {}, preferred = '', fetchOk = true } 
   const context = vm.createContext({ window, document, URL, Promise, encodeURIComponent, AbortController });
   vm.runInContext(source, context);
   await window.VITALI_VIEWER_LOCALE_READY;
-  return { window, document, storage, scripts, url: currentUrl };
+  return { window, document, storage, scripts, fetches, url: currentUrl };
 }
 
 test('NEXT_LOCALE wins and maps English to the OHIF catalog', async () => {
@@ -51,10 +55,11 @@ test('NEXT_LOCALE wins and maps English to the OHIF catalog', async () => {
 });
 
 test('uses authenticated preferred_language when NEXT_LOCALE is absent', async () => {
-  const result = await run({ preferred: 'es' });
+  const result = await run({ cookie: 'access_token_js=jwt-token', preferred: 'es' });
   assert.equal(result.window.VITALI_VIEWER_LOCALE, 'es');
   assert.equal(result.window.VITALI_VIEWER_LOCALE_SOURCE, 'preferred_language');
   assert.equal(result.storage.get('i18nextLng'), 'es');
+  assert.equal(result.fetches[0].options.headers.Authorization, 'Bearer jwt-token');
 });
 
 test('pt-PT is honestly preserved while using the available pt-BR catalog', async () => {
