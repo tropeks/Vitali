@@ -322,14 +322,52 @@ class LabTestSerializer(serializers.ModelSerializer):
             "id",
             "code",
             "name",
+            "category",
+            "result_type",
+            "method",
+            "loinc_code",
             "specimen_type",
             "unit",
             "reference_range",
+            "components",
+            "reference_ranges",
             "active",
             "created_at",
             "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
+
+    def validate_components(self, value):
+        if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
+            raise serializers.ValidationError("Use uma lista de componentes estruturados.")
+        required = {"code", "name"}
+        if any(not required.issubset(item) for item in value):
+            raise serializers.ValidationError("Cada componente requer code e name.")
+        codes = [item["code"] for item in value]
+        if len(codes) != len(set(codes)):
+            raise serializers.ValidationError("Os códigos dos componentes devem ser únicos.")
+        return value
+
+    def validate_reference_ranges(self, value):
+        if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
+            raise serializers.ValidationError("Use uma lista de faixas estruturadas.")
+        allowed = {"sex", "age_min_days", "age_max_days", "lower", "upper", "unit", "text"}
+        for item in value:
+            if not set(item).issubset(allowed):
+                raise serializers.ValidationError(
+                    "Faixa de referência contém campos desconhecidos."
+                )
+            if not ({"lower", "upper", "text"} & set(item)):
+                raise serializers.ValidationError("A faixa requer lower, upper ou text.")
+        return value
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        result_type = attrs.get("result_type", getattr(self.instance, "result_type", None))
+        components = attrs.get("components", getattr(self.instance, "components", []))
+        if result_type == LabTest.ResultType.PANEL and not components:
+            raise serializers.ValidationError({"components": "Painéis requerem componentes."})
+        return attrs
 
 
 class LabOrderItemSerializer(serializers.ModelSerializer):
@@ -347,9 +385,18 @@ class LabOrderItemSerializer(serializers.ModelSerializer):
             "id",
             "test",
             "test_name",
+            "category",
+            "result_type",
+            "method",
+            "loinc_code",
+            "specimen_type",
             "unit",
             "reference_range",
+            "components",
+            "reference_ranges",
             "result_value",
+            "result_data",
+            "microbiology",
             "abnormal_flag",
             "abnormal_flag_display",
             "result_notes",
@@ -363,23 +410,58 @@ class LabOrderItemSerializer(serializers.ModelSerializer):
             "id",
             "test",
             "test_name",
+            "category",
+            "result_type",
+            "method",
+            "loinc_code",
+            "specimen_type",
             "unit",
             "reference_range",
+            "components",
+            "reference_ranges",
             "resulted_at",
             "validated_at",
             "validated_by",
         ]
 
     def validate_result_value(self, value):
-        if not value or not value.strip():
-            raise serializers.ValidationError("Informe um resultado não vazio.")
         return value.strip()
+
+    def validate_result_data(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("Use um objeto de resultado estruturado.")
+        return value
+
+    def validate_microbiology(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("Use um objeto de microbiologia estruturado.")
+        allowed = {"organisms", "culture_result", "microscopy", "comments"}
+        if not set(value).issubset(allowed):
+            raise serializers.ValidationError("Microbiologia contém campos desconhecidos.")
+        organisms = value.get("organisms", [])
+        if not isinstance(organisms, list) or any(not isinstance(item, dict) for item in organisms):
+            raise serializers.ValidationError("organisms deve ser uma lista de objetos.")
+        for organism in organisms:
+            if not organism.get("name"):
+                raise serializers.ValidationError("Cada organismo requer name.")
+            antibiogram = organism.get("antibiogram", [])
+            if not isinstance(antibiogram, list) or any(
+                not isinstance(entry, dict)
+                or not {"antimicrobial", "interpretation"}.issubset(entry)
+                for entry in antibiogram
+            ):
+                raise serializers.ValidationError(
+                    "Antibiograma requer antimicrobial e interpretation em cada item."
+                )
+        return value
 
     def validate(self, attrs):
         result_value = attrs.get("result_value", getattr(self.instance, "result_value", ""))
-        if not result_value or not result_value.strip():
+        result_data = attrs.get("result_data", getattr(self.instance, "result_data", {}))
+        microbiology = attrs.get("microbiology", getattr(self.instance, "microbiology", {}))
+        if not (result_value and result_value.strip()) and not result_data and not microbiology:
             raise serializers.ValidationError(
-                {"result_value": "Informe um resultado antes dos demais dados."}
+                {"result_value": "Informe um resultado textual ou estruturado."}
             )
         return attrs
 
@@ -392,6 +474,9 @@ class LabOrderSerializer(serializers.ModelSerializer):
     patient_name = serializers.CharField(source="patient.full_name", read_only=True)
     patient_mrn = serializers.CharField(source="patient.medical_record_number", read_only=True)
     requested_by_name = serializers.CharField(source="requested_by.full_name", read_only=True)
+    collected_by_name = serializers.CharField(
+        source="collected_by.full_name", read_only=True, default=None
+    )
     status_display = serializers.CharField(source="get_status_display", read_only=True)
 
     class Meta:
@@ -409,7 +494,12 @@ class LabOrderSerializer(serializers.ModelSerializer):
             "requested_by",
             "requested_by_name",
             "requested_at",
+            "accession_number",
             "collected_at",
+            "collected_by",
+            "collected_by_name",
+            "collection_notes",
+            "specimen_details",
             "completed_at",
             "test_ids",
             "items",
@@ -419,7 +509,12 @@ class LabOrderSerializer(serializers.ModelSerializer):
             "status",
             "requested_by",
             "requested_at",
+            "accession_number",
             "collected_at",
+            "collected_by",
+            "collected_by_name",
+            "collection_notes",
+            "specimen_details",
             "completed_at",
         ]
 
@@ -457,8 +552,15 @@ class LabOrderSerializer(serializers.ModelSerializer):
                     order=order,
                     test=test,
                     test_name=test.name,
+                    category=test.category,
+                    result_type=test.result_type,
+                    method=test.method,
+                    loinc_code=test.loinc_code,
+                    specimen_type=test.specimen_type,
                     unit=test.unit,
                     reference_range=test.reference_range,
+                    components=test.components,
+                    reference_ranges=test.reference_ranges,
                 )
                 for test in tests
             ]

@@ -491,12 +491,44 @@ class ClinicalDocument(models.Model):
 class LabTest(models.Model):
     """Tenant-scoped laboratory test catalog entry."""
 
+    class Category(models.TextChoices):
+        HEMATOLOGY = "hematology", "Hematologia"
+        BIOCHEMISTRY = "biochemistry", "Bioquímica"
+        IMMUNOLOGY = "immunology", "Imunologia e sorologia"
+        HORMONES = "hormones", "Hormônios"
+        MICROBIOLOGY = "microbiology", "Microbiologia"
+        URINALYSIS = "urinalysis", "Urinálise"
+        PARASITOLOGY = "parasitology", "Parasitologia"
+        COAGULATION = "coagulation", "Coagulação"
+        TOXICOLOGY = "toxicology", "Toxicologia"
+        MOLECULAR = "molecular", "Genética e biologia molecular"
+        PATHOLOGY = "pathology", "Anatomia patológica"
+        RAPID_TEST = "rapid_test", "Teste rápido"
+        OTHER = "other", "Outros"
+
+    class ResultType(models.TextChoices):
+        NUMERIC = "numeric", "Numérico"
+        QUALITATIVE = "qualitative", "Qualitativo"
+        TEXT = "text", "Texto"
+        PANEL = "panel", "Painel"
+        MICROBIOLOGY = "microbiology", "Microbiologia"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     code = models.CharField(max_length=40, unique=True)
     name = models.CharField(max_length=160)
+    category = models.CharField(
+        max_length=20, choices=Category.choices, default=Category.OTHER, db_index=True
+    )
+    result_type = models.CharField(
+        max_length=16, choices=ResultType.choices, default=ResultType.NUMERIC, db_index=True
+    )
+    method = models.CharField(max_length=120, blank=True)
+    loinc_code = models.CharField(max_length=20, blank=True, db_index=True)
     specimen_type = models.CharField(max_length=80, blank=True)
     unit = models.CharField(max_length=32, blank=True)
     reference_range = models.CharField(max_length=160, blank=True)
+    components = models.JSONField(default=list, blank=True)
+    reference_ranges = models.JSONField(default=list, blank=True)
     active = models.BooleanField(default=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -536,7 +568,17 @@ class LabOrder(models.Model):
         "core.User", on_delete=models.PROTECT, related_name="requested_lab_orders"
     )
     requested_at = models.DateTimeField(auto_now_add=True)
+    accession_number = models.CharField(max_length=64, blank=True, db_index=True)
     collected_at = models.DateTimeField(null=True, blank=True)
+    collected_by = models.ForeignKey(
+        "core.User",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="collected_lab_orders",
+    )
+    collection_notes = EncryptedTextField(blank=True)
+    specimen_details = EncryptedJSONField(default=list, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
@@ -564,9 +606,20 @@ class LabOrderItem(models.Model):
     order = models.ForeignKey(LabOrder, on_delete=models.CASCADE, related_name="items")
     test = models.ForeignKey(LabTest, on_delete=models.PROTECT, related_name="order_items")
     test_name = models.CharField(max_length=160)
+    category = models.CharField(max_length=20, choices=LabTest.Category.choices, default="other")
+    result_type = models.CharField(
+        max_length=16, choices=LabTest.ResultType.choices, default="numeric"
+    )
+    method = models.CharField(max_length=120, blank=True)
+    loinc_code = models.CharField(max_length=20, blank=True)
+    specimen_type = models.CharField(max_length=80, blank=True)
     unit = models.CharField(max_length=32, blank=True)
     reference_range = models.CharField(max_length=160, blank=True)
+    components = models.JSONField(default=list, blank=True)
+    reference_ranges = models.JSONField(default=list, blank=True)
     result_value = EncryptedTextField(blank=True)
+    result_data = EncryptedJSONField(default=dict, blank=True)
+    microbiology = EncryptedJSONField(default=dict, blank=True)
     abnormal_flag = models.CharField(
         max_length=14,
         choices=AbnormalFlag.choices,

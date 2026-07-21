@@ -80,6 +80,106 @@ class LaboratoryTestCase(TenantTestCase):
         self.assertEqual(item.unit, "g/dL")
         self.assertEqual(item.reference_range, "12–16")
 
+    def test_create_snapshots_structured_catalog_metadata(self):
+        self.test.category = LabTest.Category.HEMATOLOGY
+        self.test.result_type = LabTest.ResultType.PANEL
+        self.test.method = "Impedância"
+        self.test.loinc_code = "58410-2"
+        self.test.specimen_type = "Sangue total"
+        self.test.components = [{"code": "RBC", "name": "Hemácias"}]
+        self.test.reference_ranges = [{"sex": "F", "lower": "12", "upper": "16"}]
+        self.test.save()
+        item = self.create_order().items.get()
+        self.assertEqual(item.category, LabTest.Category.HEMATOLOGY)
+        self.assertEqual(item.result_type, LabTest.ResultType.PANEL)
+        self.assertEqual(item.loinc_code, "58410-2")
+        self.assertEqual(item.components[0]["code"], "RBC")
+        self.assertEqual(item.reference_ranges[0]["sex"], "F")
+
+    def test_catalog_validates_panel_and_reference_range_structure(self):
+        client = self.client_for(self.writer)
+        missing_components = client.post(
+            "/api/v1/lab-tests/",
+            {"code": "PANEL", "name": "Painel", "result_type": "panel"},
+            format="json",
+        )
+        bad_range = client.post(
+            "/api/v1/lab-tests/",
+            {
+                "code": "RANGE",
+                "name": "Faixa",
+                "reference_ranges": [{"diagnosis": "qualquer", "lower": 1}],
+            },
+            format="json",
+        )
+        self.assertEqual(missing_components.status_code, 400)
+        self.assertEqual(bad_range.status_code, 400)
+
+    def test_collect_records_structured_specimen_and_collector(self):
+        order = self.create_order()
+        response = self.post_action(
+            self.writer,
+            f"/api/v1/lab-orders/{order.id}/collect/",
+            {
+                "accession_number": "ACC-100",
+                "collection_notes": "Jejum informado",
+                "specimen_details": [
+                    {"identifier": "TUBE-1", "type": "blood", "container": "EDTA"}
+                ],
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        order.refresh_from_db()
+        self.assertEqual(order.collected_by, self.writer)
+        self.assertEqual(order.accession_number, "ACC-100")
+        self.assertEqual(order.specimen_details[0]["container"], "EDTA")
+
+    def test_structured_panel_result_can_be_validated_without_text_value(self):
+        self.test.result_type = LabTest.ResultType.PANEL
+        self.test.components = [{"code": "HB", "name": "Hemoglobina"}]
+        self.test.save()
+        order = self.create_order()
+        item = order.items.get()
+        self.post_action(self.writer, f"/api/v1/lab-orders/{order.id}/collect/")
+        result = self.post_action(
+            self.writer,
+            f"/api/v1/lab-orders/{order.id}/items/{item.id}/result/",
+            {"result_data": {"components": [{"code": "HB", "value": "13.2"}]}},
+        )
+        self.assertEqual(result.status_code, 200, result.content)
+        validated = self.post_action(
+            self.writer, f"/api/v1/lab-orders/{order.id}/items/{item.id}/validate/"
+        )
+        self.assertEqual(validated.status_code, 200, validated.content)
+
+    def test_microbiology_requires_structured_antibiogram(self):
+        order = self.create_order()
+        item = order.items.get()
+        self.post_action(self.writer, f"/api/v1/lab-orders/{order.id}/collect/")
+        invalid = self.post_action(
+            self.writer,
+            f"/api/v1/lab-orders/{order.id}/items/{item.id}/result/",
+            {"microbiology": {"organisms": [{"name": "E. coli", "antibiogram": [{}]}]}},
+        )
+        valid = self.post_action(
+            self.writer,
+            f"/api/v1/lab-orders/{order.id}/items/{item.id}/result/",
+            {
+                "microbiology": {
+                    "organisms": [
+                        {
+                            "name": "E. coli",
+                            "antibiogram": [
+                                {"antimicrobial": "Ciprofloxacino", "interpretation": "S"}
+                            ],
+                        }
+                    ]
+                }
+            },
+        )
+        self.assertEqual(invalid.status_code, 400)
+        self.assertEqual(valid.status_code, 200, valid.content)
+
     def test_create_rejects_encounter_from_another_patient(self):
         response = self.client_for(self.writer).post(
             "/api/v1/lab-orders/",

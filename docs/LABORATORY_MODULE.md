@@ -14,13 +14,37 @@ O primeiro corte operacional cobre o fluxo interno de exames laboratoriais:
 O corte concretiza a lacuna entre as primitivas já existentes de solicitação/laudo
 FHIR (`ServiceRequest` e `DiagnosticReport`) e uma operação laboratorial utilizável.
 
+## Limites de interoperabilidade
+
+O módulo é o sistema operacional interno do Vitali; ele **não é um LIS** e ainda
+não possui interface certificada com analisadores. Não envie mensagens de produção
+diretamente para estes endpoints:
+
+- HL7 v2 (por exemplo, ORM/OML, ORU e ACK) exige um motor de integração que faça
+  mapeamento de identificadores, vocabulários, unidades, estados e confirmação de
+  entrega. O Vitali ainda não recebe nem emite essas mensagens;
+- ASTM E1381/E1394 é um protocolo de equipamentos e também não está implementado.
+  A conexão futura deve ficar em um adaptador isolado, com fila, idempotência,
+  reconciliação e quarentena de mensagens inválidas;
+- os códigos do catálogo inicial são identificadores locais estáveis, não códigos
+  LOINC, TUSS ou CBHPM. A instituição deve manter o de/para homologado antes de uma
+  integração externa;
+- resultados importados futuramente não poderão ser validados automaticamente:
+  identidade, amostra, método, unidade, faixa e autoria precisam ser preservados e
+  reconciliados antes da liberação clínica.
+
+Imagem diagnóstica não pertence ao laboratório: solicitações de raio-X,
+ultrassom, tomografia e ressonância devem seguir o fluxo RIS/PACS. DICOM,
+Orthanc/OHIF e laudos de imagem permanecem separados; o laboratório não deve
+armazenar imagens ou fingir compatibilidade PACS.
+
 ## Fora deste corte
 
-- integração bidirecional com LIS/equipamentos (HL7 v2/ASTM);
+- integração bidirecional com LIS/equipamentos (HL7 v2/ASTM) e cadastro do de/para;
 - assinatura ICP-Brasil e emissão de PDF do laudo laboratorial;
 - portal do paciente e notificações de liberação;
 - regras automáticas de referência por idade, sexo, gestação, método ou laboratório;
-- microbiologia, antibiograma, anatomia patológica e cadeia de custódia;
+- bancada de microbiologia/antibiograma, macroscopia/histologia e cadeia de custódia;
 - agendamento de exames e faturamento/TISS automático;
 - imagem, DICOM, Orthanc e OHIF, que pertencem ao módulo PACS.
 
@@ -37,8 +61,17 @@ python manage.py seed_lab_catalog --tenant demo --dry-run
 python manage.py seed_lab_catalog --tenant demo
 ```
 
-O comando é idempotente: cria códigos ausentes e atualiza nome, amostra e unidade
-dos códigos conhecidos. Ele não desativa exames adicionais do tenant.
+O comando é idempotente: cria códigos ausentes e atualiza os metadados conhecidos.
+Ele não desativa exames adicionais do tenant. O catálogo cobre hematologia,
+bioquímica, coagulação, imunologia/sorologia, hormônios, urinálise, parasitologia,
+microbiologia, toxicologia, biologia molecular/genética, anatomia patológica e
+testes rápidos. Catálogos compostos representam o pedido; seus analitos/componentes
+devem ser cadastrados e liberados individualmente quando a operação exigir.
+
+Os códigos são deliberadamente locais (inclusive os mnemônicos legados do catálogo
+MVP) e não alegam equivalência com um padrão externo. Adoção de LOINC/TUSS/CBHPM
+exige curadoria e versionamento do mapeamento pelo responsável técnico; por isso o
+seed deixa `loinc_code` vazio.
 
 As faixas de referência ficam vazias de propósito. Antes do uso assistencial, um
 responsável técnico deve cadastrar as faixas validadas pelo laboratório, levando em
@@ -90,7 +123,10 @@ Valores aceitos em `abnormal_flag`: `normal`, `low`, `high`, `critical` e
 ## Operação segura
 
 - Validar identidade do paciente e a amostra fora do sistema antes de registrar a coleta.
+- Registrar tipo de amostra, método e identificadores de coleta conforme o POP local.
 - Conferir unidade e faixa de referência capturadas no item do pedido.
 - Validar resultados somente com profissional autorizado.
 - Corrigir resultados por fluxo auditável; não sobrescrever histórico diretamente no admin.
 - Tratar resultados críticos conforme o protocolo institucional — este MVP não notifica automaticamente.
+- Resultados qualitativos, culturas, antibiogramas, genética e patologia exigem
+  formulários e revisão próprios; texto livre genérico não substitui esses fluxos.
