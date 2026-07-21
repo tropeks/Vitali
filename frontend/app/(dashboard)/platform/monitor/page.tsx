@@ -50,14 +50,14 @@ function TenantCard({ tenant }: { tenant: TenantStat }) {
 
   return (
     <section
-      className={`rounded-lg border bg-white ${
+      className={`rounded-lg border bg-neu-panel ${
         tenant.error ? 'border-red-200' : 'border-slate-200'
       }`}
     >
       <div className="border-b border-slate-100 px-4 py-3 flex items-start justify-between gap-2">
         <div>
-          <p className="text-base font-semibold text-slate-900">{tenant.name}</p>
-          <p className="text-xs font-mono text-slate-500">{tenant.schema}</p>
+          <p className="text-base font-semibold text-neu-ink">{tenant.name}</p>
+          <p className="text-xs font-mono text-neu-inkSoft">{tenant.schema}</p>
         </div>
         {tenant.error && (
           <StatusBadge
@@ -139,8 +139,8 @@ export default function PilotMonitorPage() {
     <PageShell variant="operational">
       <div className="flex flex-wrap items-center gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Monitor do Piloto</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
+          <h1 className="text-2xl font-semibold text-neu-ink">Monitor do Piloto</h1>
+          <p className="text-sm text-neu-inkSoft mt-0.5">
             KPIs comportamentais e saúde do sistema — atualização automática a cada{' '}
             {REFRESH_INTERVAL_S}s
           </p>
@@ -148,7 +148,7 @@ export default function PilotMonitorPage() {
         <div className="flex-1" />
         <div className="flex items-center gap-3">
           {lastFetch && (
-            <p className={`text-xs ${isStale ? 'text-amber-700 font-semibold' : 'text-slate-500'}`}>
+            <p className={`text-xs ${isStale ? 'text-amber-700 font-semibold' : 'text-neu-inkSoft'}`}>
               {isStale ? 'Dados desatualizados · ' : ''}
               Atualizado {lastFetch.toLocaleTimeString('pt-BR')} · próxima em {countdown}s
             </p>
@@ -156,7 +156,7 @@ export default function PilotMonitorPage() {
           <button
             onClick={fetchData}
             disabled={loading}
-            className="inline-flex items-center gap-2 px-3 py-2 border border-slate-200 bg-white hover:bg-slate-50 rounded-lg text-sm font-semibold text-slate-700 disabled:opacity-50"
+            className="inline-flex items-center gap-2 neu-btn-secondary disabled:opacity-50"
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             Atualizar
@@ -172,7 +172,7 @@ export default function PilotMonitorPage() {
           action={
             <button
               onClick={fetchData}
-              className="inline-flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold"
+              className="inline-flex items-center gap-2 neu-btn-primary"
             >
               Tentar novamente
             </button>
@@ -181,11 +181,11 @@ export default function PilotMonitorPage() {
       )}
 
       {data?.system && (
-        <section className="rounded-lg border border-slate-200 bg-white">
+        <section className="rounded-lg border border-slate-200 bg-neu-panel">
           <div className="px-4 py-3 flex flex-wrap items-center gap-5 text-sm">
             <div className="flex items-center gap-2">
-              <Activity size={15} className="text-slate-500" />
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <Activity size={15} className="text-neu-inkSoft" />
+              <span className="text-xs font-semibold uppercase tracking-wide text-neu-inkSoft">
                 Sistema
               </span>
             </div>
@@ -209,7 +209,7 @@ export default function PilotMonitorPage() {
                 Cache {data.system.cache_ok ? 'ok' : 'erro'}
               </span>
             </div>
-            <div className="text-slate-500 text-xs ml-auto">
+            <div className="text-neu-inkSoft text-xs ml-auto">
               {data.system.tenant_count} tenant{data.system.tenant_count !== 1 ? 's' : ''} ativos
             </div>
           </div>
@@ -221,7 +221,7 @@ export default function PilotMonitorPage() {
           {[1, 2].map((i) => (
             <div
               key={i}
-              className="rounded-lg border border-slate-200 bg-white h-40 animate-pulse"
+              className="rounded-lg border border-slate-200 bg-neu-panel h-40 animate-pulse"
             />
           ))}
         </div>
@@ -241,7 +241,7 @@ export default function PilotMonitorPage() {
       )}
 
       {data?.generated_at && (
-        <p className="text-xs text-slate-500 text-right">
+        <p className="text-xs text-neu-inkSoft text-right">
           Gerado em {new Date(data.generated_at).toLocaleString('pt-BR')}
         </p>
       )}

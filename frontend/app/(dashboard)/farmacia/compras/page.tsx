@@ -28,7 +28,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const STATUS_BADGE: Record<string, string> = {
-  draft: 'bg-[#DFE5EB] text-[#57606A]',
+  draft: 'bg-neu-app text-neu-inkSoft',
   sent: 'bg-blue-100 text-blue-700',
   partial: 'bg-yellow-100 text-yellow-700',
   received: 'bg-green-100 text-green-700',
@@ -39,7 +39,7 @@ function StatusBadge({ status }: { status: string }) {
   return (
     <span
       className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-        STATUS_BADGE[status] ?? 'bg-[#DFE5EB] text-[#57606A]'
+        STATUS_BADGE[status] ?? 'bg-neu-app text-neu-inkSoft'
       }`}
     >
       {STATUS_LABELS[status] ?? status}
@@ -110,10 +110,10 @@ export default function ComprasPage() {
     <div className="space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <h2 className="text-lg font-semibold text-[#24292F]">Ordens de Compra</h2>
+        <h2 className="text-lg font-semibold text-neu-ink">Ordens de Compra</h2>
         <button
           onClick={() => router.push('/farmacia/compras/nova')}
-          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-b from-[#0066A1] to-[#005282] border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] text-white text-sm font-medium rounded-lg hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-b from-neu-brand to-neu-brandDeep border-t border-neu-brandEdge shadow-neu-btn-primary text-white text-sm font-medium rounded-lg hover:shadow-neu-btn-primary-hover transition-colors"
         >
           <Plus size={16} />
           Nova Ordem
@@ -121,10 +121,10 @@ export default function ComprasPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-4 items-start bg-[#F4F7FA] border border-slate-200 rounded-lg p-4">
+      <div className="flex flex-wrap gap-4 items-start bg-neu-panel border border-slate-200 rounded-lg p-4">
         {/* Supplier dropdown */}
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-[#8C959F]">Fornecedor</label>
+          <label className="text-xs font-medium text-neu-inkMuted">Fornecedor</label>
           <select
             value={supplierFilter}
             onChange={(e) => setSupplierFilter(e.target.value)}
@@ -141,12 +141,12 @@ export default function ComprasPage() {
 
         {/* Status multi-select */}
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-[#8C959F]">Status</label>
+          <label className="text-xs font-medium text-neu-inkMuted">Status</label>
           <div className="flex flex-wrap gap-2">
             {STATUS_OPTIONS.map((opt) => (
               <label
                 key={opt.value}
-                className="flex items-center gap-1.5 text-sm text-[#57606A] cursor-pointer"
+                className="flex items-center gap-1.5 text-sm text-neu-inkSoft cursor-pointer"
               >
                 <input
                   type="checkbox"
@@ -168,14 +168,14 @@ export default function ComprasPage() {
       {/* Desktop table */}
       {!loading && (
         <>
-          <div className="hidden sm:block bg-[#F4F7FA] rounded-lg border border-slate-200 overflow-x-auto">
+          <div className="hidden sm:block bg-neu-panel rounded-lg border border-slate-200 overflow-x-auto">
             <table className="w-full text-sm min-w-[600px]">
               <thead>
-                <tr className="border-b border-slate-100 bg-[#F4F7FA]">
+                <tr className="border-b border-slate-100 bg-neu-panel">
                   {['Fornecedor', 'Data Prevista', 'Itens', 'Status', 'Atualizado'].map((h) => (
                     <th
                       key={h}
-                      className="text-left px-4 py-3 text-xs font-medium text-[#8C959F] uppercase tracking-wide"
+                      className="text-left px-4 py-3 text-xs font-medium text-neu-inkMuted uppercase tracking-wide"
                     >
                       {h}
                     </th>
@@ -193,12 +193,12 @@ export default function ComprasPage() {
                 {filtered.map((o) => (
                   <tr
                     key={o.id}
-                    className="border-b border-slate-50 hover:bg-[#F4F7FA] cursor-pointer"
+                    className="border-b border-slate-50 hover:bg-neu-panel cursor-pointer"
                     onClick={() => router.push(`/farmacia/compras/${o.id}`)}
                   >
-                    <td className="px-4 py-3 font-medium text-[#24292F]">{o.supplier_name}</td>
-                    <td className="px-4 py-3 text-[#57606A]">{formatDate(o.expected_date)}</td>
-                    <td className="px-4 py-3 text-[#57606A]">{o.item_count}</td>
+                    <td className="px-4 py-3 font-medium text-neu-ink">{o.supplier_name}</td>
+                    <td className="px-4 py-3 text-neu-inkSoft">{formatDate(o.expected_date)}</td>
+                    <td className="px-4 py-3 text-neu-inkSoft">{o.item_count}</td>
                     <td className="px-4 py-3">
                       <StatusBadge status={o.status} />
                     </td>
@@ -220,13 +220,13 @@ export default function ComprasPage() {
               <button
                 key={o.id}
                 onClick={() => router.push(`/farmacia/compras/${o.id}`)}
-                className="w-full text-left bg-[#F4F7FA] rounded-lg border border-slate-200 p-4 space-y-2 hover:bg-[#F4F7FA] transition-colors"
+                className="w-full text-left bg-neu-panel rounded-lg border border-slate-200 p-4 space-y-2 hover:bg-neu-panel transition-colors"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <p className="font-medium text-[#24292F] truncate">{o.supplier_name}</p>
+                  <p className="font-medium text-neu-ink truncate">{o.supplier_name}</p>
                   <StatusBadge status={o.status} />
                 </div>
-                <div className="flex gap-4 text-xs text-[#8C959F]">
+                <div className="flex gap-4 text-xs text-neu-inkMuted">
                   <span>Previsto: {formatDate(o.expected_date)}</span>
                   <span>{o.item_count} {o.item_count === 1 ? 'item' : 'itens'}</span>
                 </div>
