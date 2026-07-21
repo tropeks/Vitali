@@ -339,6 +339,16 @@ ASAAS_WEBHOOK_TOKEN = env("ASAAS_WEBHOOK_TOKEN", default="")
 ASAAS_ENVIRONMENT = env("ASAAS_ENVIRONMENT", default="sandbox")
 PIX_CHARGE_EXPIRY_MINUTES = env.int("PIX_CHARGE_EXPIRY_MINUTES", default=30)
 
+# ─── Self-serve signup (S-132) ───────────────────────────────────────────────
+# Public marketing URL used to build the welcome/set-password link emailed to
+# new clinic owners. Also consumed by the staff invite flow.
+FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:3000")
+SUPPORT_EMAIL = env("SUPPORT_EMAIL", default="suporte@vitali.app")
+SELF_SERVE_TRIAL_DAYS = env.int("SELF_SERVE_TRIAL_DAYS", default=14)
+SELF_SERVE_DEFAULT_PLAN_NAME = env("SELF_SERVE_DEFAULT_PLAN_NAME", default="Starter")
+SELF_SERVE_DEFAULT_PLAN_PRICE = env("SELF_SERVE_DEFAULT_PLAN_PRICE", default="299.00")
+SELF_SERVE_DEFAULT_MODULES = env.list("SELF_SERVE_DEFAULT_MODULES", default=["emr"])
+
 # ─── MFA — TOTP (S-062) ──────────────────────────────────────────────────────
 MFA_GRACE_PERIOD_DAYS = env.int("MFA_GRACE_PERIOD_DAYS", default=7)
 

@@ -168,14 +168,14 @@ export default function FarmaciaPage() {
     <PageShell variant="workbench">
         <header className="flex flex-wrap items-center gap-3">
           <div className="min-w-0 flex-1">
-            <h1 className="text-2xl font-semibold text-[#24292F]">Cockpit de Farmácia</h1>
-            <p className="text-sm text-[#8C959F]">
+            <h1 className="text-2xl font-semibold text-neu-ink">Cockpit de Farmácia</h1>
+            <p className="text-sm text-neu-inkMuted">
               Fila de prescrições, estoque crítico, validade e dispensações recentes em uma superfície.
             </p>
           </div>
           <Link
             href="/farmacia/dispense"
-            className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-b from-[#0066A1] to-[#005282] border-t border-[#3385b5] shadow-[0_3px_10px_rgba(0,102,161,0.3)] px-4 py-2 text-sm font-semibold text-white hover:shadow-[0_5px_15px_rgba(0,102,161,0.4)] focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-b from-neu-brand to-neu-brandDeep border-t border-neu-brandEdge shadow-neu-btn-primary px-4 py-2 text-sm font-semibold text-white hover:shadow-neu-btn-primary-hover focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             Abrir dispensação
             <ArrowRight size={16} />
@@ -217,13 +217,13 @@ export default function FarmaciaPage() {
         </section>
 
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
-          <section className="rounded-lg border border-slate-200 bg-[#F4F7FA]">
+          <section className="rounded-lg border border-slate-200 bg-neu-panel">
             <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
               <div className="min-w-0 flex-1">
-                <h3 className="text-base font-semibold text-[#24292F]">Fila de dispensação</h3>
-                <p className="text-xs text-[#8C959F]">Receitas assinadas e parcialmente dispensadas aparecem sem troca de tela.</p>
+                <h3 className="text-base font-semibold text-neu-ink">Fila de dispensação</h3>
+                <p className="text-xs text-neu-inkMuted">Receitas assinadas e parcialmente dispensadas aparecem sem troca de tela.</p>
               </div>
-              <span className="rounded-full border border-slate-200 bg-[#F4F7FA] px-3 py-1 text-xs font-semibold text-[#57606A]">
+              <span className="rounded-full border border-slate-200 bg-neu-panel px-3 py-1 text-xs font-semibold text-neu-inkSoft">
                 {queue.length} receita(s)
               </span>
             </div>
@@ -241,8 +241,8 @@ export default function FarmaciaPage() {
               )}
               {!loading && queue.length === 0 && (
                 <div className="px-4 py-10 text-center">
-                  <p className="text-sm font-semibold text-[#57606A]">Nenhuma prescrição liberada para dispensação.</p>
-                  <p className="mt-1 text-xs text-[#8C959F]">Quando o CPOE assinar uma receita, ela aparece aqui.</p>
+                  <p className="text-sm font-semibold text-neu-inkSoft">Nenhuma prescrição liberada para dispensação.</p>
+                  <p className="mt-1 text-xs text-neu-inkMuted">Quando o CPOE assinar uma receita, ela aparece aqui.</p>
                 </div>
               )}
               {queue.map((rx) => {
@@ -254,8 +254,8 @@ export default function FarmaciaPage() {
                     className="grid gap-3 px-4 py-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_120px_120px] lg:items-center"
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-[#24292F]">{patientLabel(rx)}</p>
-                      <p className="mt-1 truncate font-mono text-xs text-[#8C959F]">{rx.patient_mrn ?? 'MRN pendente'}</p>
+                      <p className="truncate text-sm font-semibold text-neu-ink">{patientLabel(rx)}</p>
+                      <p className="mt-1 truncate font-mono text-xs text-neu-inkMuted">{rx.patient_mrn ?? 'MRN pendente'}</p>
                     </div>
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
@@ -266,9 +266,9 @@ export default function FarmaciaPage() {
                             rx.status_display,
                           )}
                         />
-                        <span className="text-xs text-[#8C959F]">{formatDate(rx.created_at)}</span>
+                        <span className="text-xs text-neu-inkMuted">{formatDate(rx.created_at)}</span>
                       </div>
-                      <p className="mt-1 truncate text-xs text-[#8C959F]">
+                      <p className="mt-1 truncate text-xs text-neu-inkMuted">
                         {itemCount} item(ns) - {rx.prescriber_name || 'Prescritor não informado'}
                       </p>
                     </div>
@@ -300,10 +300,10 @@ export default function FarmaciaPage() {
           </section>
 
           <aside className="space-y-4">
-            <section className="rounded-lg border border-slate-200 bg-[#F4F7FA]">
+            <section className="rounded-lg border border-slate-200 bg-neu-panel">
               <div className="border-b border-slate-100 px-4 py-3">
-                <h3 className="text-base font-semibold text-[#24292F]">Alertas de estoque</h3>
-                <p className="text-xs text-[#8C959F]">Baixo, vencido ou vencendo em 30 dias.</p>
+                <h3 className="text-base font-semibold text-neu-ink">Alertas de estoque</h3>
+                <p className="text-xs text-neu-inkMuted">Baixo, vencido ou vencendo em 30 dias.</p>
               </div>
               <div className="divide-y divide-slate-100">
                 {loading && <p className="px-4 py-3 text-sm text-slate-400">Carregando estoque...</p>}
@@ -316,18 +316,18 @@ export default function FarmaciaPage() {
                     <Link
                       key={item.id}
                       href={`/farmacia/stock/${item.id}`}
-                      className="block px-4 py-3 hover:bg-[#F4F7FA]"
+                      className="block px-4 py-3 hover:bg-neu-panel"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-[#24292F]">{itemName(item)}</p>
-                          <p className="mt-1 truncate font-mono text-xs text-[#8C959F]">
+                          <p className="truncate text-sm font-semibold text-neu-ink">{itemName(item)}</p>
+                          <p className="mt-1 truncate font-mono text-xs text-neu-inkMuted">
                             Lote {item.lot_number || '-'} - {item.location || 'sem local'}
                           </p>
                         </div>
                         {stockMeta && <StatusBadge meta={stockMeta} className="shrink-0" />}
                       </div>
-                      <p className="mt-2 text-xs text-[#8C959F]">
+                      <p className="mt-2 text-xs text-neu-inkMuted">
                         {formatQty(item.quantity)} disponível - mínimo {formatQty(item.min_stock)}
                       </p>
                     </Link>
@@ -336,23 +336,23 @@ export default function FarmaciaPage() {
               </div>
             </section>
 
-            <section className="rounded-lg border border-slate-200 bg-[#F4F7FA]">
+            <section className="rounded-lg border border-slate-200 bg-neu-panel">
               <div className="border-b border-slate-100 px-4 py-3">
-                <h3 className="text-base font-semibold text-[#24292F]">Dispensações recentes</h3>
-                <p className="text-xs text-[#8C959F]">Últimos registros auditáveis.</p>
+                <h3 className="text-base font-semibold text-neu-ink">Dispensações recentes</h3>
+                <p className="text-xs text-neu-inkMuted">Últimos registros auditáveis.</p>
               </div>
               <div className="divide-y divide-slate-100">
                 {loading && <p className="px-4 py-3 text-sm text-slate-400">Carregando dispensações...</p>}
                 {!loading && recentDispensations.length === 0 && (
-                  <p className="px-4 py-3 text-sm text-[#8C959F]">Nenhuma dispensação registrada ainda.</p>
+                  <p className="px-4 py-3 text-sm text-neu-inkMuted">Nenhuma dispensação registrada ainda.</p>
                 )}
                 {recentDispensations.map((disp) => (
                   <div key={disp.id} className="px-4 py-3">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-[#24292F]">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-neu-ink">
                       <Pill size={14} />
                       <span className="truncate">{disp.drug_name ?? 'Medicamento'}</span>
                     </div>
-                    <p className="mt-1 text-xs text-[#8C959F]">
+                    <p className="mt-1 text-xs text-neu-inkMuted">
                       {formatQty(disp.total_quantity)} dispensado(s) em {disp.lots.length} lote(s)
                     </p>
                     <p className="mt-1 truncate text-xs text-slate-400">
