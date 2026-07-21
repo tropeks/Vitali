@@ -28,6 +28,12 @@ async function loginAsAdmin(page: Page, nextPath = '/dashboard'): Promise<void> 
 }
 
 test.describe('Auth gate', () => {
+  // Pre-accept cookie consent so the fixed-bottom consent banner does not overlay
+  // sidebar controls (notably the "Sair" logout button) during the auth flow.
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => window.localStorage.setItem('vitali_cookie_consent', 'true'));
+  });
+
   test('redirects unauthenticated protected app routes to login with next', async ({ page }) => {
     await page.goto('/patients?tab=ativos');
 
