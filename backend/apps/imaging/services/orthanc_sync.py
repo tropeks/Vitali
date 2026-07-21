@@ -267,7 +267,10 @@ def verify_and_link_study(
         patient_id_issuer=client.issuer_of_patient_id(payload),
         n_series=client.series_count(payload, stats),
         n_instances=client.instance_count(payload, stats),
-        expected_candidate=(connection.schema_name, str(study_row.pk)),
+        expected_candidate=(
+            connection.schema_name,  # type: ignore[attr-defined]
+            str(study_row.pk),
+        ),
     )
 
 
