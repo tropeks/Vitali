@@ -4,15 +4,34 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('whatsapp', '0003_remove_scheduledreminder_unique_reminder_per_appointment_type_and_more'),
+        ("whatsapp", "0003_remove_scheduledreminder_unique_reminder_per_appointment_type_and_more"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='conversationsession',
-            name='state',
-            field=models.CharField(choices=[('IDLE', 'Idle'), ('PENDING_OPTIN', 'Pending opt-in'), ('SELECTING_SELF_OR_OTHER', 'Selecting self or other'), ('CAPTURING_NAME', 'Capturing other person name'), ('CAPTURING_CPF', 'Capturing other person CPF'), ('SELECTING_SPECIALTY', 'Selecting specialty'), ('SELECTING_PROFESSIONAL', 'Selecting professional'), ('SELECTING_DATE', 'Selecting date'), ('SELECTING_TIME', 'Selecting time'), ('CONFIRMING', 'Confirming booking'), ('CONFIRMED', 'Booking confirmed'), ('TRIAGE_COMPLAINT', 'Triage — capturing chief complaint'), ('TRIAGE_QUESTIONS', 'Triage — answering red-flag questions'), ('FALLBACK_HUMAN', 'Fallback to human'), ('OPTED_OUT', 'Opted out')], default='IDLE', max_length=30),
+            model_name="conversationsession",
+            name="state",
+            field=models.CharField(
+                choices=[
+                    ("IDLE", "Idle"),
+                    ("PENDING_OPTIN", "Pending opt-in"),
+                    ("SELECTING_SELF_OR_OTHER", "Selecting self or other"),
+                    ("CAPTURING_NAME", "Capturing other person name"),
+                    ("CAPTURING_CPF", "Capturing other person CPF"),
+                    ("SELECTING_SPECIALTY", "Selecting specialty"),
+                    ("SELECTING_PROFESSIONAL", "Selecting professional"),
+                    ("SELECTING_DATE", "Selecting date"),
+                    ("SELECTING_TIME", "Selecting time"),
+                    ("CONFIRMING", "Confirming booking"),
+                    ("CONFIRMED", "Booking confirmed"),
+                    ("TRIAGE_COMPLAINT", "Triage — capturing chief complaint"),
+                    ("TRIAGE_QUESTIONS", "Triage — answering red-flag questions"),
+                    ("FALLBACK_HUMAN", "Fallback to human"),
+                    ("OPTED_OUT", "Opted out"),
+                ],
+                default="IDLE",
+                max_length=30,
+            ),
         ),
     ]
