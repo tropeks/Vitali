@@ -27,10 +27,11 @@ UID_CT = "1.2.840.113619.2.55.3.604688119.1234567890.001"
 ACC_CT = "ACC-2026-001"
 
 
-def _study_payload(uid, accession, n_series=3, n_instances=240):
+def _study_payload(uid, accession, n_series=3, n_instances=240, patient_id="TEST-PATIENT-ID"):
     return {
         "study": {
             "MainDicomTags": {"StudyInstanceUID": uid, "AccessionNumber": accession},
+            "PatientMainDicomTags": {"PatientID": patient_id},
             "Series": ["s"] * n_series,
         },
         "statistics": {"CountSeries": n_series, "CountInstances": n_instances},
@@ -74,6 +75,7 @@ class OrthancWebhookTest(TenantTestCase):
         )
         self.study = DicomStudy.objects.create(
             patient=self.patient,
+            dicom_patient_id="TEST-PATIENT-ID",
             study_instance_uid=UID_CT,
             accession_number=ACC_CT,
             modality="CT",

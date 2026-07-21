@@ -34,15 +34,17 @@ def _summary(*, scanned=0, matched=0, skipped=0, ambiguous=0, errored=0, locked=
         "matched": matched,
         "skipped": skipped,
         "ambiguous_skipped": ambiguous,
+        "identity_mismatch_skipped": 0,
         "error_skipped": errored,
         "lock_skipped": locked,
     }
 
 
-def _study_payload(uid, accession, n_series=3, n_instances=240):
+def _study_payload(uid, accession, n_series=3, n_instances=240, patient_id="TEST-PATIENT-ID"):
     return {
         "study": {
             "MainDicomTags": {"StudyInstanceUID": uid, "AccessionNumber": accession},
+            "PatientMainDicomTags": {"PatientID": patient_id},
             "Series": ["s"] * n_series,
         },
         "statistics": {"CountSeries": n_series, "CountInstances": n_instances},
@@ -91,6 +93,7 @@ class OrthancSyncTest(TenantTestCase):
         )
         self.ct_study = DicomStudy.objects.create(
             patient=self.patient,
+            dicom_patient_id="TEST-PATIENT-ID",
             study_instance_uid=UID_CT,
             accession_number=ACC_CT,
             modality="CT",
@@ -123,7 +126,7 @@ class OrthancSyncTest(TenantTestCase):
         self.assertEqual(self.ct_study.number_of_instances, 120)
         self.assertEqual(cache.get(orthanc_sync.CURSOR_CACHE_KEY), 1)
 
-    def test_match_by_accession_when_uid_differs(self):
+    def test_accession_fallback_refuses_conflicting_uid(self):
         client = self._client(
             changes=[
                 {
@@ -137,9 +140,9 @@ class OrthancSyncTest(TenantTestCase):
         )
         summary = orthanc_sync.sync_orthanc_studies(client=client)
 
-        self.assertEqual(summary["matched"], 1)
+        self.assertEqual(summary["identity_mismatch_skipped"], 1)
         self.ct_study.refresh_from_db()
-        self.assertEqual(self.ct_study.orthanc_study_id, "orth-acc")
+        self.assertEqual(self.ct_study.orthanc_study_id, "")
 
     def test_no_match_is_skipped_and_creates_nothing(self):
         before = DicomStudy.objects.count()
@@ -293,6 +296,7 @@ class OrthancSyncMultiTenantTest(TenantTestCase):
         )
         self.study_a = DicomStudy.objects.create(
             patient=self.patient_a,
+            dicom_patient_id="TEST-PATIENT-ID",
             study_instance_uid=UID_CT,
             accession_number=ACC_CT,
             modality="CT",

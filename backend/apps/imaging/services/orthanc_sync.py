@@ -79,27 +79,34 @@ def _empty_summary() -> dict:
         "matched": 0,
         "skipped": 0,
         "ambiguous_skipped": 0,
+        "identity_mismatch_skipped": 0,
         "error_skipped": 0,
         "lock_skipped": False,
     }
 
 
-def _backfill_study(study, *, orthanc_id, n_series, n_instances, allow_link_overwrite):
+def _identity_matches(study, *, patient_id: str, patient_id_issuer: str) -> bool:
+    """Fail closed unless Orthanc's patient identity equals the registered pair."""
+    return bool(
+        patient_id
+        and study.dicom_patient_id
+        and patient_id == study.dicom_patient_id
+        and patient_id_issuer == study.dicom_patient_id_issuer
+    )
+
+
+def _backfill_study(study, *, orthanc_id, n_series, n_instances):
     """Apply orthanc id + counts to a matched ``DicomStudy`` row, saving deltas.
 
-    ``allow_link_overwrite`` gates writing a *different* ``orthanc_study_id`` over
-    one that is already set: UID matches are authoritative (True); the weak
-    accession fallback must never repoint an existing link (False). When the id
-    already equals the target it is a no-op regardless.
+    Callers must validate UID, accession and patient identity before this write.
     """
     fields: list[str] = []
     if study.orthanc_study_id != orthanc_id:
-        if study.orthanc_study_id and not allow_link_overwrite:
-            # Accession fallback must not repoint an already-linked study.
-            pass
-        else:
-            study.orthanc_study_id = orthanc_id
-            fields.append("orthanc_study_id")
+        study.orthanc_study_id = orthanc_id
+        fields.append("orthanc_study_id")
+    if not study.dicom_identity_verified:
+        study.dicom_identity_verified = True
+        fields.append("dicom_identity_verified")
     if n_series and study.number_of_series != n_series:
         study.number_of_series = n_series
         fields.append("number_of_series")
@@ -116,131 +123,82 @@ def _apply_study_to_tenants(
     orthanc_id: str,
     study_uid: str,
     accession: str,
+    patient_id: str,
+    patient_id_issuer: str,
     n_series: int,
     n_instances: int,
+    expected_candidate: tuple[str, str] | None = None,
 ) -> str:
     """Link an Orthanc study to EXACTLY one tenant ``DicomStudy``.
 
-    Algorithm (never writes to more than one tenant):
-
-    1. **UID pass (authoritative).** Scan tenant schemas for a ``DicomStudy``
-       with ``study_instance_uid == study_uid``. The FIRST match wins: backfill
-       it and STOP scanning (short-circuit). UID matches may overwrite an
-       existing ``orthanc_study_id`` (still authoritative). Returns ``"matched"``.
-
-    2. **Accession fallback** (only if NO tenant matched by UID). Collect every
-       tenant whose ``DicomStudy`` has ``accession_number == accession``:
-         * 0 tenants  → ``"skipped"`` (no match anywhere).
-         * 1 tenant   → backfill it, but NEVER overwrite an existing
-           ``orthanc_study_id`` (accession is a weak signal). Returns ``"matched"``.
-         * 2+ tenants → ambiguous accession collision across clinics: update
-           NONE of them, log a warning, return ``"ambiguous"``.
-
-    Per-tenant DB errors are isolated (logged + skipped) so one bad tenant never
-    aborts the run. Returns one of ``"matched"``, ``"skipped"``, ``"ambiguous"``.
+    UID/accession select a candidate, but only an exact DICOM PatientID + Issuer
+    match authorizes writing. Any duplicate candidate, including inside one
+    tenant, is ambiguous and results in no write.
     """
     from apps.imaging.models import DicomStudy
 
-    # ── Pass 1: UID (globally unique → FIRST match is authoritative, then STOP).
-    # We must never write to more than one tenant. for_each_tenant_schema has no
-    # early-exit, so the callback latches on the first hit and no-ops the rest:
-    # even on a (data-error) UID collision across clinics, only ONE tenant is
-    # written. A list cell carries the latch across the closure calls.
+    candidates: list[tuple[str, str]] = []
+
+    def _find(field: str, value: str, operation: str) -> list[tuple[str, str]]:
+        def _scan(schema_name: str):
+            try:
+                ids = list(DicomStudy.objects.filter(**{field: value}).values_list("id", flat=True))
+            except DatabaseError:
+                logger.exception("orthanc_sync: DB error in %s tenant=%s", operation, schema_name)
+                return []
+            return [(schema_name, str(pk)) for pk in ids]
+
+        found = for_each_tenant_schema(_scan, logger=logger, operation=operation)
+        return [candidate for tenant_rows in found if tenant_rows for candidate in tenant_rows]
+
     if study_uid:
-        uid_hit: list[str] = []
-
-        def _match_uid(schema_name: str):
-            if uid_hit:
-                # Already linked the first matching tenant — short-circuit the rest.
-                return None
-            try:
-                study = DicomStudy.objects.filter(study_instance_uid=study_uid).first()
-            except DatabaseError:
-                logger.exception(
-                    "orthanc_sync: DB error matching uid=%s in tenant=%s (skipped)",
-                    study_uid,
-                    schema_name,
-                )
-                return None
-            if study is None:
-                return None
-            try:
-                changed = _backfill_study(
-                    study,
-                    orthanc_id=orthanc_id,
-                    n_series=n_series,
-                    n_instances=n_instances,
-                    allow_link_overwrite=True,
-                )
-            except DatabaseError:
-                logger.exception(
-                    "orthanc_sync: DB error saving uid match in tenant=%s (skipped)",
-                    schema_name,
-                )
-                return None
-            uid_hit.append(schema_name)
-            logger.info(
-                "orthanc_sync: matched by uid=%s → tenant=%s orthanc_id=%s (%s)",
-                study_uid,
-                schema_name,
-                orthanc_id,
-                ",".join(changed) or "no-op",
-            )
-            return schema_name
-
-        for_each_tenant_schema(_match_uid, logger=logger, operation="orthanc_sync uid match")
-        if uid_hit:
-            # First UID match is authoritative — exactly one tenant linked.
-            return "matched"
-
-    # ── Pass 2: accession fallback (only when no UID match anywhere). ──────────
-    if not accession:
+        candidates = _find("study_instance_uid", study_uid, "orthanc_sync uid scan")
+    if not candidates and accession:
+        candidates = _find("accession_number", accession, "orthanc_sync accession scan")
+    if not candidates:
         return "skipped"
-
-    def _find_accession(schema_name: str):
-        try:
-            study = DicomStudy.objects.filter(accession_number=accession).first()
-        except DatabaseError:
-            logger.exception(
-                "orthanc_sync: DB error matching accession=%s in tenant=%s (skipped)",
-                accession,
-                schema_name,
-            )
-            return None
-        return schema_name if study is not None else None
-
-    found = for_each_tenant_schema(
-        _find_accession, logger=logger, operation="orthanc_sync accession scan"
-    )
-    matched_schemas = [s for s in found if s is not None]
-
-    if not matched_schemas:
-        return "skipped"
-
-    if len(matched_schemas) > 1:
+    if len(candidates) != 1:
         logger.warning(
-            "orthanc_sync: AMBIGUOUS accession=%s for orthanc_id=%s matches "
-            "multiple tenants %s — refusing to write any (cross-tenant collision)",
+            "orthanc_sync: AMBIGUOUS uid=%s accession=%s orthanc_id=%s candidates=%s",
+            study_uid,
             accession,
             orthanc_id,
-            matched_schemas,
+            candidates,
         )
         return "ambiguous"
-
-    # Exactly one tenant matched by accession — backfill it (never repoint a link).
-    target = matched_schemas[0]
+    if expected_candidate is not None and candidates[0] != expected_candidate:
+        logger.warning(
+            "orthanc_sync: manual target mismatch expected=%s resolved=%s orthanc_id=%s",
+            expected_candidate,
+            candidates[0],
+            orthanc_id,
+        )
+        return "identity_mismatch"
+    target, study_pk = candidates[0]
     try:
         with schema_context(target):
-            study = DicomStudy.objects.filter(accession_number=accession).first()
+            study = DicomStudy.objects.filter(pk=study_pk).first()
             if study is None:
-                # Row vanished between scan and apply — treat as no match.
                 return "skipped"
+            if study.study_instance_uid != study_uid:
+                return "identity_mismatch"
+            if study.accession_number and study.accession_number != accession:
+                return "identity_mismatch"
+            if not _identity_matches(
+                study, patient_id=patient_id, patient_id_issuer=patient_id_issuer
+            ):
+                logger.warning(
+                    "orthanc_sync: PATIENT IDENTITY MISMATCH tenant=%s study=%s orthanc_id=%s",
+                    target,
+                    study.pk,
+                    orthanc_id,
+                )
+                return "identity_mismatch"
             changed = _backfill_study(
                 study,
                 orthanc_id=orthanc_id,
                 n_series=n_series,
                 n_instances=n_instances,
-                allow_link_overwrite=False,
             )
     except DatabaseError:
         logger.exception(
@@ -249,8 +207,8 @@ def _apply_study_to_tenants(
         )
         return "skipped"
     logger.info(
-        "orthanc_sync: matched by accession=%s → tenant=%s orthanc_id=%s (%s)",
-        accession,
+        "orthanc_sync: identity verified uid=%s → tenant=%s orthanc_id=%s (%s)",
+        study_uid,
         target,
         orthanc_id,
         ",".join(changed) or "no-op",
@@ -280,8 +238,39 @@ def ingest_one_study(orthanc_id: str, *, client: OrthancClient | None = None) ->
         orthanc_id=orthanc_id,
         study_uid=client.study_instance_uid(study),
         accession=client.accession_number(study),
+        patient_id=client.patient_id(study),
+        patient_id_issuer=client.issuer_of_patient_id(study),
         n_series=client.series_count(study, stats),
         n_instances=client.instance_count(study, stats),
+    )
+
+
+def verify_and_link_study(
+    study_row, orthanc_id: str, *, client: OrthancClient | None = None
+) -> str:
+    """Server-side verification used by the manual PATCH endpoint.
+
+    This intentionally uses the same global uniqueness and patient-identity
+    rules as webhook/poll ingestion; an authenticated operator cannot bypass
+    PACS metadata by posting counts or identifiers asserted by the browser.
+    """
+    from django.db import connection
+
+    client = client or OrthancClient()
+    payload = client.get_study(orthanc_id)
+    stats = client.get_study_statistics(orthanc_id)
+    return _apply_study_to_tenants(
+        orthanc_id=orthanc_id,
+        study_uid=client.study_instance_uid(payload),
+        accession=client.accession_number(payload),
+        patient_id=client.patient_id(payload),
+        patient_id_issuer=client.issuer_of_patient_id(payload),
+        n_series=client.series_count(payload, stats),
+        n_instances=client.instance_count(payload, stats),
+        expected_candidate=(
+            connection.schema_name,  # type: ignore[attr-defined]
+            str(study_row.pk),
+        ),
     )
 
 
@@ -355,6 +344,8 @@ def sync_orthanc_studies(client: OrthancClient | None = None) -> dict:
 
                 study_uid = client.study_instance_uid(study)
                 accession = client.accession_number(study)
+                patient_id = client.patient_id(study)
+                patient_id_issuer = client.issuer_of_patient_id(study)
                 n_series = client.series_count(study, stats)
                 n_instances = client.instance_count(study, stats)
 
@@ -362,6 +353,8 @@ def sync_orthanc_studies(client: OrthancClient | None = None) -> dict:
                     orthanc_id=orthanc_id,
                     study_uid=study_uid,
                     accession=accession,
+                    patient_id=patient_id,
+                    patient_id_issuer=patient_id_issuer,
                     n_series=n_series,
                     n_instances=n_instances,
                 )
@@ -369,6 +362,8 @@ def sync_orthanc_studies(client: OrthancClient | None = None) -> dict:
                     summary["matched"] += 1
                 elif outcome == "ambiguous":
                     summary["ambiguous_skipped"] += 1
+                elif outcome == "identity_mismatch":
+                    summary["identity_mismatch_skipped"] += 1
                 else:  # "skipped"
                     summary["skipped"] += 1
                     logger.info(

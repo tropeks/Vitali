@@ -81,6 +81,12 @@ class DicomStudy(models.Model):
     # external integrators, so we make it indexed but not unique.
     study_instance_uid = models.CharField(max_length=128, unique=True, db_index=True)
     accession_number = models.CharField(max_length=64, blank=True, db_index=True)
+    # Patient identity as encoded in DICOM.  The database schema already scopes
+    # this pair to a tenant; keeping it on the study makes PACS ingestion able
+    # to prove that pixels belong to the same patient as the Vitali FK.
+    dicom_patient_id = models.CharField(max_length=64, blank=True, db_index=True)
+    dicom_patient_id_issuer = models.CharField(max_length=64, blank=True)
+    dicom_identity_verified = models.BooleanField(default=False, db_index=True)
 
     modality = models.CharField(max_length=4, choices=MODALITY_CHOICES, db_index=True)
     body_part_examined = models.CharField(max_length=64, blank=True)
@@ -111,7 +117,15 @@ class DicomStudy(models.Model):
             f"{self.modality} — {self.body_part_examined or self.description} ({self.patient_id})"
         )
 
+    def save(self, *args, **kwargs):
+        # Enforce the default outside DRF too (admin, fixtures and order-flow
+        # services all create studies). Integrations can still set an explicit
+        # tenant-scoped DICOM identity before saving.
+        if not self.dicom_patient_id and self.patient_id:
+            self.dicom_patient_id = self.patient.medical_record_number
+        return super().save(*args, **kwargs)
+
     @property
     def has_pixel_data(self) -> bool:
-        """True when the study has been ingested by the PACS (Orthanc) layer."""
-        return bool(self.orthanc_study_id)
+        """True only after Orthanc tags proved the patient identity."""
+        return bool(self.orthanc_study_id and self.dicom_identity_verified)

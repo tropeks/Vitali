@@ -5,7 +5,7 @@ RUN mkdir -p /usr/share/nginx/html/visualizador \
     && find /usr/share/nginx/html -mindepth 1 -maxdepth 1 ! -name visualizador \
        -exec mv {} /usr/share/nginx/html/visualizador/ \;
 
-COPY app-config.js index.html manifest.json vitali-theme.css NOTICE /usr/share/nginx/html/visualizador/
+COPY app-config.js index.html manifest.json vitali-i18n.js vitali-theme.css NOTICE /usr/share/nginx/html/visualizador/
 COPY assets/vitali-logo.svg /usr/share/nginx/html/visualizador/assets/vitali-logo.svg
 RUN gzip -d -f /usr/share/nginx/html/visualizador/*.bundle*.js.gz \
     && sed -i 's#__webpack_require__\.p = "/";#__webpack_require__.p = "/visualizador/";#g' \
