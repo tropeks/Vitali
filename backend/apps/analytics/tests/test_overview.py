@@ -14,7 +14,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.core.models import Role, User
-from apps.emr.models import Appointment, Patient, Professional
+from apps.emr.models import Appointment, Patient, Professional, ScheduleConfig
 from apps.test_utils import TenantTestCase
 
 
@@ -142,3 +142,72 @@ class AnalyticsPermissionRelaxationTests(OverviewBaseCase):
         self.client.force_authenticate(user=None)
         resp = self.client.get("/api/v1/analytics/appointments-by-status/")
         self.assertEqual(resp.status_code, 401)
+
+
+class OverviewFillRateTests(OverviewBaseCase):
+    """Fill-rate (occupancy) KPI — issue #133.
+
+    The KPI must stay hidden (``fill_rate is None``) until a tenant configures an
+    operational agenda, then expose booked/capacity once Schedule + TimeSlot capacity
+    exists.
+    """
+
+    def _make_schedule(self, *, start="08:00", end="09:00", slot_minutes=30):
+        """ScheduleConfig open every weekday so capacity is deterministic regardless
+        of which day the test runs. 08:00–09:00 at 30min = 2 slots/day."""
+        return ScheduleConfig.objects.create(
+            professional=self.professional,
+            slot_duration_minutes=slot_minutes,
+            working_days=[0, 1, 2, 3, 4, 5, 6],
+            working_hours_start=start,
+            working_hours_end=end,
+            is_active=True,
+        )
+
+    def test_fill_rate_null_without_schedule_config(self):
+        self._make_appt(status="confirmed")
+        resp = self.client.get("/api/v1/analytics/overview/?period=today")
+        data = resp.json()
+        self.assertIsNone(data["fill_rate"])
+        self.assertEqual(data["fill_rate_capacity"], 0)
+        self.assertEqual(data["fill_rate_booked"], 0)
+
+    def test_fill_rate_null_when_config_inactive(self):
+        cfg = self._make_schedule()
+        cfg.is_active = False
+        cfg.save(update_fields=["is_active"])
+        self._make_appt(status="confirmed")
+        resp = self.client.get("/api/v1/analytics/overview/?period=today")
+        self.assertIsNone(resp.json()["fill_rate"])
+
+    def test_fill_rate_computed_with_schedule_config(self):
+        # 2 slots/day capacity, 1 booked appointment today → 50% occupancy.
+        self._make_schedule()
+        self._make_appt(status="confirmed")
+        resp = self.client.get("/api/v1/analytics/overview/?period=today")
+        data = resp.json()
+        self.assertEqual(data["fill_rate_capacity"], 2)
+        self.assertEqual(data["fill_rate_booked"], 1)
+        self.assertEqual(data["fill_rate"], 50.0)
+
+    def test_fill_rate_excludes_cancelled_from_booked(self):
+        self._make_schedule()
+        self._make_appt(status="confirmed")
+        self._make_appt(status="cancelled")
+        resp = self.client.get("/api/v1/analytics/overview/?period=today")
+        data = resp.json()
+        # Cancelled appointment freed its slot — only 1 of 2 slots counts as booked.
+        self.assertEqual(data["fill_rate_booked"], 1)
+        self.assertEqual(data["fill_rate"], 50.0)
+
+    def test_fill_rate_capped_at_100_under_overbooking(self):
+        # 2 slots/day, but 3 non-cancelled appointments → capped at 100%.
+        self._make_schedule()
+        self._make_appt(status="confirmed")
+        self._make_appt(status="completed")
+        self._make_appt(status="no_show")
+        resp = self.client.get("/api/v1/analytics/overview/?period=today")
+        data = resp.json()
+        self.assertEqual(data["fill_rate_capacity"], 2)
+        self.assertEqual(data["fill_rate_booked"], 3)
+        self.assertEqual(data["fill_rate"], 100.0)
