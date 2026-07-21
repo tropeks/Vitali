@@ -76,6 +76,11 @@ jobs:
     # Skip SSH deploy until staging host is provisioned and STAGING_ENABLED repo var is set to "true".
     # Build-and-push always runs so GHCR images stay fresh; flip the var to enable end-to-end deploys.
     if: vars.STAGING_ENABLED == 'true'
+    # Shared with release-deploy.yml so a master push and a tag release never
+    # deploy to the staging host at the same time.
+    concurrency:
+      group: staging-host-deploy
+      cancel-in-progress: false
 
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
