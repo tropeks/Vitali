@@ -4,7 +4,8 @@
  * Handles:
  *   - JWT Authorization header injection (uses getAccessToken from lib/auth)
  *   - PASSWORD_CHANGE_REQUIRED 403 → redirect to /auth/change-password (T5/T12)
- *   - (future) JWT refresh on 401, MFA redirect on its 403, etc.
+ *   - single-flight JWT refresh + one retry on 401
+ *   - expired refresh session cleanup + redirect to login preserving `next`
  *
  * Usage:
  *   const data = await apiFetch('/api/v1/me')
@@ -14,6 +15,8 @@
  *   })
  */
 import { getAccessToken } from './auth'
+
+let refreshInFlight: Promise<Response> | null = null
 
 export interface ApiFetchOptions extends RequestInit {
   /** If true, do NOT auto-redirect on PASSWORD_CHANGE_REQUIRED — let caller handle. */
@@ -30,17 +33,46 @@ export class ApiError extends Error {
   }
 }
 
+function fetchWithAccessToken(path: string, fetchInit: RequestInit): Promise<Response> {
+  const token = getAccessToken()
+  const headers = new Headers(fetchInit.headers)
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
+  return fetch(path, { ...fetchInit, headers })
+}
+
+function refreshAccessToken(): Promise<Response> {
+  if (!refreshInFlight) {
+    refreshInFlight = fetch('/api/auth/refresh', {
+      method: 'POST',
+      credentials: 'same-origin',
+    }).finally(() => {
+      refreshInFlight = null
+    })
+  }
+  return refreshInFlight
+}
+
+async function redirectExpiredSession(): Promise<never> {
+  // The logout route clears every auth cookie even if Django is unavailable.
+  await fetch('/api/auth/logout', {
+    method: 'POST',
+    credentials: 'same-origin',
+  }).catch(() => undefined)
+
+  const next = `${window.location.pathname || '/'}${window.location.search || ''}`
+  window.location.href = `/login?next=${encodeURIComponent(next)}`
+  throw new ApiError(401, { detail: 'Session expired.' }, 'Sessão expirada — redirecionando')
+}
+
 export async function apiFetch<T = any>(
   path: string,
   options: ApiFetchOptions = {}
 ): Promise<T> {
   const { skipPasswordChangeRedirect, ...fetchInit } = options
 
-  const token = getAccessToken()
   const headers = new Headers(fetchInit.headers)
-  if (token && !headers.has('Authorization')) {
-    headers.set('Authorization', `Bearer ${token}`)
-  }
   // Default content-type for JSON bodies (when caller provides a string body)
   if (
     fetchInit.body &&
@@ -50,7 +82,25 @@ export async function apiFetch<T = any>(
     headers.set('Content-Type', 'application/json')
   }
 
-  const response = await fetch(path, { ...fetchInit, headers })
+  let response = await fetchWithAccessToken(path, { ...fetchInit, headers })
+
+  // Browser API calls get one transparent refresh/retry. Concurrent 401s share
+  // the same refresh request so SimpleJWT token rotation cannot race itself.
+  if (
+    response.status === 401 &&
+    typeof window !== 'undefined' &&
+    !path.startsWith('/api/auth/')
+  ) {
+    const refreshed = await refreshAccessToken()
+    if (refreshed.ok) {
+      response = await fetchWithAccessToken(path, { ...fetchInit, headers })
+      if (response.status === 401) {
+        return redirectExpiredSession()
+      }
+    } else if (refreshed.status === 401) {
+      return redirectExpiredSession()
+    }
+  }
 
   // Handle PASSWORD_CHANGE_REQUIRED redirect (T5 contract)
   if (response.status === 403 && !skipPasswordChangeRedirect) {

@@ -39,7 +39,7 @@ beforeEach(() => {
 
   // Allow setting window.location.href
   Object.defineProperty(window, 'location', {
-    value: { href: '' },
+    value: { href: '', pathname: '/patients', search: '?page=2' },
     writable: true,
     configurable: true,
   })
@@ -127,6 +127,54 @@ describe('apiFetch', () => {
     const [, init] = vi.mocked(fetch).mock.calls[0]
     const headers = init?.headers as Headers
     expect(headers.get('Authorization')).toBe('Bearer tok123')
+  })
+
+  it('refreshes once and retries a 401 with the rotated access token', async () => {
+    mockGetAccessToken
+      .mockReturnValueOnce('expired-token')
+      .mockReturnValueOnce('rotated-token')
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(makeResponse(401, { detail: 'Token expired' }))
+      .mockResolvedValueOnce(makeResponse(200, { ok: true }))
+      .mockResolvedValueOnce(makeResponse(200, { id: 7 }))
+
+    await expect(apiFetch('/api/v1/me')).resolves.toEqual({ id: 7 })
+
+    expect(vi.mocked(fetch).mock.calls[1][0]).toBe('/api/auth/refresh')
+    const retryHeaders = vi.mocked(fetch).mock.calls[2][1]?.headers as Headers
+    expect(retryHeaders.get('Authorization')).toBe('Bearer rotated-token')
+  })
+
+  it('clears the session and redirects to login when refresh is expired', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(makeResponse(401, { detail: 'Token expired' }))
+      .mockResolvedValueOnce(makeResponse(401, { error: 'Token inválido.' }))
+      .mockResolvedValueOnce(makeResponse(200, { ok: true }))
+
+    await expect(apiFetch('/api/v1/me')).rejects.toMatchObject({ status: 401 })
+
+    expect(vi.mocked(fetch).mock.calls[2][0]).toBe('/api/auth/logout')
+    expect(window.location.href).toBe('/login?next=%2Fpatients%3Fpage%3D2')
+  })
+
+  it('uses a single refresh for concurrent 401 responses', async () => {
+    let releaseRefresh: ((response: Response) => void) | undefined
+    const refreshResponse = new Promise<Response>((resolve) => { releaseRefresh = resolve })
+    mockGetAccessToken.mockReturnValue('rotated-token')
+    vi.mocked(fetch).mockImplementation((path) => {
+      if (path === '/api/auth/refresh') return refreshResponse
+      const apiCalls = vi.mocked(fetch).mock.calls.filter(([url]) => url === '/api/v1/me').length
+      return Promise.resolve(apiCalls <= 2
+        ? makeResponse(401, { detail: 'Token expired' })
+        : makeResponse(200, { ok: true }))
+    })
+
+    const requests = [apiFetch('/api/v1/me'), apiFetch('/api/v1/me')]
+    await Promise.resolve()
+    releaseRefresh?.(makeResponse(200, { ok: true }))
+
+    await expect(Promise.all(requests)).resolves.toEqual([{ ok: true }, { ok: true }])
+    expect(vi.mocked(fetch).mock.calls.filter(([url]) => url === '/api/auth/refresh')).toHaveLength(1)
   })
 
   it('does NOT redirect when skipPasswordChangeRedirect=true even on PASSWORD_CHANGE_REQUIRED', async () => {
