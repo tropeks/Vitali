@@ -442,6 +442,48 @@ class BillingOverviewView(APIView):
         )
 
 
+class BillingOperationalView(APIView):
+    """Operational receivables cockpit for the current competency.
+
+    Values are deliberately derived from TISS guides only; no accounting
+    entries are fabricated.  ``outstanding`` is the amount not yet paid and
+    ``at_risk`` represents denied or appealed guides requiring action.
+    """
+
+    permission_classes = [IsAuthenticated, _BILLING_MODULE]  # type: ignore[list-item]
+
+    def get(self, request):
+        competency = request.query_params.get("competency") or _competency_for_month(_today())
+        qs = TISSGuide.objects.filter(competency=competency)
+        agg = qs.aggregate(
+            billed=Sum("total_value"),
+            received=Sum("total_value", filter=Q(status="paid")),
+            at_risk=Sum("total_value", filter=Q(status__in=["denied", "appeal"])),
+            total=Count("id"),
+            paid=Count("id", filter=Q(status="paid")),
+            outstanding_count=Count("id", filter=~Q(status__in=["paid", "denied"])),
+        )
+        billed = agg["billed"] or Decimal("0.00")
+        received = agg["received"] or Decimal("0.00")
+        at_risk = agg["at_risk"] or Decimal("0.00")
+        by_provider = list(
+            qs.values("provider_id", "provider__name")
+            .annotate(billed=Sum("total_value"), received=Sum("total_value", filter=Q(status="paid")))
+            .order_by("provider__name")
+        )
+        return Response({
+            "competency": competency,
+            "billed": billed,
+            "received": received,
+            "outstanding": billed - received,
+            "at_risk": at_risk,
+            "guides_total": agg["total"] or 0,
+            "guides_paid": agg["paid"] or 0,
+            "guides_outstanding": agg["outstanding_count"] or 0,
+            "providers": by_provider,
+        })
+
+
 class MonthlyRevenueView(APIView):
     """GET /api/v1/analytics/billing/monthly-revenue/?months=6"""
 

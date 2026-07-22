@@ -118,6 +118,28 @@ class BillingOverviewTests(BillingAnalyticsBaseCase):
         self.assertEqual(data["guides_paid"], 1)
         self.assertEqual(data["guides_denied"], 1)
 
+
+class BillingOperationalTests(BillingAnalyticsBaseCase):
+    def test_operational_cockpit_aggregates_receivables(self):
+        competency = timezone.localdate().strftime("%Y-%m")
+        self._guide(status="paid", total_value="200.00", competency=competency)
+        self._guide(status="submitted", total_value="300.00", competency=competency)
+        self._guide(status="denied", total_value="100.00", competency=competency)
+        response = self.client.get("/api/v1/analytics/billing/operational/")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["competency"], competency)
+        self.assertEqual(payload["billed"], "600.00")
+        self.assertEqual(payload["received"], "200.00")
+        self.assertEqual(payload["outstanding"], "400.00")
+        self.assertEqual(payload["at_risk"], "100.00")
+        self.assertEqual(payload["guides_outstanding"], 2)
+
+    def test_operational_cockpit_can_select_competency(self):
+        self._guide(status="paid", total_value="999.00", competency="2020-01")
+        response = self.client.get("/api/v1/analytics/billing/operational/?competency=2020-01")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["received"], "999.00")
     def test_empty_state_returns_zeros(self):
         resp = self.client.get("/api/v1/analytics/billing/overview/")
         self.assertEqual(resp.status_code, 200)
