@@ -7,6 +7,7 @@ from .models import (
     Allergy,
     Appointment,
     ClinicalDocument,
+    DuplicatePatientCandidate,
     Encounter,
     EncounterProcedure,
     LabOrder,
@@ -14,6 +15,7 @@ from .models import (
     LabTest,
     MedicalHistory,
     Patient,
+    PatientIdentifier,
     PatientInsurance,
     Prescription,
     PrescriptionItem,
@@ -22,6 +24,66 @@ from .models import (
     SOAPNote,
     VitalSigns,
 )
+
+
+class PatientIdentifierSerializer(serializers.ModelSerializer):
+    value = serializers.CharField(write_only=True, max_length=255)
+
+    class Meta:
+        model = PatientIdentifier
+        fields = (
+            "id",
+            "patient",
+            "system",
+            "issuer",
+            "value",
+            "use",
+            "status",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "created_at", "updated_at")
+
+    def validate(self, attrs):
+        from .services_mpi import identifier_digest
+
+        system = attrs.get("system", getattr(self.instance, "system", "")).strip().lower()
+        issuer = attrs.get("issuer", getattr(self.instance, "issuer", "")).strip().lower()
+        value = attrs.get("value")
+        if value is None and self.instance is not None:
+            value = self.instance.value
+        digest = identifier_digest(system, issuer, value)
+        existing = PatientIdentifier.objects.filter(
+            system=system, issuer=issuer, value_digest=digest
+        )
+        if self.instance is not None:
+            existing = existing.exclude(pk=self.instance.pk)
+        if existing.exists():
+            raise serializers.ValidationError(
+                {"value": "Este identificador já está associado a um paciente."}
+            )
+        attrs["system"] = system
+        attrs["issuer"] = issuer
+        return attrs
+
+
+class DuplicatePatientCandidateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DuplicatePatientCandidate
+        fields = (
+            "id",
+            "patient_a",
+            "patient_b",
+            "score",
+            "reasons",
+            "status",
+            "reviewed_by",
+            "reviewed_at",
+            "review_notes",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = fields
 
 
 def validate_cpf(cpf: str) -> str:

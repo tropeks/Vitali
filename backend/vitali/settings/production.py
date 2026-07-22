@@ -28,6 +28,11 @@ ALLOWED_HOSTS = env.list("ALLOWED_HOSTS")
 assert_secret_key(SECRET_KEY)
 assert_postgres_password(env("POSTGRES_PASSWORD", default=""))
 assert_redis_password(env("REDIS_PASSWORD", default=""))
+# Purpose-specific passwords default to the legacy password. This preserves old
+# deployments while making every endpoint fail fast when the split overlay is used.
+assert_redis_password(env("REDIS_CACHE_PASSWORD", default=env("REDIS_PASSWORD", default="")))
+assert_redis_password(env("REDIS_BROKER_PASSWORD", default=env("REDIS_PASSWORD", default="")))
+assert_redis_password(env("REDIS_RESULT_PASSWORD", default=env("REDIS_PASSWORD", default="")))
 assert_whatsapp_evolution_api_key(env("WHATSAPP_EVOLUTION_API_KEY", default=""))
 
 # ─── Field encryption — hard requirement ─────────────────────────────────────
@@ -96,7 +101,7 @@ DATABASES["default"]["CONN_HEALTH_CHECKS"] = True  # noqa: F405
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": env("REDIS_URL", default="redis://redis:6379/0"),
+        "LOCATION": CACHE_URL,  # noqa: F405
         "KEY_PREFIX": "vitali",
         "TIMEOUT": 300,
         "OPTIONS": {

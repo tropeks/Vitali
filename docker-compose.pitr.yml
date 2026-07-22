@@ -1,0 +1,20 @@
+# Opt-in PostgreSQL PITR overlay. Enabling it recreates only the postgres
+# container to add WAL settings and the archive volume; schedule a maintenance
+# window and take a verified pg_dump first.
+services:
+  postgres:
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_timeout=${PITR_ARCHIVE_TIMEOUT:-300s}
+      - -c
+      - archive_command=test -f /wal-archive/%f || (cp %p /wal-archive/%f.tmp && sync && mv /wal-archive/%f.tmp /wal-archive/%f)
+    volumes:
+      - pitr_wal_archive:/wal-archive
+
+volumes:
+  pitr_wal_archive:

@@ -1,0 +1,145 @@
+# Opt-in Redis role separation for production Compose.
+#
+# This is NOT high availability: all three Redis processes still share one Docker
+# host and one failure domain. It limits workload contention and prepares stable
+# endpoints for an eventual managed Redis/Sentinel/cluster deployment.
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml -f docker-compose.redis-scale.yml \
+#     --env-file /etc/vitali/redis-scale.env up -d
+
+services:
+  # Reuses the legacy service name so existing depends_on declarations remain
+  # valid, but makes this instance Celery-broker-only with a named ACL user.
+  redis:
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --user
+      - default
+      - "off"
+      - --user
+      - broker
+      - "on"
+      - ">${REDIS_BROKER_PASSWORD:?Set REDIS_BROKER_PASSWORD}"
+      - ~*
+      - +@all
+      - -@dangerous
+    volumes:
+      - redis_broker_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--user", "broker", "-a", "${REDIS_BROKER_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis-cache:
+    image: redis:7-alpine
+    restart: always
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --maxmemory-policy
+      - allkeys-lru
+      - --user
+      - default
+      - "off"
+      - --user
+      - cache
+      - "on"
+      - ">${REDIS_CACHE_PASSWORD:?Set REDIS_CACHE_PASSWORD}"
+      - ~*
+      - +@all
+      - -@dangerous
+    volumes:
+      - redis_cache_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--user", "cache", "-a", "${REDIS_CACHE_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 512m
+    cpus: 0.5
+
+  redis-results:
+    image: redis:7-alpine
+    restart: always
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --user
+      - default
+      - "off"
+      - --user
+      - results
+      - "on"
+      - ">${REDIS_RESULT_PASSWORD:?Set REDIS_RESULT_PASSWORD}"
+      - ~*
+      - +@all
+      - -@dangerous
+    volumes:
+      - redis_results_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--user", "results", "-a", "${REDIS_RESULT_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 512m
+    cpus: 0.5
+
+  django:
+    environment:
+      CACHE_URL: redis://cache:${REDIS_CACHE_PASSWORD}@redis-cache:6379/0
+      CELERY_BROKER_URL: redis://broker:${REDIS_BROKER_PASSWORD}@redis:6379/0
+      CELERY_RESULT_BACKEND: redis://results:${REDIS_RESULT_PASSWORD}@redis-results:6379/0
+    depends_on:
+      redis-cache:
+        condition: service_healthy
+      redis-results:
+        condition: service_healthy
+
+  celery-worker:
+    environment:
+      CACHE_URL: redis://cache:${REDIS_CACHE_PASSWORD}@redis-cache:6379/0
+      CELERY_BROKER_URL: redis://broker:${REDIS_BROKER_PASSWORD}@redis:6379/0
+      CELERY_RESULT_BACKEND: redis://results:${REDIS_RESULT_PASSWORD}@redis-results:6379/0
+    depends_on:
+      redis-cache:
+        condition: service_healthy
+      redis-results:
+        condition: service_healthy
+
+  celery-beat:
+    environment:
+      CACHE_URL: redis://cache:${REDIS_CACHE_PASSWORD}@redis-cache:6379/0
+      CELERY_BROKER_URL: redis://broker:${REDIS_BROKER_PASSWORD}@redis:6379/0
+      CELERY_RESULT_BACKEND: redis://results:${REDIS_RESULT_PASSWORD}@redis-results:6379/0
+    depends_on:
+      redis-cache:
+        condition: service_healthy
+      redis-results:
+        condition: service_healthy
+
+  flower:
+    command: celery --broker=redis://broker:${REDIS_BROKER_PASSWORD}@redis:6379/0 flower --port=5555 --basic_auth=${FLOWER_BASIC_AUTH}
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  evolution-api:
+    environment:
+      REDIS_URI: redis://broker:${REDIS_BROKER_PASSWORD}@redis:6379/1
+
+volumes:
+  redis_broker_data:
+  redis_cache_data:
+  redis_results_data:

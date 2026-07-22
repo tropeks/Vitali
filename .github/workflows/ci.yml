@@ -301,7 +301,7 @@ jobs:
         run: cp .env.example .env
 
       - name: Validate smoke script syntax
-        run: bash -n scripts/smoke_test.sh
+        run: bash -n scripts/smoke_test.sh scripts/backup.sh scripts/restore_test.sh scripts/backup_imaging.sh scripts/restore_test_imaging.sh scripts/pitr_check.sh scripts/pitr_basebackup.sh scripts/pitr_sync_wal.sh scripts/pitr_restore_test.sh scripts/provision_observability_secrets.sh
 
       - name: Validate docker-compose config
         run: docker compose config
@@ -314,6 +314,26 @@ jobs:
         # keep it parseable. Point PROD_ENV_FILE at the example so the env_file
         # default (/etc/vitali/secrets.env) doesn't trip the validation.
         run: PROD_ENV_FILE=.env.staging.example GHCR_REPO=${{ github.repository_owner }} IMAGE_TAG=ci docker compose -f docker-compose.prod.yml --env-file .env.staging.example config
+
+      - name: Validate PITR production overlay
+        run: PROD_ENV_FILE=.env.staging.example GHCR_REPO=${{ github.repository_owner }} IMAGE_TAG=ci docker compose -f docker-compose.prod.yml -f docker-compose.pitr.yml --env-file .env.staging.example config
+
+      - name: Validate observability production overlay
+        run: PROD_ENV_FILE=.env.staging.example GHCR_REPO=${{ github.repository_owner }} IMAGE_TAG=ci docker compose -f docker-compose.prod.yml -f docker-compose.observability.yml --env-file .env.staging.example config
+
+      - name: Validate observability configs
+        run: |
+          jq empty docker/observability/grafana/dashboards/operations-overview.json
+          docker run --rm --entrypoint /bin/promtool \
+            -v "$PWD/docker/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
+            -v "$PWD/docker/observability/alerts.yml:/etc/prometheus/alerts.yml:ro" \
+            -v "$PWD/docker/observability/targets/rabbitmq-empty.json:/etc/prometheus/targets/rabbitmq.json:ro" \
+            prom/prometheus:v3.13.1@sha256:3c42b892cf723fa54d2f262c37a0e1f80aa8c8ddb1da7b9b0df9455a35a7f893 \
+            check config /etc/prometheus/prometheus.yml
+          docker run --rm \
+            -v "$PWD/docker/observability/otel-collector.yml:/etc/otelcol-contrib/config.yaml:ro" \
+            otel/opentelemetry-collector-contrib:0.157.0@sha256:f2f01157055a9b2aab9df7118e1f1c9abf345e99b23bc7a2bc791db374a7d0f6 \
+            validate --config=/etc/otelcol-contrib/config.yaml
 
       - name: Build backend image
         run: docker build ./backend -t vitali-backend:ci

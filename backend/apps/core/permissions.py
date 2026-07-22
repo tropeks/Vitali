@@ -149,6 +149,11 @@ ADMIN_PERMISSIONS = [
     "roles.read",
     "roles.write",
     "reports.read",
+    "privacy.read",
+    "privacy.manage",
+    "workflow.read",
+    "workflow.request",
+    "workflow.approve",
     "ai.use",
     "ai.manage",
     "signatures.read",
@@ -163,6 +168,12 @@ ADMIN_PERMISSIONS = [
     "triage.read",
     "triage.respond",
     "mobile.admin",
+    "organization.read",
+    "organization.write",
+    "organization.delete",
+    "mpi.read",
+    "mpi.write",
+    "mpi.review",
 ]
 
 CLINICAL_PRESCRIBER_PERMISSIONS = [

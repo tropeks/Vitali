@@ -1,11 +1,12 @@
 """Tenant-scoped LGPD/privacy settings endpoint."""
 
 from rest_framework import serializers, status
-from rest_framework.permissions import IsAdminUser, IsAuthenticated
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import AIDPAStatus, Tenant
+from .permissions import HasPermission
 
 
 class PrivacySettingsSerializer(serializers.Serializer):
@@ -27,23 +28,14 @@ def _response_data(tenant: Tenant) -> dict:
 class PrivacySettingsView(APIView):
     """Read and update privacy settings for the tenant resolved from the host."""
 
-    permission_classes = [IsAuthenticated]
+    def get_permissions(self):
+        permission = "privacy.manage" if self.request.method == "POST" else "privacy.read"
+        return [IsAuthenticated(), HasPermission(permission)]
 
     def get(self, request):
         return Response(_response_data(request.tenant))
 
     def post(self, request):
-        if not IsAdminUser().has_permission(request, self):
-            return Response(
-                {
-                    "error": {
-                        "code": "FORBIDDEN",
-                        "message": "Apenas administradores podem alterar estas configurações.",
-                    }
-                },
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
         serializer = PrivacySettingsSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         tenant = request.tenant

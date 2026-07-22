@@ -33,6 +33,7 @@ env:
   REGISTRY: ghcr.io
   BACKEND_IMAGE: ghcr.io/${{ github.repository_owner }}/vitali-backend
   FRONTEND_IMAGE: ghcr.io/${{ github.repository_owner }}/vitali-frontend
+  VIEWER_IMAGE: ghcr.io/${{ github.repository_owner }}/vitali-viewer
 
 jobs:
   # ─── Build & push the release images ────────────────────────────────────────
@@ -94,6 +95,17 @@ jobs:
           cache-from: type=registry,ref=${{ env.FRONTEND_IMAGE }}:latest
           cache-to: type=inline
 
+      - name: Build and push Vitali Imagem viewer
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
+        with:
+          context: ./docker/ohif
+          push: true
+          tags: |
+            ${{ env.VIEWER_IMAGE }}:${{ github.ref_name }}
+            ${{ env.VIEWER_IMAGE }}:sha-${{ github.sha }}
+          cache-from: type=registry,ref=${{ env.VIEWER_IMAGE }}:latest
+          cache-to: type=inline
+
   # ─── Deploy to Staging (automatic) ──────────────────────────────────────────
   deploy-staging:
     name: Deploy to Staging
@@ -127,12 +139,13 @@ jobs:
             GHCR_REPO=${{ github.repository_owner }}
             BACKEND_IMG="ghcr.io/${GHCR_REPO}/vitali-backend"
             FRONTEND_IMG="ghcr.io/${GHCR_REPO}/vitali-frontend"
+            VIEWER_IMG="ghcr.io/${GHCR_REPO}/vitali-viewer"
 
             # Capture the images the stack is currently running (by ID) and alias
             # them to :rollback so the failure handler can restore them. Capturing
             # by container image ID works even though we deploy by semver tag.
             echo "Tagging current images as rollback..."
-            for svc_img in "django:${BACKEND_IMG}" "nextjs:${FRONTEND_IMG}"; do
+            for svc_img in "django:${BACKEND_IMG}" "nextjs:${FRONTEND_IMG}" "vitali-viewer:${VIEWER_IMG}"; do
               svc="${svc_img%%:*}"; img="${svc_img#*:}"
               cid=$(IMAGE_TAG="$IMAGE_TAG" GHCR_REPO="$GHCR_REPO" \
                 docker compose -f docker-compose.staging.yml ps -q "$svc" 2>/dev/null | head -1 || true)
@@ -232,9 +245,10 @@ jobs:
             GHCR_REPO=${{ github.repository_owner }}
             BACKEND_IMG="ghcr.io/${GHCR_REPO}/vitali-backend"
             FRONTEND_IMG="ghcr.io/${GHCR_REPO}/vitali-frontend"
+            VIEWER_IMG="ghcr.io/${GHCR_REPO}/vitali-viewer"
 
             echo "Tagging current images as rollback..."
-            for svc_img in "django:${BACKEND_IMG}" "nextjs:${FRONTEND_IMG}"; do
+            for svc_img in "django:${BACKEND_IMG}" "nextjs:${FRONTEND_IMG}" "vitali-viewer:${VIEWER_IMG}"; do
               svc="${svc_img%%:*}"; img="${svc_img#*:}"
               cid=$(IMAGE_TAG="$IMAGE_TAG" GHCR_REPO="$GHCR_REPO" \
                 docker compose -f docker-compose.prod.yml ps -q "$svc" 2>/dev/null | head -1 || true)

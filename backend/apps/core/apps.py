@@ -9,4 +9,7 @@ class CoreConfig(AppConfig):
     def ready(self):
         import apps.billing.services.tasks  # noqa: F401 — connects appointment_paid signal
         import apps.core.signals  # noqa: F401
-        from apps.core import checks  # noqa: F401 — registers system checks (S-084)
+        from apps.core import (
+            checks,  # noqa: F401 — registers system checks (S-084)
+            checks_celery,  # noqa: F401 — broker delivery safety checks
+        )

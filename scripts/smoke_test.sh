@@ -155,6 +155,12 @@ echo "4. Frontend..."
 FRONTEND_STATUS=$(curl_status_retry 120 200 3 2 -L "$FRONTEND_URL/")
 check "GET frontend / with redirects → 200" "$FRONTEND_STATUS" "200"
 
+# The white-label viewer must exist but remain closed to anonymous traffic.
+if "${compose_cmd[@]}" config --services 2>/dev/null | grep -qx 'vitali-viewer'; then
+  VIEWER_STATUS=$(curl_status_retry 10 401 3 2 "$BASE_URL/visualizador/")
+  check "GET /visualizador/ anonymous → 401" "$VIEWER_STATUS" "401"
+fi
+
 # ─── Check 5: Static files ────────────────────────────────────────────────────
 
 echo ""

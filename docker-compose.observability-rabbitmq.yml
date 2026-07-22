@@ -1,0 +1,13 @@
+# Add only together with docker-compose.rabbitmq.yml and the observability
+# overlay. Uses RabbitMQ's native Prometheus plugin; no extra credentials or
+# exporter are required on the private Compose network.
+services:
+  rabbitmq:
+    command: ["sh", "-c", "rabbitmq-plugins enable --offline rabbitmq_prometheus && exec rabbitmq-server"]
+
+  prometheus:
+    volumes:
+      - ./docker/observability/targets/rabbitmq-enabled.json:/etc/prometheus/targets/rabbitmq.json:ro
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
