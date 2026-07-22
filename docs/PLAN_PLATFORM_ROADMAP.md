@@ -87,6 +87,13 @@ repetível, suporte mensurável, backup/restauração testados e nenhum incident
   PIX/cartão, NF e integração contábil.
 - Estoque avançado: múltiplos locais, inventário, consignado, validade, compras sugeridas
   e controlados com rastreabilidade legal.
+- **Entrada fiscal automatizada de estoque:** upload manual de XML, captura por e-mail,
+  API/webhook de fornecedor, SFTP e consulta de NF-e destinada ao CNPJ com certificado
+  digital. Validar chave, emitente/destinatário, duplicidade, cancelamento, itens, NCM,
+  lote, validade, custo e impostos; mapear produto fiscal ao catálogo interno e exigir
+  conferência/aprovação antes de efetivar a entrada. Suportar recebimento parcial,
+  devolução, carta de correção e trilha do XML original. Para controlados, exigir dupla
+  conferência e auditoria específica.
 - Experiência do paciente: consentimento digital, pagamentos, NPS/CSAT e pós-atendimento.
 - Integrações externas iniciais: FHIR/HL7 e laboratórios parceiros.
 
