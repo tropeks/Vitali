@@ -30,7 +30,13 @@ def _patient_encrypted_matches(queryset, term):
     phone_needle = digits if len(digits) >= 4 else ""
     return [
         p.id
-        for p in queryset.only(
+        # PatientViewSet optimizes normal list responses with
+        # ``select_related("created_by")``.  The encrypted search deliberately
+        # projects only patient PII fields, so clear inherited joins before
+        # applying ``only()``; otherwise Django raises FieldError because the
+        # related field is both traversed and deferred.
+        for p in queryset.select_related(None)
+        .only(
             "id",
             "full_name",
             "social_name",
@@ -39,7 +45,8 @@ def _patient_encrypted_matches(queryset, term):
             "identity_document",
             "phone",
             "email",
-        ).iterator(chunk_size=500)
+        )
+        .iterator(chunk_size=500)
         if (
             needle in (p.full_name or "").casefold()
             or needle in (p.social_name or "").casefold()

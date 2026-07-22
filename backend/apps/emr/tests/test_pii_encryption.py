@@ -169,6 +169,13 @@ class TestEncryptedNameSearch(TenantTestCase):
         self.assertIn(self.ana.id, ids)
         self.assertNotIn(self.bruno.id, ids)
 
+    def test_search_filter_accepts_viewset_select_related_queryset(self):
+        qs = Patient.objects.select_related("created_by")
+        result = PatientSearchFilter().filter_queryset(
+            self._request({"search": "maria"}), qs, view=None
+        )
+        self.assertEqual(list(result.values_list("id", flat=True)), [self.ana.id])
+
     def test_search_filter_matches_plaintext_mrn(self):
         qs = Patient.objects.all()
         result = PatientSearchFilter().filter_queryset(
