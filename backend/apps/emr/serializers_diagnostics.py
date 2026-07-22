@@ -14,7 +14,8 @@ class LabSpecimenEventSerializer(serializers.ModelSerializer):
     class Meta:
         model = LabSpecimenEvent
         fields = "__all__"
-        read_only_fields = fields
+        # Exposed only as a read-only nested serializer by LabSpecimenSerializer.
+        read_only_fields = ()
 
 
 class LabSpecimenSerializer(serializers.ModelSerializer):
@@ -37,4 +38,5 @@ class CriticalLabResultSerializer(serializers.ModelSerializer):
     class Meta:
         model = CriticalLabResult
         fields = "__all__"
-        read_only_fields = fields
+        # Mutations are restricted to the detect/acknowledge service actions.
+        read_only_fields = ()
