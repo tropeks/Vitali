@@ -347,9 +347,12 @@ class TISSGuide(models.Model):
 
 class ProfessionalSettlement(models.Model):
     """Periodic, idempotent professional payout/accrual."""
+
     STATUS_CHOICES = [("draft", "Rascunho"), ("approved", "Aprovado"), ("paid", "Pago")]
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    professional = models.ForeignKey("emr.Professional", on_delete=models.PROTECT, related_name="settlements")
+    professional = models.ForeignKey(
+        "emr.Professional", on_delete=models.PROTECT, related_name="settlements"
+    )
     competency = models.CharField(max_length=7, help_text="AAAA-MM")
     gross_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     deductions = models.DecimalField(max_digits=12, decimal_places=2, default=0)
@@ -357,33 +360,57 @@ class ProfessionalSettlement(models.Model):
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="draft")
     calculated_at = models.DateTimeField(auto_now=True)
     paid_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
-        constraints = [models.UniqueConstraint(fields=["professional", "competency"], name="uniq_prof_settlement_competency")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["professional", "competency"], name="uniq_prof_settlement_competency"
+            )
+        ]
         ordering = ["-competency"]
+
     def recalculate(self, rate=0):
         from django.db.models import Sum
-        total = self.professional.encounters.filter(encounter_date__startswith=self.competency, status="signed").aggregate(v=Sum("tiss_guides__total_value"))["v"] or 0
+
+        total = (
+            self.professional.encounters.filter(
+                encounter_date__startswith=self.competency, status="signed"
+            ).aggregate(v=Sum("tiss_guides__total_value"))["v"]
+            or 0
+        )
         self.gross_amount = total
         self.net_amount = max(0, total - self.deductions) * (rate or 1)
         return self
+
     def __str__(self):
         return f"Repasse {self.professional} — {self.competency}"
 
 
 class AccountsReceivable(models.Model):
     """Receivable ledger entry linked to exactly one TISS guide."""
-    STATUS_CHOICES = [("expected", "Previsto"), ("billed", "Faturado"), ("received", "Recebido"), ("overdue", "Vencido"), ("contested", "Contestado")]
+
+    STATUS_CHOICES = [
+        ("expected", "Previsto"),
+        ("billed", "Faturado"),
+        ("received", "Recebido"),
+        ("overdue", "Vencido"),
+        ("contested", "Contestado"),
+    ]
     guide = models.OneToOneField(TISSGuide, on_delete=models.PROTECT, related_name="receivable")
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     due_date = models.DateField(null=True, blank=True)
     received_at = models.DateTimeField(null=True, blank=True)
-    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="expected", db_index=True)
+    status = models.CharField(
+        max_length=12, choices=STATUS_CHOICES, default="expected", db_index=True
+    )
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
     class Meta:
         ordering = ["-created_at"]
-        indexes = [models.Index(fields=["status", "due_date"])]
+        indexes = [models.Index(fields=["status", "due_date"], name="billing_acc_status_ea3ffa_idx")]
+
     def __str__(self):
         return f"CR {self.guide.guide_number} — R$ {self.amount}"
 

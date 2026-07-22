@@ -7,23 +7,37 @@ from rest_framework import serializers
 from apps.core.models import TUSSCode
 
 from .models import (
+    AccountsReceivable,
     Glosa,
     InsuranceProvider,
     PriceTable,
     PriceTableItem,
+    ProfessionalSettlement,
     TISSBatch,
     TISSGuide,
     TISSGuideItem,
-    AccountsReceivable,
-    ProfessionalSettlement,
 )
+
 
 class ProfessionalSettlementSerializer(serializers.ModelSerializer):
     professional_name = serializers.CharField(source="professional.user.full_name", read_only=True)
+
     class Meta:
         model = ProfessionalSettlement
-        fields = ["id", "professional", "professional_name", "competency", "gross_amount", "deductions", "net_amount", "status", "calculated_at", "paid_at"]
+        fields = [
+            "id",
+            "professional",
+            "professional_name",
+            "competency",
+            "gross_amount",
+            "deductions",
+            "net_amount",
+            "status",
+            "calculated_at",
+            "paid_at",
+        ]
         read_only_fields = ["id", "gross_amount", "net_amount", "calculated_at", "paid_at"]
+
 
 # ─── TUSS ─────────────────────────────────────────────────────────────────────
 
@@ -313,7 +327,21 @@ class AccountsReceivableSerializer(serializers.ModelSerializer):
     guide_number = serializers.CharField(source="guide.guide_number", read_only=True)
     patient_name = serializers.CharField(source="guide.patient.full_name", read_only=True)
     provider_name = serializers.CharField(source="guide.provider.name", read_only=True)
+
     class Meta:
         model = AccountsReceivable
-        fields = ["id", "guide", "guide_number", "patient_name", "provider_name", "amount", "due_date", "received_at", "status", "notes", "created_at", "updated_at"]
+        fields = [
+            "id",
+            "guide",
+            "guide_number",
+            "patient_name",
+            "provider_name",
+            "amount",
+            "due_date",
+            "received_at",
+            "status",
+            "notes",
+            "created_at",
+            "updated_at",
+        ]
         read_only_fields = ["id", "created_at", "updated_at", "received_at"]

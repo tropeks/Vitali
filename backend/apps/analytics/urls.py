@@ -4,8 +4,8 @@ from .views import (
     AppointmentsByDayView,
     AppointmentsByStatusView,
     BatchThroughputView,
-    BillingOverviewView,
     BillingOperationalView,
+    BillingOverviewView,
     DenialByInsurerView,
     GlosaAccuracyView,
     MonthlyRevenueView,
@@ -28,7 +28,11 @@ urlpatterns = [
     path("waiting-time/", WaitingTimeView.as_view(), name="analytics-waiting-time"),
     # Billing analytics (S-035)
     path("billing/overview/", BillingOverviewView.as_view(), name="analytics-billing-overview"),
-    path("billing/operational/", BillingOperationalView.as_view(), name="analytics-billing-operational"),
+    path(
+        "billing/operational/",
+        BillingOperationalView.as_view(),
+        name="analytics-billing-operational",
+    ),
     path(
         "billing/monthly-revenue/",
         MonthlyRevenueView.as_view(),

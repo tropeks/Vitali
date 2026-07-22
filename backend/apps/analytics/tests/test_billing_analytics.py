@@ -140,6 +140,7 @@ class BillingOperationalTests(BillingAnalyticsBaseCase):
         response = self.client.get("/api/v1/analytics/billing/operational/?competency=2020-01")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["received"], "999.00")
+
     def test_empty_state_returns_zeros(self):
         resp = self.client.get("/api/v1/analytics/billing/overview/")
         self.assertEqual(resp.status_code, 200)

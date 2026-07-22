@@ -23,47 +23,52 @@ from apps.core.models import TUSSCode
 from apps.core.permissions import ModuleRequiredPermission
 
 from .models import (
+    AccountsReceivable,
     Glosa,
     GlosaSafetyAlert,
     InsuranceProvider,
     PriceTable,
     PriceTableItem,
+    ProfessionalSettlement,
     TISSBatch,
     TISSGuide,
-    ProfessionalSettlement,
-    AccountsReceivable,
 )
 from .permissions import IsFaturistaOrAdmin
 from .serializers import (
+    AccountsReceivableSerializer,
     GlosaSerializer,
     InsuranceProviderSerializer,
     PriceTableItemSerializer,
     PriceTableListSerializer,
     PriceTableSerializer,
+    ProfessionalSettlementSerializer,
     TISSBatchSerializer,
     TISSGuideListSerializer,
     TISSGuideSerializer,
-    AccountsReceivableSerializer,
     TUSSCodeSerializer,
-    ProfessionalSettlementSerializer,
 )
+
+logger = logging.getLogger(__name__)
+_BILLING_MODULE = ModuleRequiredPermission("billing")
+
 
 class ProfessionalSettlementViewSet(viewsets.ModelViewSet):
     queryset = ProfessionalSettlement.objects.select_related("professional__user")
     serializer_class = ProfessionalSettlementSerializer
     permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]
     filterset_fields = ["professional", "competency", "status"]
+
     def perform_create(self, serializer):
         obj = serializer.save()
-        obj.recalculate(); obj.save(update_fields=["gross_amount", "net_amount", "calculated_at"])
+        obj.recalculate()
+        obj.save(update_fields=["gross_amount", "net_amount", "calculated_at"])
+
     @action(detail=True, methods=["post"])
     def recalculate(self, request, pk=None):
-        obj = self.get_object(); obj.recalculate(); obj.save(update_fields=["gross_amount", "net_amount", "calculated_at"])
+        obj = self.get_object()
+        obj.recalculate()
+        obj.save(update_fields=["gross_amount", "net_amount", "calculated_at"])
         return Response(self.get_serializer(obj).data)
-
-logger = logging.getLogger(__name__)
-
-_BILLING_MODULE = ModuleRequiredPermission("billing")
 
 
 class AccountsReceivableViewSet(viewsets.ModelViewSet):
@@ -72,18 +77,37 @@ class AccountsReceivableViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["guide__guide_number", "guide__patient__full_name"]
     ordering = ["-created_at"]
+
     def get_queryset(self):
         return AccountsReceivable.objects.select_related("guide__patient", "guide__provider").all()
+
     def perform_create(self, serializer):
         obj = serializer.save()
         from apps.core.signals import _write_audit
-        _write_audit("receivable_created", "accounts_receivable", str(obj.pk), new_data={"guide": obj.guide_id, "amount": str(obj.amount)})
+
+        _write_audit(
+            "receivable_created",
+            "accounts_receivable",
+            str(obj.pk),
+            new_data={"guide": obj.guide_id, "amount": str(obj.amount)},
+        )
+
     @action(detail=True, methods=["post"])
     def mark_received(self, request, pk=None):
-        obj = self.get_object(); old = obj.status
-        obj.status = "received"; obj.received_at = timezone.now(); obj.save(update_fields=["status", "received_at", "updated_at"])
+        obj = self.get_object()
+        old = obj.status
+        obj.status = "received"
+        obj.received_at = timezone.now()
+        obj.save(update_fields=["status", "received_at", "updated_at"])
         from apps.core.signals import _write_audit
-        _write_audit("receivable_received", "accounts_receivable", str(obj.pk), old_data={"status": old}, new_data={"status": obj.status})
+
+        _write_audit(
+            "receivable_received",
+            "accounts_receivable",
+            str(obj.pk),
+            old_data={"status": old},
+            new_data={"status": obj.status},
+        )
         return Response(self.get_serializer(obj).data)
 
 

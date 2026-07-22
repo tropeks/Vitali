@@ -468,20 +468,24 @@ class BillingOperationalView(APIView):
         at_risk = agg["at_risk"] or Decimal("0.00")
         by_provider = list(
             qs.values("provider_id", "provider__name")
-            .annotate(billed=Sum("total_value"), received=Sum("total_value", filter=Q(status="paid")))
+            .annotate(
+                billed=Sum("total_value"), received=Sum("total_value", filter=Q(status="paid"))
+            )
             .order_by("provider__name")
         )
-        return Response({
-            "competency": competency,
-            "billed": billed,
-            "received": received,
-            "outstanding": billed - received,
-            "at_risk": at_risk,
-            "guides_total": agg["total"] or 0,
-            "guides_paid": agg["paid"] or 0,
-            "guides_outstanding": agg["outstanding_count"] or 0,
-            "providers": by_provider,
-        })
+        return Response(
+            {
+                "competency": competency,
+                "billed": billed,
+                "received": received,
+                "outstanding": billed - received,
+                "at_risk": at_risk,
+                "guides_total": agg["total"] or 0,
+                "guides_paid": agg["paid"] or 0,
+                "guides_outstanding": agg["outstanding_count"] or 0,
+                "providers": by_provider,
+            }
+        )
 
 
 class MonthlyRevenueView(APIView):

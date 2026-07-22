@@ -7,17 +7,17 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    AccountsReceivableViewSet,
     AcknowledgeGlosaAlertView,
     AsaasWebhookView,
     GlosaViewSet,
     InsuranceProviderViewSet,
     PIXChargeView,
     PriceTableViewSet,
+    ProfessionalSettlementViewSet,
     TISSBatchViewSet,
     TISSGuideViewSet,
     TUSSCodeViewSet,
-    AccountsReceivableViewSet,
-    ProfessionalSettlementViewSet,
 )
 
 router = DefaultRouter()
