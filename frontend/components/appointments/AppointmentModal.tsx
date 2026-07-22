@@ -1,14 +1,10 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { X, Search } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { X } from 'lucide-react'
 import { apiFetch, ApiError } from '@/lib/api'
-
-interface Patient {
-  id: string
-  full_name: string
-  medical_record_number: string
-}
+import PatientAutocomplete, { type PatientOption } from '@/components/patients/PatientAutocomplete'
+import RemoteCombobox from '@/components/shared/RemoteCombobox'
 
 interface Professional {
   id: string
@@ -39,14 +35,6 @@ const APPOINTMENT_TYPES = [
   { value: 'telemedicine', label: 'Telemedicina' },
 ]
 
-function debounce<T extends (...args: any[]) => void>(fn: T, ms: number): T {
-  let timer: ReturnType<typeof setTimeout>
-  return ((...args: any[]) => {
-    clearTimeout(timer)
-    timer = setTimeout(() => fn(...args), ms)
-  }) as T
-}
-
 export default function AppointmentModal({
   onClose,
   onCreated,
@@ -55,10 +43,8 @@ export default function AppointmentModal({
   prefillSlotStart,
   prefillSlotEnd,
 }: Props) {
-  const [patientSearch, setPatientSearch] = useState('')
-  const [patientResults, setPatientResults] = useState<Patient[]>([])
-  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
-  const [professionals, setProfessionals] = useState<Professional[]>([])
+  const [selectedPatient, setSelectedPatient] = useState<PatientOption | null>(null)
+  const [selectedProfessional, setSelectedProfessional] = useState<Professional | null>(null)
   const [selectedProfId, setSelectedProfId] = useState(prefillProfessionalId ?? '')
   const [date, setDate] = useState(prefillDate ?? new Date().toISOString().split('T')[0])
   const [slots, setSlots] = useState<Slot[]>([])
@@ -75,12 +61,13 @@ export default function AppointmentModal({
   const [waitlistLoading, setWaitlistLoading] = useState(false)
   const [waitlistDone, setWaitlistDone] = useState(false)
 
-  // Load professionals on mount
+  // Resolve a calendar-prefilled professional without loading the whole directory.
   useEffect(() => {
-    apiFetch('/api/v1/professionals/?ordering=user__full_name')
-      .then((d) => setProfessionals(d.results ?? d))
+    if (!prefillProfessionalId) return
+    apiFetch<Professional>(`/api/v1/professionals/${prefillProfessionalId}/`)
+      .then(setSelectedProfessional)
       .catch(() => {})
-  }, [])
+  }, [prefillProfessionalId])
 
   // Load slots when professional + date change
   useEffect(() => {
@@ -91,17 +78,6 @@ export default function AppointmentModal({
       .catch(() => setSlots([]))
       .finally(() => setSlotsLoading(false))
   }, [selectedProfId, date])
-
-  // Patient autocomplete
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const searchPatients = useCallback(
-    debounce(async (q: string) => {
-      if (!q.trim()) { setPatientResults([]); return }
-      const d = await apiFetch(`/api/v1/patients/?search=${encodeURIComponent(q)}&ordering=full_name`)
-      setPatientResults(d.results ?? [])
-    }, 300),
-    [],
-  )
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -187,71 +163,24 @@ export default function AppointmentModal({
 
         <form onSubmit={handleSubmit} className="px-6 py-4 space-y-4">
           {/* Patient search */}
-          <div>
-            <label className="block block text-[11px] font-bold text-neu-inkSoft mb-1.5 uppercase tracking-wide mb-1">Paciente</label>
-            {selectedPatient ? (
-              <div className="flex items-center justify-between px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm">
-                <span className="font-medium text-blue-900">{selectedPatient.full_name}</span>
-                <span className="text-blue-500 text-xs mr-2">{selectedPatient.medical_record_number}</span>
-                <button
-                  type="button"
-                  onClick={() => { setSelectedPatient(null); setPatientResults([]) }}
-                  className="text-blue-400 hover:text-blue-700"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            ) : (
-              <div className="relative">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Buscar por nome ou prontuário..."
-                  className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={patientSearch}
-                  onChange={(e) => {
-                    setPatientSearch(e.target.value)
-                    searchPatients(e.target.value)
-                  }}
-                />
-                {patientResults.length > 0 && (
-                  <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                    {patientResults.map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 flex items-center justify-between"
-                        onClick={() => {
-                          setSelectedPatient(p)
-                          setPatientSearch('')
-                          setPatientResults([])
-                        }}
-                      >
-                        <span className="font-medium text-slate-900">{p.full_name}</span>
-                        <span className="text-slate-400 text-xs">{p.medical_record_number}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          <PatientAutocomplete value={selectedPatient} onChange={setSelectedPatient} required />
 
           {/* Professional */}
           <div>
             <label className="block block text-[11px] font-bold text-neu-inkSoft mb-1.5 uppercase tracking-wide mb-1">Profissional</label>
-            <select
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={selectedProfId}
-              onChange={(e) => { setSelectedProfId(e.target.value); setSelectedSlot(null) }}
-            >
-              <option value="">Selecione...</option>
-              {professionals.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.user_name}{p.specialty ? ` — ${p.specialty}` : ''}
-                </option>
-              ))}
-            </select>
+            <RemoteCombobox<Professional>
+              label="Profissional"
+              endpoint="/api/v1/professionals/?ordering=user__full_name"
+              value={selectedProfessional}
+              getKey={(professional) => professional.id}
+              getLabel={(professional) => `${professional.user_name}${professional.specialty ? ` — ${professional.specialty}` : ''}`}
+              onChange={(professional) => {
+                setSelectedProfessional(professional)
+                setSelectedProfId(professional?.id ?? '')
+                setSelectedSlot(null)
+              }}
+              placeholder="Buscar por nome, conselho ou especialidade..."
+            />
           </div>
 
           {/* Date */}

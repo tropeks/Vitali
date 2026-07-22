@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { getAccessToken } from '@/lib/auth';
 import { Plus, Trash2 } from 'lucide-react';
+import RemoteCombobox from '@/components/shared/RemoteCombobox';
 
 interface Supplier {
   id: string;
@@ -38,10 +39,7 @@ export default function NovaCompraPage() {
   const router = useRouter();
 
   // Supplier
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [supplierQuery, setSupplierQuery] = useState('');
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
-  const [supplierOpen, setSupplierOpen] = useState(false);
 
   // Form
   const [expectedDate, setExpectedDate] = useState('');
@@ -59,21 +57,6 @@ export default function NovaCompraPage() {
   // Submit
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    async function loadSuppliers() {
-      const token = getAccessToken();
-      if (!token) return;
-      const res = await fetch('/api/v1/pharmacy/suppliers/', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setSuppliers(data.results ?? data ?? []);
-      }
-    }
-    loadSuppliers();
-  }, []);
 
   const searchDrugsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -102,10 +85,6 @@ export default function NovaCompraPage() {
     if (searchDrugsTimerRef.current) clearTimeout(searchDrugsTimerRef.current);
     searchDrugsTimerRef.current = setTimeout(() => searchDrugsNow(q), 300);
   }, [searchDrugsNow]);
-
-  const filteredSuppliers = suppliers.filter((s) =>
-    s.name.toLowerCase().includes(supplierQuery.toLowerCase())
-  );
 
   function selectDrugForAdd(drug: Drug) {
     setAddingDrug(drug);
@@ -213,55 +192,15 @@ export default function NovaCompraPage() {
             <label className="block text-xs font-medium text-neu-inkSoft">
               Fornecedor *
             </label>
-            {selectedSupplier ? (
-              <div className="flex items-center justify-between px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
-                <span className="text-sm font-medium text-blue-900">
-                  {selectedSupplier.name}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedSupplier(null);
-                    setSupplierQuery('');
-                  }}
-                  className="text-xs text-neu-brand hover:underline"
-                >
-                  Alterar
-                </button>
-              </div>
-            ) : (
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="Buscar fornecedor..."
-                  value={supplierQuery}
-                  onChange={(e) => {
-                    setSupplierQuery(e.target.value);
-                    setSupplierOpen(true);
-                  }}
-                  onFocus={() => setSupplierOpen(true)}
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                {supplierOpen && filteredSuppliers.length > 0 && (
-                  <div className="absolute z-10 mt-1 w-full bg-neu-panel border border-slate-200 rounded-lg shadow-neu-panel max-h-48 overflow-y-auto">
-                    {filteredSuppliers.map((s) => (
-                      <button
-                        key={s.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedSupplier(s);
-                          setSupplierQuery(s.name);
-                          setSupplierOpen(false);
-                        }}
-                        className="w-full text-left px-3 py-2 hover:bg-neu-panel text-sm"
-                      >
-                        {s.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+            <RemoteCombobox<Supplier>
+              label="Fornecedor"
+              endpoint="/api/v1/pharmacy/suppliers/"
+              value={selectedSupplier}
+              getKey={(supplier) => supplier.id}
+              getLabel={(supplier) => supplier.name}
+              onChange={setSelectedSupplier}
+              placeholder="Buscar fornecedor..."
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-4">

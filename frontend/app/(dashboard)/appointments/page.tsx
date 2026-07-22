@@ -29,6 +29,7 @@ import {
   type OperationalTone,
 } from '@/lib/operational-ui'
 import { KpiTile, PageShell } from '@/components/shared'
+import RemoteCombobox from '@/components/shared/RemoteCombobox'
 
 interface Appointment {
   id: string
@@ -179,7 +180,7 @@ export default function AppointmentsPage() {
     return d
   })
   const [clientNow, setClientNow] = useState<Date | null>(null)
-  const [professionals, setProfessionals] = useState<Professional[]>([])
+  const [selectedProfessional, setSelectedProfessional] = useState<Professional | null>(null)
   const [selectedProfId, setSelectedProfId] = useState<string>('')
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [todayAppointments, setTodayAppointments] = useState<Appointment[]>([])
@@ -207,12 +208,6 @@ export default function AppointmentsPage() {
     tick()
     const interval = setInterval(tick, 60_000)
     return () => clearInterval(interval)
-  }, [])
-
-  useEffect(() => {
-    apiFetch('/api/v1/professionals/?ordering=user__full_name')
-      .then((d) => setProfessionals(getList<Professional>(d)))
-      .catch(() => {})
   }, [])
 
   const fetchAppointments = useCallback(async () => {
@@ -427,18 +422,21 @@ export default function AppointmentsPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <select
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            value={selectedProfId}
-            onChange={(e) => setSelectedProfId(e.target.value)}
-          >
-            <option value="">Todos os profissionais</option>
-            {professionals.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.user_name}{p.specialty ? ` - ${p.specialty}` : ''}
-              </option>
-            ))}
-          </select>
+          <div className="min-w-[260px]">
+            <RemoteCombobox<Professional>
+              label="Filtrar profissional"
+              endpoint="/api/v1/professionals/?ordering=user__full_name"
+              value={selectedProfessional}
+              getKey={(professional) => professional.id}
+              getLabel={(professional) => `${professional.user_name}${professional.specialty ? ` — ${professional.specialty}` : ''}`}
+              onChange={(professional) => {
+                setSelectedProfessional(professional)
+                setSelectedProfId(professional?.id ?? '')
+              }}
+              placeholder="Buscar profissional..."
+              allLabel="Todos os profissionais"
+            />
+          </div>
 
           <div className="flex items-center overflow-hidden rounded-lg border border-slate-200 bg-white">
             <button onClick={prevWeek} className="p-2 text-slate-600 hover:bg-slate-50" title="Semana anterior">

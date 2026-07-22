@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, FlaskConical, Plus, Search, TestTube2, X } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { ImagingPanel } from "@/components/imaging/ImagingPanel";
+import PatientAutocomplete, { type PatientOption } from "@/components/patients/PatientAutocomplete";
 
 type LabTest = {
   id: string;
@@ -65,7 +66,6 @@ type LabOrder = {
   items: LabItem[];
   accession_number?: string;
 };
-type Patient = { id: string; full_name: string; medical_record_number: string };
 type Paginated<T> = { results?: T[] };
 
 function asList<T>(payload: T[] | Paginated<T>): T[] {
@@ -268,9 +268,7 @@ export default function LaboratorioPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showNew, setShowNew] = useState(false);
-  const [patientQuery, setPatientQuery] = useState("");
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [patientId, setPatientId] = useState("");
+  const [selectedPatient, setSelectedPatient] = useState<PatientOption | null>(null);
   const [selectedTests, setSelectedTests] = useState<string[]>([]);
   const [indication, setIndication] = useState("");
   const [saving, setSaving] = useState(false);
@@ -321,24 +319,6 @@ export default function LaboratorioPage() {
     void load();
   }, [load]);
 
-  useEffect(() => {
-    if (patientQuery.trim().length < 2) {
-      setPatients([]);
-      return;
-    }
-    const timer = window.setTimeout(async () => {
-      try {
-        const data = await apiFetch<{ results?: Patient[] } | Patient[]>(
-          `/api/v1/patients/?search=${encodeURIComponent(patientQuery)}`,
-        );
-        setPatients(asList(data));
-      } catch {
-        setPatients([]);
-      }
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [patientQuery]);
-
   const counts = useMemo(
     () => ({
       pending: orders.filter(
@@ -384,20 +364,19 @@ export default function LaboratorioPage() {
   }, [orders, orderQuery, statusFilter]);
 
   async function createOrder() {
-    if (!patientId || selectedTests.length === 0) return;
+    if (!selectedPatient || selectedTests.length === 0) return;
     setSaving(true);
     try {
       await apiFetch("/api/v1/lab-orders/", {
         method: "POST",
         body: JSON.stringify({
-          patient: patientId,
+          patient: selectedPatient.id,
           test_ids: selectedTests,
           clinical_indication: indication,
         }),
       });
       setShowNew(false);
-      setPatientId("");
-      setPatientQuery("");
+      setSelectedPatient(null);
       setSelectedTests([]);
       setIndication("");
       await load();
@@ -603,65 +582,12 @@ export default function LaboratorioPage() {
             <h2 id="new-lab-order-title" className="font-semibold text-neu-ink">
               Novo pedido laboratorial
             </h2>
-            <div className="relative">
-              <label
-                htmlFor="lab-patient-search"
-                className="mb-1 block text-xs font-semibold text-neu-inkSoft"
-              >
-                Paciente
-              </label>
-              <div className="relative">
-                <Search
-                  aria-hidden="true"
-                  className="absolute left-3 top-2.5 text-neu-inkMuted"
-                  size={16}
-                />
-                <input
-                  id="lab-patient-search"
-                  role="combobox"
-                  aria-autocomplete="list"
-                  aria-expanded={patients.length > 0 && !patientId}
-                  aria-controls="lab-patient-options"
-                  autoComplete="off"
-                  value={patientQuery}
-                  onChange={(e) => {
-                    setPatientQuery(e.target.value);
-                    setPatientId("");
-                  }}
-                  placeholder="Buscar por nome, CPF ou prontuário"
-                  className="neu-input w-full py-2 pl-9 pr-3 text-sm"
-                />
-              </div>
-              {patients.length > 0 && !patientId && (
-                <div
-                  id="lab-patient-options"
-                  role="listbox"
-                  className="absolute z-20 mt-1 w-full rounded-lg border border-neu-app bg-neu-outer p-1 shadow-lg"
-                >
-                  {patients.slice(0, 6).map((p) => (
-                    <button
-                      type="button"
-                      role="option"
-                      aria-selected="false"
-                      key={p.id}
-                      onClick={() => {
-                        setPatientId(p.id);
-                        setPatientQuery(
-                          `${p.full_name} · ${p.medical_record_number}`,
-                        );
-                        setPatients([]);
-                      }}
-                      className="block w-full rounded-md px-3 py-2 text-left text-sm hover:bg-neu-panel"
-                    >
-                      {p.full_name}
-                      <span className="ml-2 font-mono text-xs text-neu-inkSoft">
-                        {p.medical_record_number}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <PatientAutocomplete
+              id="lab-patient-search"
+              value={selectedPatient}
+              onChange={setSelectedPatient}
+              required
+            />
             <div>
               <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
                 <label className="block text-xs font-semibold text-neu-inkSoft">
@@ -757,7 +683,7 @@ export default function LaboratorioPage() {
               </button>
               <button
                 type="button"
-                disabled={saving || !patientId || selectedTests.length === 0}
+                disabled={saving || !selectedPatient || selectedTests.length === 0}
                 onClick={createOrder}
                 className="neu-btn-primary px-4 py-2 text-sm disabled:opacity-50"
               >

@@ -19,15 +19,7 @@ import { PageShell, ReadinessPanel } from '@/components/shared';
 import TUSSCodeSearch, { TUSSOption } from '@/components/billing/TUSSCodeSearch';
 import TUSSSuggestionInline, { TUSSSuggestion } from '@/components/billing/TUSSSuggestionInline';
 import GlosaRiskBadge from '@/components/billing/GlosaRiskBadge';
-
-interface PatientOption {
-  id: string | number;
-  full_name?: string;
-  medical_record_number?: string;
-  age?: number;
-  birth_date?: string;
-  active_allergies_count?: number;
-}
+import PatientAutocomplete, { type PatientOption } from '@/components/patients/PatientAutocomplete';
 
 interface ProviderOption {
   id: string | number;
@@ -90,11 +82,11 @@ function sameId(left: string | number | undefined, right: string | number | unde
   return left !== undefined && right !== undefined && String(left) === String(right);
 }
 
-function patientName(patient?: PatientOption, encounter?: EncounterContext | null) {
+function patientName(patient?: PatientOption | null, encounter?: EncounterContext | null) {
   return patient?.full_name ?? encounter?.patient_name ?? 'Paciente não selecionado';
 }
 
-function patientMrn(patient?: PatientOption, encounter?: EncounterContext | null) {
+function patientMrn(patient?: PatientOption | null, encounter?: EncounterContext | null) {
   return patient?.medical_record_number ?? encounter?.patient_mrn ?? 'MRN pendente';
 }
 
@@ -132,7 +124,7 @@ export default function NewGuidePage() {
   const searchParams = useSearchParams();
   const prefillEncounter = searchParams.get('encounter') ?? '';
 
-  const [patients, setPatients] = useState<PatientOption[]>([]);
+  const [selectedPatient, setSelectedPatient] = useState<PatientOption | null>(null);
   const [providers, setProviders] = useState<ProviderOption[]>([]);
   const [encounterContext, setEncounterContext] = useState<EncounterContext | null>(null);
   const [loadingOptions, setLoadingOptions] = useState(true);
@@ -153,12 +145,8 @@ export default function NewGuidePage() {
   const [glosaPredictionIds, setGlosaPredictionIds] = useState<Record<number, string | null>>({});
 
   useEffect(() => {
-    Promise.all([
-      apiFetch<PatientOption[] | { results?: PatientOption[] }>('/patients/?page_size=200'),
-      apiFetch<ProviderOption[] | { results?: ProviderOption[] }>('/billing/providers/'),
-    ])
-      .then(([patientData, providerData]) => {
-        setPatients(listFromResponse(patientData));
+    apiFetch<ProviderOption[] | { results?: ProviderOption[] }>('/billing/providers/')
+      .then((providerData) => {
         setProviders(listFromResponse(providerData));
       })
       .catch((e) => setError(e.message))
@@ -174,6 +162,11 @@ export default function NewGuidePage() {
         const patientId = enc.patient;
         if (typeof patientId === 'string' && patientId) {
           setForm((f) => ({ ...f, patient_id: patientId }));
+          setSelectedPatient({
+            id: patientId,
+            full_name: enc.patient_name ?? 'Paciente do atendimento',
+            medical_record_number: enc.patient_mrn,
+          });
         }
       })
       .catch(() => {
@@ -205,7 +198,6 @@ export default function NewGuidePage() {
     setItems((current) => current.map((item, ii) => (ii === idx ? { ...item, [key]: value } : item)));
   };
 
-  const selectedPatient = patients.find((p) => sameId(p.id, form.patient_id));
   const selectedProvider = providers.find((p) => sameId(p.id, form.provider_id));
   const insurerAnsCode = selectedProvider?.ans_code ?? null;
   const grandTotal = items.reduce((sum, item) => sum + itemTotal(item), 0);
@@ -385,27 +377,16 @@ export default function NewGuidePage() {
                   <h2 className="text-base font-semibold text-neu-ink">Contexto da guia</h2>
                 </div>
                 <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
-                  <div>
-                    <label htmlFor="guide-patient" className="mb-1 block text-xs font-medium text-neu-inkSoft">Paciente *</label>
-                    {loadingOptions ? (
-                      <div className="h-9 animate-pulse rounded-lg bg-neu-app" />
-                    ) : (
-                      <select
-                        id="guide-patient"
-                        value={form.patient_id}
-                        onChange={(e) => setField('patient_id', e.target.value)}
-                        required
-                        className="w-full rounded-lg border border-slate-200 bg-neu-panel px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="">Selecionar paciente</option>
-                        {patients.map((patient) => (
-                          <option key={patient.id} value={patient.id}>
-                            {patient.full_name} - {patient.medical_record_number ?? patient.id}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
+                  <PatientAutocomplete
+                    id="guide-patient"
+                    value={selectedPatient}
+                    onChange={(patient) => {
+                      setSelectedPatient(patient);
+                      setField('patient_id', patient ? String(patient.id) : '');
+                    }}
+                    disabled={Boolean(prefillEncounter)}
+                    required
+                  />
                   <div>
                     <label htmlFor="guide-provider" className="mb-1 block text-xs font-medium text-neu-inkSoft">Operadora *</label>
                     {loadingOptions ? (

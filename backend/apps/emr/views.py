@@ -228,15 +228,28 @@ class PatientViewSet(AuditReadMixin, viewsets.ModelViewSet):
 class ProfessionalViewSet(viewsets.ModelViewSet):
     queryset = Professional.objects.select_related("user").filter(is_active=True)
     serializer_class = ProfessionalSerializer
-    permission_classes = [IsAuthenticated, HasPermission("admin")]  # type: ignore[list-item]
-    filter_backends = [filters.SearchFilter]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["user__full_name", "council_number", "specialty"]
+    ordering_fields = ["user__full_name", "council_number", "specialty"]
+    ordering = ["user__full_name"]
+
+    def get_permissions(self):
+        # Professionals are reference data required by appointment and encounter
+        # creation.  Requiring the non-existent literal permission ``admin`` here
+        # made the endpoint return 403 to every normal tenant role; the frontend
+        # swallowed that error and rendered an empty selector.  Scheduling readers
+        # may list/retrieve/search the directory, while management remains limited
+        # to tenant user administrators.
+        permission = "schedule.read" if self.action in ("list", "retrieve") else "users.write"
+        return [IsAuthenticated(), HasPermission(permission)]
 
 
 class ScheduleConfigViewSet(viewsets.ModelViewSet):
     queryset = ScheduleConfig.objects.select_related("professional__user").all()
     serializer_class = ScheduleConfigSerializer
-    permission_classes = [IsAuthenticated, HasPermission("admin")]  # type: ignore[list-item]
+    def get_permissions(self):
+        permission = "schedule.read" if self.action in ("list", "retrieve") else "users.write"
+        return [IsAuthenticated(), HasPermission(permission)]
 
 
 class AppointmentViewSet(viewsets.ModelViewSet):

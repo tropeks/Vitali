@@ -89,7 +89,7 @@ export default function BillingOverviewPage() {
     if (!token) { setError('Sessão expirada'); setLoading(false); return; }
 
     Promise.all([
-      apiFetch('/billing/guides/?ordering=-created_at&limit=10'),
+      apiFetch('/billing/guides/?ordering=-created_at&page_size=10'),
       apiFetch('/billing/batches/?status=open'),
     ])
       .then(([g, b]) => {

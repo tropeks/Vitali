@@ -36,6 +36,14 @@ def validate_cpf(cpf: str) -> str:
     return cpf
 
 
+def digits_only_identifier(value: str, *, length: int, label: str) -> str:
+    """Normalize a formatted national identifier without logging its value."""
+    normalized = re.sub(r"\D", "", value)
+    if normalized and len(normalized) != length:
+        raise serializers.ValidationError(f"{label} deve conter {length} dígitos.")
+    return normalized
+
+
 class AllergySerializer(serializers.ModelSerializer):
     severity_display = serializers.CharField(source="get_severity_display", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
@@ -92,6 +100,7 @@ class PatientListSerializer(serializers.ModelSerializer):
             "birth_date",
             "age",
             "gender",
+            "preferred_language",
             "phone",
             "whatsapp",
             "cpf_masked",
@@ -111,6 +120,8 @@ class PatientSerializer(serializers.ModelSerializer):
     age = serializers.IntegerField(read_only=True)
     cpf = serializers.CharField(write_only=True)
     cpf_masked = serializers.SerializerMethodField(read_only=True)
+    cns = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    cns_masked = serializers.SerializerMethodField(read_only=True)
     allergies = AllergySerializer(many=True, read_only=True)
     medical_history = MedicalHistorySerializer(many=True, read_only=True)
     gender_display = serializers.CharField(source="get_gender_display", read_only=True)
@@ -124,10 +135,25 @@ class PatientSerializer(serializers.ModelSerializer):
             "social_name",
             "cpf",
             "cpf_masked",
+            "cns",
+            "cns_masked",
+            "identity_document",
+            "identity_issuer",
+            "identity_state",
             "birth_date",
+            "birth_city",
+            "birth_state",
+            "nationality",
             "age",
             "gender",
             "gender_display",
+            "race_color",
+            "marital_status",
+            "mother_name",
+            "father_name",
+            "occupation",
+            "education_level",
+            "preferred_language",
             "blood_type",
             "phone",
             "whatsapp",
@@ -135,6 +161,7 @@ class PatientSerializer(serializers.ModelSerializer):
             "address",
             "insurance_data",
             "emergency_contact",
+            "accessibility_needs",
             "photo_url",
             "notes",
             "is_active",
@@ -149,8 +176,27 @@ class PatientSerializer(serializers.ModelSerializer):
     def get_cpf_masked(self, obj):
         return "***.***.***-**"
 
+    def get_cns_masked(self, obj):
+        return "*** **** **** ****" if obj.cns else ""
+
     def validate_cpf(self, value):
         return validate_cpf(value)
+
+    def validate_cns(self, value):
+        return digits_only_identifier(value, length=15, label="CNS")
+
+    def validate_identity_state(self, value):
+        return value.strip().upper()
+
+    def validate_birth_state(self, value):
+        return value.strip().upper()
+
+    def validate_preferred_language(self, value):
+        value = value.strip()
+        if not re.fullmatch(r"[A-Za-z]{2,3}(?:-[A-Za-z]{2})?", value):
+            raise serializers.ValidationError("Idioma deve usar um código BCP 47, como pt-BR.")
+        language, *region = value.split("-")
+        return language.lower() + (f"-{region[0].upper()}" if region else "")
 
 
 class PatientCreateSerializer(PatientSerializer):

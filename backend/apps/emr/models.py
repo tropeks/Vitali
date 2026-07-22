@@ -60,6 +60,23 @@ class Patient(models.Model):
         ("O+", "O+"),
         ("O-", "O-"),
     ]
+    MARITAL_STATUS_CHOICES = [
+        ("single", "Solteiro(a)"),
+        ("married", "Casado(a)"),
+        ("stable_union", "União estável"),
+        ("separated", "Separado(a)"),
+        ("divorced", "Divorciado(a)"),
+        ("widowed", "Viúvo(a)"),
+        ("not_informed", "Não informado"),
+    ]
+    RACE_COLOR_CHOICES = [
+        ("white", "Branca"),
+        ("black", "Preta"),
+        ("brown", "Parda"),
+        ("yellow", "Amarela"),
+        ("indigenous", "Indígena"),
+        ("not_informed", "Não informada"),
+    ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     medical_record_number = models.CharField(max_length=20, unique=True, blank=True)
@@ -69,8 +86,25 @@ class Patient(models.Model):
     full_name = EncryptedCharField(max_length=200)
     social_name = EncryptedCharField(max_length=200, blank=True)
     cpf = EncryptedCharField(max_length=14)
+    # Civil/CNS identifiers and sociodemographic data are sensitive personal
+    # data. They deliberately remain encrypted and non-indexed; MRN is the
+    # operational lookup key exposed to database searches.
+    cns = EncryptedCharField(max_length=15, blank=True)
+    identity_document = EncryptedCharField(max_length=30, blank=True)
+    identity_issuer = EncryptedCharField(max_length=30, blank=True)
+    identity_state = models.CharField(max_length=2, blank=True)
     birth_date = models.DateField()
+    birth_city = EncryptedCharField(max_length=120, blank=True)
+    birth_state = models.CharField(max_length=2, blank=True)
+    nationality = models.CharField(max_length=80, blank=True)
     gender = models.CharField(max_length=20, choices=GENDER_CHOICES)
+    race_color = models.CharField(max_length=20, choices=RACE_COLOR_CHOICES, blank=True)
+    marital_status = models.CharField(max_length=20, choices=MARITAL_STATUS_CHOICES, blank=True)
+    mother_name = EncryptedCharField(max_length=200, blank=True)
+    father_name = EncryptedCharField(max_length=200, blank=True)
+    occupation = EncryptedCharField(max_length=120, blank=True)
+    education_level = models.CharField(max_length=80, blank=True)
+    preferred_language = models.CharField(max_length=20, blank=True, default="pt-BR")
     blood_type = models.CharField(max_length=5, choices=BLOOD_TYPE_CHOICES, blank=True)
     phone = EncryptedCharField(max_length=20, blank=True)
     # whatsapp stays plaintext on purpose: it is the indexed routing/dedup key
@@ -80,6 +114,7 @@ class Patient(models.Model):
     address = EncryptedJSONField(default=dict, blank=True)
     insurance_data = models.JSONField(default=dict, blank=True)
     emergency_contact = models.JSONField(default=dict, blank=True)
+    accessibility_needs = EncryptedJSONField(default=dict, blank=True)
     photo_url = models.URLField(blank=True)
     notes = EncryptedTextField(blank=True)
     # NEWS2 SpO2 Scale 2 (alvo 88–92%, ex. DPOC/insuf. respiratória hipercápnica
