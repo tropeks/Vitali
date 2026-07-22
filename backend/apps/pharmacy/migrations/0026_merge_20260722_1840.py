@@ -4,11 +4,9 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('pharmacy', '0025_nfe_ingestion_channels'),
-        ('pharmacy', '0025_nfecatalogmapping'),
+        ("pharmacy", "0025_nfe_ingestion_channels"),
+        ("pharmacy", "0025_nfecatalogmapping"),
     ]
 
-    operations = [
-    ]
+    operations = []

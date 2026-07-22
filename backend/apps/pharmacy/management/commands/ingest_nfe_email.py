@@ -15,7 +15,11 @@ class Command(BaseCommand):
         directory = options["directory"]
         for path in sorted(directory.glob("*.xml")):
             try:
-                receipt, created = ingest_xml(path.read_bytes(), source="email", external_id=path.name)
-                self.stdout.write(f"{path.name}: {receipt.id} ({'novo' if created else 'duplicado'})")
+                receipt, created = ingest_xml(
+                    path.read_bytes(), source="email", external_id=path.name
+                )
+                self.stdout.write(
+                    f"{path.name}: {receipt.id} ({'novo' if created else 'duplicado'})"
+                )
             except ValueError as exc:
                 self.stderr.write(f"{path.name}: quarentena ({exc})")

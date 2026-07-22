@@ -1638,9 +1638,17 @@ class NFeReceiptItem(models.Model):
 
 class NFeCatalogMapping(models.Model):
     """Human-confirmed mapping between an NF-e line and the internal catalog."""
+
     STATUS = [("suggested", "Sugerido"), ("confirmed", "Confirmado"), ("rejected", "Rejeitado")]
-    MATCH = [("barcode", "Código de barras"), ("supplier_code", "Código fornecedor"), ("ncm", "NCM"), ("manual", "Manual")]
-    item = models.OneToOneField(NFeReceiptItem, on_delete=models.CASCADE, related_name="catalog_mapping")
+    MATCH = [
+        ("barcode", "Código de barras"),
+        ("supplier_code", "Código fornecedor"),
+        ("ncm", "NCM"),
+        ("manual", "Manual"),
+    ]
+    item = models.OneToOneField(
+        NFeReceiptItem, on_delete=models.CASCADE, related_name="catalog_mapping"
+    )
     drug = models.ForeignKey(Drug, null=True, blank=True, on_delete=models.PROTECT)
     material = models.ForeignKey(Material, null=True, blank=True, on_delete=models.PROTECT)
     match_type = models.CharField(max_length=20, choices=MATCH)
@@ -1651,7 +1659,12 @@ class NFeCatalogMapping(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        constraints = [models.CheckConstraint(condition=(models.Q(drug__isnull=False) | models.Q(material__isnull=False)), name="nfe_mapping_catalog_target")]
+        constraints = [
+            models.CheckConstraint(
+                condition=(models.Q(drug__isnull=False) | models.Q(material__isnull=False)),
+                name="nfe_mapping_catalog_target",
+            )
+        ]
 
     def __str__(self):
         return f"Mapeamento NF-e {self.item_id} ({self.status})"

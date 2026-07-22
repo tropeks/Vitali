@@ -116,40 +116,82 @@ class NFeReceiptViewSet(viewsets.ModelViewSet):
             drug = material = None
             match = "manual"
             confidence = 0
-            if item.barcode and (drug := Drug.objects.filter(barcode=item.barcode, is_active=True).first()):
+            if item.barcode and (
+                drug := Drug.objects.filter(barcode=item.barcode, is_active=True).first()
+            ):
                 match, confidence = "barcode", 100
-            elif item.barcode and (material := Material.objects.filter(barcode=item.barcode, is_active=True).first()):
+            elif item.barcode and (
+                material := Material.objects.filter(barcode=item.barcode, is_active=True).first()
+            ):
                 match, confidence = "barcode", 100
             elif item.supplier_code:
                 drug = Drug.objects.filter(anvisa_code=item.supplier_code, is_active=True).first()
                 if drug:
                     match, confidence = "supplier_code", 90
             if not (drug or material) and item.ncm:
-                material = Material.objects.filter(notes__icontains=item.ncm, is_active=True).first()
+                material = Material.objects.filter(
+                    notes__icontains=item.ncm, is_active=True
+                ).first()
                 if material:
                     match, confidence = "ncm", 60
             if drug or material:
-                NFeCatalogMapping.objects.update_or_create(item=item, defaults={"drug": drug, "material": material, "match_type": match, "confidence": confidence})
+                NFeCatalogMapping.objects.update_or_create(
+                    item=item,
+                    defaults={
+                        "drug": drug,
+                        "material": material,
+                        "match_type": match,
+                        "confidence": confidence,
+                    },
+                )
 
     @action(detail=True, methods=("get",))
     def mappings(self, request, pk=None):
-        return Response(NFeCatalogMappingSerializer(NFeCatalogMapping.objects.filter(item__receipt=self.get_object()).select_related("drug", "material"), many=True).data)
+        return Response(
+            NFeCatalogMappingSerializer(
+                NFeCatalogMapping.objects.filter(item__receipt=self.get_object()).select_related(
+                    "drug", "material"
+                ),
+                many=True,
+            ).data
+        )
 
     @action(detail=True, methods=("post",), url_path=r"items/(?P<item_id>[^/.]+)/map")
     def map_item(self, request, pk=None, item_id=None):
         item = get_object_or_404(NFeReceiptItem, receipt=self.get_object(), pk=item_id)
-        mapping, _ = NFeCatalogMapping.objects.update_or_create(item=item, defaults={"drug_id": request.data.get("drug"), "material_id": request.data.get("material"), "match_type": "manual", "confidence": 100, "status": "confirmed", "reviewed_by": request.user, "reviewed_at": timezone.now()})
-        log_audit(request, "map_nfe_catalog", "NFeReceiptItem", item.id, new_data={"drug": str(mapping.drug_id), "material": str(mapping.material_id)})
+        mapping, _ = NFeCatalogMapping.objects.update_or_create(
+            item=item,
+            defaults={
+                "drug_id": request.data.get("drug"),
+                "material_id": request.data.get("material"),
+                "match_type": "manual",
+                "confidence": 100,
+                "status": "confirmed",
+                "reviewed_by": request.user,
+                "reviewed_at": timezone.now(),
+            },
+        )
+        log_audit(
+            request,
+            "map_nfe_catalog",
+            "NFeReceiptItem",
+            item.id,
+            new_data={"drug": str(mapping.drug_id), "material": str(mapping.material_id)},
+        )
         return Response(NFeCatalogMappingSerializer(mapping).data)
-
 
     @action(detail=True, methods=["post"])
     def approve(self, request, pk=None):
         receipt = self.get_object()
         if receipt.status != "pending":
             return Response({"detail": "Status inválido."}, status=409)
-        if receipt.items.filter(catalog_mapping__isnull=True).exists() or receipt.items.filter(catalog_mapping__status="rejected").exists():
-            return Response({"detail": "Todos os itens precisam de mapeamento de catálogo."}, status=409)
+        if (
+            receipt.items.filter(catalog_mapping__isnull=True).exists()
+            or receipt.items.filter(catalog_mapping__status="rejected").exists()
+        ):
+            return Response(
+                {"detail": "Todos os itens precisam de mapeamento de catálogo."}, status=409
+            )
         receipt.status, receipt.approved_by, receipt.approved_at = (
             "approved",
             request.user,
@@ -178,10 +220,15 @@ class NFeWebhookView(APIView):
         if len(raw) > 10 * 1024 * 1024:
             return Response({"detail": "XML excede 10 MB."}, status=413)
         try:
-            receipt, created = ingest_xml(raw, source="webhook", external_id=request.headers.get("Idempotency-Key", ""))
+            receipt, created = ingest_xml(
+                raw, source="webhook", external_id=request.headers.get("Idempotency-Key", "")
+            )
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=400)
-        return Response({"id": str(receipt.id), "status": receipt.status, "created": created}, status=201 if created else 200)
+        return Response(
+            {"id": str(receipt.id), "status": receipt.status, "created": created},
+            status=201 if created else 200,
+        )
 
 
 class SupplierContractViewSet(viewsets.ModelViewSet):
