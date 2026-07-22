@@ -2,22 +2,19 @@
 Pharmacy API views — S-026 Catalog, S-027 Stock, S-028 Dispensation
 """
 
-import re
 import hmac
-import xml.etree.ElementTree as ET
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from django.conf import settings
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import AllowAny
 
 from apps.core.models import AuditLog
 from apps.core.permissions import HasPermission, ModuleRequiredPermission
@@ -33,9 +30,9 @@ from .models import (
     InventoryCount,
     LotRecall,
     Material,
+    NFeCatalogMapping,
     NFeReceipt,
     NFeReceiptItem,
-    NFeCatalogMapping,
     PharmacistValidation,
     PurchaseOrder,
     PurchaseOrderItem,
@@ -61,8 +58,8 @@ from .serializers import (
     InventoryCountSerializer,
     LotRecallSerializer,
     MaterialSerializer,
-    NFeReceiptSerializer,
     NFeCatalogMappingSerializer,
+    NFeReceiptSerializer,
     PharmacistValidationSerializer,
     POReceiveSerializer,
     PurchaseOrderSerializer,
@@ -111,72 +108,26 @@ class NFeReceiptViewSet(viewsets.ModelViewSet):
 
     # legacy parser retained below for compatibility is intentionally unreachable
     def _legacy_create(self, request, *args, **kwargs):
-        try:
-            root = ET.fromstring(raw)
-        except ET.ParseError:
-            return Response({"detail": "XML inválido."}, status=400)
-        ns = {"n": root.tag.split("}")[0].strip("{")} if "}" in root.tag else {}
-
-        def find(path):
-            return root.find(path, ns)
-
-        inf = find(".//n:infNFe" if ns else ".//infNFe")
-        if inf is None:
-            return Response({"detail": "NF-e ausente."}, status=400)
-        key = re.sub(r"\D", "", inf.attrib.get("Id", "").replace("NFe", ""))
-        emit = find(".//n:emit/n:CNPJ" if ns else ".//emit/CNPJ")
-        dest = find(".//n:dest/n:CNPJ" if ns else ".//dest/CNPJ")
-        issuer, recipient = (
-            (emit.text or "" if emit is not None else ""),
-            (dest.text or "" if dest is not None else ""),
-        )
-        if len(key) != 44 or not issuer or not recipient:
-            return Response({"detail": "Chave, emitente ou destinatário inválido."}, status=400)
-        if NFeReceipt.objects.filter(access_key=key).exists():
-            return Response({"detail": "NF-e já importada."}, status=409)
-        receipt = NFeReceipt.objects.create(
-            access_key=key,
-            issuer_cnpj=issuer,
-            recipient_cnpj=recipient,
-            xml=raw.decode("utf-8", "replace"),
-            uploaded_by=request.user,
-        )
-        for i, node in enumerate(root.findall(".//n:det" if ns else ".//det"), 1):
-            p = node.find("n:prod" if ns else "prod", ns)
-
-            def txt(name, prod=p, namespaced=ns):
-                if prod is None:
-                    return ""
-                element = prod.find(f"n:{name}" if namespaced else name, ns)
-                return element.text or "" if element is not None else ""
-
-            NFeReceiptItem.objects.create(
-                receipt=receipt,
-                sequence=i,
-                supplier_code=txt("cProd"),
-                description=txt("xProd")[:300],
-                quantity=Decimal(txt("qCom") or "0"),
-                unit_price=Decimal(txt("vUnCom") or "0"),
-                ncm=txt("NCM"),
-                barcode=txt("cEAN"),
-            )
-        self._suggest_mappings(receipt)
-        return Response(self.get_serializer(receipt).data, status=201)
+        return Response({"detail": "Endpoint legado desativado."}, status=410)
 
     @staticmethod
     def _suggest_mappings(receipt):
         for item in receipt.items.all():
-            drug = material = None; match = "manual"; confidence = 0
+            drug = material = None
+            match = "manual"
+            confidence = 0
             if item.barcode and (drug := Drug.objects.filter(barcode=item.barcode, is_active=True).first()):
                 match, confidence = "barcode", 100
             elif item.barcode and (material := Material.objects.filter(barcode=item.barcode, is_active=True).first()):
                 match, confidence = "barcode", 100
             elif item.supplier_code:
                 drug = Drug.objects.filter(anvisa_code=item.supplier_code, is_active=True).first()
-                if drug: match, confidence = "supplier_code", 90
+                if drug:
+                    match, confidence = "supplier_code", 90
             if not (drug or material) and item.ncm:
                 material = Material.objects.filter(notes__icontains=item.ncm, is_active=True).first()
-                if material: match, confidence = "ncm", 60
+                if material:
+                    match, confidence = "ncm", 60
             if drug or material:
                 NFeCatalogMapping.objects.update_or_create(item=item, defaults={"drug": drug, "material": material, "match_type": match, "confidence": confidence})
 

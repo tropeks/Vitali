@@ -3,7 +3,7 @@ import re
 import xml.etree.ElementTree as ET
 from decimal import Decimal
 
-from django.db import IntegrityError, transaction
+from django.db import transaction
 
 from ..models import NFeReceipt, NFeReceiptItem
 
@@ -38,8 +38,8 @@ def ingest_xml(raw: bytes, *, source: str, uploaded_by=None, external_id: str = 
             payload_sha256=digest)
         for i, node in enumerate(root.findall(f".//{pref}det", ns), 1):
             prod = node.find(f"{pref}prod", ns)
-            def p(name):
-                el = prod.find(f"{pref}{name}", ns) if prod is not None else None
+            def p(name, product=prod):
+                el = product.find(f"{pref}{name}", ns) if product is not None else None
                 return (el.text or "").strip() if el is not None else ""
             NFeReceiptItem.objects.create(receipt=receipt, sequence=i,
                 supplier_code=p("cProd"), description=p("xProd")[:300],
