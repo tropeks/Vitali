@@ -1,14 +1,16 @@
 """Transactional services for approvals and domain events."""
 
 from dataclasses import dataclass
+from datetime import timedelta
 
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.core.models import AuditLog
 
-from .models import ApprovalRequest, ApprovalStep, DomainEventOutbox
+from .models import ApprovalRequest, ApprovalStep, DomainEventOutbox, IntegrationInbox
 
 
 def _require(user, permission: str) -> None:
@@ -176,13 +178,18 @@ class OutboxService:
 
     @staticmethod
     @transaction.atomic
-    def claim_batch(*, limit: int = 100) -> list[DomainEventOutbox]:
+    def claim_batch(*, limit: int = 100, lock_timeout=None) -> list[DomainEventOutbox]:
         now = timezone.now()
+        lock_timeout = lock_timeout or timedelta(minutes=10)
         rows = list(
             DomainEventOutbox.objects.select_for_update(skip_locked=True)
+            .filter(available_at__lte=now)
             .filter(
-                status__in=(DomainEventOutbox.Status.PENDING, DomainEventOutbox.Status.FAILED),
-                available_at__lte=now,
+                Q(status__in=(DomainEventOutbox.Status.PENDING, DomainEventOutbox.Status.FAILED))
+                | Q(
+                    status=DomainEventOutbox.Status.PROCESSING,
+                    locked_at__lt=now - lock_timeout,
+                )
             )
             .order_by("created_at")[:limit]
         )
@@ -214,3 +221,132 @@ class OutboxService:
         event.available_at = retry_at
         event.locked_at = None
         event.save(update_fields=("status", "last_error", "available_at", "locked_at"))
+
+    @staticmethod
+    def replay(event: DomainEventOutbox) -> DomainEventOutbox:
+        if event.status not in (DomainEventOutbox.Status.FAILED, DomainEventOutbox.Status.DEAD):
+            raise ValidationError("Somente eventos falhos ou esgotados podem ser reenfileirados.")
+        event.status = DomainEventOutbox.Status.PENDING
+        event.available_at = timezone.now()
+        event.locked_at = None
+        event.last_error = ""
+        event.attempts = 0
+        event.replay_count += 1
+        event.save(
+            update_fields=(
+                "status",
+                "available_at",
+                "locked_at",
+                "last_error",
+                "attempts",
+                "replay_count",
+            )
+        )
+        return event
+
+
+@dataclass(frozen=True)
+class InboxEnvelope:
+    source: str
+    message_type: str
+    payload: dict
+    idempotency_key: str
+    correlation_id: str = ""
+    headers: dict | None = None
+
+
+class InboxService:
+    @staticmethod
+    def receive(envelope: InboxEnvelope) -> tuple[IntegrationInbox, bool]:
+        now = timezone.now()
+        row, created = IntegrationInbox.objects.get_or_create(
+            idempotency_key=envelope.idempotency_key,
+            defaults={
+                "source": envelope.source,
+                "message_type": envelope.message_type,
+                "correlation_id": envelope.correlation_id,
+                "payload": envelope.payload,
+                "headers": envelope.headers or {},
+                "available_at": now,
+            },
+        )
+        if not created and (
+            row.source != envelope.source
+            or row.message_type != envelope.message_type
+            or row.correlation_id != envelope.correlation_id
+            or row.payload != envelope.payload
+            or row.headers != (envelope.headers or {})
+        ):
+            raise ValidationError("A chave de idempotência já pertence a outra mensagem.")
+        return row, created
+
+    @staticmethod
+    @transaction.atomic
+    def claim_batch(*, limit: int = 100, lock_timeout=None) -> list[IntegrationInbox]:
+        now = timezone.now()
+        lock_timeout = lock_timeout or timedelta(minutes=10)
+        rows = list(
+            IntegrationInbox.objects.select_for_update(skip_locked=True)
+            .filter(available_at__lte=now)
+            .filter(
+                Q(status__in=(IntegrationInbox.Status.RECEIVED, IntegrationInbox.Status.FAILED))
+                | Q(
+                    status=IntegrationInbox.Status.PROCESSING,
+                    locked_at__lt=now - lock_timeout,
+                )
+            )
+            .order_by("received_at")[:limit]
+        )
+        for row in rows:
+            row.status = IntegrationInbox.Status.PROCESSING
+            row.attempts += 1
+            row.locked_at = now
+            row.save(update_fields=("status", "attempts", "locked_at", "updated_at"))
+        return rows
+
+    @staticmethod
+    def mark_completed(message: IntegrationInbox) -> None:
+        message.status = IntegrationInbox.Status.COMPLETED
+        message.processed_at = timezone.now()
+        message.locked_at = None
+        message.last_error = ""
+        message.save(
+            update_fields=("status", "processed_at", "locked_at", "last_error", "updated_at")
+        )
+
+    @staticmethod
+    def mark_failed(message: IntegrationInbox, *, error: str, retry_at, max_attempts=10) -> None:
+        message.status = (
+            IntegrationInbox.Status.DEAD
+            if message.attempts >= max_attempts
+            else IntegrationInbox.Status.FAILED
+        )
+        message.last_error = error[:4000]
+        message.available_at = retry_at
+        message.locked_at = None
+        message.save(
+            update_fields=("status", "last_error", "available_at", "locked_at", "updated_at")
+        )
+
+    @staticmethod
+    def replay(message: IntegrationInbox) -> IntegrationInbox:
+        if message.status not in (IntegrationInbox.Status.FAILED, IntegrationInbox.Status.DEAD):
+            raise ValidationError("Somente mensagens falhas ou esgotadas podem ser reprocessadas.")
+        message.status = IntegrationInbox.Status.RECEIVED
+        message.available_at = timezone.now()
+        message.locked_at = None
+        message.last_error = ""
+        message.attempts = 0
+        message.replay_count += 1
+        message.save(
+            update_fields=(
+                "status",
+                "available_at",
+                "locked_at",
+                "last_error",
+                "attempts",
+                "replay_count",
+                "updated_at",
+            )
+        )
+        return message

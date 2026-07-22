@@ -63,10 +63,18 @@ class UserDTOSerializer(serializers.ModelSerializer):
 
     role_name = serializers.CharField(source="role.name", read_only=True, default=None)
     active_modules = serializers.SerializerMethodField()
+    permissions = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ("id", "email", "full_name", "role_name", "active_modules")
+        fields = ("id", "email", "full_name", "role_name", "active_modules", "permissions")
+
+    def get_permissions(self, obj) -> list[str]:
+        # Mirror HasPermission's tenant-effective role (membership Model B), not
+        # merely the user's legacy/global role, so navigation never advertises
+        # actions from another tenant membership.
+        role = obj.effective_role()
+        return list(role.permissions or []) if role else []
 
     def get_active_modules(self, obj) -> list:
         """Return active modules for the current tenant via FeatureFlag."""

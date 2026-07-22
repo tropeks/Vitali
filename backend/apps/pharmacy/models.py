@@ -248,6 +248,22 @@ class StockItem(models.Model):
     quantity = models.DecimalField(max_digits=12, decimal_places=3, default=Decimal("0"))
     min_stock = models.DecimalField(max_digits=12, decimal_places=3, default=Decimal("0"))
     location = models.CharField(max_length=100, blank=True)
+    warehouse = models.ForeignKey(
+        "Warehouse", on_delete=models.PROTECT, null=True, blank=True, related_name="stock_items"
+    )
+    storage_location = models.ForeignKey(
+        "StorageLocation",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="stock_items",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=(("available", "Disponível"), ("quarantine", "Quarentena"), ("recalled", "Recall")),
+        default="available",
+        db_index=True,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -265,12 +281,12 @@ class StockItem(models.Model):
             # equal), so unique_together would allow duplicate (drug, lot, NULL) rows.
             # Requires Django 5.0+ and PostgreSQL 15+. Both in use here (Django 5.2, PG 16).
             models.UniqueConstraint(
-                fields=["drug", "lot_number", "expiry_date"],
+                fields=["drug", "lot_number", "expiry_date", "warehouse"],
                 name="stockitem_drug_lot_expiry_unique",
                 nulls_distinct=False,
             ),
             models.UniqueConstraint(
-                fields=["material", "lot_number", "expiry_date"],
+                fields=["material", "lot_number", "expiry_date", "warehouse"],
                 name="stockitem_material_lot_expiry_unique",
                 nulls_distinct=False,
             ),
@@ -290,6 +306,41 @@ class StockItem(models.Model):
     def __str__(self):
         item = self.drug or self.material
         return f"{item} — lote {self.lot_number} (qty: {self.quantity})"
+
+
+class Warehouse(models.Model):
+    """Unidade física de estoque; códigos são estáveis para integrações/WMS."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    code = models.CharField(max_length=40, unique=True)
+    name = models.CharField(max_length=160)
+    active = models.BooleanField(default=True, db_index=True)
+    controlled_substances = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("code",)
+
+    def __str__(self):
+        return f"{self.code} — {self.name}"
+
+
+class StorageLocation(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    warehouse = models.ForeignKey(Warehouse, on_delete=models.PROTECT, related_name="locations")
+    code = models.CharField(max_length=60)
+    name = models.CharField(max_length=160, blank=True)
+    active = models.BooleanField(default=True)
+    quarantine = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ("warehouse__code", "code")
+        constraints = [
+            models.UniqueConstraint(fields=("warehouse", "code"), name="uniq_storage_location")
+        ]
+
+    def __str__(self):
+        return f"{self.warehouse.code}/{self.code}"
 
 
 class StockMovement(models.Model):
@@ -347,6 +398,140 @@ class StockMovement(models.Model):
 
     def __str__(self):
         return f"{self.get_movement_type_display()} {self.quantity} × {self.stock_item}"
+
+
+class InventoryCount(models.Model):
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Rascunho"
+        SUBMITTED = "submitted", "Aguardando aprovação"
+        APPROVED = "approved", "Aprovado e lançado"
+        REJECTED = "rejected", "Rejeitado"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    warehouse = models.ForeignKey(
+        Warehouse, on_delete=models.PROTECT, related_name="inventory_counts"
+    )
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.DRAFT, db_index=True
+    )
+    blind = models.BooleanField(default=True, editable=False)
+    requested_by = models.ForeignKey(
+        "core.User", on_delete=models.PROTECT, related_name="inventory_counts"
+    )
+    approval = models.OneToOneField(
+        "governance.ApprovalRequest", on_delete=models.PROTECT, null=True, blank=True
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    applied_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"Inventário {self.id} — {self.warehouse.code} ({self.status})"
+
+
+class InventoryCountLine(models.Model):
+    inventory = models.ForeignKey(InventoryCount, on_delete=models.CASCADE, related_name="lines")
+    stock_item = models.ForeignKey(StockItem, on_delete=models.PROTECT)
+    counted_quantity = models.DecimalField(max_digits=12, decimal_places=3)
+    system_quantity_snapshot = models.DecimalField(
+        max_digits=12, decimal_places=3, null=True, editable=False
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("inventory", "stock_item"), name="uniq_inventory_item")
+        ]
+
+    def __str__(self):
+        return f"{self.inventory_id}: {self.stock_item_id} = {self.counted_quantity}"
+
+
+class StockTransfer(models.Model):
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Rascunho"
+        IN_TRANSIT = "in_transit", "Em trânsito"
+        ACCEPTED = "accepted", "Aceita"
+        CANCELLED = "cancelled", "Cancelada"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    origin = models.ForeignKey(
+        Warehouse, on_delete=models.PROTECT, related_name="outgoing_transfers"
+    )
+    destination = models.ForeignKey(
+        Warehouse, on_delete=models.PROTECT, related_name="incoming_transfers"
+    )
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.DRAFT, db_index=True
+    )
+    requested_by = models.ForeignKey(
+        "core.User", on_delete=models.PROTECT, related_name="stock_transfers_requested"
+    )
+    accepted_by = models.ForeignKey(
+        "core.User",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="stock_transfers_accepted",
+    )
+    shipped_at = models.DateTimeField(null=True, blank=True)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=~models.Q(origin=models.F("destination")),
+                name="transfer_distinct_warehouses",
+            )
+        ]
+
+    def __str__(self):
+        return f"Transferência {self.id}: {self.origin.code} → {self.destination.code}"
+
+
+class StockTransferLine(models.Model):
+    transfer = models.ForeignKey(StockTransfer, on_delete=models.CASCADE, related_name="lines")
+    source_item = models.ForeignKey(
+        StockItem, on_delete=models.PROTECT, related_name="transfer_lines"
+    )
+    destination_item = models.ForeignKey(
+        StockItem,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="received_transfer_lines",
+    )
+    quantity = models.DecimalField(max_digits=12, decimal_places=3)
+
+    def __str__(self):
+        return f"{self.transfer_id}: {self.quantity} × {self.source_item_id}"
+
+
+class LotRecall(models.Model):
+    class Status(models.TextChoices):
+        OPEN = "open", "Aberto"
+        CLOSED = "closed", "Encerrado"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    lot_number = models.CharField(max_length=50, db_index=True)
+    drug = models.ForeignKey(Drug, on_delete=models.PROTECT, null=True, blank=True)
+    material = models.ForeignKey(Material, on_delete=models.PROTECT, null=True, blank=True)
+    reason = models.TextField()
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.OPEN)
+    created_by = models.ForeignKey("core.User", on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(drug__isnull=False, material__isnull=True)
+                    | models.Q(drug__isnull=True, material__isnull=False)
+                ),
+                name="recall_drug_xor_material",
+            )
+        ]
+
+    def __str__(self):
+        return f"Recall {self.lot_number} ({self.status})"
 
 
 # ─── S-028: Dispensation ──────────────────────────────────────────────────────

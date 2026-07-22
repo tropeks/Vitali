@@ -16,7 +16,7 @@ Grant them explicitly with ``grant_tenant_membership``.
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django_tenants.utils import get_tenant_model, tenant_context
 
 from apps.core.models import UserTenantMembership
@@ -57,10 +57,16 @@ class Command(BaseCommand):
             action="store_true",
             help="List the affected user emails per tenant (verbose audit before flipping the flag).",
         )
+        parser.add_argument(
+            "--fail-on-orphans",
+            action="store_true",
+            help="Exit non-zero when an active non-superuser remains without a tenant binding.",
+        )
 
     def handle(self, *args, **opts):
         dry = opts["dry_run"]
         report = opts["report"]
+        fail_on_orphans = opts["fail_on_orphans"]
         Tenant = get_tenant_model()
         models = _tenant_app_models()
         self.stdout.write(
@@ -104,6 +110,8 @@ class Command(BaseCommand):
                 ]
                 UserTenantMembership.objects.bulk_create(rows, ignore_conflicts=True)
                 created_total += len(rows)
+            elif dry:
+                created_total += len(to_create)
 
         # Users with an active account but no membership anywhere — need manual grant.
         # User lives in the public schema and is reachable from any search_path, and
@@ -128,3 +136,7 @@ class Command(BaseCommand):
 
         verb = "Would create" if dry else "Created"
         self.stdout.write(self.style.SUCCESS(f"\n{verb} {created_total} membership(s)."))
+        if orphaned and fail_on_orphans:
+            raise CommandError(
+                f"Tenant enforcement is not safe: {len(orphaned)} active user(s) remain orphaned."
+            )

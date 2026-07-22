@@ -24,13 +24,18 @@ from .models import (
     DoseRule,
     Drug,
     DrugInteraction,
+    InventoryCount,
+    LotRecall,
     Material,
     PurchaseOrder,
     PurchaseOrderItem,
     StockAlert,
     StockItem,
     StockMovement,
+    StockTransfer,
+    StorageLocation,
     Supplier,
+    Warehouse,
 )
 from .serializers import (
     AllergenClassSerializer,
@@ -39,15 +44,131 @@ from .serializers import (
     DoseRuleSerializer,
     DrugInteractionSerializer,
     DrugSerializer,
+    InventoryCountSerializer,
+    LotRecallSerializer,
     MaterialSerializer,
     POReceiveSerializer,
     PurchaseOrderSerializer,
     StockItemSerializer,
     StockMovementSerializer,
+    StockTransferSerializer,
+    StorageLocationSerializer,
     SupplierSerializer,
+    WarehouseSerializer,
 )
+from .services.enterprise_stock import InventoryService, TransferService
 
 _PHARMACY_MODULE = ModuleRequiredPermission("pharmacy")
+
+
+class WarehouseViewSet(viewsets.ModelViewSet):
+    queryset = Warehouse.objects.all()
+    serializer_class = WarehouseSerializer
+
+    def get_permissions(self):
+        permission = (
+            "pharmacy.warehouse_manage"
+            if self.action != "list" and self.action != "retrieve"
+            else "pharmacy.read"
+        )
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission(permission)]
+
+
+class StorageLocationViewSet(viewsets.ModelViewSet):
+    queryset = StorageLocation.objects.select_related("warehouse")
+    serializer_class = StorageLocationSerializer
+
+    def get_permissions(self):
+        permission = (
+            "pharmacy.warehouse_manage"
+            if self.action != "list" and self.action != "retrieve"
+            else "pharmacy.read"
+        )
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission(permission)]
+
+
+class InventoryCountViewSet(viewsets.ModelViewSet):
+    queryset = InventoryCount.objects.prefetch_related("lines")
+    serializer_class = InventoryCountSerializer
+    http_method_names = ("get", "post", "head", "options")
+
+    def get_permissions(self):
+        permission = (
+            "pharmacy.inventory_count"
+            if self.action in ("create", "submit")
+            else "pharmacy.inventory_approve"
+            if self.action == "decide"
+            else "pharmacy.read"
+        )
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission(permission)]
+
+    @action(detail=True, methods=("post",))
+    def submit(self, request, pk=None):
+        row = InventoryService.submit(self.get_object(), request.user)
+        return Response(self.get_serializer(row).data)
+
+    @action(detail=True, methods=("post",))
+    def decide(self, request, pk=None):
+        row = InventoryService.decide(
+            self.get_object(),
+            request.user,
+            bool(request.data.get("approve")),
+            request.data.get("note", ""),
+        )
+        return Response(self.get_serializer(row).data)
+
+
+class StockTransferViewSet(viewsets.ModelViewSet):
+    queryset = StockTransfer.objects.prefetch_related("lines")
+    serializer_class = StockTransferSerializer
+    http_method_names = ("get", "post", "head", "options")
+
+    def get_permissions(self):
+        permission = (
+            "pharmacy.transfer_accept"
+            if self.action == "accept"
+            else "pharmacy.transfer_manage"
+            if self.action in ("create", "ship")
+            else "pharmacy.read"
+        )
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission(permission)]
+
+    @action(detail=True, methods=("post",))
+    def ship(self, request, pk=None):
+        return Response(
+            self.get_serializer(TransferService.ship(self.get_object(), request.user)).data
+        )
+
+    @action(detail=True, methods=("post",))
+    def accept(self, request, pk=None):
+        return Response(
+            self.get_serializer(TransferService.accept(self.get_object(), request.user)).data
+        )
+
+
+class LotRecallViewSet(viewsets.ModelViewSet):
+    queryset = LotRecall.objects.all()
+    serializer_class = LotRecallSerializer
+    http_method_names = ("get", "post", "head", "options")
+
+    def get_permissions(self):
+        permission = "pharmacy.recall_manage" if self.action == "create" else "pharmacy.read"
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission(permission)]
+
+    @transaction.atomic
+    def perform_create(self, serializer):
+        recall = serializer.save(created_by=self.request.user)
+        lots = StockItem.objects.filter(
+            lot_number=recall.lot_number, drug=recall.drug, material=recall.material
+        ).select_for_update()
+        lots.update(status="recalled")
+        log_audit(
+            self.request,
+            "recall",
+            "LotRecall",
+            recall.id,
+            new_data={"lot_number": recall.lot_number},
+        )
 
 
 def log_audit(request, action, resource_type, resource_id, old_data=None, new_data=None):
@@ -160,38 +281,48 @@ class StockItemViewSet(viewsets.ModelViewSet):
         return qs
 
     def get_permissions(self):
+        if self.action in ("quarantine", "release"):
+            return [
+                IsAuthenticated(),
+                _PHARMACY_MODULE,
+                HasPermission("pharmacy.quarantine_manage"),
+            ]
         if self.action in ("create", "update", "partial_update", "destroy", "adjust"):
             return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission("pharmacy.stock_manage")]
         return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission("pharmacy.read")]
 
     @action(detail=True, methods=["post"], url_path="adjust")
     def adjust(self, request, pk=None):
-        """POST /pharmacy/stock/items/{id}/adjust/ — create an adjustment StockMovement."""
-        item = self.get_object()
-        quantity = request.data.get("quantity")
-        notes = request.data.get("notes", "")
-        if quantity is None:
-            return Response({"detail": "quantity is required."}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            qty = Decimal(str(quantity))
-        except Exception:
-            return Response(
-                {"detail": "quantity must be a valid number."}, status=status.HTTP_400_BAD_REQUEST
-            )
-        try:
-            movement = StockMovement.objects.create(
-                stock_item=item,
-                movement_type="adjustment",
-                quantity=qty,
-                notes=notes,
-                performed_by=request.user,
-            )
-        except ValueError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        log_audit(
-            request, "adjust", "StockItem", item.id, new_data={"quantity": str(qty), "notes": notes}
+        return Response(
+            {"detail": "Ajustes exigem contagem cega e aprovação em /pharmacy/inventory-counts/."},
+            status=status.HTTP_409_CONFLICT,
         )
-        return Response(StockMovementSerializer(movement).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"])
+    def quarantine(self, request, pk=None):
+        item = self.get_object()
+        item.status = "quarantine"
+        item.save(update_fields=("status", "updated_at"))
+        log_audit(
+            request,
+            "quarantine",
+            "StockItem",
+            item.id,
+            new_data={"reason": request.data.get("reason", "")},
+        )
+        return Response(self.get_serializer(item).data)
+
+    @action(detail=True, methods=["post"])
+    def release(self, request, pk=None):
+        item = self.get_object()
+        if item.status != "quarantine":
+            return Response(
+                {"detail": "Somente lotes em quarentena podem ser liberados."}, status=409
+            )
+        item.status = "available"
+        item.save(update_fields=("status", "updated_at"))
+        log_audit(request, "release_quarantine", "StockItem", item.id)
+        return Response(self.get_serializer(item).data)
 
 
 class StockMovementViewSet(viewsets.ModelViewSet):
@@ -270,6 +401,7 @@ class StockAvailabilityView(APIView):
             StockItem.objects.filter(
                 drug_id=drug_id,
                 quantity__gt=0,
+                status="available",
             )
             .filter(Q(expiry_date__gte=today) | Q(expiry_date__isnull=True))
             .order_by("expiry_date")
@@ -556,6 +688,7 @@ class DispenseView(APIView):
             StockItem.objects.select_for_update(of=("self",))
             .filter(
                 drug=drug,
+                status="available",
             )
             .filter(_Q(expiry_date__gte=today) | _Q(expiry_date__isnull=True))
             .order_by("expiry_date")

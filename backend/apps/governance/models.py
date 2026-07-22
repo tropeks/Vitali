@@ -6,6 +6,8 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 
+from apps.core.fields import EncryptedJSONField
+
 
 class ApprovalRequest(models.Model):
     class Status(models.TextChoices):
@@ -79,6 +81,7 @@ class OutboxQuerySet(models.QuerySet):
         "last_error",
         "locked_at",
         "published_at",
+        "replay_count",
     }
 
     def delete(self):
@@ -112,6 +115,7 @@ class DomainEventOutbox(models.Model):
     occurred_at = models.DateTimeField()
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
     attempts = models.PositiveIntegerField(default=0)
+    replay_count = models.PositiveIntegerField(default=0)
     available_at = models.DateTimeField()
     last_error = models.TextField(blank=True)
     locked_at = models.DateTimeField(null=True, blank=True)
@@ -155,3 +159,41 @@ class DomainEventOutbox(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ValidationError("Eventos da outbox não podem ser excluídos.")
+
+
+class IntegrationInbox(models.Model):
+    """Durable, encrypted boundary for protocol-neutral inbound messages."""
+
+    class Status(models.TextChoices):
+        RECEIVED = "received", "Recebida"
+        PROCESSING = "processing", "Processando"
+        COMPLETED = "completed", "Concluída"
+        FAILED = "failed", "Falhou"
+        DEAD = "dead", "Esgotada"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    idempotency_key = models.CharField(max_length=255, unique=True)
+    source = models.CharField(max_length=100, db_index=True)
+    message_type = models.CharField(max_length=150, db_index=True)
+    correlation_id = models.CharField(max_length=255, blank=True, db_index=True)
+    payload = EncryptedJSONField()
+    headers = EncryptedJSONField(default=dict, blank=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.RECEIVED)
+    attempts = models.PositiveIntegerField(default=0)
+    replay_count = models.PositiveIntegerField(default=0)
+    available_at = models.DateTimeField()
+    locked_at = models.DateTimeField(null=True, blank=True)
+    processed_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True)
+    received_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("-received_at",)
+        indexes = [
+            models.Index(fields=("status", "available_at"), name="gov_inbox_dispatch"),
+            models.Index(fields=("source", "message_type"), name="gov_inbox_source_type"),
+        ]
+
+    def __str__(self):
+        return f"{self.source}/{self.message_type} ({self.status})"

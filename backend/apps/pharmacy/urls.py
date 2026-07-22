@@ -14,6 +14,8 @@ from .views import (
     DrugViewSet,
     FormularyUploadCommitView,
     FormularyUploadPreviewView,
+    InventoryCountViewSet,
+    LotRecallViewSet,
     MaterialViewSet,
     PurchaseOrderViewSet,
     StockAlertsView,
@@ -21,7 +23,10 @@ from .views import (
     StockItemViewSet,
     StockMovementViewSet,
     StockRiskView,
+    StockTransferViewSet,
+    StorageLocationViewSet,
     SupplierViewSet,
+    WarehouseViewSet,
 )
 
 router = DefaultRouter()
@@ -35,6 +40,11 @@ router.register(r"stock/movements", StockMovementViewSet, basename="stockmovemen
 router.register(r"dispensations", DispensationViewSet, basename="dispensation")
 router.register(r"suppliers", SupplierViewSet, basename="supplier")
 router.register(r"purchase-orders", PurchaseOrderViewSet, basename="purchase-order")
+router.register(r"warehouses", WarehouseViewSet, basename="warehouse")
+router.register(r"storage-locations", StorageLocationViewSet, basename="storage-location")
+router.register(r"inventory-counts", InventoryCountViewSet, basename="inventory-count")
+router.register(r"stock/transfers", StockTransferViewSet, basename="stock-transfer")
+router.register(r"stock/recalls", LotRecallViewSet, basename="lot-recall")
 
 urlpatterns = [
     path("pharmacy/", include(router.urls)),

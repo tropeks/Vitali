@@ -319,6 +319,17 @@ Primeira fatia implementada em 22 de julho de 2026:
 - [ ] Auditoria/SIEM e baseline LGPD operacional completos.
 - [ ] WMS/controlados e financeiro mínimo reconciliável.
 
+Fatia operacional seguinte implementada localmente em 22 de julho de 2026:
+
+- [x] Console administrativo para organização, MPI e aprovações.
+- [x] Inbox de integrações com idempotência, retry, dead-letter e replay operacional.
+- [x] Dispatcher transacional da outbox com execução tenant-aware.
+- [x] Almoxarifados, endereçamento, quarentena e recall rastreável.
+- [x] Inventário cego com ajuste somente após maker-checker.
+- [x] Transferência entre almoxarifados com ledger de saída e entrada.
+- [x] CD corrigido para migrar schemas compartilhados e de tenants.
+- [ ] Financeiro mínimo reconciliável e escrituração regulatória completa de controlados.
+
 ### Onda 0 — tornar a fundação segura (P0)
 
 1. Enforce de tenant e hardening de administração privilegiada.
