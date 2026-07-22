@@ -422,13 +422,13 @@ export default function AppointmentsPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="min-w-[260px]">
+          <div className="w-full sm:w-56 sm:shrink-0">
             <RemoteCombobox<Professional>
               label="Filtrar profissional"
               endpoint="/api/v1/professionals/?ordering=user__full_name"
               value={selectedProfessional}
               getKey={(professional) => professional.id}
-              getLabel={(professional) => `${professional.user_name}${professional.specialty ? ` — ${professional.specialty}` : ''}`}
+              getLabel={(professional) => professional.user_name}
               onChange={(professional) => {
                 setSelectedProfessional(professional)
                 setSelectedProfId(professional?.id ?? '')
