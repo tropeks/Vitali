@@ -409,7 +409,9 @@ class AccountsReceivable(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
-        indexes = [models.Index(fields=["status", "due_date"], name="billing_acc_status_ea3ffa_idx")]
+        indexes = [
+            models.Index(fields=["status", "due_date"], name="billing_acc_status_ea3ffa_idx")
+        ]
 
     def __str__(self):
         return f"CR {self.guide.guide_number} — R$ {self.amount}"

@@ -461,7 +461,7 @@ class BillingOperationalView(APIView):
             at_risk=Sum("total_value", filter=Q(status__in=["denied", "appeal"])),
             total=Count("id"),
             paid=Count("id", filter=Q(status="paid")),
-            outstanding_count=Count("id", filter=~Q(status__in=["paid", "denied"])),
+            outstanding_count=Count("id", filter=~Q(status="paid")),
         )
         billed = agg["billed"] or Decimal("0.00")
         received = agg["received"] or Decimal("0.00")
