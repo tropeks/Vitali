@@ -1594,10 +1594,14 @@ class NFeReceipt(models.Model):
     issued_at = models.DateTimeField(null=True, blank=True)
     total_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     xml = models.TextField()
+    SOURCE = [("manual", "Upload manual"), ("email", "E-mail"), ("webhook", "Webhook/API")]
+    source = models.CharField(max_length=20, choices=SOURCE, default="manual", db_index=True)
+    external_id = models.CharField(max_length=160, blank=True, db_index=True)
+    payload_sha256 = models.CharField(max_length=64, blank=True, db_index=True)
     status = models.CharField(max_length=20, choices=STATUS, default="pending", db_index=True)
     validation_errors = models.JSONField(default=list, blank=True)
     uploaded_by = models.ForeignKey(
-        "core.User", on_delete=models.PROTECT, related_name="nfe_uploads"
+        "core.User", on_delete=models.PROTECT, null=True, blank=True, related_name="nfe_uploads"
     )
     approved_by = models.ForeignKey(
         "core.User", on_delete=models.PROTECT, null=True, blank=True, related_name="nfe_approvals"
@@ -1630,3 +1634,24 @@ class NFeReceiptItem(models.Model):
 
     def __str__(self):
         return f"NF-e {self.receipt_id} — item {self.sequence}: {self.description}"
+
+
+class NFeCatalogMapping(models.Model):
+    """Human-confirmed mapping between an NF-e line and the internal catalog."""
+    STATUS = [("suggested", "Sugerido"), ("confirmed", "Confirmado"), ("rejected", "Rejeitado")]
+    MATCH = [("barcode", "Código de barras"), ("supplier_code", "Código fornecedor"), ("ncm", "NCM"), ("manual", "Manual")]
+    item = models.OneToOneField(NFeReceiptItem, on_delete=models.CASCADE, related_name="catalog_mapping")
+    drug = models.ForeignKey(Drug, null=True, blank=True, on_delete=models.PROTECT)
+    material = models.ForeignKey(Material, null=True, blank=True, on_delete=models.PROTECT)
+    match_type = models.CharField(max_length=20, choices=MATCH)
+    confidence = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    status = models.CharField(max_length=12, choices=STATUS, default="suggested", db_index=True)
+    reviewed_by = models.ForeignKey("core.User", null=True, blank=True, on_delete=models.PROTECT)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.CheckConstraint(condition=(models.Q(drug__isnull=False) | models.Q(material__isnull=False)), name="nfe_mapping_catalog_target")]
+
+    def __str__(self):
+        return f"Mapeamento NF-e {self.item_id} ({self.status})"

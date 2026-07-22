@@ -3,17 +3,21 @@ Pharmacy API views — S-026 Catalog, S-027 Stock, S-028 Dispensation
 """
 
 import re
+import hmac
 import xml.etree.ElementTree as ET
 from decimal import Decimal
 
 from django.db import transaction
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.conf import settings
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.permissions import AllowAny
 
 from apps.core.models import AuditLog
 from apps.core.permissions import HasPermission, ModuleRequiredPermission
@@ -31,6 +35,7 @@ from .models import (
     Material,
     NFeReceipt,
     NFeReceiptItem,
+    NFeCatalogMapping,
     PharmacistValidation,
     PurchaseOrder,
     PurchaseOrderItem,
@@ -57,6 +62,7 @@ from .serializers import (
     LotRecallSerializer,
     MaterialSerializer,
     NFeReceiptSerializer,
+    NFeCatalogMappingSerializer,
     PharmacistValidationSerializer,
     POReceiveSerializer,
     PurchaseOrderSerializer,
@@ -72,6 +78,7 @@ from .serializers import (
     WarehouseSerializer,
 )
 from .services.enterprise_stock import InventoryService, TransferService
+from .services.nfe_ingestion import ingest_xml
 
 _PHARMACY_MODULE = ModuleRequiredPermission("pharmacy")
 
@@ -94,6 +101,16 @@ class NFeReceiptViewSet(viewsets.ModelViewSet):
         if not upload or upload.size > 10 * 1024 * 1024 or not upload.name.lower().endswith(".xml"):
             return Response({"detail": "Envie um XML até 10 MB."}, status=400)
         raw = upload.read()
+        try:
+            receipt, created = ingest_xml(raw, source="manual", uploaded_by=request.user)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        if not created:
+            return Response(self.get_serializer(receipt).data, status=409)
+        return Response(self.get_serializer(receipt).data, status=201)
+
+    # legacy parser retained below for compatibility is intentionally unreachable
+    def _legacy_create(self, request, *args, **kwargs):
         try:
             root = ET.fromstring(raw)
         except ET.ParseError:
@@ -143,13 +160,45 @@ class NFeReceiptViewSet(viewsets.ModelViewSet):
                 ncm=txt("NCM"),
                 barcode=txt("cEAN"),
             )
+        self._suggest_mappings(receipt)
         return Response(self.get_serializer(receipt).data, status=201)
+
+    @staticmethod
+    def _suggest_mappings(receipt):
+        for item in receipt.items.all():
+            drug = material = None; match = "manual"; confidence = 0
+            if item.barcode and (drug := Drug.objects.filter(barcode=item.barcode, is_active=True).first()):
+                match, confidence = "barcode", 100
+            elif item.barcode and (material := Material.objects.filter(barcode=item.barcode, is_active=True).first()):
+                match, confidence = "barcode", 100
+            elif item.supplier_code:
+                drug = Drug.objects.filter(anvisa_code=item.supplier_code, is_active=True).first()
+                if drug: match, confidence = "supplier_code", 90
+            if not (drug or material) and item.ncm:
+                material = Material.objects.filter(notes__icontains=item.ncm, is_active=True).first()
+                if material: match, confidence = "ncm", 60
+            if drug or material:
+                NFeCatalogMapping.objects.update_or_create(item=item, defaults={"drug": drug, "material": material, "match_type": match, "confidence": confidence})
+
+    @action(detail=True, methods=("get",))
+    def mappings(self, request, pk=None):
+        return Response(NFeCatalogMappingSerializer(NFeCatalogMapping.objects.filter(item__receipt=self.get_object()).select_related("drug", "material"), many=True).data)
+
+    @action(detail=True, methods=("post",), url_path=r"items/(?P<item_id>[^/.]+)/map")
+    def map_item(self, request, pk=None, item_id=None):
+        item = get_object_or_404(NFeReceiptItem, receipt=self.get_object(), pk=item_id)
+        mapping, _ = NFeCatalogMapping.objects.update_or_create(item=item, defaults={"drug_id": request.data.get("drug"), "material_id": request.data.get("material"), "match_type": "manual", "confidence": 100, "status": "confirmed", "reviewed_by": request.user, "reviewed_at": timezone.now()})
+        log_audit(request, "map_nfe_catalog", "NFeReceiptItem", item.id, new_data={"drug": str(mapping.drug_id), "material": str(mapping.material_id)})
+        return Response(NFeCatalogMappingSerializer(mapping).data)
+
 
     @action(detail=True, methods=["post"])
     def approve(self, request, pk=None):
         receipt = self.get_object()
         if receipt.status != "pending":
             return Response({"detail": "Status inválido."}, status=409)
+        if receipt.items.filter(catalog_mapping__isnull=True).exists() or receipt.items.filter(catalog_mapping__status="rejected").exists():
+            return Response({"detail": "Todos os itens precisam de mapeamento de catálogo."}, status=409)
         receipt.status, receipt.approved_by, receipt.approved_at = (
             "approved",
             request.user,
@@ -164,6 +213,24 @@ class NFeReceiptViewSet(viewsets.ModelViewSet):
             new_data={"status": "approved"},
         )
         return Response(self.get_serializer(receipt).data)
+
+
+class NFeWebhookView(APIView):
+    permission_classes = (AllowAny,)
+
+    def post(self, request):
+        expected = getattr(settings, "NFE_WEBHOOK_SECRET", "")
+        supplied = request.headers.get("X-NFe-Webhook-Secret", "")
+        if not expected or not hmac.compare_digest(supplied, expected):
+            return Response({"detail": "Não autorizado."}, status=401)
+        raw = request.body
+        if len(raw) > 10 * 1024 * 1024:
+            return Response({"detail": "XML excede 10 MB."}, status=413)
+        try:
+            receipt, created = ingest_xml(raw, source="webhook", external_id=request.headers.get("Idempotency-Key", ""))
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response({"id": str(receipt.id), "status": receipt.status, "created": created}, status=201 if created else 200)
 
 
 class SupplierContractViewSet(viewsets.ModelViewSet):

@@ -15,6 +15,7 @@ from .models import (
     Material,
     NFeReceipt,
     NFeReceiptItem,
+    NFeCatalogMapping,
     PharmacistValidation,
     PurchaseOrder,
     PurchaseOrderItem,
@@ -669,3 +670,10 @@ class NFeReceiptSerializer(serializers.ModelSerializer):
             "approved_by",
             "approved_at",
         )
+
+
+class NFeCatalogMappingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NFeCatalogMapping
+        fields = "__all__"
+        read_only_fields = ("match_type", "confidence", "status", "reviewed_by", "reviewed_at", "created_at")

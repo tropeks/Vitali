@@ -18,6 +18,7 @@ from .views import (
     LotRecallViewSet,
     MaterialViewSet,
     NFeReceiptViewSet,
+    NFeWebhookView,
     PharmacistValidationViewSet,
     PurchaseOrderViewSet,
     StockAlertsView,
@@ -62,6 +63,7 @@ router.register(
 
 urlpatterns = [
     path("pharmacy/", include(router.urls)),
+    path("pharmacy/nfe-receipts/webhook/", NFeWebhookView.as_view(), name="nfe-receipt-webhook"),
     path("pharmacy/stock/alerts/", StockAlertsView.as_view(), name="stock-alerts"),
     path(
         "pharmacy/stock/availability/", StockAvailabilityView.as_view(), name="stock-availability"
