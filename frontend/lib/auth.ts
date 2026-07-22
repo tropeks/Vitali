@@ -9,6 +9,7 @@ export interface UserDTO {
   email: string;
   role_name?: string | null;
   active_modules: string[];
+  permissions?: string[];
 }
 
 /**

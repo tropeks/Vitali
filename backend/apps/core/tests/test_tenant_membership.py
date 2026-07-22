@@ -229,6 +229,23 @@ class BackfillTenantMembershipCommandTests(TenantTestCase):
             UserTenantMembership.objects.filter(user=self.user, tenant=self.tenant).exists()
         )
 
+    def test_backfill_fail_on_orphans_blocks_enforcement_gate(self):
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+
+        User.objects.create_user(
+            email="orphan@example.com",
+            password=PW,
+            full_name="Orphan User",
+        )
+
+        with self.assertRaisesMessage(CommandError, "Tenant enforcement is not safe"):
+            call_command(
+                "backfill_tenant_memberships",
+                "--dry-run",
+                "--fail-on-orphans",
+            )
+
 
 @override_settings(CACHES=LOCMEM)
 class InvitationMembershipTests(TenantTestCase):

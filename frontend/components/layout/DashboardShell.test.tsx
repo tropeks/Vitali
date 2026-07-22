@@ -28,6 +28,7 @@ const user: UserDTO = {
   full_name: 'E2E Admin',
   email: 'admin@test.com',
   role_name: 'admin',
+  permissions: ['organization.read'],
   active_modules: ['emr', 'billing', 'pharmacy', 'rh'],
 }
 
@@ -64,5 +65,13 @@ describe('DashboardShell', () => {
     expect(screen.queryByRole('link', { name: /Pacientes/ })).not.toBeInTheDocument()
     expect(screen.getByText('Atendimento')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Paciente Teste' })).toBeInTheDocument()
+  })
+
+  it('shows administration only when the session carries an eligible permission', () => {
+    const { rerender } = render(<DashboardShell user={user}><div /></DashboardShell>)
+    expect(screen.getByRole('link', { name: /Administração/ })).toBeInTheDocument()
+
+    rerender(<DashboardShell user={{ ...user, permissions: [] }}><div /></DashboardShell>)
+    expect(screen.queryByRole('link', { name: /Administração/ })).not.toBeInTheDocument()
   })
 })

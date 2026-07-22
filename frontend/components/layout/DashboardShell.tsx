@@ -17,6 +17,7 @@ import {
   Receipt,
   BarChart2,
   Settings,
+  Building2,
   MessageCircle,
   LogOut,
   Bell,
@@ -38,6 +39,7 @@ interface NavItem {
   module?: string;
   /** Admin-only item */
   adminOnly?: boolean;
+  permissions?: string[];
   /** Sub-items rendered as an indented group beneath this item */
   children?: { label: string; href: string }[];
 }
@@ -79,6 +81,17 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Faturamento", href: "/billing", icon: Receipt, module: "billing" },
   { label: "Análise", href: "/billing/analytics", icon: BarChart2, module: "billing" },
   {
+    label: "Administração",
+    href: "/administracao/organizacao",
+    icon: Building2,
+    permissions: ["organization.read", "mpi.read", "workflow.read"],
+    children: [
+      { label: "Estrutura organizacional", href: "/administracao/organizacao" },
+      { label: "Identidade de pacientes", href: "/administracao/mpi" },
+      { label: "Aprovações", href: "/administracao/aprovacoes" },
+    ],
+  },
+  {
     label: "Configurações",
     href: "/configuracoes/assinatura",
     icon: Settings,
@@ -119,6 +132,7 @@ export default function DashboardShell({ user, children }: Props) {
   const visibleItems = NAV_ITEMS.filter((item) => {
     if (!moduleVisible(item)) return false;
     if (item.adminOnly && !isAdmin) return false;
+    if (item.permissions && !item.permissions.some((permission) => user.permissions?.includes(permission))) return false;
     return true;
   });
 

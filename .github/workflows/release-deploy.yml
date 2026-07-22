@@ -165,7 +165,9 @@ jobs:
             echo "Running migrations..."
             IMAGE_TAG="$IMAGE_TAG" GHCR_REPO="$GHCR_REPO" \
               docker compose -f docker-compose.staging.yml exec -T django \
-              python manage.py migrate_schemas --shared --noinput
+                python manage.py migrate_schemas --shared --noinput
+              docker compose -f docker-compose.staging.yml exec -T django \
+                python manage.py migrate_schemas --tenant --noinput
 
             echo "Collecting static files..."
             IMAGE_TAG="$IMAGE_TAG" GHCR_REPO="$GHCR_REPO" \
@@ -269,6 +271,9 @@ jobs:
             IMAGE_TAG="$IMAGE_TAG" GHCR_REPO="$GHCR_REPO" \
               docker compose -f docker-compose.prod.yml exec -T django \
               python manage.py migrate_schemas --shared --noinput
+            IMAGE_TAG="$IMAGE_TAG" GHCR_REPO="$GHCR_REPO" \
+              docker compose -f docker-compose.prod.yml exec -T django \
+              python manage.py migrate_schemas --tenant --noinput
 
             echo "Collecting static files..."
             IMAGE_TAG="$IMAGE_TAG" GHCR_REPO="$GHCR_REPO" \

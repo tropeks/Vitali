@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import ApprovalRequest, ApprovalStep
+from .models import ApprovalRequest, ApprovalStep, DomainEventOutbox, IntegrationInbox
 
 
 class ApprovalStepSerializer(serializers.ModelSerializer):
@@ -39,3 +39,17 @@ class ApprovalRequestSerializer(serializers.ModelSerializer):
 
 class ApprovalDecisionSerializer(serializers.Serializer):
     note = serializers.CharField(required=False, allow_blank=True, max_length=2000)
+
+
+class IntegrationInboxSerializer(serializers.ModelSerializer):
+    """Operational metadata only: encrypted payload/headers never leave this API."""
+
+    class Meta:
+        model = IntegrationInbox
+        exclude = ("payload", "headers")
+
+
+class DomainEventOutboxSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DomainEventOutbox
+        exclude = ("payload",)

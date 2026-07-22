@@ -9,13 +9,143 @@ from .models import (
     DoseRule,
     Drug,
     DrugInteraction,
+    InventoryCount,
+    InventoryCountLine,
+    LotRecall,
     Material,
     PurchaseOrder,
     PurchaseOrderItem,
     StockItem,
     StockMovement,
+    StockTransfer,
+    StockTransferLine,
+    StorageLocation,
     Supplier,
+    Warehouse,
 )
+
+
+class WarehouseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Warehouse
+        fields = "__all__"
+
+
+class StorageLocationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StorageLocation
+        fields = "__all__"
+
+
+class InventoryCountLineSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InventoryCountLine
+        fields = ("id", "stock_item", "counted_quantity", "system_quantity_snapshot")
+        read_only_fields = ("system_quantity_snapshot",)
+
+
+class InventoryCountSerializer(serializers.ModelSerializer):
+    lines = InventoryCountLineSerializer(many=True)
+
+    class Meta:
+        model = InventoryCount
+        fields = (
+            "id",
+            "warehouse",
+            "status",
+            "blind",
+            "approval",
+            "created_at",
+            "applied_at",
+            "lines",
+        )
+        read_only_fields = ("status", "blind", "approval", "created_at", "applied_at")
+
+    def create(self, validated_data):
+        lines = validated_data.pop("lines")
+        row = InventoryCount.objects.create(
+            requested_by=self.context["request"].user, **validated_data
+        )
+        InventoryCountLine.objects.bulk_create(
+            [InventoryCountLine(inventory=row, **line) for line in lines]
+        )
+        return row
+
+
+class StockTransferLineSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StockTransferLine
+        fields = ("id", "source_item", "destination_item", "quantity")
+        read_only_fields = ("destination_item",)
+
+
+class StockTransferSerializer(serializers.ModelSerializer):
+    lines = StockTransferLineSerializer(many=True)
+
+    class Meta:
+        model = StockTransfer
+        fields = ("id", "origin", "destination", "status", "shipped_at", "accepted_at", "lines")
+        read_only_fields = ("status", "shipped_at", "accepted_at")
+
+    def create(self, validated_data):
+        lines = validated_data.pop("lines")
+        row = StockTransfer.objects.create(
+            requested_by=self.context["request"].user, **validated_data
+        )
+        StockTransferLine.objects.bulk_create(
+            [StockTransferLine(transfer=row, **line) for line in lines]
+        )
+        return row
+
+    def validate(self, attrs):
+        if attrs.get("origin") == attrs.get("destination"):
+            raise serializers.ValidationError("Origem e destino devem ser diferentes.")
+        return attrs
+
+
+class LotRecallSerializer(serializers.ModelSerializer):
+    affected_patients = serializers.SerializerMethodField()
+    affected_destinations = serializers.SerializerMethodField()
+
+    class Meta:
+        model = LotRecall
+        fields = (
+            "id",
+            "lot_number",
+            "drug",
+            "material",
+            "reason",
+            "status",
+            "created_at",
+            "affected_patients",
+            "affected_destinations",
+        )
+        read_only_fields = ("status", "created_at", "affected_patients", "affected_destinations")
+
+    def _lots(self, obj):
+        return StockItem.objects.filter(
+            lot_number=obj.lot_number, drug=obj.drug, material=obj.material
+        )
+
+    def validate(self, attrs):
+        if bool(attrs.get("drug")) == bool(attrs.get("material")):
+            raise serializers.ValidationError("Informe exatamente um medicamento ou material.")
+        return attrs
+
+    def get_affected_patients(self, obj):
+        return list(
+            self._lots(obj)
+            .filter(dispensation_lots__isnull=False)
+            .values_list("dispensation_lots__dispensation__patient_id", flat=True)
+            .distinct()
+        )
+
+    def get_affected_destinations(self, obj):
+        return list(
+            self._lots(obj)
+            .exclude(warehouse=None)
+            .values("warehouse_id", "warehouse__code", "quantity")
+        )
 
 
 class DrugSerializer(serializers.ModelSerializer):
@@ -89,6 +219,9 @@ class StockItemSerializer(serializers.ModelSerializer):
             "quantity",
             "min_stock",
             "location",
+            "warehouse",
+            "storage_location",
+            "status",
             "is_expired",
             "is_low_stock",
             "created_at",
@@ -105,6 +238,15 @@ class StockItemSerializer(serializers.ModelSerializer):
 
     def get_is_low_stock(self, obj):
         return obj.quantity <= obj.min_stock
+
+    def validate(self, attrs):
+        warehouse = attrs.get("warehouse", getattr(self.instance, "warehouse", None))
+        location = attrs.get("storage_location", getattr(self.instance, "storage_location", None))
+        if location and location.warehouse_id != getattr(warehouse, "id", None):
+            raise serializers.ValidationError(
+                {"storage_location": "A localização deve pertencer ao almoxarifado informado."}
+            )
+        return attrs
 
 
 class StockMovementSerializer(serializers.ModelSerializer):
@@ -149,6 +291,10 @@ class StockMovementSerializer(serializers.ModelSerializer):
                 {
                     "movement_type": "Recebimentos de PO devem ser registrados via /pharmacy/purchase-orders/{id}/receive/."
                 }
+            )
+        if movement_type == "adjustment":
+            raise serializers.ValidationError(
+                {"movement_type": "Ajustes exigem inventário com aprovação maker-checker."}
             )
         # Validate expiry_date for entries
         if movement_type == "entry" and stock_item and stock_item.expiry_date:

@@ -132,6 +132,11 @@ jobs:
             docker compose -f docker-compose.staging.yml exec -T django \
               python manage.py migrate_schemas --shared --noinput
 
+            # Tenant-only apps (organization, governance, EMR MPI, etc.) live in
+            # every clinic schema and are not covered by --shared.
+            docker compose -f docker-compose.staging.yml exec -T django \
+              python manage.py migrate_schemas --tenant --noinput
+
             echo "Collecting static files..."
             docker compose -f docker-compose.staging.yml exec -T django \
               python manage.py collectstatic --noinput
