@@ -18,7 +18,7 @@ don't repeat TOTP device setup boilerplate.
 
 from django.test import modify_settings, override_settings
 from django_tenants.test.cases import FastTenantTestCase
-from django_tenants.utils import get_tenant_domain_model
+from django_tenants.utils import get_public_schema_name, get_tenant_domain_model, schema_context
 
 
 class MFATestMixin:
@@ -98,7 +98,11 @@ class TenantTestCase(FastTenantTestCase):
 
     @classmethod
     def setUpClass(cls):
-        super().setUpClass()  # FastTenantTestCase.setUpClass (tenant setup)
+        # A previous tenant test class may leave the connection on fast_test.
+        # FastTenantTestCase creates/reuses the tenant in the public schema;
+        # explicitly restore that context before delegating.
+        with schema_context(get_public_schema_name()):
+            super().setUpClass()  # FastTenantTestCase.setUpClass (tenant setup)
         # Apply @override_settings / @modify_settings class decorators.
         # FastTenantTestCase skips super().setUpClass() so Django never does this.
         if cls._overridden_settings:

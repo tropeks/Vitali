@@ -1639,6 +1639,7 @@ class NFeReceiptItem(models.Model):
 class NFeCatalogMapping(models.Model):
     """Human-confirmed mapping between an NF-e line and the internal catalog."""
 
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     STATUS = [("suggested", "Sugerido"), ("confirmed", "Confirmado"), ("rejected", "Rejeitado")]
     MATCH = [
         ("barcode", "Código de barras"),
