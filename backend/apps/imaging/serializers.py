@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-from .models import DicomStudy
+from .models import DicomStudy, DicomWorkflowEvent, ImagingModality, ModalityWorklistItem
 
 
 class DicomStudySerializer(serializers.ModelSerializer):
@@ -130,3 +130,33 @@ class DicomStudyOrthancPatchSerializer(serializers.Serializer):
     """Patch payload for backfilling the Orthanc UID once the PACS has the study."""
 
     orthanc_study_id = serializers.CharField(max_length=128)
+
+
+class ImagingModalitySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ImagingModality
+        fields = "__all__"
+        read_only_fields = ("id", "last_echo_at", "last_echo_ok", "created_at")
+
+
+class ModalityWorklistItemSerializer(serializers.ModelSerializer):
+    dicom_patient_id = serializers.CharField(source="patient.medical_record_number", read_only=True)
+
+    class Meta:
+        model = ModalityWorklistItem
+        fields = "__all__"
+        read_only_fields = ("id", "status", "study_instance_uid", "created_by", "created_at")
+
+    def validate(self, attrs):
+        encounter = attrs.get("encounter")
+        patient = attrs.get("patient")
+        if encounter and encounter.patient_id != patient.id:
+            raise serializers.ValidationError({"encounter": "Atendimento de outro paciente."})
+        return attrs
+
+
+class DicomWorkflowEventSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DicomWorkflowEvent
+        fields = "__all__"
+        read_only_fields = fields

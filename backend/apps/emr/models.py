@@ -838,6 +838,120 @@ class LabIntegrationMessage(models.Model):
         return f"{self.source}:{self.message_id} ({self.status})"
 
 
+class LabInstrument(models.Model):
+    """Tenant-local analyzer/LIS endpoint with explicit bidirectional capability."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    code = models.CharField(max_length=40, unique=True)
+    name = models.CharField(max_length=120)
+    protocol = models.CharField(
+        max_length=16,
+        choices=[("hl7_v2", "HL7 v2"), ("astm", "ASTM"), ("canonical", "JSON canônico")],
+    )
+    endpoint = models.CharField(max_length=255, blank=True)
+    supports_orders = models.BooleanField(default=True)
+    supports_results = models.BooleanField(default=True)
+    is_active = models.BooleanField(default=True, db_index=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.code} — {self.name}"
+
+
+class LabSpecimen(models.Model):
+    """Barcode identity and immutable-chain anchor for a collected specimen."""
+
+    class Status(models.TextChoices):
+        EXPECTED = "expected", "Aguardando coleta"
+        COLLECTED = "collected", "Coletado"
+        RECEIVED = "received", "Recebido"
+        PROCESSING = "processing", "Em processamento"
+        STORED = "stored", "Armazenado"
+        DISPOSED = "disposed", "Descartado"
+        REJECTED = "rejected", "Rejeitado"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    order = models.ForeignKey(LabOrder, on_delete=models.PROTECT, related_name="specimens")
+    barcode = models.CharField(max_length=80, unique=True, db_index=True)
+    specimen_type = models.CharField(max_length=80)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.EXPECTED)
+    current_location = models.CharField(max_length=120, blank=True)
+    collected_at = models.DateTimeField(null=True, blank=True)
+    collected_by = models.ForeignKey(
+        "core.User",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="lab_specimens_collected",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.barcode} ({self.status})"
+
+
+class LabSpecimenEvent(models.Model):
+    """Append-only custody event; corrections are represented by another event."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    specimen = models.ForeignKey(LabSpecimen, on_delete=models.PROTECT, related_name="events")
+    event_type = models.CharField(max_length=32)
+    from_location = models.CharField(max_length=120, blank=True)
+    to_location = models.CharField(max_length=120, blank=True)
+    reason = models.CharField(max_length=255, blank=True)
+    instrument = models.ForeignKey(
+        LabInstrument,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="specimen_events",
+    )
+    performed_by = models.ForeignKey(
+        "core.User", on_delete=models.PROTECT, related_name="lab_specimen_events"
+    )
+    occurred_at = models.DateTimeField(default=timezone.now, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["occurred_at", "created_at"]
+
+    def __str__(self):
+        return f"{self.specimen_id}: {self.event_type}"
+
+
+class CriticalLabResult(models.Model):
+    """Closed-loop acknowledgement record for a validated critical result."""
+
+    class Status(models.TextChoices):
+        OPEN = "open", "Aberto"
+        ACKNOWLEDGED = "acknowledged", "Reconhecido"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    order_item = models.OneToOneField(
+        LabOrderItem, on_delete=models.PROTECT, related_name="critical_result"
+    )
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.OPEN, db_index=True
+    )
+    detected_at = models.DateTimeField(default=timezone.now)
+    detected_by = models.ForeignKey(
+        "core.User", on_delete=models.PROTECT, related_name="critical_results_detected"
+    )
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+    acknowledged_by = models.ForeignKey(
+        "core.User",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="critical_results_acknowledged",
+    )
+    acknowledgement_note = EncryptedTextField(blank=True)
+
+    def __str__(self):
+        return f"{self.order_item_id} ({self.status})"
+
+
 # ─── Sprint 7 (minimal S-015): Prescription ──────────────────────────────────
 
 
@@ -985,6 +1099,97 @@ class PrescriptionItem(models.Model):
 
     def __str__(self):
         return f"{self.drug} × {self.quantity} {self.unit_of_measure}"
+
+
+class MedicationAdministration(models.Model):
+    """eMAR append-only clinical event for a prescribed medication dose."""
+
+    class Status(models.TextChoices):
+        GIVEN = "given", "Administrado"
+        OMITTED = "omitted", "Omitido"
+        REFUSED = "refused", "Recusado"
+        HELD = "held", "Suspenso"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    prescription_item = models.ForeignKey(
+        PrescriptionItem, on_delete=models.PROTECT, related_name="administrations"
+    )
+    encounter = models.ForeignKey(
+        Encounter, on_delete=models.PROTECT, related_name="medication_administrations"
+    )
+    patient = models.ForeignKey(
+        Patient, on_delete=models.PROTECT, related_name="medication_administrations"
+    )
+    scheduled_at = models.DateTimeField(db_index=True)
+    administered_at = models.DateTimeField(default=timezone.now, db_index=True)
+    status = models.CharField(max_length=10, choices=Status.choices, db_index=True)
+    dose_amount = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True)
+    dose_unit = models.CharField(max_length=10, blank=True, choices=DOSE_UNIT_CHOICES)
+    route = models.CharField(max_length=4, blank=True, choices=PrescriptionItem.ROUTE_CHOICES)
+    reason = models.TextField(blank=True)
+    administered_by = models.ForeignKey(
+        "core.User", on_delete=models.PROTECT, related_name="medication_administrations"
+    )
+    witness = models.ForeignKey(
+        "core.User",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="witnessed_medication_administrations",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-administered_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["prescription_item", "scheduled_at"],
+                name="emr_emar_one_event_per_scheduled_dose",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.prescription_item} — {self.get_status_display()}"
+
+
+class NursingAssessment(models.Model):
+    """SAE record: structured nursing assessment, plan, evolution and discharge."""
+
+    class Kind(models.TextChoices):
+        ADMISSION = "admission", "Admissão"
+        DIAGNOSIS = "diagnosis", "Diagnóstico de enfermagem"
+        CARE_PLAN = "care_plan", "Planejamento"
+        EVOLUTION = "evolution", "Evolução"
+        DISCHARGE = "discharge", "Alta"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    encounter = models.ForeignKey(
+        Encounter, on_delete=models.PROTECT, related_name="nursing_assessments"
+    )
+    patient = models.ForeignKey(
+        Patient, on_delete=models.PROTECT, related_name="nursing_assessments"
+    )
+    kind = models.CharField(max_length=16, choices=Kind.choices, db_index=True)
+    content = EncryptedJSONField(default=dict)
+    authored_by = models.ForeignKey(
+        "core.User", on_delete=models.PROTECT, related_name="nursing_assessments"
+    )
+    signed_at = models.DateTimeField(null=True, blank=True)
+    signed_by = models.ForeignKey(
+        "core.User",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="signed_nursing_assessments",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.get_kind_display()} — {self.patient}"
 
 
 # ─── Sprint 6: Insurance Cards ────────────────────────────────────────────────

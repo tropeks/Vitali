@@ -14,6 +14,8 @@ from .models import (
     LabOrderItem,
     LabTest,
     MedicalHistory,
+    MedicationAdministration,
+    NursingAssessment,
     Patient,
     PatientIdentifier,
     PatientInsurance,
@@ -907,3 +909,35 @@ class PrescriptionSerializer(serializers.ModelSerializer):
         validated_data["patient"] = encounter.patient
         validated_data["prescriber"] = encounter.professional
         return super().create(validated_data)
+
+
+class MedicationAdministrationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MedicationAdministration
+        fields = "__all__"
+        read_only_fields = ("id", "encounter", "patient", "administered_by", "created_at")
+
+
+class NursingAssessmentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NursingAssessment
+        fields = "__all__"
+        read_only_fields = (
+            "id",
+            "patient",
+            "authored_by",
+            "signed_at",
+            "signed_by",
+            "created_at",
+            "updated_at",
+        )
+
+    def validate(self, attrs):
+        encounter = attrs.get("encounter", getattr(self.instance, "encounter", None))
+        if encounter is None:
+            raise serializers.ValidationError({"encounter": "Atendimento obrigatório."})
+        if self.instance and encounter != self.instance.encounter:
+            raise serializers.ValidationError({"encounter": "O atendimento não pode ser alterado."})
+        if self.instance and self.instance.signed_at:
+            raise serializers.ValidationError("Registro SAE assinado é imutável.")
+        return attrs

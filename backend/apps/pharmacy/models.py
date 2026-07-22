@@ -601,6 +601,41 @@ class DispensationLot(models.Model):
         return f"{self.dispensation_id} × {self.stock_item} — {self.quantity}"
 
 
+class PharmacistValidation(models.Model):
+    """Clinical pharmacy review of a signed CPOE prescription."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pendente"
+        APPROVED = "approved", "Aprovada"
+        CHANGES_REQUESTED = "changes_requested", "Ajuste solicitado"
+        REJECTED = "rejected", "Rejeitada"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    prescription = models.OneToOneField(
+        "emr.Prescription", on_delete=models.PROTECT, related_name="pharmacist_validation"
+    )
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.PENDING, db_index=True
+    )
+    pharmacist = models.ForeignKey(
+        "core.User",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="pharmacist_validations",
+    )
+    clinical_notes = models.TextField(blank=True)
+    validated_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Validação {self.prescription_id} — {self.get_status_display()}"
+
+
 # ─── Stockout-prediction wedge PR S2: persistent StockAlert ───────────────────
 
 

@@ -13,6 +13,7 @@ from .models import (
     InventoryCountLine,
     LotRecall,
     Material,
+    PharmacistValidation,
     PurchaseOrder,
     PurchaseOrderItem,
     StockItem,
@@ -23,6 +24,25 @@ from .models import (
     Supplier,
     Warehouse,
 )
+
+
+class PharmacistValidationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PharmacistValidation
+        fields = "__all__"
+        read_only_fields = (
+            "id",
+            "status",
+            "pharmacist",
+            "validated_at",
+            "created_at",
+            "updated_at",
+        )
+
+    def validate_prescription(self, prescription):
+        if prescription.status not in {"signed", "partially_dispensed", "dispensed"}:
+            raise serializers.ValidationError("A prescrição deve estar assinada.")
+        return prescription
 
 
 class WarehouseSerializer(serializers.ModelSerializer):

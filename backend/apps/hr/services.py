@@ -18,13 +18,64 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from apps.core.models import AuditLog, Role, User
-from apps.hr.models import Employee
+from apps.hr.models import Employee, TimeEntry
 from apps.hr.tasks import setup_staff_whatsapp_channel
 
 logger = logging.getLogger(__name__)
 
 # Clinical roles that require council registration (CFM, COREN, CRF, etc.)
 CLINICAL_ROLES = {"medico", "enfermeiro", "farmaceutico", "dentista"}
+
+
+class AttendanceService:
+    """Records immutable, idempotent attendance events with sequence validation."""
+
+    @staticmethod
+    @transaction.atomic
+    def record(*, employee, actor, event_type, occurred_at, source="web", external_id=None):
+        if employee.employment_status != "active":
+            raise ValidationError("Funcionário inativo não pode registrar ponto.")
+        if external_id:
+            existing = TimeEntry.objects.filter(source=source, external_id=external_id).first()
+            if existing:
+                if existing.employee_id != employee.id or existing.event_type != event_type:
+                    raise ValidationError("Chave idempotente já usada por outro evento.")
+                return existing, False
+
+        latest = (
+            TimeEntry.objects.select_for_update()
+            .filter(employee=employee, correction_of__isnull=True)
+            .order_by("-occurred_at")
+            .first()
+        )
+        if latest and occurred_at <= latest.occurred_at:
+            raise ValidationError("O horário deve ser posterior ao último registro.")
+        if latest and latest.event_type == event_type:
+            raise ValidationError("Sequência inválida de ponto.")
+        if not latest and event_type != "in":
+            raise ValidationError("O primeiro registro deve ser uma entrada.")
+
+        entry = TimeEntry.objects.create(
+            employee=employee,
+            event_type=event_type,
+            occurred_at=occurred_at,
+            source=source,
+            external_id=external_id or "",
+            recorded_by=actor,
+        )
+        AuditLog.objects.create(
+            user=actor,
+            action="attendance_recorded",
+            resource_type="time_entry",
+            resource_id=str(entry.id),
+            new_data={
+                "employee_id": str(employee.id),
+                "event_type": event_type,
+                "occurred_at": occurred_at.isoformat(),
+                "source": source,
+            },
+        )
+        return entry, True
 
 
 class EmployeeOnboardingService:

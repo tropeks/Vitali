@@ -1,6 +1,9 @@
-from django.urls import path
+from django.urls import include, path
+from rest_framework.routers import DefaultRouter
 
 from .views import (
+    ImagingModalityViewSet,
+    ModalityWorklistViewSet,
     OrthancSyncTriggerView,
     OrthancWebhookView,
     StudyDetailView,
@@ -9,7 +12,12 @@ from .views import (
     ViewerAuthorizationView,
 )
 
+router = DefaultRouter()
+router.register("imaging/modalities", ImagingModalityViewSet, basename="imaging-modality")
+router.register("imaging/worklist", ModalityWorklistViewSet, basename="imaging-worklist")
+
 urlpatterns = [
+    path("", include(router.urls)),
     path(
         "imaging/viewer-auth/",
         ViewerAuthorizationView.as_view(),

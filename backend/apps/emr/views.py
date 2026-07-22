@@ -45,6 +45,8 @@ from .serializers import (
     LabOrderSerializer,
     LabTestSerializer,
     MedicalHistorySerializer,
+    MedicationAdministrationSerializer,
+    NursingAssessmentSerializer,
     PatientCreateSerializer,
     PatientIdentifierSerializer,
     PatientInsuranceSerializer,
@@ -57,6 +59,85 @@ from .serializers import (
     SOAPNoteSerializer,
     VitalSignsSerializer,
 )
+
+
+class MedicationAdministrationViewSet(viewsets.ModelViewSet):
+    serializer_class = MedicationAdministrationSerializer
+    http_method_names = ("get", "post", "head", "options")
+
+    def get_queryset(self):
+        from .models import MedicationAdministration
+
+        qs = MedicationAdministration.objects.select_related(
+            "prescription_item__drug", "encounter", "patient", "administered_by", "witness"
+        )
+        encounter = self.request.query_params.get("encounter")
+        return qs.filter(encounter_id=encounter) if encounter else qs
+
+    def get_permissions(self):
+        permission = "emar.administer" if self.action == "create" else "emar.read"
+        return [IsAuthenticated(), HasPermission(permission)]
+
+    def create(self, request, *args, **kwargs):
+        from .models import PrescriptionItem
+        from .services.clinical_operations import MedicationAdministrationService
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        item = PrescriptionItem.objects.get(
+            pk=serializer.validated_data.pop("prescription_item").pk
+        )
+        event = MedicationAdministrationService.record(
+            prescription_item=item, user=request.user, **serializer.validated_data
+        )
+        log_audit(
+            request,
+            "emar_record",
+            "MedicationAdministration",
+            event.id,
+            new_data={"status": event.status},
+        )
+        return Response(self.get_serializer(event).data, status=status.HTTP_201_CREATED)
+
+
+class NursingAssessmentViewSet(viewsets.ModelViewSet):
+    serializer_class = NursingAssessmentSerializer
+
+    def get_queryset(self):
+        from .models import NursingAssessment
+
+        qs = NursingAssessment.objects.select_related(
+            "encounter", "patient", "authored_by", "signed_by"
+        )
+        encounter = self.request.query_params.get("encounter")
+        return qs.filter(encounter_id=encounter) if encounter else qs
+
+    def get_permissions(self):
+        permission = "sae.read" if self.action in {"list", "retrieve"} else "sae.write"
+        return [IsAuthenticated(), HasPermission(permission)]
+
+    def perform_create(self, serializer):
+        encounter = serializer.validated_data["encounter"]
+        assessment = serializer.save(patient=encounter.patient, authored_by=self.request.user)
+        log_audit(self.request, "sae_create", "NursingAssessment", assessment.id)
+
+    def perform_destroy(self, instance):
+        from rest_framework.exceptions import ValidationError
+
+        if instance.signed_at:
+            raise ValidationError("Registro SAE assinado é imutável.")
+        super().perform_destroy(instance)
+
+    @action(detail=True, methods=["post"])
+    def sign(self, request, pk=None):
+        assessment = self.get_object()
+        if assessment.signed_at:
+            return Response({"detail": "Registro já assinado."}, status=409)
+        assessment.signed_at = timezone.now()
+        assessment.signed_by = request.user
+        assessment.save(update_fields=["signed_at", "signed_by", "updated_at"])
+        log_audit(request, "sae_sign", "NursingAssessment", assessment.id)
+        return Response(self.get_serializer(assessment).data)
 
 
 class PatientIdentifierViewSet(viewsets.ModelViewSet):

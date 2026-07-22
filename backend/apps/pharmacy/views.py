@@ -27,6 +27,7 @@ from .models import (
     InventoryCount,
     LotRecall,
     Material,
+    PharmacistValidation,
     PurchaseOrder,
     PurchaseOrderItem,
     StockAlert,
@@ -47,6 +48,7 @@ from .serializers import (
     InventoryCountSerializer,
     LotRecallSerializer,
     MaterialSerializer,
+    PharmacistValidationSerializer,
     POReceiveSerializer,
     PurchaseOrderSerializer,
     StockItemSerializer,
@@ -59,6 +61,65 @@ from .serializers import (
 from .services.enterprise_stock import InventoryService, TransferService
 
 _PHARMACY_MODULE = ModuleRequiredPermission("pharmacy")
+
+
+class PharmacistValidationViewSet(viewsets.ModelViewSet):
+    queryset = PharmacistValidation.objects.select_related("prescription", "pharmacist")
+    serializer_class = PharmacistValidationSerializer
+    http_method_names = ("get", "post", "head", "options")
+
+    def get_permissions(self):
+        permission = (
+            "pharmacy.clinical_validate"
+            if self.action != "list" and self.action != "retrieve"
+            else "pharmacy.read"
+        )
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission(permission)]
+
+    def perform_create(self, serializer):
+        validation = serializer.save()
+        log_audit(
+            self.request, "pharmacist_validation_create", "PharmacistValidation", validation.id
+        )
+
+    @action(detail=True, methods=["post"])
+    def decide(self, request, pk=None):
+        allowed = {choice for choice, _ in PharmacistValidation.Status.choices} - {
+            PharmacistValidation.Status.PENDING
+        }
+        decision = request.data.get("status")
+        notes = request.data.get("clinical_notes", "").strip()
+        if decision not in allowed:
+            return Response({"status": "Decisão inválida."}, status=400)
+        if decision != PharmacistValidation.Status.APPROVED and not notes:
+            return Response({"clinical_notes": "Justificativa obrigatória."}, status=400)
+        with transaction.atomic():
+            validation = PharmacistValidation.objects.select_for_update().get(
+                pk=self.get_object().pk
+            )
+            if validation.status != PharmacistValidation.Status.PENDING:
+                return Response({"detail": "Validação já decidida."}, status=409)
+            validation.status = decision
+            validation.clinical_notes = notes
+            validation.pharmacist = request.user
+            validation.validated_at = timezone.now()
+            validation.save(
+                update_fields=[
+                    "status",
+                    "clinical_notes",
+                    "pharmacist",
+                    "validated_at",
+                    "updated_at",
+                ]
+            )
+        log_audit(
+            request,
+            "pharmacist_validation_decide",
+            "PharmacistValidation",
+            validation.id,
+            new_data={"status": decision},
+        )
+        return Response(self.get_serializer(validation).data)
 
 
 class WarehouseViewSet(viewsets.ModelViewSet):

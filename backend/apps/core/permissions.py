@@ -183,6 +183,11 @@ ADMIN_PERMISSIONS = [
     "mpi.review",
     "integrations.operations.read",
     "integrations.replay",
+    "emar.read",
+    "emar.administer",
+    "sae.read",
+    "sae.write",
+    "pharmacy.clinical_validate",
 ]
 
 CLINICAL_PRESCRIBER_PERMISSIONS = [
@@ -205,6 +210,8 @@ CLINICAL_PRESCRIBER_PERMISSIONS = [
     "telemedicine.host",
     "smart_scheduling.read",
     "triage.read",
+    "emar.read",
+    "sae.read",
 ]
 
 NURSING_PERMISSIONS = [
@@ -213,6 +220,10 @@ NURSING_PERMISSIONS = [
     "patients.read",
     "schedule.read",
     "pharmacy.dispense",
+    "emar.read",
+    "emar.administer",
+    "sae.read",
+    "sae.write",
 ]
 
 RECEPTION_PERMISSIONS = [
@@ -242,6 +253,7 @@ PHARMACY_PERMISSIONS = [
     "pharmacy.dispense_controlled",
     "patients.limited_read",
     "pharmacy_ai.read",
+    "pharmacy.clinical_validate",
 ]
 
 BILLING_PERMISSIONS = [

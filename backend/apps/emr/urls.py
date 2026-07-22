@@ -9,6 +9,8 @@ from .views import (
     EncounterViewSet,
     LabOrderViewSet,
     LabTestViewSet,
+    MedicationAdministrationViewSet,
+    NursingAssessmentViewSet,
     PatientIdentifierViewSet,
     PatientViewSet,
     PrescriptionItemViewSet,
@@ -20,6 +22,7 @@ from .views import (
     WaitingRoomView,
 )
 from .views_cid10 import CID10AcceptView, CID10SuggestView
+from .views_diagnostics import CriticalLabResultViewSet, LabInstrumentViewSet, LabSpecimenViewSet
 from .views_lab_report import LabReportPDFView, LabReportSignView
 from .views_lis import LabIntegrationMessageViewSet, LabOrderORMView, LISInboundView
 from .views_pdf import PrescriptionPDFView
@@ -51,8 +54,13 @@ router.register("documents", ClinicalDocumentViewSet, basename="document")
 router.register("lab-tests", LabTestViewSet, basename="lab-test")
 router.register("lab-orders", LabOrderViewSet, basename="lab-order")
 router.register("lab-integrations", LabIntegrationMessageViewSet, basename="lab-integration")
+router.register("lab-instruments", LabInstrumentViewSet, basename="lab-instrument")
+router.register("lab-specimens", LabSpecimenViewSet, basename="lab-specimen")
+router.register("critical-lab-results", CriticalLabResultViewSet, basename="critical-lab-result")
 router.register("prescriptions", PrescriptionViewSet, basename="prescription")
 router.register("prescription-items", PrescriptionItemViewSet, basename="prescription-item")
+router.register("emar", MedicationAdministrationViewSet, basename="emar")
+router.register("nursing-assessments", NursingAssessmentViewSet, basename="nursing-assessment")
 
 urlpatterns = (
     [

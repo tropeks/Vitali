@@ -2,7 +2,7 @@
 
 from django.contrib import admin
 
-from .models import Employee
+from .models import Employee, OccupationalHealthExam, TimeEntry, WorkSchedule
 
 
 @admin.register(Employee)
@@ -11,3 +11,8 @@ class EmployeeAdmin(admin.ModelAdmin):
     list_filter = ["employment_status", "contract_type"]
     search_fields = ["user__full_name", "user__email"]
     readonly_fields = ["id", "created_at", "updated_at"]
+
+
+admin.site.register(WorkSchedule)
+admin.site.register(TimeEntry)
+admin.site.register(OccupationalHealthExam)

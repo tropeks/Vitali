@@ -21,23 +21,68 @@ import logging
 import re
 
 from django.conf import settings
-from rest_framework import status
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.permissions import HasPermission, IsPlatformAdmin, ModuleRequiredPermission
 
-from .models import DicomStudy
+from .models import DicomStudy, ImagingModality, ModalityWorklistItem
 from .serializers import (
     DicomStudyCreateSerializer,
     DicomStudyOrthancPatchSerializer,
     DicomStudySerializer,
+    DicomWorkflowEventSerializer,
+    ImagingModalitySerializer,
+    ModalityWorklistItemSerializer,
 )
 
 logger = logging.getLogger(__name__)
 
 _IMAGING_MODULE = ModuleRequiredPermission("imaging")
+
+
+class ImagingOperationsPermissionsMixin:
+    def get_permissions(self):
+        permission = "imaging.read" if self.action in {"list", "retrieve"} else "imaging.write"
+        return [IsAuthenticated(), _IMAGING_MODULE, HasPermission(permission)]
+
+
+class ImagingModalityViewSet(ImagingOperationsPermissionsMixin, viewsets.ModelViewSet):
+    queryset = ImagingModality.objects.all()
+    serializer_class = ImagingModalitySerializer
+
+    @action(detail=True, methods=["post"])
+    def echo(self, request, pk=None):
+        from .services.workflow import record_echo
+
+        modality = record_echo(self.get_object(), bool(request.data.get("ok")), request.user)
+        return Response(self.get_serializer(modality).data)
+
+
+class ModalityWorklistViewSet(ImagingOperationsPermissionsMixin, viewsets.ModelViewSet):
+    queryset = ModalityWorklistItem.objects.select_related("patient", "modality", "encounter")
+    serializer_class = ModalityWorklistItemSerializer
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+    @action(detail=True, methods=["post"])
+    def workflow_event(self, request, pk=None):
+        from .services.workflow import apply_workflow_event
+
+        worklist = self.get_object()
+        event, created = apply_workflow_event(
+            worklist,
+            worklist.modality,
+            request.data.get("event_uid", ""),
+            request.data.get("event_type", ""),
+            request.data.get("payload", {}),
+            request.user,
+        )
+        return Response(DicomWorkflowEventSerializer(event).data, status=201 if created else 200)
 
 
 class StudyListCreateView(APIView):
