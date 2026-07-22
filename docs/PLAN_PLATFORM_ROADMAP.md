@@ -37,6 +37,34 @@ Pré-requisito de tudo: o produto precisa estar sólido antes de virar plataform
 - **S32 Compliance Pack GA** (assinatura ICP no fluxo, LGPD frontend, DPA/DPO).
 - **S33 Pilot Onboarding & GTM** → GA.
 
+### SPRINT R1 — Recepção, filas e chamadas omnichannel [NOVO]
+
+Extensão do S-072: transformar o check-in/sala de espera em uma operação completa de
+recepção, sem expor dados clínicos em telas públicas.
+
+- R1-01 [ADAPTAR] **Totem de auto check-in** (PWA/tablet): QR Code, código da consulta,
+  CPF/CNS, confirmação de presença, acessibilidade e fallback para a recepção.
+- R1-02 [NOVO] **Motor de filas**: filas por profissional, especialidade, coleta e imagem;
+  chamar, repetir, transferir, pausar, ausência e prioridades assistenciais; operações
+  idempotentes e auditadas.
+- R1-03 [NOVO] **Painel público de chamadas**: tela protegida por token, senha/iniciais
+  (nunca PHI), sala/consultório, atualização SSE/WebSocket, áudio opcional e modo offline.
+- R1-04 [ADAPTAR] **Console da recepção** integrado à agenda e à waiting room, com
+  `arrived_at`/`started_at`, previsão de espera e sinalização de atrasos.
+- R1-05 [ADAPTAR] **WhatsApp de fila**: opt-in/opt-out, confirmação de chegada, posição
+  aproximada, aviso de chamada e atraso; mensagens sem diagnóstico/resultado e com
+  trilha LGPD. Evolution API primeiro; adaptador Meta Cloud API depois.
+- R1-06 [NOVO] **Portal do paciente**: status da fila, estimativa, aviso próximo da vez,
+  check-in remoto quando permitido e histórico de chamadas.
+- R1-07 [NOVO] **Integrações físicas**: impressora térmica de senha, navegador dedicado
+  para TV/HDMI e múltiplos painéis por unidade.
+- R1-08 [NOVO] **Segurança e contingência**: tokens de curta duração, anti-duplicidade,
+  retenção mínima, RBAC, auditoria e procedimento manual quando rede/totem falhar.
+
+**Critérios de aceite:** testes de contrato para fila/chamada, anti-IDOR no painel e
+portal, acessibilidade WCAG básica, consentimento WhatsApp auditável, reconexão SSE e
+smoke end-to-end totem → recepção → painel → WhatsApp.
+
 ## FASE 1 — Fundações da plataforma (P1–P6, baratas, destravam o resto)
 
 Podem correr em paralelo à Fase 0; tornam a decomposição futura barata.
