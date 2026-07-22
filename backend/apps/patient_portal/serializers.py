@@ -6,7 +6,45 @@ from rest_framework import serializers
 
 from apps.emr.models import Allergy, Appointment, Encounter, Patient, Prescription
 
-from .models import PatientPortalAccess
+from .models import PatientPortalAccess, PatientRepresentative, PortalConsent
+
+
+class PatientRepresentativeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PatientRepresentative
+        fields = [
+            "id",
+            "patient",
+            "representative",
+            "relationship",
+            "active",
+            "expires_at",
+            "granted_at",
+            "revoked_at",
+        ]
+        read_only_fields = ["id", "granted_at", "revoked_at"]
+
+
+class PortalConsentSerializer(serializers.ModelSerializer):
+    valid = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PortalConsent
+        fields = [
+            "id",
+            "patient",
+            "granted_by",
+            "purpose",
+            "policy_version",
+            "granted_at",
+            "expires_at",
+            "revoked_at",
+            "valid",
+        ]
+        read_only_fields = ["id", "granted_by", "granted_at", "revoked_at", "valid"]
+
+    def get_valid(self, obj):
+        return obj.is_valid()
 
 
 class PatientPortalAccessSerializer(serializers.ModelSerializer):

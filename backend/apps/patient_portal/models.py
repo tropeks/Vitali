@@ -121,3 +121,65 @@ class PatientPortalAccess(models.Model):
         """Update last_seen_at on every authenticated self-data request."""
         self.last_seen_at = timezone.now()
         self.save(update_fields=["last_seen_at"])
+
+
+class PatientRepresentative(models.Model):
+    """Delegated portal relationship (guardian, parent or caregiver)."""
+
+    RELATION_CHOICES = [
+        ("guardian", "Responsável"),
+        ("parent", "Parente"),
+        ("caregiver", "Cuidador"),
+        ("other", "Outro"),
+    ]
+    patient = models.ForeignKey(
+        Patient, on_delete=models.CASCADE, related_name="portal_representatives"
+    )
+    representative = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="portal_patient_relationships"
+    )
+    relationship = models.CharField(max_length=20, choices=RELATION_CHOICES, default="guardian")
+    active = models.BooleanField(default=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    granted_at = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["patient", "representative"], name="portal_rep_unique")
+        ]
+
+    def is_valid(self):
+        return self.active and (self.expires_at is None or timezone.now() < self.expires_at)
+
+    def __str__(self):
+        return f"{self.representative} → {self.patient}"
+
+
+class PortalConsent(models.Model):
+    """Versioned, auditable consent granted by a patient or representative."""
+
+    patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name="portal_consents")
+    granted_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, related_name="portal_consents_granted"
+    )
+    purpose = models.CharField(max_length=80)
+    policy_version = models.CharField(max_length=30)
+    granted_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(
+                fields=["patient", "purpose"], name="portal_consent_patient_idx"
+            )
+        ]
+
+    def is_valid(self):
+        return self.revoked_at is None and (
+            self.expires_at is None or timezone.now() < self.expires_at
+        )
+
+    def __str__(self):
+        return f"{self.patient} — {self.purpose}"

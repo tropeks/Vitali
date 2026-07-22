@@ -26,7 +26,10 @@ from .views import (
     StockRiskView,
     StockTransferViewSet,
     StorageLocationViewSet,
+    SupplierContractViewSet,
+    SupplierInvoiceViewSet,
     SupplierViewSet,
+    ThreeWayMatchViewSet,
     WarehouseViewSet,
 )
 
@@ -41,6 +44,9 @@ router.register(r"stock/movements", StockMovementViewSet, basename="stockmovemen
 router.register(r"dispensations", DispensationViewSet, basename="dispensation")
 router.register(r"suppliers", SupplierViewSet, basename="supplier")
 router.register(r"purchase-orders", PurchaseOrderViewSet, basename="purchase-order")
+router.register(r"supplier-contracts", SupplierContractViewSet, basename="supplier-contract")
+router.register(r"supplier-invoices", SupplierInvoiceViewSet, basename="supplier-invoice")
+router.register(r"three-way-matches", ThreeWayMatchViewSet, basename="three-way-match")
 router.register(r"warehouses", WarehouseViewSet, basename="warehouse")
 router.register(r"storage-locations", StorageLocationViewSet, basename="storage-location")
 router.register(r"inventory-counts", InventoryCountViewSet, basename="inventory-count")

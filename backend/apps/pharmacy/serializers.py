@@ -22,8 +22,42 @@ from .models import (
     StockTransferLine,
     StorageLocation,
     Supplier,
+    SupplierContract,
+    SupplierInvoice,
+    ThreeWayMatch,
     Warehouse,
 )
+
+
+class SupplierContractSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SupplierContract
+        fields = "__all__"
+        read_only_fields = ("id", "created_by", "created_at")
+
+
+class SupplierInvoiceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SupplierInvoice
+        fields = "__all__"
+        read_only_fields = ("id", "status", "created_by", "created_at")
+
+
+class ThreeWayMatchSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ThreeWayMatch
+        fields = "__all__"
+        read_only_fields = (
+            "id",
+            "ordered_total",
+            "received_total",
+            "invoiced_total",
+            "status",
+            "discrepancies",
+            "reviewed_by",
+            "reviewed_at",
+            "created_at",
+        )
 
 
 class PharmacistValidationSerializer(serializers.ModelSerializer):
