@@ -16,6 +16,8 @@ from .views import (
     TISSBatchViewSet,
     TISSGuideViewSet,
     TUSSCodeViewSet,
+    AccountsReceivableViewSet,
+    ProfessionalSettlementViewSet,
 )
 
 router = DefaultRouter()
@@ -25,6 +27,8 @@ router.register(r"price-tables", PriceTableViewSet, basename="pricetable")
 router.register(r"guides", TISSGuideViewSet, basename="guide")
 router.register(r"batches", TISSBatchViewSet, basename="batch")
 router.register(r"glosas", GlosaViewSet, basename="glosa")
+router.register(r"receivables", AccountsReceivableViewSet, basename="receivable")
+router.register(r"settlements", ProfessionalSettlementViewSet, basename="settlement")
 
 urlpatterns = [
     path("billing/", include(router.urls)),
