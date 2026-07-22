@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from django.http import HttpResponse
 from django.template.loader import render_to_string
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
@@ -33,12 +34,14 @@ from apps.core.models import AuditLog
 from apps.core.permissions import HasPermission, ModuleRequiredPermission
 from apps.emr.models import Allergy, Appointment, Encounter, Prescription
 
-from .models import PatientPortalAccess
+from .models import PatientPortalAccess, PortalConsent
 from .serializers import (
     PatientPortalAccessCreateSerializer,
     PatientPortalAccessSerializer,
+    PatientRepresentativeSerializer,
     PortalAllergySerializer,
     PortalAppointmentSerializer,
+    PortalConsentSerializer,
     PortalEncounterSerializer,
     PortalPatientSerializer,
     PortalPrescriptionSerializer,
@@ -202,6 +205,57 @@ class _SelfView(APIView):
 class MeView(_SelfView):
     def get(self, request):
         return Response(PortalPatientSerializer(self._patient(request)).data)
+
+
+class MeRepresentativesView(_SelfView):
+    def get(self, request):
+        patient = self._patient(request)
+        return Response(
+            PatientRepresentativeSerializer(
+                patient.portal_representatives.filter(active=True), many=True
+            ).data
+        )
+
+
+class MeConsentsView(_SelfView):
+    def get(self, request):
+        return Response(
+            PortalConsentSerializer(
+                self._patient(request).portal_consents.order_by("-granted_at"), many=True
+            ).data
+        )
+
+    def post(self, request):
+        serializer = PortalConsentSerializer(
+            data={**request.data, "patient": self._patient(request).pk}
+        )
+        serializer.is_valid(raise_exception=True)
+        consent = serializer.save(granted_by=request.user)
+        AuditLog.objects.create(
+            user=request.user,
+            action="portal_consent_granted",
+            resource_type="portalconsent",
+            resource_id=str(consent.pk),
+            new_data={"purpose": consent.purpose, "policy_version": consent.policy_version},
+        )
+        return Response(PortalConsentSerializer(consent).data, status=201)
+
+
+class MeConsentRevokeView(_SelfView):
+    def post(self, request, consent_id):
+        try:
+            consent = PortalConsent.objects.get(pk=consent_id, patient=self._patient(request))
+        except PortalConsent.DoesNotExist:
+            return Response({"detail": "Consent not found."}, status=404)
+        consent.revoked_at = timezone.now()
+        consent.save(update_fields=["revoked_at"])
+        AuditLog.objects.create(
+            user=request.user,
+            action="portal_consent_revoked",
+            resource_type="portalconsent",
+            resource_id=str(consent.pk),
+        )
+        return Response(PortalConsentSerializer(consent).data)
 
 
 class MeAppointmentsView(_SelfView):

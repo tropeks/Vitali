@@ -7,6 +7,7 @@ const tabs = [
   ['/administracao/organizacao', 'Estrutura organizacional'],
   ['/administracao/mpi', 'Identidade de pacientes'],
   ['/administracao/aprovacoes', 'Aprovações'],
+  ['/administracao/compras', 'Conciliação de compras'],
 ] as const
 
 export default function AdminTabs() {

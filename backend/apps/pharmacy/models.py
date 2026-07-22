@@ -1399,3 +1399,114 @@ class PurchaseOrderItem(models.Model):
     def __str__(self):
         item = self.drug or self.material
         return f"{item} × {self.quantity_ordered} (recebido: {self.quantity_received})"
+
+
+class SupplierContract(models.Model):
+    """Commercial terms governing purchase orders for a supplier."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    def __str__(self):
+        return f"{self.supplier} — {self.number}"
+
+    supplier = models.ForeignKey(Supplier, on_delete=models.PROTECT, related_name="contracts")
+    number = models.CharField(max_length=80)
+    starts_on = models.DateField()
+    ends_on = models.DateField(null=True, blank=True)
+    currency = models.CharField(max_length=3, default="BRL")
+    spending_limit = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    status = models.CharField(
+        max_length=20,
+        default="draft",
+        choices=[
+            ("draft", "Rascunho"),
+            ("active", "Ativo"),
+            ("expired", "Expirado"),
+            ("cancelled", "Cancelado"),
+        ],
+    )
+    terms = models.JSONField(default=dict, blank=True)
+    created_by = models.ForeignKey("core.User", on_delete=models.PROTECT, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("supplier", "number"), name="supplier_contract_number_uniq"
+            )
+        ]
+        ordering = ["-starts_on"]
+
+
+class SupplierInvoice(models.Model):
+    """Invoice received from a supplier, pending three-way reconciliation."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    def __str__(self):
+        return f"NF {self.number} — {self.supplier}"
+
+    supplier = models.ForeignKey(Supplier, on_delete=models.PROTECT, related_name="invoices")
+    purchase_order = models.ForeignKey(
+        PurchaseOrder, on_delete=models.PROTECT, related_name="invoices"
+    )
+    number = models.CharField(max_length=80)
+    issued_on = models.DateField(null=True, blank=True)
+    total_amount = models.DecimalField(max_digits=14, decimal_places=2)
+    status = models.CharField(
+        max_length=20,
+        default="pending",
+        choices=[
+            ("pending", "Pendente"),
+            ("matched", "Conciliada"),
+            ("mismatch", "Divergente"),
+            ("approved", "Aprovada"),
+            ("rejected", "Rejeitada"),
+        ],
+        db_index=True,
+    )
+    lines = models.JSONField(default=list, blank=True)
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        "core.User", on_delete=models.PROTECT, null=True, related_name="supplier_invoices_created"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("supplier", "number"), name="supplier_invoice_number_uniq"
+            )
+        ]
+
+
+class ThreeWayMatch(models.Model):
+    """Immutable-ish reconciliation result for PO, receipt and supplier invoice."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    def __str__(self):
+        return f"Conciliação {self.invoice.number} ({self.status})"
+
+    invoice = models.OneToOneField(SupplierInvoice, on_delete=models.CASCADE, related_name="match")
+    purchase_order = models.ForeignKey(
+        PurchaseOrder, on_delete=models.PROTECT, related_name="matches"
+    )
+    ordered_total = models.DecimalField(max_digits=14, decimal_places=2)
+    received_total = models.DecimalField(max_digits=14, decimal_places=2)
+    invoiced_total = models.DecimalField(max_digits=14, decimal_places=2)
+    status = models.CharField(
+        max_length=20,
+        choices=[("matched", "Conciliada"), ("mismatch", "Divergente"), ("approved", "Aprovada")],
+        db_index=True,
+    )
+    discrepancies = models.JSONField(default=list, blank=True)
+    reviewed_by = models.ForeignKey(
+        "core.User",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="three_way_matches_reviewed",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)

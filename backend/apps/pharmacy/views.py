@@ -36,6 +36,9 @@ from .models import (
     StockTransfer,
     StorageLocation,
     Supplier,
+    SupplierContract,
+    SupplierInvoice,
+    ThreeWayMatch,
     Warehouse,
 )
 from .serializers import (
@@ -55,12 +58,117 @@ from .serializers import (
     StockMovementSerializer,
     StockTransferSerializer,
     StorageLocationSerializer,
+    SupplierContractSerializer,
+    SupplierInvoiceSerializer,
     SupplierSerializer,
+    ThreeWayMatchSerializer,
     WarehouseSerializer,
 )
 from .services.enterprise_stock import InventoryService, TransferService
 
 _PHARMACY_MODULE = ModuleRequiredPermission("pharmacy")
+
+
+class SupplierContractViewSet(viewsets.ModelViewSet):
+    queryset = SupplierContract.objects.select_related("supplier")
+    serializer_class = SupplierContractSerializer
+
+    def get_permissions(self):
+        permission = (
+            "pharmacy.procurement_manage"
+            if self.action not in {"list", "retrieve"}
+            else "pharmacy.read"
+        )
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission(permission)]
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+
+class SupplierInvoiceViewSet(viewsets.ModelViewSet):
+    queryset = SupplierInvoice.objects.select_related("supplier", "purchase_order")
+    serializer_class = SupplierInvoiceSerializer
+
+    def get_permissions(self):
+        permission = (
+            "pharmacy.procurement_manage"
+            if self.action not in {"list", "retrieve"}
+            else "pharmacy.read"
+        )
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission(permission)]
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+    @action(detail=True, methods=["post"])
+    def match(self, request, pk=None):
+        invoice = self.get_object()
+        po = invoice.purchase_order
+        ordered = sum((i.quantity_ordered * i.unit_price for i in po.items.all()), Decimal("0"))
+        received = sum((i.quantity_received * i.unit_price for i in po.items.all()), Decimal("0"))
+        tolerance = Decimal("0.01")
+        discrepancies = []
+        if abs(ordered - invoice.total_amount) > tolerance:
+            discrepancies.append(
+                {"field": "total", "ordered": str(ordered), "invoiced": str(invoice.total_amount)}
+            )
+        if received < invoice.total_amount - tolerance:
+            discrepancies.append(
+                {
+                    "field": "receipt",
+                    "received": str(received),
+                    "invoiced": str(invoice.total_amount),
+                }
+            )
+        state = "mismatch" if discrepancies else "matched"
+        match, _ = ThreeWayMatch.objects.update_or_create(
+            invoice=invoice,
+            defaults={
+                "purchase_order": po,
+                "ordered_total": ordered,
+                "received_total": received,
+                "invoiced_total": invoice.total_amount,
+                "status": state,
+                "discrepancies": discrepancies,
+            },
+        )
+        invoice.status = state
+        invoice.save(update_fields=["status"])
+        log_audit(
+            request,
+            "three_way_match",
+            "SupplierInvoice",
+            invoice.id,
+            new_data={"status": state, "discrepancies": discrepancies},
+        )
+        return Response(ThreeWayMatchSerializer(match).data)
+
+
+class ThreeWayMatchViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = ThreeWayMatch.objects.select_related("invoice", "purchase_order")
+    serializer_class = ThreeWayMatchSerializer
+
+    def get_permissions(self):
+        permission = "pharmacy.procurement_manage" if self.action == "approve" else "pharmacy.read"
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission(permission)]
+
+    @action(detail=True, methods=["post"])
+    def approve(self, request, pk=None):
+        match = self.get_object()
+        match.status = "approved"
+        match.reviewed_by = request.user
+        match.reviewed_at = timezone.now()
+        match.save(update_fields=["status", "reviewed_by", "reviewed_at"])
+        match.invoice.status = "approved"
+        match.invoice.save(update_fields=["status"])
+        log_audit(
+            request,
+            "approve_three_way_match",
+            "ThreeWayMatch",
+            match.id,
+            new_data={"status": "approved"},
+        )
+        return Response(ThreeWayMatchSerializer(match).data)
 
 
 class PharmacistValidationViewSet(viewsets.ModelViewSet):

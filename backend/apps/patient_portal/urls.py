@@ -7,10 +7,13 @@ from .views import (
     AccessRevokeView,
     MeAllergiesView,
     MeAppointmentsView,
+    MeConsentRevokeView,
+    MeConsentsView,
     MeDeletionRequestView,
     MeEncountersView,
     MeExportView,
     MePrescriptionsView,
+    MeRepresentativesView,
     MeView,
 )
 from .views_imaging import (
@@ -39,6 +42,17 @@ urlpatterns = [
         name="portal-access-revoke",
     ),
     path("portal/me/", MeView.as_view(), name="portal-me"),
+    path(
+        "portal/me/representatives/",
+        MeRepresentativesView.as_view(),
+        name="portal-me-representatives",
+    ),
+    path("portal/me/consents/", MeConsentsView.as_view(), name="portal-me-consents"),
+    path(
+        "portal/me/consents/<int:consent_id>/revoke/",
+        MeConsentRevokeView.as_view(),
+        name="portal-me-consent-revoke",
+    ),
     path("portal/me/appointments/", MeAppointmentsView.as_view(), name="portal-me-appts"),
     path("portal/me/encounters/", MeEncountersView.as_view(), name="portal-me-encs"),
     path(
