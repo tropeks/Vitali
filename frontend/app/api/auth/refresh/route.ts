@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
       headers: {
         "Content-Type": "application/json",
         "X-Forwarded-Host": forwardedHost,
+        "X-Forwarded-Proto": "https",
       },
       body: JSON.stringify({ refresh: refreshToken }),
     });
