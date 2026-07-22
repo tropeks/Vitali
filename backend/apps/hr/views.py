@@ -198,7 +198,7 @@ class HRManagePermissionMixin:
         return [IsAuthenticated(), HasPermission("hr.manage")]
 
 
-class WorkScheduleViewSet(HRManagePermissionMixin, viewsets.ModelViewSet):
+class WorkScheduleViewSet(HRManagePermissionMixin, viewsets.ModelViewSet):  # type: ignore[misc]
     queryset = WorkSchedule.objects.select_related("employee__user").all()
     serializer_class = WorkScheduleSerializer
 
@@ -219,7 +219,7 @@ class WorkScheduleViewSet(HRManagePermissionMixin, viewsets.ModelViewSet):
         )
 
 
-class OccupationalHealthExamViewSet(HRManagePermissionMixin, viewsets.ModelViewSet):
+class OccupationalHealthExamViewSet(HRManagePermissionMixin, viewsets.ModelViewSet):  # type: ignore[misc]
     queryset = OccupationalHealthExam.objects.select_related("employee__user").all()
     serializer_class = OccupationalHealthExamSerializer
 

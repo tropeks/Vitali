@@ -55,7 +55,7 @@ _BILLING_MODULE = ModuleRequiredPermission("billing")
 class ProfessionalSettlementViewSet(viewsets.ModelViewSet):
     queryset = ProfessionalSettlement.objects.select_related("professional__user")
     serializer_class = ProfessionalSettlementSerializer
-    permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
     filterset_fields = ["professional", "competency", "status"]
 
     def perform_create(self, serializer):
@@ -73,7 +73,7 @@ class ProfessionalSettlementViewSet(viewsets.ModelViewSet):
 
 class AccountsReceivableViewSet(viewsets.ModelViewSet):
     serializer_class = AccountsReceivableSerializer
-    permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["guide__guide_number", "guide__patient__full_name"]
     ordering = ["-created_at"]
