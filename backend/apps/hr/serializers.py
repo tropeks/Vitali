@@ -6,7 +6,7 @@ from rest_framework import serializers
 
 from apps.core.models import Role, User
 
-from .models import Employee
+from .models import Employee, OccupationalHealthExam, TimeEntry, WorkSchedule
 from .services import CLINICAL_ROLES
 
 CONTRACT_TYPE_ALIASES = {
@@ -150,3 +150,24 @@ class EmployeeOnboardingSerializer(serializers.Serializer):
             raise serializers.ValidationError(errors)
 
         return attrs
+
+
+class WorkScheduleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WorkSchedule
+        fields = "__all__"
+        read_only_fields = ["id", "created_at"]
+
+
+class TimeEntrySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TimeEntry
+        fields = "__all__"
+        read_only_fields = ["id", "recorded_by", "created_at"]
+
+
+class OccupationalHealthExamSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OccupationalHealthExam
+        fields = "__all__"
+        read_only_fields = ["id", "recorded_by", "created_at", "updated_at"]

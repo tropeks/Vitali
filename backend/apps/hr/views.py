@@ -12,9 +12,15 @@ from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .models import Employee
-from .serializers import EmployeeOnboardingSerializer, EmployeeSerializer
-from .services import EmployeeOnboardingService
+from .models import Employee, OccupationalHealthExam, TimeEntry, WorkSchedule
+from .serializers import (
+    EmployeeOnboardingSerializer,
+    EmployeeSerializer,
+    OccupationalHealthExamSerializer,
+    TimeEntrySerializer,
+    WorkScheduleSerializer,
+)
+from .services import AttendanceService, EmployeeOnboardingService
 
 # Actions that mutate the Employee row and must therefore run inside a
 # transaction while holding a row lock (F-15 termination atomicity).
@@ -181,3 +187,90 @@ class EmployeeViewSet(
                 resource_id=str(employee.id),
                 new_data={"user_id": str(employee.user.id)},
             )
+
+
+class HRManagePermissionMixin:
+    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        from apps.core.permissions import HasPermission
+
+        return [IsAuthenticated(), HasPermission("hr.manage")]
+
+
+class WorkScheduleViewSet(HRManagePermissionMixin, viewsets.ModelViewSet):
+    queryset = WorkSchedule.objects.select_related("employee__user").all()
+    serializer_class = WorkScheduleSerializer
+
+    def perform_create(self, serializer):
+        from apps.core.models import AuditLog
+
+        schedule = serializer.save()
+        AuditLog.objects.create(
+            user=self.request.user,
+            action="work_schedule_created",
+            resource_type="work_schedule",
+            resource_id=str(schedule.id),
+            new_data={
+                "employee_id": str(schedule.employee_id),
+                "weekly_hours": str(schedule.weekly_hours),
+                "effective_from": schedule.effective_from.isoformat(),
+            },
+        )
+
+
+class OccupationalHealthExamViewSet(HRManagePermissionMixin, viewsets.ModelViewSet):
+    queryset = OccupationalHealthExam.objects.select_related("employee__user").all()
+    serializer_class = OccupationalHealthExamSerializer
+
+    def perform_create(self, serializer):
+        from apps.core.models import AuditLog
+
+        exam = serializer.save(recorded_by=self.request.user)
+        AuditLog.objects.create(
+            user=self.request.user,
+            action="occupational_health_exam_recorded",
+            resource_type="occupational_health_exam",
+            resource_id=str(exam.id),
+            new_data={
+                "employee_id": str(exam.employee_id),
+                "exam_type": exam.exam_type,
+                "result": exam.result,
+                "expires_on": exam.expires_on.isoformat() if exam.expires_on else None,
+            },
+        )
+
+
+class TimeEntryViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = TimeEntry.objects.select_related("employee__user", "recorded_by").all()
+    serializer_class = TimeEntrySerializer
+    permission_classes = [IsAuthenticated]
+
+    def _can_manage(self):
+        role = self.request.user.effective_role()
+        return self.request.user.is_superuser or bool(role and "hr.manage" in role.permissions)
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if self._can_manage():
+            employee_id = self.request.query_params.get("employee")
+            return queryset.filter(employee_id=employee_id) if employee_id else queryset
+        return queryset.filter(employee__user=self.request.user)
+
+    def create(self, request, *args, **kwargs):
+        serializer = TimeEntrySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        employee = serializer.validated_data["employee"]
+        if not self._can_manage() and employee.user_id != request.user.id:
+            from rest_framework.exceptions import PermissionDenied
+
+            raise PermissionDenied("Só é permitido registrar o próprio ponto.")
+        entry, created = AttendanceService.record(
+            employee=employee,
+            actor=request.user,
+            event_type=serializer.validated_data["event_type"],
+            occurred_at=serializer.validated_data["occurred_at"],
+            source=serializer.validated_data.get("source", "web"),
+            external_id=serializer.validated_data.get("external_id"),
+        )
+        return Response(TimeEntrySerializer(entry).data, status=201 if created else 200)

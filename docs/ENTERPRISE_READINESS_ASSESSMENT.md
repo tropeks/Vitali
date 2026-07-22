@@ -341,6 +341,17 @@ Fatia operacional seguinte implementada localmente em 22 de julho de 2026:
 
 ### Onda 1 — fechar os ciclos críticos
 
+Primeira fatia vertical implementada em 22 de julho de 2026:
+
+- [x] CPOE reutilizando prescrição assinada, validação farmacêutica e eMAR transacional com dupla checagem de controlados.
+- [x] SAE estruturada e imutável após assinatura.
+- [x] LIS com cadastro de analisadores, cadeia de custódia por barcode e reconhecimento fechado de resultados críticos.
+- [x] RIS com modalidades, estado C-ECHO, MWL, MPPS e Storage Commitment idempotentes.
+- [x] RH operacional com jornada, ponto imutável/idempotente e SST/ASO auditável.
+- [ ] Compras completas, contratos e three-way match.
+- [ ] Portal transacional, dependentes, pagamentos e consentimentos.
+- [ ] Interfaces operacionais completas e validação clínica/assistencial dos fluxos desta fatia.
+
 1. CPOE/eMAR/SAE e validação farmacêutica.
 2. LIS com rastreio de amostra, críticos e equipamentos bidirecionais.
 3. RIS com modalidades, C-ECHO, MWL, MPPS e Storage Commitment.

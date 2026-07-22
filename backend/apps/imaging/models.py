@@ -129,3 +129,84 @@ class DicomStudy(models.Model):
     def has_pixel_data(self) -> bool:
         """True only after Orthanc tags proved the patient identity."""
         return bool(self.orthanc_study_id and self.dicom_identity_verified)
+
+
+class ImagingModality(models.Model):
+    """Tenant-scoped DICOM node configuration exposed to infrastructure admins."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    ae_title = models.CharField(max_length=16, unique=True)
+    name = models.CharField(max_length=120)
+    modality = models.CharField(max_length=4, choices=DicomStudy.MODALITY_CHOICES)
+    host = models.CharField(max_length=255)
+    port = models.PositiveIntegerField(default=104)
+    supports_mwl = models.BooleanField(default=True)
+    supports_mpps = models.BooleanField(default=True)
+    supports_storage_commitment = models.BooleanField(default=True)
+    is_active = models.BooleanField(default=True, db_index=True)
+    last_echo_at = models.DateTimeField(null=True, blank=True)
+    last_echo_ok = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.ae_title} — {self.name}"
+
+
+class ModalityWorklistItem(models.Model):
+    class Status(models.TextChoices):
+        SCHEDULED = "scheduled", "Agendado"
+        IN_PROGRESS = "in_progress", "Em execução"
+        COMPLETED = "completed", "Concluído"
+        DISCONTINUED = "discontinued", "Descontinuado"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    modality = models.ForeignKey(ImagingModality, on_delete=models.PROTECT, related_name="worklist")
+    patient = models.ForeignKey(Patient, on_delete=models.PROTECT, related_name="imaging_worklist")
+    encounter = models.ForeignKey(Encounter, on_delete=models.SET_NULL, null=True, blank=True)
+    accession_number = models.CharField(max_length=64, unique=True, db_index=True)
+    requested_procedure_id = models.CharField(max_length=64)
+    requested_procedure_description = models.CharField(max_length=255)
+    scheduled_at = models.DateTimeField(db_index=True)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.SCHEDULED)
+    study_instance_uid = models.CharField(max_length=128, blank=True, db_index=True)
+    created_by = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name="imaging_worklist_created"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.accession_number} — {self.requested_procedure_description}"
+
+
+class DicomWorkflowEvent(models.Model):
+    """Idempotent MPPS/Storage Commitment event journal."""
+
+    class Type(models.TextChoices):
+        MPPS_IN_PROGRESS = "mpps_in_progress", "MPPS em execução"
+        MPPS_COMPLETED = "mpps_completed", "MPPS concluído"
+        MPPS_DISCONTINUED = "mpps_discontinued", "MPPS descontinuado"
+        STORAGE_COMMITMENT = "storage_commitment", "Storage Commitment"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    modality = models.ForeignKey(
+        ImagingModality, on_delete=models.PROTECT, related_name="workflow_events"
+    )
+    worklist_item = models.ForeignKey(
+        ModalityWorklistItem, on_delete=models.PROTECT, related_name="events"
+    )
+    event_uid = models.CharField(max_length=128)
+    event_type = models.CharField(max_length=24, choices=Type.choices)
+    payload = models.JSONField(default=dict, blank=True)
+    success = models.BooleanField(default=True)
+    error = models.CharField(max_length=255, blank=True)
+    received_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["modality", "event_uid"], name="img_workflow_event_unique"
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.event_uid} ({self.event_type})"
