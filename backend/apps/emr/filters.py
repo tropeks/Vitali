@@ -31,8 +31,14 @@ def _patient_encrypted_matches(queryset, term):
     return [
         p.id
         for p in queryset.only(
-            "id", "full_name", "social_name", "cpf", "cns",
-            "identity_document", "phone", "email",
+            "id",
+            "full_name",
+            "social_name",
+            "cpf",
+            "cns",
+            "identity_document",
+            "phone",
+            "email",
         ).iterator(chunk_size=500)
         if (
             needle in (p.full_name or "").casefold()
@@ -52,8 +58,7 @@ def _patient_name_matches(queryset, term):
     return [
         p.id
         for p in queryset.only("id", "full_name", "social_name").iterator(chunk_size=500)
-        if needle in (p.full_name or "").casefold()
-        or needle in (p.social_name or "").casefold()
+        if needle in (p.full_name or "").casefold() or needle in (p.social_name or "").casefold()
     ]
 
 
@@ -97,14 +102,10 @@ class PatientSearchFilter(BaseFilterBackend):
         if not term:
             return queryset
         digits = _digits(term)
-        plaintext_query = Q(medical_record_number__icontains=term) | Q(
-            whatsapp__icontains=term
-        )
+        plaintext_query = Q(medical_record_number__icontains=term) | Q(whatsapp__icontains=term)
         if len(digits) >= 4 and digits != term:
             plaintext_query |= Q(whatsapp__icontains=digits)
-        sql_ids = set(
-            queryset.filter(plaintext_query).values_list("id", flat=True)
-        )
+        sql_ids = set(queryset.filter(plaintext_query).values_list("id", flat=True))
         enc_ids = set(_patient_encrypted_matches(queryset, term))
         return queryset.filter(pk__in=sql_ids | enc_ids)
 

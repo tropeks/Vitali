@@ -31,13 +31,15 @@ class ProfessionalDirectoryTests(TenantTestCase):
                 password="TestPass123!",
                 full_name=name,
             )
-            self.professionals.append(Professional.objects.create(
-                user=user,
-                council_type="CRM",
-                council_number=f"1000{index}",
-                council_state="SP",
-                specialty=specialty,
-            ))
+            self.professionals.append(
+                Professional.objects.create(
+                    user=user,
+                    council_type="CRM",
+                    council_number=f"1000{index}",
+                    council_state="SP",
+                    specialty=specialty,
+                )
+            )
 
     def client_for(self, user):
         client = APIClient()

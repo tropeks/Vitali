@@ -247,6 +247,7 @@ class ProfessionalViewSet(viewsets.ModelViewSet):
 class ScheduleConfigViewSet(viewsets.ModelViewSet):
     queryset = ScheduleConfig.objects.select_related("professional__user").all()
     serializer_class = ScheduleConfigSerializer
+
     def get_permissions(self):
         permission = "schedule.read" if self.action in ("list", "retrieve") else "users.write"
         return [IsAuthenticated(), HasPermission(permission)]
