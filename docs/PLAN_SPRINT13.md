@@ -126,7 +126,7 @@ Trigger: push to `master` (manual `workflow_dispatch` also).
 Steps: checkout → build backend image → build frontend image → push to GHCR → SSH to staging → **tag current running images as rollback tags** → `docker compose -f docker-compose.staging.yml pull && up -d` → run `scripts/smoke_test.sh` → on failure: auto-rollback via rollback tag → notify on failure.
 
 **Required GitHub Secrets (must be enumerated in DEPLOY.md):**
-`GHCR_TOKEN`, `STAGING_SSH_KEY`, `STAGING_HOST`, `STAGING_USER`, `DJANGO_SECRET_KEY`, `DATABASE_URL`, `REDIS_URL`, `SENTRY_DSN`, `CSRF_TRUSTED_ORIGINS`, `NEXT_PUBLIC_API_URL`, `FIELD_ENCRYPTION_KEY`, `WHATSAPP_EVOLUTION_URL`, `WHATSAPP_WEBHOOK_SECRET`
+`GHCR_TOKEN`, `DJANGO_SECRET_KEY`, `DATABASE_URL`, `REDIS_URL`, `SENTRY_DSN`, `CSRF_TRUSTED_ORIGINS`, `NEXT_PUBLIC_API_URL`, `FIELD_ENCRYPTION_KEY`, `WHATSAPP_EVOLUTION_URL`, `WHATSAPP_WEBHOOK_SECRET`. Runtime and deployment credentials stay exclusively on the PVE host; GitHub only publishes images.
 
 ### S-052 — Documentation
 **Files:** `docs/DEPLOY.md`, `docs/RUNBOOK.md`, `docs/TENANT_MIGRATIONS.md`
@@ -219,4 +219,3 @@ New test file covering all new/modified middleware:
 | Dual Voices | All | 1 | subagent-only | Codex unavailable — Claude subagent only |
 
 **VERDICT:** PLAN ENHANCED — 15 auto-decisions applied across CEO/Eng/DX phases. 1 USER CHALLENGE remains for approval gate. Plan updated with all findings. Ready for implementation after approval.
-
