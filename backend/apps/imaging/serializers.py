@@ -159,4 +159,5 @@ class DicomWorkflowEventSerializer(serializers.ModelSerializer):
     class Meta:
         model = DicomWorkflowEvent
         fields = "__all__"
-        read_only_fields = fields
+        # The event ViewSet is read-only; workflow actions are the sole write path.
+        read_only_fields = ()
