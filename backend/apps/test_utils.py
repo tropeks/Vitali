@@ -16,6 +16,7 @@ MFATestMixin (DX-05): provides create_totp_device(user) helper so S-062 tests
 don't repeat TOTP device setup boilerplate.
 """
 
+from django.db import connection
 from django.test import modify_settings, override_settings
 from django_tenants.test.cases import FastTenantTestCase
 from django_tenants.utils import get_public_schema_name, get_tenant_domain_model, schema_context
@@ -103,6 +104,9 @@ class TenantTestCase(FastTenantTestCase):
         # explicitly restore that context before delegating.
         with schema_context(get_public_schema_name()):
             super().setUpClass()  # FastTenantTestCase.setUpClass (tenant setup)
+        # The context manager restores the previous schema (usually public),
+        # while tenant tests must execute against the fast_test schema.
+        connection.set_tenant(cls.tenant)
         # Apply @override_settings / @modify_settings class decorators.
         # FastTenantTestCase skips super().setUpClass() so Django never does this.
         if cls._overridden_settings:
