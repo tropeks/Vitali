@@ -17,12 +17,14 @@ from .filters import PatientFilter, PatientSearchFilter
 from .models import (
     Appointment,
     ClinicalDocument,
+    DuplicatePatientCandidate,
     Encounter,
     EncounterProcedure,
     LabOrder,
     LabOrderItem,
     LabTest,
     Patient,
+    PatientIdentifier,
     PatientInsurance,
     Prescription,
     PrescriptionItem,
@@ -35,6 +37,7 @@ from .serializers import (
     AllergySerializer,
     AppointmentSerializer,
     ClinicalDocumentSerializer,
+    DuplicatePatientCandidateSerializer,
     EncounterListSerializer,
     EncounterProcedureSerializer,
     EncounterSerializer,
@@ -43,6 +46,7 @@ from .serializers import (
     LabTestSerializer,
     MedicalHistorySerializer,
     PatientCreateSerializer,
+    PatientIdentifierSerializer,
     PatientInsuranceSerializer,
     PatientListSerializer,
     PatientSerializer,
@@ -53,6 +57,68 @@ from .serializers import (
     SOAPNoteSerializer,
     VitalSignsSerializer,
 )
+
+
+class PatientIdentifierViewSet(viewsets.ModelViewSet):
+    queryset = PatientIdentifier.objects.select_related("patient").all()
+    serializer_class = PatientIdentifierSerializer
+
+    def get_permissions(self):
+        permission = "mpi.read" if self.action in {"list", "retrieve"} else "mpi.write"
+        return [IsAuthenticated(), HasPermission(permission)]
+
+
+class DuplicatePatientCandidateViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = DuplicatePatientCandidate.objects.select_related(
+        "patient_a", "patient_b", "reviewed_by"
+    ).all()
+    serializer_class = DuplicatePatientCandidateSerializer
+
+    def get_permissions(self):
+        permission = "mpi.read" if self.action in {"list", "retrieve"} else "mpi.review"
+        return [IsAuthenticated(), HasPermission(permission)]
+
+    @action(detail=False, methods=["post"])
+    def detect(self, request):
+        from .services_mpi import DuplicatePatientDetectionService
+
+        patient_id = request.data.get("patient")
+        try:
+            patient = Patient.objects.get(pk=patient_id)
+        except (Patient.DoesNotExist, ValueError, TypeError):
+            return Response({"patient": "Paciente inválido."}, status=status.HTTP_400_BAD_REQUEST)
+        candidates = DuplicatePatientDetectionService().detect(patient)
+        return Response(self.get_serializer(candidates, many=True).data)
+
+    def _review(self, request, decision):
+        candidate = self.get_object()
+        if candidate.status != DuplicatePatientCandidate.Status.OPEN:
+            return Response(
+                {"status": "A candidata já foi revisada."}, status=status.HTTP_409_CONFLICT
+            )
+        candidate.status = decision
+        candidate.reviewed_by = request.user
+        candidate.reviewed_at = timezone.now()
+        candidate.review_notes = request.data.get("notes", "")
+        candidate.save(
+            update_fields=("status", "reviewed_by", "reviewed_at", "review_notes", "updated_at")
+        )
+        log_audit(
+            request,
+            "mpi_duplicate_reviewed",
+            "DuplicatePatientCandidate",
+            candidate.id,
+            new_data={"decision": decision},
+        )
+        return Response(self.get_serializer(candidate).data)
+
+    @action(detail=True, methods=["post"])
+    def confirm(self, request, pk=None):
+        return self._review(request, DuplicatePatientCandidate.Status.CONFIRMED)
+
+    @action(detail=True, methods=["post"])
+    def dismiss(self, request, pk=None):
+        return self._review(request, DuplicatePatientCandidate.Status.DISMISSED)
 
 
 def log_audit(request, action, resource_type, resource_id, old_data=None, new_data=None):

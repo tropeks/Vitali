@@ -34,6 +34,10 @@ REDIS_PASSWORD="$(rand 36 48)"
 WHATSAPP_EVOLUTION_API_KEY="$(rand 36 48)"
 BACKUP_ENCRYPTION_KEY="$(rand 36 48)"
 FLOWER_PASSWORD="$(rand 24 32)"
+ORTHANC_USERNAME="vitali-archive"
+ORTHANC_PASSWORD="$(rand 36 48)"
+ORTHANC_WEBHOOK_SECRET="$(rand 36 48)"
+ORTHANC_AUTH_HEADER="Basic $(printf '%s:%s' "${ORTHANC_USERNAME}" "${ORTHANC_PASSWORD}" | openssl base64 -A)"
 
 cat <<EOF
 # Vitali production secrets — generated $(date -u +%FT%TZ)
@@ -45,6 +49,14 @@ POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 REDIS_PASSWORD=${REDIS_PASSWORD}
 FIELD_ENCRYPTION_KEY=${FIELD_ENCRYPTION_KEY}
 WHATSAPP_EVOLUTION_API_KEY=${WHATSAPP_EVOLUTION_API_KEY}
+
+# ── Vitali Imagem (archive credentials stay server-side) ───────────────────
+ORTHANC_USERNAME=${ORTHANC_USERNAME}
+ORTHANC_PASSWORD=${ORTHANC_PASSWORD}
+ORTHANC_AUTH_HEADER=${ORTHANC_AUTH_HEADER}
+ORTHANC_WEBHOOK_SECRET=${ORTHANC_WEBHOOK_SECRET}
+# Bind C-STORE to a trusted LAN address only when modalities push directly.
+# ORTHANC_DICOM_BIND_ADDRESS=192.0.2.10
 
 # ── Backups (offsite + at-rest encryption) ──────────────────────────────────
 # Back up BACKUP_ENCRYPTION_KEY in an offline vault — losing it makes every

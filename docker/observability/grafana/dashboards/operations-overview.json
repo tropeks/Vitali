@@ -1,0 +1,19 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "graphTooltip": 1,
+  "panels": [
+    {"type": "stat", "title": "Targets up", "id": 1, "gridPos": {"h": 6, "w": 6, "x": 0, "y": 0}, "targets": [{"expr": "sum(up)", "refId": "A"}]},
+    {"type": "stat", "title": "Targets down", "id": 2, "gridPos": {"h": 6, "w": 6, "x": 6, "y": 0}, "targets": [{"expr": "sum(up == 0)", "refId": "A"}]},
+    {"type": "timeseries", "title": "PostgreSQL connections", "id": 3, "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6}, "targets": [{"expr": "sum(pg_stat_activity_count)", "legendFormat": "connections", "refId": "A"}]},
+    {"type": "timeseries", "title": "Redis memory", "id": 4, "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6}, "targets": [{"expr": "redis_memory_used_bytes", "legendFormat": "used", "refId": "A"}]},
+    {"type": "timeseries", "title": "Host disk free %", "id": 5, "gridPos": {"h": 8, "w": 24, "x": 0, "y": 14}, "targets": [{"expr": "100 * node_filesystem_avail_bytes{fstype!~\"tmpfs|overlay\"} / node_filesystem_size_bytes{fstype!~\"tmpfs|overlay\"}", "legendFormat": "{{mountpoint}}", "refId": "A"}]}
+  ],
+  "schemaVersion": 42,
+  "tags": ["vitali", "operations"],
+  "templating": {"list": []},
+  "time": {"from": "now-6h", "to": "now"},
+  "title": "Vitali Operations Overview",
+  "uid": "vitali-operations",
+  "version": 1
+}

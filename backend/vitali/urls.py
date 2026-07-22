@@ -40,6 +40,8 @@ urlpatterns = [
     path("api/v1/", include("apps.smart_scheduling.urls")),
     path("api/v1/", include("apps.triage.urls")),
     path("api/v1/", include("apps.mobile.urls")),
+    path("api/v1/", include("apps.organization.urls")),
+    path("api/v1/", include("apps.governance.urls")),
     # OpenAPI docs
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),

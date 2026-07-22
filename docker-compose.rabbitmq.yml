@@ -1,0 +1,60 @@
+# Opt-in production overlay:
+# docker compose -f docker-compose.prod.yml -f docker-compose.rabbitmq.yml \
+#   --env-file /etc/vitali/secrets.env up -d
+services:
+  rabbitmq:
+    image: rabbitmq:4.1.2-management-alpine
+    restart: always
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?set RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-vitali}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    mem_limit: 1g
+    cpus: 1.0
+
+  django:
+    environment:
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:?set CELERY_BROKER_URL}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD}@redis:6379/0}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  celery-worker:
+    command: celery -A vitali worker --loglevel=info --concurrency=4 -Q critical,default,bulk
+    environment:
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:?set CELERY_BROKER_URL}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD}@redis:6379/0}
+      CELERY_TASK_ACKS_LATE: "true"
+      CELERY_TASK_REJECT_ON_WORKER_LOST: "true"
+      CELERY_WORKER_PREFETCH_MULTIPLIER: "1"
+      CELERY_TASK_SOFT_TIME_LIMIT: ${CELERY_TASK_SOFT_TIME_LIMIT:-270}
+      CELERY_TASK_TIME_LIMIT: ${CELERY_TASK_TIME_LIMIT:-300}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  celery-beat:
+    environment:
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:?set CELERY_BROKER_URL}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD}@redis:6379/0}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  flower:
+    command: celery --broker=${CELERY_BROKER_URL:?set CELERY_BROKER_URL} flower --port=5555 --basic_auth=${FLOWER_BASIC_AUTH}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+volumes:
+  rabbitmq_data:

@@ -5,9 +5,11 @@ from .views import (
     AppointmentViewSet,
     AvailableSlotsView,
     ClinicalDocumentViewSet,
+    DuplicatePatientCandidateViewSet,
     EncounterViewSet,
     LabOrderViewSet,
     LabTestViewSet,
+    PatientIdentifierViewSet,
     PatientViewSet,
     PrescriptionItemViewSet,
     PrescriptionViewSet,
@@ -35,6 +37,10 @@ from .views_waitlist import WaitlistDetailView, WaitlistViewSet
 
 router = DefaultRouter()
 router.register("patients", PatientViewSet, basename="patient")
+router.register("patient-identifiers", PatientIdentifierViewSet, basename="patient-identifier")
+router.register(
+    "mpi/duplicate-candidates", DuplicatePatientCandidateViewSet, basename="duplicate-candidate"
+)
 router.register("professionals", ProfessionalViewSet, basename="professional")
 router.register("appointments", AppointmentViewSet, basename="appointment")
 router.register("schedule-configs", ScheduleConfigViewSet, basename="schedule-config")

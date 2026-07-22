@@ -46,6 +46,8 @@ TENANT_APPS = [
     "apps.smart_scheduling",
     "apps.triage",
     "apps.mobile",
+    "apps.organization",
+    "apps.governance",
     "rest_framework",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
@@ -233,20 +235,46 @@ SPECTACULAR_SETTINGS = {
     "COMPONENT_SPLIT_REQUEST": True,
 }
 
-# ─── Celery ───────────────────────────────────────────────────────────────────
-CELERY_BROKER_URL = env("REDIS_URL", default="redis://localhost:6379/0")
-CELERY_RESULT_BACKEND = env("REDIS_URL", default="redis://localhost:6379/0")
+# ─── Redis / Celery ───────────────────────────────────────────────────────────
+# REDIS_URL remains the backwards-compatible single-instance fallback. Production
+# may split cache, broker and result storage without code changes by setting the
+# three purpose-specific URLs. Keep these endpoints independently replaceable so
+# a managed Redis/Sentinel-aware client can be introduced outside single-host
+# Compose later without changing application call sites.
+_LEGACY_REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
+CACHE_URL = env(
+    "CACHE_URL",
+    default=env("REDIS_URL", default="redis://localhost:6379/1"),
+)
+CELERY_BROKER_URL = env("CELERY_BROKER_URL", default=_LEGACY_REDIS_URL)
+CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default=_LEGACY_REDIS_URL)
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_TASK_DEFAULT_QUEUE = "default"
+CELERY_TASK_ACKS_LATE = env.bool("CELERY_TASK_ACKS_LATE", default=False)
+CELERY_TASK_REJECT_ON_WORKER_LOST = env.bool("CELERY_TASK_REJECT_ON_WORKER_LOST", default=False)
+CELERY_WORKER_PREFETCH_MULTIPLIER = env.int("CELERY_WORKER_PREFETCH_MULTIPLIER", default=4)
+CELERY_TASK_SOFT_TIME_LIMIT = env.int("CELERY_TASK_SOFT_TIME_LIMIT", default=270)
+CELERY_TASK_TIME_LIMIT = env.int("CELERY_TASK_TIME_LIMIT", default=300)
+CELERY_TASK_ROUTES = {
+    "apps.triage.tasks.*": {"queue": "critical"},
+    "apps.emr.tasks_waitlist.*": {"queue": "critical"},
+    "imaging.sync_orthanc_studies": {"queue": "bulk"},
+    "core.snapshot_wedge_value": {"queue": "bulk"},
+    "pharmacy.grade_stockout_predictions": {"queue": "bulk"},
+    "emr.grade_no_show_predictions": {"queue": "bulk"},
+    "apps.ai.tasks.*": {"queue": "bulk"},
+}
 
 # ─── Cache ────────────────────────────────────────────────────────────────────
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.redis.RedisCache",
-        "LOCATION": env("REDIS_URL", default="redis://localhost:6379/1"),
+        "LOCATION": CACHE_URL,
     }
 }
 

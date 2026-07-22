@@ -160,6 +160,93 @@ class Patient(models.Model):
         return today.year - b.year - ((today.month, today.day) < (b.month, b.day))
 
 
+class PatientIdentifier(models.Model):
+    """Encrypted external identity attached to the tenant-local patient record."""
+
+    class Use(models.TextChoices):
+        USUAL = "usual", "Usual"
+        OFFICIAL = "official", "Oficial"
+        SECONDARY = "secondary", "Secundário"
+        OLD = "old", "Antigo"
+
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Ativo"
+        INACTIVE = "inactive", "Inativo"
+        ENTERED_IN_ERROR = "entered-in-error", "Registrado por engano"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name="identifiers")
+    system = models.CharField(max_length=120)
+    issuer = models.CharField(max_length=120, blank=True, default="")
+    value = EncryptedCharField(max_length=255)
+    value_digest = models.CharField(max_length=64, editable=False)
+    use = models.CharField(max_length=20, choices=Use.choices, default=Use.USUAL)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("system", "issuer", "created_at")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("system", "issuer", "value_digest"),
+                name="emr_unique_patient_identifier",
+            )
+        ]
+        indexes = [models.Index(fields=("system", "issuer", "value_digest"))]
+
+    def save(self, *args, **kwargs):
+        from .services_mpi import identifier_digest
+
+        self.system = self.system.strip().lower()
+        self.issuer = self.issuer.strip().lower()
+        self.value_digest = identifier_digest(self.system, self.issuer, self.value)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.system} ({self.patient.medical_record_number})"
+
+
+class DuplicatePatientCandidate(models.Model):
+    """Human-review queue; this record never merges or deletes patients."""
+
+    class Status(models.TextChoices):
+        OPEN = "open", "Pendente"
+        CONFIRMED = "confirmed", "Duplicidade confirmada"
+        DISMISSED = "dismissed", "Descartada"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    patient_a = models.ForeignKey(
+        Patient, on_delete=models.CASCADE, related_name="duplicate_candidates_as_a"
+    )
+    patient_b = models.ForeignKey(
+        Patient, on_delete=models.CASCADE, related_name="duplicate_candidates_as_b"
+    )
+    score = models.DecimalField(max_digits=5, decimal_places=4)
+    reasons = models.JSONField(default=list)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.OPEN)
+    reviewed_by = models.ForeignKey("core.User", on_delete=models.SET_NULL, null=True, blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    review_notes = EncryptedTextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("-score", "-created_at")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("patient_a", "patient_b"), name="emr_unique_duplicate_patient_pair"
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(patient_a=models.F("patient_b")),
+                name="emr_duplicate_patients_must_differ",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.patient_a_id} ↔ {self.patient_b_id} ({self.status})"
+
+
 class Allergy(models.Model):
     SEVERITY_CHOICES = [
         ("mild", "Leve"),
