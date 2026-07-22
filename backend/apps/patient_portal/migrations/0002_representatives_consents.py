@@ -94,8 +94,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name="portalconsent",
-            index=models.Index(
-                fields=["patient", "purpose"], name="portal_consent_patient_idx"
-            ),
+            index=models.Index(fields=["patient", "purpose"], name="portal_consent_patient_idx"),
         ),
     ]

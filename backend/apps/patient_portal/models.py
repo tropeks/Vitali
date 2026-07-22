@@ -170,11 +170,7 @@ class PortalConsent(models.Model):
     revoked_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        indexes = [
-            models.Index(
-                fields=["patient", "purpose"], name="portal_consent_patient_idx"
-            )
-        ]
+        indexes = [models.Index(fields=["patient", "purpose"], name="portal_consent_patient_idx")]
 
     def is_valid(self):
         return self.revoked_at is None and (
