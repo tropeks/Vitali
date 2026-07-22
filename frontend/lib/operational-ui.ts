@@ -331,7 +331,7 @@ export const WA_CONNECTION_STATUS_META: Record<string, BadgeMeta> = {
 export function getActivenessMeta(isActive: boolean | null | undefined): BadgeMeta {
   return isActive
     ? badge('Ativo', 'bg-neu-success/10 text-neu-success border-neu-success/20', 'success')
-    : badge('Inativo', 'bg-neu-danger/10 text-neu-danger border-neu-danger/20', 'critical')
+    : badge('Inativo', 'bg-red-100 text-red-700 border-red-200', 'critical')
 }
 
 export function getDpaStatusMeta(isSigned: boolean | null | undefined): BadgeMeta {

@@ -59,7 +59,14 @@ export const PORTAL_ALLERGY_SEVERITY: Record<string, BadgeMeta> = {
 export function formatDateBR(iso: string | null | undefined): string {
   if (!iso) return "—";
   try {
-    const d = new Date(iso);
+    // ISO calendar dates (without a time) are specified in UTC by ECMAScript;
+    // parsing them directly shifts them to the previous day in Brazil (UTC-3).
+    // Build a local date for this common API representation instead.
+    const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+    const d = dateOnly
+      ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+      : new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
     return d.toLocaleDateString("pt-BR");
   } catch {
     return iso;
