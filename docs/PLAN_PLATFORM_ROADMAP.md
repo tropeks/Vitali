@@ -65,6 +65,65 @@ recepção, sem expor dados clínicos em telas públicas.
 portal, acessibilidade WCAG básica, consentimento WhatsApp auditável, reconexão SSE e
 smoke end-to-end totem → recepção → painel → WhatsApp.
 
+## MATURIDADE DO PRODUTO — pós-MVP por validação
+
+O Vitali não deve tentar entregar todas as capacidades hospitalares antes de validar o
+MVP em clínicas reais. Cada camada abaixo só começa após evidência de adoção, retenção,
+segurança e operação da camada anterior.
+
+### M0 — MVP comercial validado
+
+Produto vendável para clínicas pequenas: agenda, pacientes, prontuário, prescrição,
+assinatura, portal, exames, financeiro básico, TISS essencial, estoque básico, RBAC,
+auditoria, recepção/fila e WhatsApp transacional.
+
+**Gate:** pelo menos uma clínica pagante operando atendimentos reais, onboarding
+repetível, suporte mensurável, backup/restauração testados e nenhum incidente crítico.
+
+### M1 — Pós-MVP: eficiência clínica e financeira
+
+- Revenue cycle completo: autorizações, lotes TISS, glosas, recursos e repasse médico.
+- Financeiro: contas a pagar/receber, DRE, centros de custo, conciliação bancária,
+  PIX/cartão, NF e integração contábil.
+- Estoque avançado: múltiplos locais, inventário, consignado, validade, compras sugeridas
+  e controlados com rastreabilidade legal.
+- Experiência do paciente: consentimento digital, pagamentos, NPS/CSAT e pós-atendimento.
+- Integrações externas iniciais: FHIR/HL7 e laboratórios parceiros.
+
+**Gate:** redução comprovada de trabalho manual, fechamento financeiro confiável e
+retenção de clientes após 90 dias.
+
+### M2 — Pós-MVP: operação enterprise ambulatorial
+
+- RH operacional: escalas, ponto, férias, afastamentos, credenciamento e documentos.
+- Qualidade: incidentes, eventos adversos, CAPA, protocolos e indicadores.
+- Operação multiunidade: filiais, rateios, catálogos e permissões hierárquicas.
+- Interoperabilidade expandida: FHIR/IHE, RNDS, DICOM router e integrações de parceiros.
+- SSO empresarial, MFA adaptativo, ciclo de vida de acesso e relatórios de auditoria.
+
+**Gate:** cliente com múltiplas unidades ou requisitos formais de compliance e SSO.
+
+### M3 — Pós-MVP: hospitalar
+
+- Internação: leitos, transferências, alta, enfermagem, balanço hídrico e acompanhantes.
+- Pronto atendimento: classificação de risco, protocolos, observação e regulação.
+- Centro cirúrgico: agenda, salas, checklist, anestesia, OPME e recuperação.
+- Controle de infecção, comissão de óbito e indicadores de segurança do paciente.
+- Folha de pagamento e eSocial, quando houver operação trabalhista própria relevante.
+
+**Gate:** contrato hospitalar âncora, equipe de implantação dedicada e validação clínica
+formal para cada módulo de alto risco.
+
+### M4 — Pós-MVP: dados e ecossistema
+
+- Data warehouse, BI executivo, cohortes, indicadores regulatórios e linhagem de dados.
+- SIEM/DLP, PAM, gestão avançada de chaves, legal hold e e-discovery.
+- API pública, webhooks, SDK, marketplace e parceiros certificados.
+- Apps móveis profissionais/paciente e modo offline controlado.
+
+**Regra de priorização:** dentro de cada maturidade, atacar uma capacidade por vez,
+medir adoção e margem, corrigir segurança/operabilidade e só então iniciar a próxima.
+
 ## FASE 1 — Fundações da plataforma (P1–P6, baratas, destravam o resto)
 
 Podem correr em paralelo à Fase 0; tornam a decomposição futura barata.
