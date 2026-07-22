@@ -17,12 +17,14 @@ from .views import (
     InventoryCountViewSet,
     LotRecallViewSet,
     MaterialViewSet,
+    NFeReceiptViewSet,
     PharmacistValidationViewSet,
     PurchaseOrderViewSet,
     StockAlertsView,
     StockAvailabilityView,
     StockItemViewSet,
     StockMovementViewSet,
+    StockReceiptViewSet,
     StockRiskView,
     StockTransferViewSet,
     StorageLocationViewSet,
@@ -41,12 +43,14 @@ router.register(r"allergen-classes", AllergenClassViewSet, basename="allergen-cl
 router.register(r"drug-interactions", DrugInteractionViewSet, basename="drug-interaction")
 router.register(r"stock/items", StockItemViewSet, basename="stockitem")
 router.register(r"stock/movements", StockMovementViewSet, basename="stockmovement")
+router.register(r"stock/receipts", StockReceiptViewSet, basename="stock-receipt")
 router.register(r"dispensations", DispensationViewSet, basename="dispensation")
 router.register(r"suppliers", SupplierViewSet, basename="supplier")
 router.register(r"purchase-orders", PurchaseOrderViewSet, basename="purchase-order")
 router.register(r"supplier-contracts", SupplierContractViewSet, basename="supplier-contract")
 router.register(r"supplier-invoices", SupplierInvoiceViewSet, basename="supplier-invoice")
 router.register(r"three-way-matches", ThreeWayMatchViewSet, basename="three-way-match")
+router.register(r"nfe-receipts", NFeReceiptViewSet, basename="nfe-receipt")
 router.register(r"warehouses", WarehouseViewSet, basename="warehouse")
 router.register(r"storage-locations", StorageLocationViewSet, basename="storage-location")
 router.register(r"inventory-counts", InventoryCountViewSet, basename="inventory-count")

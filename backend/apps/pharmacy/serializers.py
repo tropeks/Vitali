@@ -13,11 +13,15 @@ from .models import (
     InventoryCountLine,
     LotRecall,
     Material,
+    NFeReceipt,
+    NFeReceiptItem,
     PharmacistValidation,
     PurchaseOrder,
     PurchaseOrderItem,
     StockItem,
     StockMovement,
+    StockReceipt,
+    StockReceiptLine,
     StockTransfer,
     StockTransferLine,
     StorageLocation,
@@ -41,6 +45,36 @@ class SupplierInvoiceSerializer(serializers.ModelSerializer):
         model = SupplierInvoice
         fields = "__all__"
         read_only_fields = ("id", "status", "created_by", "created_at")
+
+
+class StockReceiptLineSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StockReceiptLine
+        fields = "__all__"
+        read_only_fields = ("id", "stock_item", "controlled_witness")
+
+
+class StockReceiptSerializer(serializers.ModelSerializer):
+    lines = StockReceiptLineSerializer(many=True)
+
+    class Meta:
+        model = StockReceipt
+        fields = "__all__"
+        read_only_fields = (
+            "id",
+            "status",
+            "received_by",
+            "approved_by",
+            "approved_at",
+            "created_at",
+        )
+
+    def create(self, validated_data):
+        lines = validated_data.pop("lines")
+        receipt = StockReceipt.objects.create(**validated_data)
+        for line in lines:
+            StockReceiptLine.objects.create(receipt=receipt, **line)
+        return receipt
 
 
 class ThreeWayMatchSerializer(serializers.ModelSerializer):
@@ -612,3 +646,26 @@ class POReceiveSerializer(serializers.Serializer):
                 "item_id duplicado: cada item só pode aparecer uma vez por recebimento."
             )
         return value
+
+
+class NFeReceiptItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NFeReceiptItem
+        fields = "__all__"
+        read_only_fields = ("receipt",)
+
+
+class NFeReceiptSerializer(serializers.ModelSerializer):
+    items = NFeReceiptItemSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = NFeReceipt
+        fields = "__all__"
+        read_only_fields = (
+            "uploaded_by",
+            "xml",
+            "status",
+            "validation_errors",
+            "approved_by",
+            "approved_at",
+        )

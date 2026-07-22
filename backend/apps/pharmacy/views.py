@@ -2,6 +2,8 @@
 Pharmacy API views — S-026 Catalog, S-027 Stock, S-028 Dispensation
 """
 
+import re
+import xml.etree.ElementTree as ET
 from decimal import Decimal
 
 from django.db import transaction
@@ -27,12 +29,15 @@ from .models import (
     InventoryCount,
     LotRecall,
     Material,
+    NFeReceipt,
+    NFeReceiptItem,
     PharmacistValidation,
     PurchaseOrder,
     PurchaseOrderItem,
     StockAlert,
     StockItem,
     StockMovement,
+    StockReceipt,
     StockTransfer,
     StorageLocation,
     Supplier,
@@ -51,11 +56,13 @@ from .serializers import (
     InventoryCountSerializer,
     LotRecallSerializer,
     MaterialSerializer,
+    NFeReceiptSerializer,
     PharmacistValidationSerializer,
     POReceiveSerializer,
     PurchaseOrderSerializer,
     StockItemSerializer,
     StockMovementSerializer,
+    StockReceiptSerializer,
     StockTransferSerializer,
     StorageLocationSerializer,
     SupplierContractSerializer,
@@ -67,6 +74,96 @@ from .serializers import (
 from .services.enterprise_stock import InventoryService, TransferService
 
 _PHARMACY_MODULE = ModuleRequiredPermission("pharmacy")
+
+
+class NFeReceiptViewSet(viewsets.ModelViewSet):
+    queryset = NFeReceipt.objects.prefetch_related("items")
+    serializer_class = NFeReceiptSerializer
+    parser_classes = (MultiPartParser, FormParser)
+
+    def get_permissions(self):
+        p = (
+            "pharmacy.procurement_manage"
+            if self.action not in {"list", "retrieve"}
+            else "pharmacy.read"
+        )
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission(p)]
+
+    def create(self, request, *args, **kwargs):
+        upload = request.FILES.get("file")
+        if not upload or upload.size > 10 * 1024 * 1024 or not upload.name.lower().endswith(".xml"):
+            return Response({"detail": "Envie um XML até 10 MB."}, status=400)
+        raw = upload.read()
+        try:
+            root = ET.fromstring(raw)
+        except ET.ParseError:
+            return Response({"detail": "XML inválido."}, status=400)
+        ns = {"n": root.tag.split("}")[0].strip("{")} if "}" in root.tag else {}
+
+        def find(path):
+            return root.find(path, ns)
+
+        inf = find(".//n:infNFe" if ns else ".//infNFe")
+        if inf is None:
+            return Response({"detail": "NF-e ausente."}, status=400)
+        key = re.sub(r"\D", "", inf.attrib.get("Id", "").replace("NFe", ""))
+        emit = find(".//n:emit/n:CNPJ" if ns else ".//emit/CNPJ")
+        dest = find(".//n:dest/n:CNPJ" if ns else ".//dest/CNPJ")
+        issuer, recipient = (
+            (emit.text or "" if emit is not None else ""),
+            (dest.text or "" if dest is not None else ""),
+        )
+        if len(key) != 44 or not issuer or not recipient:
+            return Response({"detail": "Chave, emitente ou destinatário inválido."}, status=400)
+        if NFeReceipt.objects.filter(access_key=key).exists():
+            return Response({"detail": "NF-e já importada."}, status=409)
+        receipt = NFeReceipt.objects.create(
+            access_key=key,
+            issuer_cnpj=issuer,
+            recipient_cnpj=recipient,
+            xml=raw.decode("utf-8", "replace"),
+            uploaded_by=request.user,
+        )
+        for i, node in enumerate(root.findall(".//n:det" if ns else ".//det"), 1):
+            p = node.find("n:prod" if ns else "prod", ns)
+
+            def txt(name, prod=p, namespaced=ns):
+                if prod is None:
+                    return ""
+                element = prod.find(f"n:{name}" if namespaced else name, ns)
+                return element.text or "" if element is not None else ""
+
+            NFeReceiptItem.objects.create(
+                receipt=receipt,
+                sequence=i,
+                supplier_code=txt("cProd"),
+                description=txt("xProd")[:300],
+                quantity=Decimal(txt("qCom") or "0"),
+                unit_price=Decimal(txt("vUnCom") or "0"),
+                ncm=txt("NCM"),
+                barcode=txt("cEAN"),
+            )
+        return Response(self.get_serializer(receipt).data, status=201)
+
+    @action(detail=True, methods=["post"])
+    def approve(self, request, pk=None):
+        receipt = self.get_object()
+        if receipt.status != "pending":
+            return Response({"detail": "Status inválido."}, status=409)
+        receipt.status, receipt.approved_by, receipt.approved_at = (
+            "approved",
+            request.user,
+            timezone.now(),
+        )
+        receipt.save(update_fields=["status", "approved_by", "approved_at"])
+        log_audit(
+            request,
+            "approve_nfe_receipt",
+            "NFeReceipt",
+            receipt.id,
+            new_data={"status": "approved"},
+        )
+        return Response(self.get_serializer(receipt).data)
 
 
 class SupplierContractViewSet(viewsets.ModelViewSet):
@@ -142,6 +239,106 @@ class SupplierInvoiceViewSet(viewsets.ModelViewSet):
             new_data={"status": state, "discrepancies": discrepancies},
         )
         return Response(ThreeWayMatchSerializer(match).data)
+
+
+class StockReceiptViewSet(viewsets.ModelViewSet):
+    queryset = StockReceipt.objects.select_related(
+        "purchase_order", "invoice", "received_by", "approved_by"
+    ).prefetch_related("lines__purchase_item")
+    serializer_class = StockReceiptSerializer
+    http_method_names = ("get", "post", "head", "options")
+
+    def get_permissions(self):
+        permission = (
+            "pharmacy.stock_manage"
+            if self.action in ("create", "approve", "reject", "return_receipt")
+            else "pharmacy.read"
+        )
+        return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission(permission)]
+
+    def perform_create(self, serializer):
+        serializer.save(received_by=self.request.user)
+
+    @action(detail=True, methods=("post",))
+    @transaction.atomic
+    def approve(self, request, pk=None):
+        receipt = self.get_object()
+        if receipt.status != StockReceipt.Status.PENDING:
+            return Response({"detail": "Recebimento já processado."}, status=400)
+        lines = list(
+            receipt.lines.select_related(
+                "purchase_item__drug", "purchase_item__material"
+            ).select_for_update()
+        )
+        for line in lines:
+            item = line.purchase_item
+            if line.quantity <= 0 or line.quantity > item.quantity_ordered - item.quantity_received:
+                return Response({"detail": "Quantidade recebida inválida."}, status=400)
+            if (
+                item.drug
+                and item.drug.is_controlled
+                and line.controlled_witness_id != request.user.id
+            ):
+                return Response(
+                    {"detail": "Controlado exige dupla conferência por testemunha."}, status=400
+                )
+            lookup = {"drug": item.drug} if item.drug_id else {"material": item.material}
+            stock_item, _ = StockItem.objects.get_or_create(
+                **lookup,
+                lot_number=line.lot_number or f"RC-{str(receipt.id)[:8]}",
+                expiry_date=line.expiry_date,
+                defaults={"quantity": Decimal("0")},
+            )
+            StockMovement.objects.create(
+                stock_item=stock_item,
+                movement_type="entry",
+                quantity=line.quantity,
+                reference=str(receipt.id),
+                notes="Entrada conferida",
+                performed_by=request.user,
+            )
+            line.stock_item = stock_item
+            line.save(update_fields=("stock_item",))
+            item.quantity_received = item.quantity_received + line.quantity
+            item.save(update_fields=("quantity_received",))
+        receipt.status = StockReceipt.Status.APPROVED
+        receipt.approved_by = request.user
+        receipt.approved_at = timezone.now()
+        receipt.save(update_fields=("status", "approved_by", "approved_at"))
+        return Response(self.get_serializer(receipt).data)
+
+    @action(detail=True, methods=("post",))
+    def reject(self, request, pk=None):
+        receipt = self.get_object()
+        if receipt.status != StockReceipt.Status.PENDING:
+            return Response({"detail": "Recebimento já processado."}, status=400)
+        receipt.status = StockReceipt.Status.REJECTED
+        receipt.notes = request.data.get("notes", receipt.notes)
+        receipt.save(update_fields=("status", "notes"))
+        return Response(self.get_serializer(receipt).data)
+
+    @action(detail=True, methods=("post",), url_path="return")
+    def return_receipt(self, request, pk=None):
+        receipt = self.get_object()
+        if receipt.status != StockReceipt.Status.APPROVED:
+            return Response(
+                {"detail": "Somente recebimentos efetivados podem ser devolvidos."}, status=400
+            )
+        with transaction.atomic():
+            for line in receipt.lines.select_related("stock_item"):
+                if line.stock_item_id:
+                    StockMovement.objects.create(
+                        stock_item=line.stock_item,
+                        movement_type="return",
+                        quantity=-line.quantity,
+                        reference=str(receipt.id),
+                        notes="Devolução de recebimento",
+                        performed_by=request.user,
+                    )
+        receipt.status = StockReceipt.Status.RETURNED
+        receipt.notes = request.data.get("notes", receipt.notes)
+        receipt.save(update_fields=("status", "notes"))
+        return Response(self.get_serializer(receipt).data)
 
 
 class ThreeWayMatchViewSet(viewsets.ReadOnlyModelViewSet):

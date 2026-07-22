@@ -1401,6 +1401,70 @@ class PurchaseOrderItem(models.Model):
         return f"{item} × {self.quantity_ordered} (recebido: {self.quantity_received})"
 
 
+class StockReceipt(models.Model):
+    """Conferência de recebimento antes de efetivar estoque."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Aguardando conferência"
+        APPROVED = "approved", "Efetivada"
+        REJECTED = "rejected", "Rejeitada"
+        RETURNED = "returned", "Devolvida"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    purchase_order = models.ForeignKey(
+        PurchaseOrder, on_delete=models.PROTECT, related_name="receipts"
+    )
+    invoice = models.ForeignKey(
+        "SupplierInvoice", on_delete=models.PROTECT, null=True, blank=True, related_name="receipts"
+    )
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.PENDING, db_index=True
+    )
+    received_by = models.ForeignKey(
+        "core.User", on_delete=models.PROTECT, related_name="stock_receipts"
+    )
+    approved_by = models.ForeignKey(
+        "core.User",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="stock_receipts_approved",
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Recebimento {self.id} ({self.get_status_display()})"
+
+
+class StockReceiptLine(models.Model):
+    receipt = models.ForeignKey(StockReceipt, on_delete=models.CASCADE, related_name="lines")
+    purchase_item = models.ForeignKey(PurchaseOrderItem, on_delete=models.PROTECT)
+    stock_item = models.ForeignKey(StockItem, on_delete=models.PROTECT, null=True, blank=True)
+    quantity = models.DecimalField(max_digits=12, decimal_places=3)
+    lot_number = models.CharField(max_length=80, blank=True)
+    expiry_date = models.DateField(null=True, blank=True)
+    unit_cost = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    controlled_witness = models.ForeignKey(
+        "core.User",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="controlled_receipts_witnessed",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("receipt", "purchase_item"), name="uniq_receipt_purchase_item"
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.receipt_id} — item {self.purchase_item_id} — {self.quantity}"
+
+
 class SupplierContract(models.Model):
     """Commercial terms governing purchase orders for a supplier."""
 
@@ -1510,3 +1574,59 @@ class ThreeWayMatch(models.Model):
     )
     reviewed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class NFeReceipt(models.Model):
+    """NF-e XML intake. Import is quarantined until an operator approves it."""
+
+    STATUS = [
+        ("pending", "Pendente"),
+        ("validated", "Validada"),
+        ("approved", "Aprovada"),
+        ("rejected", "Rejeitada"),
+    ]
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    access_key = models.CharField(max_length=44, unique=True, db_index=True)
+    number = models.CharField(max_length=20, blank=True)
+    series = models.CharField(max_length=10, blank=True)
+    issuer_cnpj = models.CharField(max_length=14, db_index=True)
+    recipient_cnpj = models.CharField(max_length=14, db_index=True)
+    issued_at = models.DateTimeField(null=True, blank=True)
+    total_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    xml = models.TextField()
+    status = models.CharField(max_length=20, choices=STATUS, default="pending", db_index=True)
+    validation_errors = models.JSONField(default=list, blank=True)
+    uploaded_by = models.ForeignKey(
+        "core.User", on_delete=models.PROTECT, related_name="nfe_uploads"
+    )
+    approved_by = models.ForeignKey(
+        "core.User", on_delete=models.PROTECT, null=True, blank=True, related_name="nfe_approvals"
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"NF-e {self.number or self.access_key} ({self.status})"
+
+
+class NFeReceiptItem(models.Model):
+    receipt = models.ForeignKey(NFeReceipt, on_delete=models.CASCADE, related_name="items")
+    sequence = models.PositiveIntegerField()
+    supplier_code = models.CharField(max_length=80, blank=True)
+    description = models.CharField(max_length=300)
+    quantity = models.DecimalField(max_digits=14, decimal_places=3)
+    unit_price = models.DecimalField(max_digits=14, decimal_places=4)
+    ncm = models.CharField(max_length=12, blank=True)
+    barcode = models.CharField(max_length=50, blank=True)
+    lot = models.CharField(max_length=80, blank=True)
+    expires_at = models.DateField(null=True, blank=True)
+    drug = models.ForeignKey(Drug, null=True, blank=True, on_delete=models.PROTECT)
+    material = models.ForeignKey(Material, null=True, blank=True, on_delete=models.PROTECT)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["receipt", "sequence"], name="nfe_item_sequence_unique")
+        ]
+
+    def __str__(self):
+        return f"NF-e {self.receipt_id} — item {self.sequence}: {self.description}"
