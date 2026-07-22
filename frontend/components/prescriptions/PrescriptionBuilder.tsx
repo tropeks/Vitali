@@ -325,7 +325,7 @@ export function PrescriptionBuilder({ encounterId, readOnly = false }: Prescript
     }
     setSearching(true);
     try {
-      const data = await apiFetch<ApiList<Drug> | Drug[]>(`/pharmacy/drugs/?search=${encodeURIComponent(q)}&limit=5`);
+      const data = await apiFetch<ApiList<Drug> | Drug[]>(`/pharmacy/drugs/?search=${encodeURIComponent(q)}&page_size=10`);
       setDrugResults(asList(data));
     } catch {
       setDrugResults([]);

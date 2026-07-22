@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { getAccessToken } from '@/lib/auth';
+import PatientAutocomplete, { type PatientOption } from '@/components/patients/PatientAutocomplete';
 
 interface Encounter {
   id: string;
@@ -58,7 +59,7 @@ export default function EncountersPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [dateFilter, setDateFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
-  const [patients, setPatients] = useState<{ id: string; full_name: string; medical_record_number: string }[]>([]);
+  const [selectedPatient, setSelectedPatient] = useState<PatientOption | null>(null);
   const [professionals, setProfessionals] = useState<{ id: string; user_name: string }[]>([]);
   const [form, setForm] = useState({ patient: '', professional: '', chief_complaint: '' });
   const [saving, setSaving] = useState(false);
@@ -80,11 +81,7 @@ export default function EncountersPage() {
   const openModal = async () => {
     setShowModal(true);
     try {
-      const [pats, profs] = await Promise.all([
-        apiFetch('/patients/?page_size=200'),
-        apiFetch('/professionals/'),
-      ]);
-      setPatients(Array.isArray(pats) ? pats : pats.results ?? []);
+      const profs = await apiFetch('/professionals/');
       setProfessionals(Array.isArray(profs) ? profs : profs.results ?? []);
     } catch { /* ignore */ }
   };
@@ -96,6 +93,7 @@ export default function EncountersPage() {
       const enc = await apiPost('/encounters/', form);
       setShowModal(false);
       setForm({ patient: '', professional: '', chief_complaint: '' });
+      setSelectedPatient(null);
       router.push(`/encounters/${enc.id}`);
     } catch {
       alert('Erro ao criar consulta');
@@ -189,19 +187,14 @@ export default function EncountersPage() {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
             <h2 className="text-lg font-semibold text-slate-900">Nova Consulta</h2>
             <div className="space-y-3">
-              <div>
-                <label className="block block text-[11px] font-bold text-neu-inkSoft mb-1.5 uppercase tracking-wide mb-1">Paciente *</label>
-                <select
-                  value={form.patient}
-                  onChange={e => setForm(f => ({ ...f, patient: e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                >
-                  <option value="">Selecione o paciente...</option>
-                  {patients.map(p => (
-                    <option key={p.id} value={p.id}>{p.full_name} — {p.medical_record_number}</option>
-                  ))}
-                </select>
-              </div>
+              <PatientAutocomplete
+                value={selectedPatient}
+                onChange={(patient) => {
+                  setSelectedPatient(patient);
+                  setForm((current) => ({ ...current, patient: patient ? String(patient.id) : '' }));
+                }}
+                required
+              />
               <div>
                 <label className="block block text-[11px] font-bold text-neu-inkSoft mb-1.5 uppercase tracking-wide mb-1">Profissional *</label>
                 <select

@@ -1,3 +1,5 @@
+import re
+
 import django_filters
 from django.db.models import Q
 from rest_framework.filters import BaseFilterBackend
@@ -5,19 +7,58 @@ from rest_framework.filters import BaseFilterBackend
 from .models import Patient
 
 
-def _patient_name_matches(queryset, term):
-    """Return the ids of patients whose (decrypted) name fields contain ``term``.
+def _digits(value):
+    return re.sub(r"\D", "", value or "")
 
-    full_name / social_name are encrypted at rest, so they cannot be matched with
-    SQL ``LIKE``. We decrypt in Python instead. This is O(n) over the active
-    patient set — acceptable at clinic scale; revisit (e.g. a blind-index column)
-    if the patient table grows large.
+
+def _identifier(value):
+    return re.sub(r"[^0-9a-z]", "", (value or "").casefold())
+
+
+def _patient_encrypted_matches(queryset, term):
+    """Return ids matching fields that are encrypted at rest.
+
+    Ciphertext cannot be queried with SQL ``LIKE``. Keep this to a single pass
+    over a narrow projection, regardless of how many encrypted fields participate.
+    CPF/CNS/document matches are exact after normalization to avoid broad scans
+    leaking whether fragments of identifiers exist. Phone fragments require at
+    least four digits. Add blind indexes before using this at very large scale.
     """
-    needle = term.lower()
+    needle = term.casefold()
+    digits = _digits(term)
+    identifier = _identifier(term)
+    phone_needle = digits if len(digits) >= 4 else ""
     return [
         p.id
-        for p in queryset.only("id", "full_name", "social_name")
-        if needle in (p.full_name or "").lower() or needle in (p.social_name or "").lower()
+        for p in queryset.only(
+            "id",
+            "full_name",
+            "social_name",
+            "cpf",
+            "cns",
+            "identity_document",
+            "phone",
+            "email",
+        ).iterator(chunk_size=500)
+        if (
+            needle in (p.full_name or "").casefold()
+            or needle in (p.social_name or "").casefold()
+            or (len(digits) == 11 and digits == _digits(p.cpf))
+            or (len(digits) == 15 and digits == _digits(p.cns))
+            or (len(identifier) >= 5 and identifier == _identifier(p.identity_document))
+            or (phone_needle and phone_needle in _digits(p.phone))
+            or (len(needle) >= 3 and needle in (p.email or "").casefold())
+        )
+    ]
+
+
+def _patient_name_matches(queryset, term):
+    """Compatibility helper for the explicit ``?name=`` filter."""
+    needle = term.casefold()
+    return [
+        p.id
+        for p in queryset.only("id", "full_name", "social_name").iterator(chunk_size=500)
+        if needle in (p.full_name or "").casefold() or needle in (p.social_name or "").casefold()
     ]
 
 
@@ -49,24 +90,23 @@ class PatientFilter(django_filters.FilterSet):
 class PatientSearchFilter(BaseFilterBackend):
     """DRF ``?search=`` backend for Patient that handles encrypted name fields.
 
-    Plaintext fields (medical_record_number, whatsapp) are matched in SQL;
-    encrypted fields (full_name, social_name) are decrypted and matched in
-    Python. The two id sets are unioned so a single ``search`` term keeps
-    working across all four fields.
+    Plaintext fields (medical_record_number, whatsapp) are matched in SQL.
+    Encrypted fields are checked in one bounded-memory iterator pass and only
+    matching ids return to the queryset, so raw identifiers are never exposed.
     """
 
     search_param = "search"
 
     def filter_queryset(self, request, queryset, view):
-        term = request.query_params.get(self.search_param, "").strip()
+        term = request.query_params.get(self.search_param, "").strip()[:200]
         if not term:
             return queryset
-        sql_ids = set(
-            queryset.filter(
-                Q(medical_record_number__icontains=term) | Q(whatsapp__icontains=term)
-            ).values_list("id", flat=True)
-        )
-        enc_ids = set(_patient_name_matches(queryset, term))
+        digits = _digits(term)
+        plaintext_query = Q(medical_record_number__icontains=term) | Q(whatsapp__icontains=term)
+        if len(digits) >= 4 and digits != term:
+            plaintext_query |= Q(whatsapp__icontains=digits)
+        sql_ids = set(queryset.filter(plaintext_query).values_list("id", flat=True))
+        enc_ids = set(_patient_encrypted_matches(queryset, term))
         return queryset.filter(pk__in=sql_ids | enc_ids)
 
     def get_schema_operation_parameters(self, view):
@@ -77,7 +117,11 @@ class PatientSearchFilter(BaseFilterBackend):
                 "name": self.search_param,
                 "required": False,
                 "in": "query",
-                "description": "Busca por nome, nome social, prontuário ou WhatsApp.",
+                "description": (
+                    "Busca por nome, nome social, prontuário, CPF completo, CNS completo, "
+                    "documento de identidade completo, telefone, WhatsApp ou e-mail. "
+                    "Identificadores sensíveis aceitam somente correspondência exata."
+                ),
                 "schema": {"type": "string"},
             }
         ]

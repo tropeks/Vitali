@@ -145,7 +145,13 @@ class TestEncryptedNameSearch(TenantTestCase):
 
     def setUp(self):
         self.ana = _make_patient(full_name="Ana Maria Souza", cpf="111.111.111-11")
-        self.bruno = _make_patient(full_name="Bruno Lima", cpf="222.222.222-22", social_name="Bru")
+        self.bruno = _make_patient(
+            full_name="Bruno Lima",
+            cpf="222.222.222-22",
+            social_name="Bru",
+            phone="+5511977776666",
+            email="bruno.lima@example.com",
+        )
 
     def _request(self, params):
         from rest_framework.request import Request
@@ -170,6 +176,49 @@ class TestEncryptedNameSearch(TenantTestCase):
         )
         ids = list(result.values_list("id", flat=True))
         self.assertEqual(ids, [self.bruno.id])
+
+    def test_search_filter_matches_complete_cpf_with_or_without_mask(self):
+        qs = Patient.objects.all()
+        for term in ("111.111.111-11", "11111111111"):
+            with self.subTest(term=term):
+                result = PatientSearchFilter().filter_queryset(
+                    self._request({"search": term}), qs, view=None
+                )
+                self.assertEqual(list(result.values_list("id", flat=True)), [self.ana.id])
+
+        partial = PatientSearchFilter().filter_queryset(
+            self._request({"search": "111111"}), qs, view=None
+        )
+        self.assertNotIn(self.ana.id, partial.values_list("id", flat=True))
+
+    def test_search_filter_matches_encrypted_contact_without_exposing_it(self):
+        result = PatientSearchFilter().filter_queryset(
+            self._request({"search": "988887777"}), Patient.objects.all(), view=None
+        )
+        self.assertEqual(list(result.values_list("id", flat=True)), [self.ana.id])
+
+        result = PatientSearchFilter().filter_queryset(
+            self._request({"search": "ana.souza@example"}), Patient.objects.all(), view=None
+        )
+        self.assertEqual(list(result.values_list("id", flat=True)), [self.ana.id])
+
+    def test_search_filter_matches_complete_cns_and_identity_document(self):
+        self.bruno.cns = "123456789012345"
+        self.bruno.identity_document = "MG-12.345.678"
+        self.bruno.save(update_fields=["cns", "identity_document"])
+
+        for term in ("123456789012345", "MG 12.345.678"):
+            with self.subTest(term=term):
+                result = PatientSearchFilter().filter_queryset(
+                    self._request({"search": term}), Patient.objects.all(), view=None
+                )
+                self.assertEqual(list(result.values_list("id", flat=True)), [self.bruno.id])
+
+    def test_search_openapi_description_lists_supported_identifiers(self):
+        [parameter] = PatientSearchFilter().get_schema_operation_parameters(view=None)
+        self.assertIn("CPF completo", parameter["description"])
+        self.assertIn("CNS completo", parameter["description"])
+        self.assertIn("e-mail", parameter["description"])
 
     def test_name_filter_finds_by_social_name(self):
         f = PatientFilter(data={"name": "bru"}, queryset=Patient.objects.all())

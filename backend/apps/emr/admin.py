@@ -38,10 +38,11 @@ class PatientAdmin(admin.ModelAdmin):
         "full_name",
         "birth_date",
         "gender",
+        "race_color",
         "phone",
         "is_active",
     ]
-    list_filter = ["gender", "blood_type", "is_active"]
+    list_filter = ["gender", "race_color", "marital_status", "blood_type", "is_active"]
     # full_name is encrypted at rest (LGPD) and cannot be matched by the admin's
     # SQL search; only the plaintext routing keys remain searchable here.
     search_fields = ["medical_record_number", "whatsapp"]

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getAccessToken } from '@/lib/auth';
 import { Plus } from 'lucide-react';
+import RemoteCombobox from '@/components/shared/RemoteCombobox';
 
 interface PurchaseOrder {
   id: string;
@@ -64,9 +65,8 @@ const STATUS_OPTIONS = [
 export default function ComprasPage() {
   const router = useRouter();
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [loading, setLoading] = useState(true);
-  const [supplierFilter, setSupplierFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
 
   useEffect(() => {
@@ -75,24 +75,18 @@ export default function ComprasPage() {
       if (!token) return;
       const headers = { Authorization: `Bearer ${token}` };
       try {
-        const [ordRes, supRes] = await Promise.all([
-          fetch('/api/v1/pharmacy/purchase-orders/', { headers }),
-          fetch('/api/v1/pharmacy/suppliers/', { headers }),
-        ]);
+        const supplier = selectedSupplier ? `&supplier=${encodeURIComponent(selectedSupplier.id)}` : '';
+        const ordRes = await fetch(`/api/v1/pharmacy/purchase-orders/?page_size=200${supplier}`, { headers });
         if (ordRes.ok) {
           const data = await ordRes.json();
           setOrders(data.results ?? data ?? []);
-        }
-        if (supRes.ok) {
-          const data = await supRes.json();
-          setSuppliers(data.results ?? data ?? []);
         }
       } finally {
         setLoading(false);
       }
     }
     load();
-  }, []);
+  }, [selectedSupplier]);
 
   function toggleStatus(val: string) {
     setStatusFilter((prev) =>
@@ -101,7 +95,6 @@ export default function ComprasPage() {
   }
 
   const filtered = orders.filter((o) => {
-    if (supplierFilter && o.supplier_name !== supplierFilter) return false;
     if (statusFilter.length > 0 && !statusFilter.includes(o.status)) return false;
     return true;
   });
@@ -125,18 +118,18 @@ export default function ComprasPage() {
         {/* Supplier dropdown */}
         <div className="flex flex-col gap-1">
           <label className="text-xs font-medium text-neu-inkMuted">Fornecedor</label>
-          <select
-            value={supplierFilter}
-            onChange={(e) => setSupplierFilter(e.target.value)}
-            className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[180px]"
-          >
-            <option value="">Todos</option>
-            {suppliers.map((s) => (
-              <option key={s.id} value={s.name}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+          <div className="min-w-[240px]">
+            <RemoteCombobox<Supplier>
+              label="Filtrar fornecedor"
+              endpoint="/api/v1/pharmacy/suppliers/"
+              value={selectedSupplier}
+              getKey={(supplier) => supplier.id}
+              getLabel={(supplier) => supplier.name}
+              onChange={setSelectedSupplier}
+              placeholder="Buscar fornecedor..."
+              allLabel="Todos os fornecedores"
+            />
+          </div>
         </div>
 
         {/* Status multi-select */}
