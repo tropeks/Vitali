@@ -69,8 +69,8 @@ class ApprovalRequestViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class _IntegrationOperationsViewSet(viewsets.ReadOnlyModelViewSet):
-    filterset_fields = ("status",)
-    search_fields = ("idempotency_key", "correlation_id")
+    filterset_fields: tuple[str, ...] = ("status",)
+    search_fields: tuple[str, ...] = ("idempotency_key", "correlation_id")
 
     def get_permissions(self):
         permission = (
