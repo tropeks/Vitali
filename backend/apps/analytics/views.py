@@ -476,14 +476,21 @@ class BillingOperationalView(APIView):
         return Response(
             {
                 "competency": competency,
-                "billed": billed,
-                "received": received,
-                "outstanding": billed - received,
-                "at_risk": at_risk,
+                "billed": f"{billed:.2f}",
+                "received": f"{received:.2f}",
+                "outstanding": f"{billed - received:.2f}",
+                "at_risk": f"{at_risk:.2f}",
                 "guides_total": agg["total"] or 0,
                 "guides_paid": agg["paid"] or 0,
                 "guides_outstanding": agg["outstanding_count"] or 0,
-                "providers": by_provider,
+                "providers": [
+                    {
+                        **row,
+                        "billed": f"{row['billed'] or Decimal('0.00'):.2f}",
+                        "received": f"{row['received'] or Decimal('0.00'):.2f}",
+                    }
+                    for row in by_provider
+                ],
             }
         )
 
