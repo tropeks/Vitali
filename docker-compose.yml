@@ -3,6 +3,9 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    # Required by nested PVE/LXC hosts for PostgreSQL Unix socket creation.
+    security_opt:
+      - apparmor=unconfined
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-vitali}
       POSTGRES_USER: vitali
