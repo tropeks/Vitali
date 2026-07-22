@@ -13,7 +13,7 @@
 # Usage:
 #   cp .env.staging.example .env.staging
 #   # fill in all required vars (see docs/DEPLOY.md)
-#   GHCR_REPO=tropeks docker compose -f docker-compose.staging.yml --env-file .env.staging up -d
+#   GHCR_REPO=tropeks docker compose -p vitali-staging --env-file .env.staging -f docker-compose.staging.yml up -d
 
 services:
   # ─── PostgreSQL 16 ────────────────────────────────────────────────────────
