@@ -20,6 +20,9 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: always
+    # PVE/LXC nested AppArmor can deny PostgreSQL's Unix socket creation.
+    security_opt:
+      - apparmor=unconfined
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-vitali}
       POSTGRES_USER: ${POSTGRES_USER:-vitali}
@@ -256,8 +259,11 @@ services:
   nginx:
     image: nginx:alpine
     restart: always
+    # PVE/LXC nested AppArmor also blocks nginx worker socketpair().
+    security_opt:
+      - apparmor=unconfined
     ports:
-      - "80:80"
+      - "${STAGING_HTTP_PORT:-8090}:80"
     volumes:
       - ./docker/nginx/nginx.conf:/etc/nginx/templates/default.conf.template:ro
       - static_files:/app/staticfiles:ro
