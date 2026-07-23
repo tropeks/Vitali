@@ -22,6 +22,23 @@ from .serializers import (
 )
 from .services import AttendanceService, EmployeeOnboardingService
 
+
+class HRAccessPermission:
+    """Allow platform/tenant administrators or explicitly delegated HR users."""
+
+    def has_permission(self, request, view):
+        from apps.core.permissions import is_platform_admin
+
+        if not request.user or not request.user.is_authenticated:
+            return False
+        if is_platform_admin(request.user):
+            return True
+        role = request.user.effective_role()
+        return bool(role and (role.name == "admin" or "hr.manage" in (role.permissions or [])))
+
+    def __call__(self):
+        return self
+
 # Actions that mutate the Employee row and must therefore run inside a
 # transaction while holding a row lock (F-15 termination atomicity).
 _LOCKING_ACTIONS = frozenset({"update", "partial_update", "destroy"})
@@ -39,11 +56,10 @@ class EmployeeViewSet(
     permission_classes = [IsAuthenticated]
 
     def get_permissions(self):
-        if self.action == "create":
-            from apps.core.permissions import HasPermission
-
-            return [IsAuthenticated(), HasPermission("admin")]
-        return super().get_permissions()
+        # Employee records contain sensitive PII and employment data.  Never
+        # expose list/retrieve/update/delete to any authenticated clinician;
+        # require tenant admin or delegated HR management for every action.
+        return [IsAuthenticated(), HRAccessPermission()]
 
     def get_queryset(self):
         qs = Employee.objects.select_related("user__role").all()
@@ -190,12 +206,10 @@ class EmployeeViewSet(
 
 
 class HRManagePermissionMixin:
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HRAccessPermission]
 
     def get_permissions(self):
-        from apps.core.permissions import HasPermission
-
-        return [IsAuthenticated(), HasPermission("hr.manage")]
+        return [IsAuthenticated(), HRAccessPermission()]
 
 
 class WorkScheduleViewSet(HRManagePermissionMixin, viewsets.ModelViewSet):  # type: ignore[misc]
