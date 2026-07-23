@@ -2,7 +2,12 @@
 Billing Views — TISS/TUSS
 """
 
+import csv
+import hashlib
+import io
 import logging
+import re
+from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -24,6 +29,8 @@ from apps.core.permissions import ModuleRequiredPermission
 
 from .models import (
     AccountsReceivable,
+    BankStatementImport,
+    BankTransaction,
     Glosa,
     GlosaSafetyAlert,
     InsuranceProvider,
@@ -36,6 +43,7 @@ from .models import (
 from .permissions import IsFaturistaOrAdmin
 from .serializers import (
     AccountsReceivableSerializer,
+    BankTransactionSerializer,
     GlosaSerializer,
     InsuranceProviderSerializer,
     PriceTableItemSerializer,
@@ -50,6 +58,122 @@ from .serializers import (
 
 logger = logging.getLogger(__name__)
 _BILLING_MODULE = ModuleRequiredPermission("billing")
+
+
+class BankStatementImportView(APIView):
+    permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
+
+    def post(self, request):
+        upload = request.FILES.get("file")
+        if not upload:
+            return Response({"error": "Envie o arquivo no campo file."}, status=400)
+        if upload.size > 10 * 1024 * 1024:
+            return Response({"error": "Arquivo excede 10 MB."}, status=413)
+        raw = upload.read()
+        digest = hashlib.sha256(raw).hexdigest()
+        existing = BankStatementImport.objects.filter(file_sha256=digest).first()
+        if existing:
+            return Response(
+                {"id": str(existing.id), "status": existing.status, "duplicate": True}, status=200
+            )
+        ext = upload.name.rsplit(".", 1)[-1].lower() if "." in upload.name else ""
+        if ext not in {"csv", "ofx"}:
+            return Response({"error": "Formato aceito: CSV ou OFX."}, status=415)
+        imp = BankStatementImport.objects.create(
+            filename=upload.name[:255], file_sha256=digest, format=ext, imported_by=request.user
+        )
+        try:
+            rows = self._parse_csv(raw) if ext == "csv" else self._parse_ofx(raw)
+            BankTransaction.objects.bulk_create(
+                [
+                    BankTransaction(
+                        statement=imp,
+                        external_id=str(r.get("id") or f"{digest[:16]}-{i}"),
+                        occurred_at=datetime.combine(r["date"], datetime.min.time()),
+                        amount=r["amount"],
+                        description=str(r.get("description", ""))[:500],
+                    )
+                    for i, r in enumerate(rows)
+                ],
+                ignore_conflicts=True,
+            )
+            imp.status = "processed"
+            imp.save(update_fields=["status"])
+            from apps.core.signals import _write_audit
+
+            _write_audit(
+                "bank_statement_imported",
+                "bank_statement_import",
+                str(imp.id),
+                new_data={"filename": imp.filename, "transactions": len(rows)},
+            )
+            return Response(
+                {"id": str(imp.id), "status": imp.status, "transactions": len(rows)}, status=201
+            )
+        except (ValueError, UnicodeDecodeError) as exc:
+            imp.status, imp.error = "failed", str(exc)[:1000]
+            imp.save(update_fields=["status", "error"])
+            return Response({"error": "Arquivo inválido.", "detail": imp.error}, status=400)
+
+    @staticmethod
+    def _parse_csv(raw):
+        text = raw.decode("utf-8-sig")
+        reader = csv.DictReader(io.StringIO(text))
+        if not reader.fieldnames:
+            raise ValueError("CSV sem cabeçalho")
+        names = {n.strip().lower(): n for n in reader.fieldnames}
+
+        def pick(row, *keys):
+            for key in keys:
+                if key in names and row.get(names[key]):
+                    return row[names[key]]
+            return ""
+
+        out = []
+        for row in reader:
+            raw_date = pick(row, "date", "data", "transaction_date")
+            raw_amount = pick(row, "amount", "valor", "value")
+            if not raw_date or not raw_amount:
+                continue
+            try:
+                d = datetime.strptime(raw_date.strip()[:10], "%Y-%m-%d").date()
+            except ValueError:
+                d = datetime.strptime(raw_date.strip()[:10], "%d/%m/%Y").date()
+            amount = raw_amount.strip().replace("R$", "").replace(".", "").replace(",", ".")
+            out.append(
+                {
+                    "id": pick(row, "id", "fitid", "nsu"),
+                    "date": d,
+                    "amount": amount,
+                    "description": pick(row, "description", "descricao", "memo"),
+                    "counterparty": pick(row, "counterparty", "favorecido", "payee"),
+                }
+            )
+        return out
+
+    @staticmethod
+    def _parse_ofx(raw):
+        text = raw.decode("utf-8-sig", errors="replace")
+        rows = []
+        for block in re.findall(r"<STMTTRN>(.*?)</STMTTRN>", text, flags=re.I | re.S):
+
+            def tag(name, block=block):
+                m = re.search(rf"<{name}>([^<\r\n]+)", block, flags=re.I)
+                return m.group(1).strip() if m else ""
+
+            d = tag("DTPOSTED")[:8]
+            if not d or not tag("TRNAMT"):
+                continue
+            rows.append(
+                {
+                    "id": tag("FITID"),
+                    "date": datetime.strptime(d, "%Y%m%d").date(),
+                    "amount": tag("TRNAMT"),
+                    "description": tag("MEMO") or tag("NAME"),
+                    "counterparty": tag("NAME"),
+                }
+            )
+        return rows
 
 
 class ProfessionalSettlementViewSet(viewsets.ModelViewSet):
@@ -109,6 +233,58 @@ class AccountsReceivableViewSet(viewsets.ModelViewSet):
             new_data={"status": obj.status},
         )
         return Response(self.get_serializer(obj).data)
+
+
+class BankTransactionViewSet(viewsets.ModelViewSet):
+    serializer_class = BankTransactionSerializer
+    permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
+    filterset_fields = ["status"]
+
+    def get_queryset(self):
+        return BankTransaction.objects.select_related("receivable", "matched_by")
+
+    @action(detail=True, methods=["post"])
+    def match(self, request, pk=None):
+        tx = self.get_object()
+        if tx.status == "matched":
+            return Response(self.get_serializer(tx).data)
+        candidates = AccountsReceivable.objects.filter(
+            status__in=["expected", "billed", "overdue"], amount=tx.amount
+        )
+        desc = (tx.description or "").lower()
+        candidate = next((r for r in candidates if r.guide.guide_number.lower() in desc), None)
+        if candidate is None and candidates.count() == 1:
+            candidate = candidates.first()
+        if candidate is None:
+            tx.status, tx.confidence = "review", 0
+            tx.save(update_fields=["status", "confidence"])
+            return Response(self.get_serializer(tx).data)
+        tx.receivable, tx.confidence, tx.status = candidate, 100, "review"
+        tx.save(update_fields=["receivable", "confidence", "status"])
+        return Response(self.get_serializer(tx).data)
+
+    @action(detail=True, methods=["post"])
+    def approve(self, request, pk=None):
+        from django.db import transaction
+
+        tx = self.get_object()
+        if not tx.receivable:
+            return Response({"detail": "Transação sem recebível conciliado."}, status=400)
+        with transaction.atomic():
+            tx.status, tx.matched_at, tx.matched_by = "matched", timezone.now(), request.user
+            tx.save(update_fields=["status", "matched_at", "matched_by"])
+            rec = tx.receivable
+            rec.status, rec.received_at = "received", tx.matched_at
+            rec.save(update_fields=["status", "received_at", "updated_at"])
+        from apps.core.signals import _write_audit
+
+        _write_audit(
+            "receivable_reconciled",
+            "bank_transaction",
+            str(tx.pk),
+            new_data={"receivable": str(rec.pk), "amount": str(tx.amount)},
+        )
+        return Response(self.get_serializer(tx).data)
 
 
 class TUSSCodePagination(PageNumberPagination):

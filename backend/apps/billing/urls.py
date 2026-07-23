@@ -10,6 +10,8 @@ from .views import (
     AccountsReceivableViewSet,
     AcknowledgeGlosaAlertView,
     AsaasWebhookView,
+    BankStatementImportView,
+    BankTransactionViewSet,
     GlosaViewSet,
     InsuranceProviderViewSet,
     PIXChargeView,
@@ -28,6 +30,7 @@ router.register(r"guides", TISSGuideViewSet, basename="guide")
 router.register(r"batches", TISSBatchViewSet, basename="batch")
 router.register(r"glosas", GlosaViewSet, basename="glosa")
 router.register(r"receivables", AccountsReceivableViewSet, basename="receivable")
+router.register(r"bank-transactions", BankTransactionViewSet, basename="bank-transaction")
 router.register(r"settlements", ProfessionalSettlementViewSet, basename="settlement")
 
 urlpatterns = [
@@ -37,6 +40,11 @@ urlpatterns = [
         "billing/pix/charges/<uuid:charge_id>/", PIXChargeView.as_view(), name="pix-charge-detail"
     ),
     path("billing/pix/webhook/", AsaasWebhookView.as_view(), name="asaas-webhook"),
+    path(
+        "billing/bank-statements/import/",
+        BankStatementImportView.as_view(),
+        name="bank-statement-import",
+    ),
     # Glosa-safety wedge (PR G1): acknowledge a deterministic glosa alert.
     path(
         "billing/glosa-safety-alerts/<uuid:alert_id>/acknowledge/",

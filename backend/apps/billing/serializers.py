@@ -8,6 +8,7 @@ from apps.core.models import TUSSCode
 
 from .models import (
     AccountsReceivable,
+    BankTransaction,
     Glosa,
     InsuranceProvider,
     PriceTable,
@@ -345,3 +346,18 @@ class AccountsReceivableSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at", "received_at"]
+
+
+class BankTransactionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BankTransaction
+        fields = "__all__"
+        read_only_fields = [
+            "id",
+            "status",
+            "receivable",
+            "confidence",
+            "matched_at",
+            "matched_by",
+            "created_at",
+        ]

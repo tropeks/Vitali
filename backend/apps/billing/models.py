@@ -417,6 +417,43 @@ class AccountsReceivable(models.Model):
         return f"CR {self.guide.guide_number} — R$ {self.amount}"
 
 
+class BankTransaction(models.Model):
+    """Imported bank/PIX movement; immutable source with idempotent external id."""
+
+    STATUS_CHOICES = [("unmatched", "Pendente"), ("matched", "Conciliado"), ("review", "Revisão")]
+    external_id = models.CharField(max_length=180, unique=True)
+    statement = models.ForeignKey(
+        "BankStatementImport",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="transactions",
+    )
+    occurred_at = models.DateTimeField()
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    description = models.CharField(max_length=500, blank=True)
+    status = models.CharField(
+        max_length=12, choices=STATUS_CHOICES, default="unmatched", db_index=True
+    )
+    receivable = models.ForeignKey(
+        AccountsReceivable,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="bank_transactions",
+    )
+    confidence = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    matched_at = models.DateTimeField(null=True, blank=True)
+    matched_by = models.ForeignKey("core.User", null=True, blank=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-occurred_at"]
+
+    def __str__(self):
+        return f"{self.external_id} — R$ {self.amount}"
+
+
 class TISSGuideItem(models.Model):
     """Procedimento/material em uma guia TISS. Per-tenant."""
 
@@ -820,3 +857,25 @@ class GlosaSafetyAlert(models.Model):
         self.acknowledged_at = timezone.now()
         self.status = self.Status.ACKNOWLEDGED
         self.save(update_fields=["acknowledged_by", "override_reason", "acknowledged_at", "status"])
+
+
+class BankStatementImport(models.Model):
+    """Uploaded bank statement, retained for audit and idempotent ingestion."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    filename = models.CharField(max_length=255)
+    file_sha256 = models.CharField(max_length=64, unique=True)
+    format = models.CharField(max_length=8, choices=[("csv", "CSV"), ("ofx", "OFX")])
+    status = models.CharField(
+        max_length=20,
+        choices=[("pending", "Pendente"), ("processed", "Processado"), ("failed", "Falhou")],
+        default="pending",
+    )
+    error = models.TextField(blank=True)
+    imported_by = models.ForeignKey(
+        "core.User", on_delete=models.SET_NULL, null=True, related_name="bank_statement_imports"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.filename} ({self.created_at:%Y-%m-%d})"
