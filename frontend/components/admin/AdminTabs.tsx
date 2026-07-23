@@ -9,6 +9,7 @@ const tabs = [
   ['/administracao/aprovacoes', 'Aprovações'],
   ['/administracao/compras', 'Conciliação de compras'],
   ['/administracao/conciliacao-financeira', 'Conciliação financeira'],
+  ['/administracao/resultado-financeiro', 'DRE e fluxo de caixa'],
 ] as const
 
 export default function AdminTabs() {
