@@ -81,7 +81,7 @@ docker run -d --name "${CONTAINER}" \
   -e PGDATA=/tmp/pgdata \
   -e POSTGRES_PASSWORD="${PG_PASSWORD}" \
   -e POSTGRES_USER=vitali -e POSTGRES_DB=vitali \
-  "${PG_IMAGE}" postgres -c unix_socket_directories=/tmp >/dev/null
+  "${PG_IMAGE}" postgres -c unix_socket_directories=/var/lib/postgresql/data >/dev/null
 
 echo "[restore-test] Waiting for readiness…"
 for _ in $(seq 1 "$((READY_TIMEOUT_SECONDS / 2))"); do
