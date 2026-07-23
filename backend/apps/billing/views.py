@@ -28,12 +28,16 @@ from apps.core.models import TUSSCode
 from apps.core.permissions import ModuleRequiredPermission
 
 from .models import (
+    AccountingCategory,
+    AccountingEntry,
     AccountsReceivable,
     BankStatementImport,
     BankTransaction,
+    CashFlowEntry,
     Glosa,
     GlosaSafetyAlert,
     InsuranceProvider,
+    Payable,
     PriceTable,
     PriceTableItem,
     ProfessionalSettlement,
@@ -42,10 +46,14 @@ from .models import (
 )
 from .permissions import IsFaturistaOrAdmin
 from .serializers import (
+    AccountingCategorySerializer,
+    AccountingEntrySerializer,
     AccountsReceivableSerializer,
     BankTransactionSerializer,
+    CashFlowEntrySerializer,
     GlosaSerializer,
     InsuranceProviderSerializer,
+    PayableSerializer,
     PriceTableItemSerializer,
     PriceTableListSerializer,
     PriceTableSerializer,
@@ -235,6 +243,51 @@ class AccountsReceivableViewSet(viewsets.ModelViewSet):
         return Response(self.get_serializer(obj).data)
 
 
+class AccountingCategoryViewSet(viewsets.ModelViewSet):
+    queryset = AccountingCategory.objects.all()
+    serializer_class = AccountingCategorySerializer
+    permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
+
+
+class AccountingEntryViewSet(viewsets.ModelViewSet):
+    serializer_class = AccountingEntrySerializer
+    permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
+    filterset_fields = ["kind", "competency", "unit", "cost_center", "reconciled"]
+
+    def get_queryset(self):
+        return AccountingEntry.objects.select_related("category", "receivable")
+
+    def perform_create(self, serializer):
+        obj = serializer.save(created_by=self.request.user)
+        from apps.core.signals import _write_audit
+
+        _write_audit(
+            "accounting_entry_created",
+            "accounting_entry",
+            str(obj.pk),
+            new_data={"amount": str(obj.amount), "kind": obj.kind},
+        )
+
+    @action(detail=False, methods=["get"])
+    def dre(self, request):
+        qs = self.get_queryset()
+        start, end = request.query_params.get("start"), request.query_params.get("end")
+        if start:
+            qs = qs.filter(competency__gte=start)
+        if end:
+            qs = qs.filter(competency__lte=end)
+        revenue = qs.filter(kind="revenue").aggregate(total=Sum("amount"))["total"] or Decimal("0")
+        expense = qs.filter(kind="expense").aggregate(total=Sum("amount"))["total"] or Decimal("0")
+        return Response(
+            {
+                "revenue": str(revenue),
+                "expense": str(expense),
+                "result": str(revenue - expense),
+                "entries": qs.count(),
+            }
+        )
+
+
 class BankTransactionViewSet(viewsets.ModelViewSet):
     serializer_class = BankTransactionSerializer
     permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
@@ -276,15 +329,90 @@ class BankTransactionViewSet(viewsets.ModelViewSet):
             rec = tx.receivable
             rec.status, rec.received_at = "received", tx.matched_at
             rec.save(update_fields=["status", "received_at", "updated_at"])
+        return Response(self.get_serializer(tx).data)
+
+
+class PayableViewSet(viewsets.ModelViewSet):
+    serializer_class = PayableSerializer
+    permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
+    filterset_fields = ["status", "category", "cost_center"]
+
+    def get_queryset(self):
+        return Payable.objects.select_related("created_by").all()
+
+    def perform_create(self, serializer):
+        obj = serializer.save(created_by=self.request.user)
         from apps.core.signals import _write_audit
 
         _write_audit(
-            "receivable_reconciled",
-            "bank_transaction",
-            str(tx.pk),
-            new_data={"receivable": str(rec.pk), "amount": str(tx.amount)},
+            "payable_created", "payable", str(obj.pk), new_data={"amount": str(obj.amount)}
         )
-        return Response(self.get_serializer(tx).data)
+
+    @action(detail=True, methods=["post"])
+    def pay(self, request, pk=None):
+        obj = self.get_object()
+        if obj.status == "cancelled":
+            return Response({"detail": "Conta cancelada."}, status=400)
+        obj.status, obj.paid_at = "paid", timezone.now()
+        obj.save(update_fields=["status", "paid_at", "updated_at"])
+        CashFlowEntry.objects.update_or_create(
+            external_id=f"payable:{obj.external_id}",
+            defaults={
+                "description": obj.description,
+                "kind": "outflow",
+                "amount": obj.amount,
+                "due_date": obj.due_date,
+                "realized_at": obj.paid_at,
+                "category": obj.category,
+                "cost_center": obj.cost_center,
+                "status": "realized",
+            },
+        )
+        from apps.core.signals import _write_audit
+
+        _write_audit("payable_paid", "payable", str(obj.pk), new_data={"amount": str(obj.amount)})
+        return Response(self.get_serializer(obj).data)
+
+
+class CashFlowEntryViewSet(viewsets.ModelViewSet):
+    serializer_class = CashFlowEntrySerializer
+    permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
+    filterset_fields = ["kind", "status", "category", "cost_center"]
+
+    def get_queryset(self):
+        return CashFlowEntry.objects.all()
+
+    @action(detail=False, methods=["get"])
+    def summary(self, request):
+        qs = self.get_queryset().exclude(status="cancelled")
+        return Response(
+            {
+                "forecast_inflow": str(
+                    sum(
+                        (x.amount for x in qs if x.kind == "inflow" and x.status == "forecast"),
+                        Decimal("0"),
+                    )
+                ),
+                "forecast_outflow": str(
+                    sum(
+                        (x.amount for x in qs if x.kind == "outflow" and x.status == "forecast"),
+                        Decimal("0"),
+                    )
+                ),
+                "realized_inflow": str(
+                    sum(
+                        (x.amount for x in qs if x.kind == "inflow" and x.status == "realized"),
+                        Decimal("0"),
+                    )
+                ),
+                "realized_outflow": str(
+                    sum(
+                        (x.amount for x in qs if x.kind == "outflow" and x.status == "realized"),
+                        Decimal("0"),
+                    )
+                ),
+            }
+        )
 
 
 class TUSSCodePagination(PageNumberPagination):

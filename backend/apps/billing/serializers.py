@@ -7,10 +7,14 @@ from rest_framework import serializers
 from apps.core.models import TUSSCode
 
 from .models import (
+    AccountingCategory,
+    AccountingEntry,
     AccountsReceivable,
     BankTransaction,
+    CashFlowEntry,
     Glosa,
     InsuranceProvider,
+    Payable,
     PriceTable,
     PriceTableItem,
     ProfessionalSettlement,
@@ -361,3 +365,33 @@ class BankTransactionSerializer(serializers.ModelSerializer):
             "matched_by",
             "created_at",
         ]
+
+
+class PayableSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Payable
+        fields = "__all__"
+        read_only_fields = ["id", "created_by", "created_at", "updated_at", "paid_at"]
+
+
+class CashFlowEntrySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CashFlowEntry
+        fields = "__all__"
+        read_only_fields = ["id", "created_at", "realized_at"]
+
+
+class AccountingCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AccountingCategory
+        fields = "__all__"
+        read_only_fields = ["id"]
+
+
+class AccountingEntrySerializer(serializers.ModelSerializer):
+    category_name = serializers.CharField(source="category.name", read_only=True)
+
+    class Meta:
+        model = AccountingEntry
+        fields = "__all__"
+        read_only_fields = ["id", "created_by", "created_at"]

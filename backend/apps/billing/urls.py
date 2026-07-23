@@ -7,13 +7,17 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    AccountingCategoryViewSet,
+    AccountingEntryViewSet,
     AccountsReceivableViewSet,
     AcknowledgeGlosaAlertView,
     AsaasWebhookView,
     BankStatementImportView,
     BankTransactionViewSet,
+    CashFlowEntryViewSet,
     GlosaViewSet,
     InsuranceProviderViewSet,
+    PayableViewSet,
     PIXChargeView,
     PriceTableViewSet,
     ProfessionalSettlementViewSet,
@@ -30,8 +34,12 @@ router.register(r"guides", TISSGuideViewSet, basename="guide")
 router.register(r"batches", TISSBatchViewSet, basename="batch")
 router.register(r"glosas", GlosaViewSet, basename="glosa")
 router.register(r"receivables", AccountsReceivableViewSet, basename="receivable")
+router.register(r"accounting/categories", AccountingCategoryViewSet, basename="accounting-category")
+router.register(r"accounting/entries", AccountingEntryViewSet, basename="accounting-entry")
 router.register(r"bank-transactions", BankTransactionViewSet, basename="bank-transaction")
 router.register(r"settlements", ProfessionalSettlementViewSet, basename="settlement")
+router.register(r"payables", PayableViewSet, basename="payable")
+router.register(r"cash-flow", CashFlowEntryViewSet, basename="cash-flow")
 
 urlpatterns = [
     path("billing/", include(router.urls)),

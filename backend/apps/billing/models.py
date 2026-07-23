@@ -454,6 +454,118 @@ class BankTransaction(models.Model):
         return f"{self.external_id} — R$ {self.amount}"
 
 
+class Payable(models.Model):
+    """Contas a pagar, immutable identity and explicit payment transition."""
+
+    STATUS_CHOICES = [
+        ("planned", "Prevista"),
+        ("approved", "Aprovada"),
+        ("paid", "Paga"),
+        ("cancelled", "Cancelada"),
+    ]
+    external_id = models.CharField(
+        max_length=180, unique=True, help_text="ID idempotente da origem"
+    )
+    description = models.CharField(max_length=300)
+    category = models.CharField(max_length=120, blank=True)
+    cost_center = models.CharField(max_length=120, blank=True)
+    amount = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(0)])
+    due_date = models.DateField()
+    paid_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(
+        max_length=12, choices=STATUS_CHOICES, default="planned", db_index=True
+    )
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        "core.User", null=True, on_delete=models.SET_NULL, related_name="payables_created"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["due_date", "-created_at"]
+        indexes = [models.Index(fields=["status", "due_date"], name="billing_pay_status_due_idx")]
+
+    def __str__(self):
+        return f"CP {self.description} — R$ {self.amount}"
+
+
+class CashFlowEntry(models.Model):
+    """Projected/realized cash entry; external_id makes imports idempotent."""
+
+    KIND_CHOICES = [("inflow", "Entrada"), ("outflow", "Saída")]
+    STATUS_CHOICES = [
+        ("forecast", "Previsto"),
+        ("realized", "Realizado"),
+        ("cancelled", "Cancelado"),
+    ]
+    external_id = models.CharField(max_length=180, unique=True)
+    description = models.CharField(max_length=300)
+    kind = models.CharField(max_length=8, choices=KIND_CHOICES)
+    amount = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(0)])
+    due_date = models.DateField()
+    realized_at = models.DateTimeField(null=True, blank=True)
+    category = models.CharField(max_length=120, blank=True)
+    cost_center = models.CharField(max_length=120, blank=True)
+    status = models.CharField(
+        max_length=10, choices=STATUS_CHOICES, default="forecast", db_index=True
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["due_date", "-created_at"]
+
+    def __str__(self):
+        return f"{self.kind} {self.description} — R$ {self.amount}"
+
+
+class AccountingCategory(models.Model):
+    """Configurable chart-of-accounts category, scoped to a tenant."""
+
+    name = models.CharField(max_length=160)
+    code = models.CharField(max_length=40)
+    kind = models.CharField(max_length=10, choices=[("revenue", "Receita"), ("expense", "Despesa")])
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        unique_together = [("code", "kind")]
+        ordering = ["code", "name"]
+
+    def __str__(self):
+        return f"{self.code} — {self.name}"
+
+
+class AccountingEntry(models.Model):
+    """Accrual accounting entry used by DRE and cash projections."""
+
+    category = models.ForeignKey(
+        AccountingCategory, on_delete=models.PROTECT, related_name="entries"
+    )
+    kind = models.CharField(max_length=10, choices=[("revenue", "Receita"), ("expense", "Despesa")])
+    amount = models.DecimalField(max_digits=14, decimal_places=2, validators=[MinValueValidator(0)])
+    competency = models.DateField(db_index=True)
+    unit = models.CharField(max_length=120, blank=True)
+    cost_center = models.CharField(max_length=120, blank=True)
+    description = models.CharField(max_length=300, blank=True)
+    receivable = models.ForeignKey(
+        AccountsReceivable,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="accounting_entries",
+    )
+    reconciled = models.BooleanField(default=False)
+    created_by = models.ForeignKey("core.User", null=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-competency", "-created_at"]
+        indexes = [models.Index(fields=["competency", "kind"], name="billing_entry_comp_kind_idx")]
+
+    def __str__(self):
+        return f"{self.get_kind_display()} R$ {self.amount} ({self.competency:%m/%Y})"
+
+
 class TISSGuideItem(models.Model):
     """Procedimento/material em uma guia TISS. Per-tenant."""
 
