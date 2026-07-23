@@ -187,11 +187,22 @@ class NFeReceiptViewSet(viewsets.ModelViewSet):
             if receipt.status != "pending":
                 return Response({"detail": "Status inválido."}, status=409)
             tenant_cnpj = getattr(getattr(request, "tenant", None), "cnpj", None)
-            if tenant_cnpj and "".join(ch for ch in receipt.recipient_cnpj if ch.isdigit()) != "".join(ch for ch in tenant_cnpj if ch.isdigit()):
+            if tenant_cnpj and "".join(
+                ch for ch in receipt.recipient_cnpj if ch.isdigit()
+            ) != "".join(ch for ch in tenant_cnpj if ch.isdigit()):
                 return Response({"detail": "CNPJ destinatário não pertence à clínica."}, status=409)
-            if receipt.items.filter(catalog_mapping__isnull=True).exists() or receipt.items.exclude(catalog_mapping__status="confirmed").exists():
-                return Response({"detail": "Todos os itens precisam de mapeamento confirmado."}, status=409)
-            receipt.status, receipt.approved_by, receipt.approved_at = "approved", request.user, timezone.now()
+            if (
+                receipt.items.filter(catalog_mapping__isnull=True).exists()
+                or receipt.items.exclude(catalog_mapping__status="confirmed").exists()
+            ):
+                return Response(
+                    {"detail": "Todos os itens precisam de mapeamento confirmado."}, status=409
+                )
+            receipt.status, receipt.approved_by, receipt.approved_at = (
+                "approved",
+                request.user,
+                timezone.now(),
+            )
             receipt.save(update_fields=["status", "approved_by", "approved_at"])
         log_audit(
             request,
@@ -413,7 +424,9 @@ class ThreeWayMatchViewSet(viewsets.ReadOnlyModelViewSet):
     def approve(self, request, pk=None):
         match = self.get_object()
         if match.status == "mismatch" and not str(request.data.get("override_reason", "")).strip():
-            return Response({"detail": "Justificativa obrigatória para aprovar divergência."}, status=400)
+            return Response(
+                {"detail": "Justificativa obrigatória para aprovar divergência."}, status=400
+            )
         match.status = "approved"
         match.override_reason = str(request.data.get("override_reason", "")).strip()
         match.reviewed_by = request.user

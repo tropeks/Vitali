@@ -288,8 +288,12 @@ class AccountingEntryViewSet(viewsets.ModelViewSet):
             payables = payables.filter(due_date__gte=start)
         if end:
             payables = payables.filter(due_date__lte=end)
-        cash_in = sum((x.amount for x in cash if x.kind == "inflow" and x.status == "realized"), Decimal("0"))
-        cash_out = sum((x.amount for x in cash if x.kind == "outflow" and x.status == "realized"), Decimal("0"))
+        cash_in = sum(
+            (x.amount for x in cash if x.kind == "inflow" and x.status == "realized"), Decimal("0")
+        )
+        cash_out = sum(
+            (x.amount for x in cash if x.kind == "outflow" and x.status == "realized"), Decimal("0")
+        )
         payable_open = sum((x.amount for x in payables if x.status != "paid"), Decimal("0"))
         return Response(
             {
@@ -316,8 +320,13 @@ class BankTransactionViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def match(self, request, pk=None):
         from django.db import transaction
+
         with transaction.atomic():
-            tx = BankTransaction.objects.select_for_update().select_related("receivable").get(pk=self.get_object().pk)
+            tx = (
+                BankTransaction.objects.select_for_update()
+                .select_related("receivable")
+                .get(pk=self.get_object().pk)
+            )
             return self._match_locked(request, tx)
 
     def _match_locked(self, request, tx):
@@ -337,7 +346,11 @@ class BankTransactionViewSet(viewsets.ModelViewSet):
         tx.receivable, tx.confidence, tx.status = candidate, 100, "review"
         # A receivable can only be matched once; prevent concurrent bank rows
         # from silently double-allocating it.
-        if BankTransaction.objects.filter(receivable=candidate, status="matched").exclude(pk=tx.pk).exists():
+        if (
+            BankTransaction.objects.filter(receivable=candidate, status="matched")
+            .exclude(pk=tx.pk)
+            .exists()
+        ):
             return Response({"detail": "Recebível já conciliado."}, status=409)
         tx.save(update_fields=["receivable", "confidence", "status"])
         return Response(self.get_serializer(tx).data)
@@ -347,7 +360,11 @@ class BankTransactionViewSet(viewsets.ModelViewSet):
         from django.db import transaction
 
         with transaction.atomic():
-            tx = BankTransaction.objects.select_for_update().select_related("receivable").get(pk=self.get_object().pk)
+            tx = (
+                BankTransaction.objects.select_for_update()
+                .select_related("receivable")
+                .get(pk=self.get_object().pk)
+            )
             if tx.status == "matched":
                 return Response(self.get_serializer(tx).data)
             if not tx.receivable:
@@ -361,7 +378,13 @@ class BankTransactionViewSet(viewsets.ModelViewSet):
             rec.status, rec.received_at = "received", tx.matched_at
             rec.save(update_fields=["status", "received_at", "updated_at"])
             from apps.core.signals import _write_audit
-            _write_audit("receivable_settled", "accounts_receivable", str(rec.pk), new_data={"bank_transaction": str(tx.pk)})
+
+            _write_audit(
+                "receivable_settled",
+                "accounts_receivable",
+                str(rec.pk),
+                new_data={"bank_transaction": str(tx.pk)},
+            )
         return Response(self.get_serializer(tx).data)
 
 
