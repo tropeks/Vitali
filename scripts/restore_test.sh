@@ -25,6 +25,7 @@ set -euo pipefail
 
 BACKUP_DIR="${BACKUP_DIR:-/backups}"
 PG_IMAGE="${PG_IMAGE:-postgres:16-alpine}"
+READY_TIMEOUT_SECONDS="${READY_TIMEOUT_SECONDS:-180}"
 PG_PASSWORD="restore-drill-$$"
 CONTAINER="vitali-restore-drill-$$"
 WORKDIR="$(mktemp -d)"
@@ -77,16 +78,17 @@ esac
 # ── 3. Spin an ephemeral Postgres and restore ───────────────────────────────
 echo "[restore-test] Starting ephemeral Postgres (${PG_IMAGE})…"
 docker run -d --name "${CONTAINER}" \
+  -e PGDATA=/tmp/pgdata \
   -e POSTGRES_PASSWORD="${PG_PASSWORD}" \
   -e POSTGRES_USER=vitali -e POSTGRES_DB=vitali \
-  "${PG_IMAGE}" >/dev/null
+  "${PG_IMAGE}" postgres -c unix_socket_directories=/tmp >/dev/null
 
 echo "[restore-test] Waiting for readiness…"
-for _ in $(seq 1 30); do
-  if docker exec "${CONTAINER}" pg_isready -U vitali >/dev/null 2>&1; then break; fi
+for _ in $(seq 1 "$((READY_TIMEOUT_SECONDS / 2))"); do
+  if docker exec "${CONTAINER}" pg_isready -h 127.0.0.1 -U vitali >/dev/null 2>&1; then break; fi
   sleep 2
 done
-docker exec "${CONTAINER}" pg_isready -U vitali >/dev/null 2>&1 || fail "ephemeral Postgres never became ready"
+docker exec "${CONTAINER}" pg_isready -h 127.0.0.1 -U vitali >/dev/null 2>&1 || fail "ephemeral Postgres never became ready"
 
 echo "[restore-test] Restoring dump…"
 docker cp "${DUMP}" "${CONTAINER}:/tmp/restore.dump"
