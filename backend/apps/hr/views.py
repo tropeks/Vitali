@@ -39,6 +39,9 @@ class HRAccessPermission:
     def __call__(self):
         return self
 
+    def has_object_permission(self, request, view, obj):
+        return self.has_permission(request, view)
+
 
 # Actions that mutate the Employee row and must therefore run inside a
 # transaction while holding a row lock (F-15 termination atomicity).
