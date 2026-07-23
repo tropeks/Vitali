@@ -11,7 +11,10 @@ fail() { echo "[pitr-check] ERROR: $1" >&2; exit 1; }
 
 CID="$("${compose[@]}" ps -q postgres)"
 [ -n "${CID}" ] || fail "postgres container not found"
-sql() { docker exec -u postgres "${CID}" psql -tAX -d "${POSTGRES_DB:-vitali}" -c "$1"; }
+sql() {
+  docker exec -u postgres "${CID}" psql -U "${POSTGRES_USER:-vitali}" -tAX \
+    -d "${POSTGRES_DB:-vitali}" -c "$1"
+}
 
 [ "$(sql 'SHOW archive_mode;')" = on ] || fail "archive_mode is not on"
 [ "$(sql 'SHOW wal_level;')" = replica ] || fail "wal_level is not replica"
