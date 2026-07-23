@@ -39,6 +39,7 @@ class HRAccessPermission:
     def __call__(self):
         return self
 
+
 # Actions that mutate the Employee row and must therefore run inside a
 # transaction while holding a row lock (F-15 termination atomicity).
 _LOCKING_ACTIONS = frozenset({"update", "partial_update", "destroy"})

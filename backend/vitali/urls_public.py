@@ -35,7 +35,10 @@ def readiness_check(request):
         started = time.monotonic()
         with connection.cursor() as cursor:
             cursor.execute("SELECT 1")
-        checks["database"] = {"ok": True, "latency_ms": round((time.monotonic() - started) * 1000, 1)}
+        checks["database"] = {
+            "ok": True,
+            "latency_ms": round((time.monotonic() - started) * 1000, 1),
+        }
     except Exception:
         checks["database"] = {"ok": False}
     try:
