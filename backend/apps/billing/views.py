@@ -445,7 +445,12 @@ class CashFlowEntryViewSet(viewsets.ModelViewSet):
         obj = serializer.save()
         from apps.core.signals import _write_audit
 
-        _write_audit("cashflow_created", "cash_flow_entry", str(obj.pk), new_data={"amount": str(obj.amount), "status": obj.status})
+        _write_audit(
+            "cashflow_created",
+            "cash_flow_entry",
+            str(obj.pk),
+            new_data={"amount": str(obj.amount), "status": obj.status},
+        )
 
     def perform_update(self, serializer):
         current = self.get_object()
@@ -454,14 +459,24 @@ class CashFlowEntryViewSet(viewsets.ModelViewSet):
         obj = serializer.save()
         from apps.core.signals import _write_audit
 
-        _write_audit("cashflow_updated", "cash_flow_entry", str(obj.pk), new_data={"amount": str(obj.amount), "status": obj.status})
+        _write_audit(
+            "cashflow_updated",
+            "cash_flow_entry",
+            str(obj.pk),
+            new_data={"amount": str(obj.amount), "status": obj.status},
+        )
 
     def perform_destroy(self, instance):
         if instance.status == "realized":
             raise serializers.ValidationError("Lançamento realizado não pode ser excluído.")
         from apps.core.signals import _write_audit
 
-        _write_audit("cashflow_deleted", "cash_flow_entry", str(instance.pk), old_data={"amount": str(instance.amount)})
+        _write_audit(
+            "cashflow_deleted",
+            "cash_flow_entry",
+            str(instance.pk),
+            old_data={"amount": str(instance.amount)},
+        )
         instance.delete()
 
     @action(detail=False, methods=["get"])

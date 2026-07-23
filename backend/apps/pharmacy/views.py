@@ -225,7 +225,9 @@ class NFeReceiptViewSet(viewsets.ModelViewSet):
             request.data.get("reason", "Devolução solicitada na conferência"),
         ]
         receipt.save(update_fields=["status", "validation_errors"])
-        log_audit(request, "reject_nfe_receipt", "NFeReceipt", receipt.id, new_data={"status": "rejected"})
+        log_audit(
+            request, "reject_nfe_receipt", "NFeReceipt", receipt.id, new_data={"status": "rejected"}
+        )
         return Response(self.get_serializer(receipt).data)
 
 

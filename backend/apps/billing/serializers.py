@@ -400,5 +400,7 @@ class AccountingEntrySerializer(serializers.ModelSerializer):
         category = attrs.get("category") or getattr(self.instance, "category", None)
         kind = attrs.get("kind") or getattr(self.instance, "kind", None)
         if category and kind and category.kind != kind:
-            raise serializers.ValidationError({"kind": "A categoria não é compatível com o tipo do lançamento."})
+            raise serializers.ValidationError(
+                {"kind": "A categoria não é compatível com o tipo do lançamento."}
+            )
         return attrs
