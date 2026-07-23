@@ -7,7 +7,7 @@ import { apiErrorMessage, listResults } from '@/lib/admin'
 
 type InvoiceItem = { id: string; sequence: number; description: string; supplier_code?: string; quantity: string; unit_price: string; ncm?: string; barcode?: string; lot?: string; expires_at?: string; drug?: string | null; material?: string | null }
 type Invoice = { id: string; number: string; access_key?: string; supplier_name?: string; issuer_cnpj?: string; recipient_cnpj?: string; status: string; total_amount?: string; issued_at?: string; validation_errors?: string[]; items?: InvoiceItem[] }
-const statusLabels: Record<string, string> = { pending: 'Pendente', matched: 'Conciliada', mismatch: 'Divergência', approved: 'Aprovada', cancelled: 'Cancelada' }
+const statusLabels: Record<string, string> = { pending: 'Pendente', validated: 'Validada', approved: 'Aprovada', rejected: 'Rejeitada' }
 
 export default function NFeEntriesPage() {
   const [items, setItems] = useState<Invoice[]>([])
@@ -17,13 +17,13 @@ export default function NFeEntriesPage() {
   const [message, setMessage] = useState<string | null>(null)
   const [selected, setSelected] = useState<Invoice | null>(null)
   const [working, setWorking] = useState(false)
-  async function load() { try { const data = await apiFetch<unknown>('/api/v1/pharmacy/supplier-invoices/?page_size=200'); setItems(listResults(data as never) as Invoice[]) } catch (e) { setError(apiErrorMessage(e, 'Não foi possível carregar as entradas.')) } finally { setLoading(false) } }
+  async function load() { try { const data = await apiFetch<unknown>('/api/v1/pharmacy/nfe-receipts/?page_size=200'); setItems(listResults(data as never) as Invoice[]) } catch (e) { setError(apiErrorMessage(e, 'Não foi possível carregar as entradas.')) } finally { setLoading(false) } }
   useEffect(() => { void load() }, [])
   async function upload(file: File) {
     setUploading(true); setMessage(null)
     const body = new FormData(); body.append('file', file)
-    try { await apiFetch('/api/v1/pharmacy/supplier-invoices/import-xml/', { method: 'POST', body }); setMessage('XML recebido e enviado para conferência.'); await load() }
-    catch (e) { setMessage(apiErrorMessage(e, 'A importação automática de XML ainda não está habilitada neste ambiente.')) }
+    try { await apiFetch('/api/v1/pharmacy/nfe-receipts/', { method: 'POST', body }); setMessage('XML recebido e enviado para conferência.'); await load() }
+    catch (e) { setMessage(apiErrorMessage(e, 'Não foi possível importar o XML.')) }
     finally { setUploading(false) }
   }
   async function approve(invoice: Invoice) {
