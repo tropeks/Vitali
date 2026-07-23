@@ -213,6 +213,21 @@ class NFeReceiptViewSet(viewsets.ModelViewSet):
         )
         return Response(self.get_serializer(receipt).data)
 
+    @action(detail=True, methods=["post"])
+    def reject(self, request, pk=None):
+        """Reject/return a quarantined NF-e before stock is posted."""
+        receipt = self.get_object()
+        if receipt.status not in ("pending", "validated"):
+            return Response({"detail": "A NF-e não pode mais ser devolvida."}, status=409)
+        receipt.status = "rejected"
+        receipt.validation_errors = [
+            *receipt.validation_errors,
+            request.data.get("reason", "Devolução solicitada na conferência"),
+        ]
+        receipt.save(update_fields=["status", "validation_errors"])
+        log_audit(request, "reject_nfe_receipt", "NFeReceipt", receipt.id, new_data={"status": "rejected"})
+        return Response(self.get_serializer(receipt).data)
+
 
 class NFeWebhookView(APIView):
     permission_classes = (AllowAny,)
