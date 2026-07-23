@@ -5,15 +5,19 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('pharmacy', '0026_merge_20260722_1840'),
+        ("pharmacy", "0026_merge_20260722_1840"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.AddConstraint(
-            model_name='nfecatalogmapping',
-            constraint=models.CheckConstraint(condition=models.Q(('drug__isnull', False), ('material__isnull', False), _connector='OR'), name='nfe_mapping_catalog_target'),
+            model_name="nfecatalogmapping",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    ("drug__isnull", False), ("material__isnull", False), _connector="OR"
+                ),
+                name="nfe_mapping_catalog_target",
+            ),
         ),
     ]
