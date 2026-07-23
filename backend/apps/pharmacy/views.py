@@ -182,22 +182,17 @@ class NFeReceiptViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def approve(self, request, pk=None):
-        receipt = self.get_object()
-        if receipt.status != "pending":
-            return Response({"detail": "Status inválido."}, status=409)
-        if (
-            receipt.items.filter(catalog_mapping__isnull=True).exists()
-            or receipt.items.filter(catalog_mapping__status="rejected").exists()
-        ):
-            return Response(
-                {"detail": "Todos os itens precisam de mapeamento de catálogo."}, status=409
-            )
-        receipt.status, receipt.approved_by, receipt.approved_at = (
-            "approved",
-            request.user,
-            timezone.now(),
-        )
-        receipt.save(update_fields=["status", "approved_by", "approved_at"])
+        with transaction.atomic():
+            receipt = NFeReceipt.objects.select_for_update().get(pk=self.get_object().pk)
+            if receipt.status != "pending":
+                return Response({"detail": "Status inválido."}, status=409)
+            tenant_cnpj = getattr(getattr(request, "tenant", None), "cnpj", None)
+            if tenant_cnpj and "".join(ch for ch in receipt.recipient_cnpj if ch.isdigit()) != "".join(ch for ch in tenant_cnpj if ch.isdigit()):
+                return Response({"detail": "CNPJ destinatário não pertence à clínica."}, status=409)
+            if receipt.items.filter(catalog_mapping__isnull=True).exists() or receipt.items.exclude(catalog_mapping__status="confirmed").exists():
+                return Response({"detail": "Todos os itens precisam de mapeamento confirmado."}, status=409)
+            receipt.status, receipt.approved_by, receipt.approved_at = "approved", request.user, timezone.now()
+            receipt.save(update_fields=["status", "approved_by", "approved_at"])
         log_audit(
             request,
             "approve_nfe_receipt",
@@ -327,7 +322,7 @@ class StockReceiptViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=("post",))
     @transaction.atomic
     def approve(self, request, pk=None):
-        receipt = self.get_object()
+        receipt = StockReceipt.objects.select_for_update().get(pk=self.get_object().pk)
         if receipt.status != StockReceipt.Status.PENDING:
             return Response({"detail": "Recebimento já processado."}, status=400)
         lines = list(
@@ -374,7 +369,7 @@ class StockReceiptViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=("post",))
     def reject(self, request, pk=None):
-        receipt = self.get_object()
+        receipt = StockReceipt.objects.select_for_update().get(pk=self.get_object().pk)
         if receipt.status != StockReceipt.Status.PENDING:
             return Response({"detail": "Recebimento já processado."}, status=400)
         receipt.status = StockReceipt.Status.REJECTED
@@ -384,7 +379,7 @@ class StockReceiptViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=("post",), url_path="return")
     def return_receipt(self, request, pk=None):
-        receipt = self.get_object()
+        receipt = StockReceipt.objects.select_for_update().get(pk=self.get_object().pk)
         if receipt.status != StockReceipt.Status.APPROVED:
             return Response(
                 {"detail": "Somente recebimentos efetivados podem ser devolvidos."}, status=400
@@ -417,10 +412,13 @@ class ThreeWayMatchViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=["post"])
     def approve(self, request, pk=None):
         match = self.get_object()
+        if match.status == "mismatch" and not str(request.data.get("override_reason", "")).strip():
+            return Response({"detail": "Justificativa obrigatória para aprovar divergência."}, status=400)
         match.status = "approved"
+        match.override_reason = str(request.data.get("override_reason", "")).strip()
         match.reviewed_by = request.user
         match.reviewed_at = timezone.now()
-        match.save(update_fields=["status", "reviewed_by", "reviewed_at"])
+        match.save(update_fields=["status", "override_reason", "reviewed_by", "reviewed_at"])
         match.invoice.status = "approved"
         match.invoice.save(update_fields=["status"])
         log_audit(
@@ -428,7 +426,7 @@ class ThreeWayMatchViewSet(viewsets.ReadOnlyModelViewSet):
             "approve_three_way_match",
             "ThreeWayMatch",
             match.id,
-            new_data={"status": "approved"},
+            new_data={"status": "approved", "override_reason": match.override_reason},
         )
         return Response(ThreeWayMatchSerializer(match).data)
 

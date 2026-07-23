@@ -43,7 +43,7 @@ with schema_context(clinic.schema_name):
     if user is None:
         User.objects.create_superuser(
             email='admin@test.com',
-            password='AdminPass1!',
+            password=os.environ['E2E_ADMIN_PASSWORD'],
             full_name='E2E Admin',
             role=admin_role,
         )
@@ -53,7 +53,7 @@ with schema_context(clinic.schema_name):
         user.is_staff = True
         user.is_superuser = True
         user.is_active = True
-        user.set_password('AdminPass1!')
+        user.set_password(os.environ['E2E_ADMIN_PASSWORD'])
         user.save(update_fields=['full_name', 'role', 'is_staff', 'is_superuser', 'is_active', 'password'])
 "
 ```
@@ -66,7 +66,7 @@ E2E_BASE_URL=http://testclinic.localhost:3000 \
 E2E_BACKEND_URL=http://localhost:8000 \
 E2E_MODE=true \
 E2E_ADMIN_EMAIL=admin@test.com \
-E2E_ADMIN_PASSWORD=AdminPass1! \
+E2E_ADMIN_PASSWORD="$(openssl rand -base64 24)" \
 npx playwright test
 ```
 

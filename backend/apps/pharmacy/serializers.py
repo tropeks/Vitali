@@ -93,6 +93,7 @@ class ThreeWayMatchSerializer(serializers.ModelSerializer):
             "reviewed_at",
             "created_at",
         )
+        extra_kwargs = {"override_reason": {"required": False}}
 
 
 class PharmacistValidationSerializer(serializers.ModelSerializer):

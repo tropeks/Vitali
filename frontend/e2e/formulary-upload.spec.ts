@@ -17,7 +17,7 @@
 import { test, expect } from '@playwright/test';
 
 const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL || 'admin@test.com';
-const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD || 'AdminPass1!';
+const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? (() => { throw new Error('E2E_ADMIN_PASSWORD must be configured') })();
 
 const CSV_HEADER =
   'drug_name,drug_generic,strength_value,strength_unit,route,basis,dose_unit,' +
