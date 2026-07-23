@@ -41,6 +41,18 @@ class ModulePermissionTestCase(TenantTestCase):
         response = self.client.get("/api/v1/billing/guides/")
         self.assertEqual(response.status_code, 403)
 
+    def test_canonical_admin_role_grants_admin_capability(self):
+        role = Role.objects.create(name="admin", permissions=[])
+        user = User.objects.create_user(
+            email="canonical-admin@test.com",
+            password="TestPass123!",
+            full_name="Canonical Admin",
+            role=role,
+        )
+        request = APIRequestFactory().get("/")
+        request.user = user
+        self.assertTrue(HasPermission("admin").has_permission(request, None))
+
     def test_module_on_returns_200(self):
         """When billing flag is on, billing endpoints are accessible."""
         FeatureFlag.objects.update_or_create(

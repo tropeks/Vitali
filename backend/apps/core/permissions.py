@@ -109,6 +109,12 @@ class HasPermission(BasePermission):
         role = request.user.effective_role()
         if not role:
             return False
+        # ``admin`` is the canonical role capability. Older tenants may have
+        # been provisioned with the role name but without the literal
+        # ``admin`` entry in the JSON permissions list; keep the role contract
+        # authoritative so administrative endpoints do not unexpectedly 403.
+        if self.permission_required == "admin" and role.name == "admin":
+            return True
         return self.permission_required in role.permissions
 
 
