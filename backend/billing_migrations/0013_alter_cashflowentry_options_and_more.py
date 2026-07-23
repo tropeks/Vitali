@@ -5,19 +5,22 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('billing', '0012_accounting_payables_cashflow'),
+        ("billing", "0012_accounting_payables_cashflow"),
     ]
 
     operations = [
         migrations.AlterModelOptions(
-            name='cashflowentry',
-            options={'ordering': ['due_date', '-created_at']},
+            name="cashflowentry",
+            options={"ordering": ["due_date", "-created_at"]},
         ),
         migrations.AlterField(
-            model_name='accountingentry',
-            name='amount',
-            field=models.DecimalField(decimal_places=2, max_digits=14, validators=[django.core.validators.MinValueValidator(0)]),
+            model_name="accountingentry",
+            name="amount",
+            field=models.DecimalField(
+                decimal_places=2,
+                max_digits=14,
+                validators=[django.core.validators.MinValueValidator(0)],
+            ),
         ),
     ]
