@@ -22,13 +22,14 @@ ARCHIVE_COMMAND="$(sql 'SHOW archive_command;')"
 [[ "${ARCHIVE_COMMAND}" == *'/wal-archive/'* ]] || fail "archive_command is not using the PITR volume"
 
 if [ "${PITR_FORCE_SWITCH:-0}" = 1 ]; then
-  TARGET_WAL="$(sql "SELECT pg_walfile_name(pg_switch_wal());")"
+  BEFORE_ARCHIVED="$(sql "SELECT coalesce(archived_count,0) FROM pg_stat_archiver;")"
+  sql "SELECT pg_switch_wal();" >/dev/null
   for _ in $(seq 1 30); do
-    [ "$(sql "SELECT coalesce(last_archived_wal,'');")" = "${TARGET_WAL}" ] && break
+    [ "$(sql "SELECT coalesce(archived_count,0) FROM pg_stat_archiver;")" -gt "${BEFORE_ARCHIVED}" ] && break
     sleep 1
   done
-  [ "$(sql "SELECT coalesce(last_archived_wal,'');")" = "${TARGET_WAL}" ] \
-    || fail "forced WAL ${TARGET_WAL} was not archived within 30s"
+  [ "$(sql "SELECT coalesce(archived_count,0) FROM pg_stat_archiver;")" -gt "${BEFORE_ARCHIVED}" ] \
+    || fail "forced WAL was not archived within 30s"
 fi
 
 STATS="$(sql "SELECT coalesce(archived_count,0)||'|'||coalesce(failed_count,0)||'|'||coalesce(extract(epoch from (now()-last_archived_time))::bigint,-1) FROM pg_stat_archiver;")"

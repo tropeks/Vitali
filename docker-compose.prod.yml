@@ -253,12 +253,12 @@ services:
     command: >
       sh -c '
         apk add --no-cache gnupg aws-cli >/dev/null 2>&1 || apk add --no-cache gnupg py3-pip && pip install --quiet awscli || true;
-        chmod +x /usr/local/bin/backup.sh &&
+        cp /usr/local/bin/backup.sh /tmp/backup.sh && chmod +x /tmp/backup.sh &&
         printenv | grep -E "^(POSTGRES_HOST|POSTGRES_PORT|POSTGRES_DB|POSTGRES_USER|POSTGRES_PASSWORD|BACKUP_DIR|KEEP_LAST|BACKUP_ENCRYPTION_KEY|BACKUP_S3_BUCKET|BACKUP_S3_ENDPOINT|BACKUP_S3_PREFIX|BACKUP_S3_ACCESS_KEY|BACKUP_S3_SECRET_KEY)=" \
           > /etc/backup.env &&
         chmod 600 /etc/backup.env &&
         mkdir -p /var/spool/cron/crontabs &&
-        printf "0 2 * * *\t. /etc/backup.env && /usr/local/bin/backup.sh >> /proc/1/fd/1 2>&1\n" \
+        printf "0 2 * * *\t. /etc/backup.env && /tmp/backup.sh >> /proc/1/fd/1 2>&1\n" \
           > /var/spool/cron/crontabs/root &&
         crond -f -d 8
       '

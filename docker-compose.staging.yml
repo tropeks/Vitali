@@ -240,12 +240,12 @@ services:
     # /etc/backup.env at startup; the cron job sources it before calling backup.sh.
     command: >
       sh -c '
-        chmod +x /usr/local/bin/backup.sh &&
+        cp /usr/local/bin/backup.sh /tmp/backup.sh && chmod +x /tmp/backup.sh &&
         printenv | grep -E "^(POSTGRES_HOST|POSTGRES_PORT|POSTGRES_DB|POSTGRES_USER|POSTGRES_PASSWORD|BACKUP_DIR|KEEP_LAST)=" \
           > /etc/backup.env &&
         chmod 600 /etc/backup.env &&
         mkdir -p /var/spool/cron/crontabs &&
-        printf "0 2 * * *\t. /etc/backup.env && /usr/local/bin/backup.sh >> /proc/1/fd/1 2>&1\n" \
+        printf "0 2 * * *\t. /etc/backup.env && /tmp/backup.sh >> /proc/1/fd/1 2>&1\n" \
           > /var/spool/cron/crontabs/root &&
         crond -f -d 8
       '
