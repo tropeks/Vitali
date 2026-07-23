@@ -11,7 +11,7 @@ from drf_spectacular.views import (
     SpectacularSwaggerView,
 )
 
-from vitali.urls_public import csp_report
+from vitali.urls_public import csp_report, readiness_check
 
 
 def health(request):
@@ -20,6 +20,7 @@ def health(request):
 
 urlpatterns = [
     path("health/", health, name="health"),
+    path("readiness/", readiness_check, name="readiness-check"),
     path("admin/", admin.site.urls),
     path("api/v1/security/csp-report/", csp_report, name="csp-report"),
     # API v1
