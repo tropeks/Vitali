@@ -278,12 +278,33 @@ class AccountingEntryViewSet(viewsets.ModelViewSet):
             qs = qs.filter(competency__lte=end)
         revenue = qs.filter(kind="revenue").aggregate(total=Sum("amount"))["total"] or Decimal("0")
         expense = qs.filter(kind="expense").aggregate(total=Sum("amount"))["total"] or Decimal("0")
+        cash = CashFlowEntry.objects.exclude(status="cancelled")
+        if start:
+            cash = cash.filter(due_date__gte=start)
+        if end:
+            cash = cash.filter(due_date__lte=end)
+        payables = Payable.objects.exclude(status="cancelled")
+        if start:
+            payables = payables.filter(due_date__gte=start)
+        if end:
+            payables = payables.filter(due_date__lte=end)
+        cash_in = sum(
+            (x.amount for x in cash if x.kind == "inflow" and x.status == "realized"), Decimal("0")
+        )
+        cash_out = sum(
+            (x.amount for x in cash if x.kind == "outflow" and x.status == "realized"), Decimal("0")
+        )
+        payable_open = sum((x.amount for x in payables if x.status != "paid"), Decimal("0"))
         return Response(
             {
                 "revenue": str(revenue),
                 "expense": str(expense),
                 "result": str(revenue - expense),
                 "entries": qs.count(),
+                "cash_realized_inflow": str(cash_in),
+                "cash_realized_outflow": str(cash_out),
+                "cash_realized_net": str(cash_in - cash_out),
+                "payables_open": str(payable_open),
             }
         )
 
@@ -298,7 +319,17 @@ class BankTransactionViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def match(self, request, pk=None):
-        tx = self.get_object()
+        from django.db import transaction
+
+        with transaction.atomic():
+            tx = (
+                BankTransaction.objects.select_for_update()
+                .select_related("receivable")
+                .get(pk=self.get_object().pk)
+            )
+            return self._match_locked(request, tx)
+
+    def _match_locked(self, request, tx):
         if tx.status == "matched":
             return Response(self.get_serializer(tx).data)
         candidates = AccountsReceivable.objects.filter(
@@ -313,6 +344,14 @@ class BankTransactionViewSet(viewsets.ModelViewSet):
             tx.save(update_fields=["status", "confidence"])
             return Response(self.get_serializer(tx).data)
         tx.receivable, tx.confidence, tx.status = candidate, 100, "review"
+        # A receivable can only be matched once; prevent concurrent bank rows
+        # from silently double-allocating it.
+        if (
+            BankTransaction.objects.filter(receivable=candidate, status="matched")
+            .exclude(pk=tx.pk)
+            .exists()
+        ):
+            return Response({"detail": "Recebível já conciliado."}, status=409)
         tx.save(update_fields=["receivable", "confidence", "status"])
         return Response(self.get_serializer(tx).data)
 
@@ -320,15 +359,32 @@ class BankTransactionViewSet(viewsets.ModelViewSet):
     def approve(self, request, pk=None):
         from django.db import transaction
 
-        tx = self.get_object()
-        if not tx.receivable:
-            return Response({"detail": "Transação sem recebível conciliado."}, status=400)
         with transaction.atomic():
+            tx = (
+                BankTransaction.objects.select_for_update()
+                .select_related("receivable")
+                .get(pk=self.get_object().pk)
+            )
+            if tx.status == "matched":
+                return Response(self.get_serializer(tx).data)
+            if not tx.receivable:
+                return Response({"detail": "Transação sem recebível conciliado."}, status=400)
             tx.status, tx.matched_at, tx.matched_by = "matched", timezone.now(), request.user
             tx.save(update_fields=["status", "matched_at", "matched_by"])
             rec = tx.receivable
+            rec = AccountsReceivable.objects.select_for_update().get(pk=rec.pk)
+            if rec.status == "received":
+                return Response({"detail": "Recebível já baixado."}, status=409)
             rec.status, rec.received_at = "received", tx.matched_at
             rec.save(update_fields=["status", "received_at", "updated_at"])
+            from apps.core.signals import _write_audit
+
+            _write_audit(
+                "receivable_settled",
+                "accounts_receivable",
+                str(rec.pk),
+                new_data={"bank_transaction": str(tx.pk)},
+            )
         return Response(self.get_serializer(tx).data)
 
 
@@ -350,24 +406,27 @@ class PayableViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def pay(self, request, pk=None):
-        obj = self.get_object()
-        if obj.status == "cancelled":
-            return Response({"detail": "Conta cancelada."}, status=400)
-        obj.status, obj.paid_at = "paid", timezone.now()
-        obj.save(update_fields=["status", "paid_at", "updated_at"])
-        CashFlowEntry.objects.update_or_create(
-            external_id=f"payable:{obj.external_id}",
-            defaults={
-                "description": obj.description,
-                "kind": "outflow",
-                "amount": obj.amount,
-                "due_date": obj.due_date,
-                "realized_at": obj.paid_at,
-                "category": obj.category,
-                "cost_center": obj.cost_center,
-                "status": "realized",
-            },
-        )
+        with transaction.atomic():
+            obj = Payable.objects.select_for_update().get(pk=self.get_object().pk)
+            if obj.status == "cancelled":
+                return Response({"detail": "Conta cancelada."}, status=400)
+            if obj.status == "paid":
+                return Response(self.get_serializer(obj).data)
+            obj.status, obj.paid_at = "paid", timezone.now()
+            obj.save(update_fields=["status", "paid_at", "updated_at"])
+            CashFlowEntry.objects.update_or_create(
+                external_id=f"payable:{obj.external_id}",
+                defaults={
+                    "description": obj.description,
+                    "kind": "outflow",
+                    "amount": obj.amount,
+                    "due_date": obj.due_date,
+                    "realized_at": obj.paid_at,
+                    "category": obj.category,
+                    "cost_center": obj.cost_center,
+                    "status": "realized",
+                },
+            )
         from apps.core.signals import _write_audit
 
         _write_audit("payable_paid", "payable", str(obj.pk), new_data={"amount": str(obj.amount)})
@@ -381,6 +440,44 @@ class CashFlowEntryViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return CashFlowEntry.objects.all()
+
+    def perform_create(self, serializer):
+        obj = serializer.save()
+        from apps.core.signals import _write_audit
+
+        _write_audit(
+            "cashflow_created",
+            "cash_flow_entry",
+            str(obj.pk),
+            new_data={"amount": str(obj.amount), "status": obj.status},
+        )
+
+    def perform_update(self, serializer):
+        current = self.get_object()
+        if current.status == "realized":
+            raise serializers.ValidationError("Lançamento realizado é imutável; faça um estorno.")
+        obj = serializer.save()
+        from apps.core.signals import _write_audit
+
+        _write_audit(
+            "cashflow_updated",
+            "cash_flow_entry",
+            str(obj.pk),
+            new_data={"amount": str(obj.amount), "status": obj.status},
+        )
+
+    def perform_destroy(self, instance):
+        if instance.status == "realized":
+            raise serializers.ValidationError("Lançamento realizado não pode ser excluído.")
+        from apps.core.signals import _write_audit
+
+        _write_audit(
+            "cashflow_deleted",
+            "cash_flow_entry",
+            str(instance.pk),
+            old_data={"amount": str(instance.amount)},
+        )
+        instance.delete()
 
     @action(detail=False, methods=["get"])
     def summary(self, request):

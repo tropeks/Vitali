@@ -1565,6 +1565,7 @@ class ThreeWayMatch(models.Model):
         db_index=True,
     )
     discrepancies = models.JSONField(default=list, blank=True)
+    override_reason = models.TextField(blank=True)
     reviewed_by = models.ForeignKey(
         "core.User",
         on_delete=models.PROTECT,

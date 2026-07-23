@@ -12,7 +12,7 @@ import { type APIResponse, type Page } from '@playwright/test';
 import { test, expect } from './fixtures';
 
 const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL || 'admin@test.com';
-const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD || 'AdminPass1!';
+const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? (() => { throw new Error('E2E_ADMIN_PASSWORD must be configured') })();
 
 async function expectApiOk(response: APIResponse, label: string): Promise<void> {
   if (!response.ok()) {
