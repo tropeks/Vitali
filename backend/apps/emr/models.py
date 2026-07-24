@@ -395,7 +395,7 @@ class MedicalHistory(models.Model):
         the CharField→FK migration.
         """
         if self.cid10_id:
-            return self.cid10.code
+            return self.cid10.code  # type: ignore[union-attr]
         return self.legacy_cid_text
 
     @cid10_code.setter
@@ -622,7 +622,7 @@ class SOAPNote(models.Model):
     # cross-schema through model, whose cid10 FK is DO_NOTHING (Postgres does not
     # enforce cross-schema FK integrity) — the protect_cid10_code_deletion
     # pre_delete signal blocks deleting a referenced code (mirrors EncounterProcedure).
-    cid10 = models.ManyToManyField(
+    cid10 = models.ManyToManyField(  # type: ignore[var-annotated]
         "core.CID10Code",
         through="SOAPNoteCID10",
         related_name="+",
@@ -1873,8 +1873,8 @@ class NoShowRisk(models.Model):
         self.save(update_fields=["acknowledged_by", "note", "acknowledged_at", "status"])
 
 
-from .scheduling_models import *  # noqa: E402,F401,F403
-from .forms_models import *  # noqa: E402,F401,F403
 from .addendum_models import *  # noqa: E402,F401,F403
+from .forms_models import *  # noqa: E402,F401,F403
 from .problem_models import *  # noqa: E402,F401,F403
 from .reconciliation_models import *  # noqa: E402,F401,F403
+from .scheduling_models import *  # noqa: E402,F401,F403

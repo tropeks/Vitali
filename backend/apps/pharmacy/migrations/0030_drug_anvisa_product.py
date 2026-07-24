@@ -5,16 +5,22 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('core', '0025_anvisaproduct'),
-        ('pharmacy', '0029_nfereceipt_external_id_unique'),
+        ("core", "0025_anvisaproduct"),
+        ("pharmacy", "0029_nfereceipt_external_id_unique"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='drug',
-            name='anvisa_product',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.DO_NOTHING, related_name='+', to='core.anvisaproduct', verbose_name='Produto ANVISA (catálogo)'),
+            model_name="drug",
+            name="anvisa_product",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.DO_NOTHING,
+                related_name="+",
+                to="core.anvisaproduct",
+                verbose_name="Produto ANVISA (catálogo)",
+            ),
         ),
     ]

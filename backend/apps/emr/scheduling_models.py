@@ -50,7 +50,7 @@ class Resource(models.Model):
     )
     active = models.BooleanField(default=True, db_index=True)
     # M2M declared here (not on Appointment) so the merge never touches Appointment.
-    appointments = models.ManyToManyField(
+    appointments = models.ManyToManyField(  # type: ignore[var-annotated]
         "emr.Appointment", through="AppointmentResource", related_name="resources"
     )
     created_at = models.DateTimeField(auto_now_add=True)

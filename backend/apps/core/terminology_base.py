@@ -245,6 +245,7 @@ class CatalogImporter:
     # ── Engine ────────────────────────────────────────────────────────────────
 
     def run(self, rows) -> ImportResult:
+        assert self.model is not None  # subclasses set `model` (validated in __init__)
         rows = list(rows)
         result = ImportResult(total=len(rows), dry_run=self.dry_run)
         start_ms = int(time.time() * 1000)
@@ -257,7 +258,8 @@ class CatalogImporter:
                     with transaction.atomic():
                         key = self.natural_key(row)
                         defaults = self.build_defaults(row)
-                        _, created = self.model.objects.update_or_create(defaults=defaults, **key)
+                        manager = self.model.objects  # type: ignore[attr-defined]
+                        _, created = manager.update_or_create(defaults=defaults, **key)
                     if created:
                         result.created += 1
                     else:

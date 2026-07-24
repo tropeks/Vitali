@@ -29,6 +29,8 @@ from .views_diagnostics import CriticalLabResultViewSet, LabInstrumentViewSet, L
 from .views_lab_report import LabReportPDFView, LabReportSignView
 from .views_lis import LabIntegrationMessageViewSet, LabOrderORMView, LISInboundView
 from .views_pdf import PrescriptionPDFView
+from .views_problems import AllergyViewSet, ImmunizationViewSet, ProblemListItemViewSet
+from .views_reconciliation import MedicationReconciliationViewSet, OrderSetViewSet
 from .views_safety import (
     AcknowledgeDeteriorationAlertView,
     AcknowledgeNoShowRiskView,
@@ -37,8 +39,6 @@ from .views_safety import (
     NoShowRiskView,
     PrescriptionItemSafetyCheckView,
 )
-from .views_problems import AllergyViewSet, ImmunizationViewSet, ProblemListItemViewSet
-from .views_reconciliation import MedicationReconciliationViewSet, OrderSetViewSet
 from .views_scribe import ScribeStartView, ScribeStatusView, ScribeTranscribeView
 from .views_setup import WizardProfessionalSetupView, WizardStatusView
 from .views_waitlist import WaitlistDetailView, WaitlistViewSet

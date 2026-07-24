@@ -4,13 +4,11 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('emr', '0034_cid_fk_backbone'),
-        ('emr', '0034_sprint_e5_multi_resource'),
-        ('emr', '0034_sprint_e6_encounter_addendum'),
-        ('emr', '0035_seed_anamnesis_template'),
+        ("emr", "0034_cid_fk_backbone"),
+        ("emr", "0034_sprint_e5_multi_resource"),
+        ("emr", "0034_sprint_e6_encounter_addendum"),
+        ("emr", "0035_seed_anamnesis_template"),
     ]
 
-    operations = [
-    ]
+    operations = []

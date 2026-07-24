@@ -115,7 +115,7 @@ class ProblemListItem(models.Model):
         Returns the governed FK's code when linked, else the raw legacy text.
         """
         if self.cid10_id:
-            return self.cid10.code
+            return self.cid10.code  # type: ignore[union-attr]
         return self.legacy_cid_text
 
     @cid10_code.setter
