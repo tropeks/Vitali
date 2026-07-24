@@ -391,12 +391,9 @@ class ProfessionalSettlement(models.Model):
 
         from django.db.models import Sum
 
-        total = (
-            self.professional.encounters.filter(
-                encounter_date__startswith=self.competency, status="signed"
-            ).aggregate(v=Sum("tiss_guides__total_value"))["v"]
-            or Decimal("0")
-        )
+        total = self.professional.encounters.filter(
+            encounter_date__startswith=self.competency, status="signed"
+        ).aggregate(v=Sum("tiss_guides__total_value"))["v"] or Decimal("0")
         # ``rate`` may arrive as a float/int/str; coerce to Decimal so the
         # multiplication below never raises Decimal * float TypeError.
         rate_dec = Decimal(str(rate)) if rate else Decimal("1")

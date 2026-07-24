@@ -221,9 +221,7 @@ class ProfessionalSettlementViewSet(viewsets.ModelViewSet):
         """Maker-checker: draft → approved. The approver MUST differ from the
         settlement's creator. Locks + rechecks state inside atomic()."""
         with transaction.atomic():
-            obj = ProfessionalSettlement.objects.select_for_update().get(
-                pk=self.get_object().pk
-            )
+            obj = ProfessionalSettlement.objects.select_for_update().get(pk=self.get_object().pk)
             if obj.status == "approved":
                 return Response(self.get_serializer(obj).data)  # idempotent
             if obj.status != "draft":
@@ -252,9 +250,7 @@ class ProfessionalSettlementViewSet(viewsets.ModelViewSet):
         """approved → paid. Requires a prior approval (an explicit approved
         state). Locks + rechecks inside atomic() and writes an audit row."""
         with transaction.atomic():
-            obj = ProfessionalSettlement.objects.select_for_update().get(
-                pk=self.get_object().pk
-            )
+            obj = ProfessionalSettlement.objects.select_for_update().get(pk=self.get_object().pk)
             if obj.status == "paid":
                 return Response(self.get_serializer(obj).data)  # idempotent
             if obj.status != "approved":
@@ -438,9 +434,7 @@ class BankTransactionViewSet(viewsets.ModelViewSet):
         # 'matched' (settled) OR still under 'review' (bound, awaiting approval):
         # either means this receivable is spoken for.
         if (
-            BankTransaction.objects.filter(
-                receivable=candidate, status__in=["matched", "review"]
-            )
+            BankTransaction.objects.filter(receivable=candidate, status__in=["matched", "review"])
             .exclude(pk=tx.pk)
             .exists()
         ):

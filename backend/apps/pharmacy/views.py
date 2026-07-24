@@ -163,9 +163,7 @@ class NFeReceiptViewSet(viewsets.ModelViewSet):
         drug_id = request.data.get("drug")
         material_id = request.data.get("material")
         if bool(drug_id) == bool(material_id):
-            return Response(
-                {"detail": "Informe exatamente um de drug ou material."}, status=400
-            )
+            return Response({"detail": "Informe exatamente um de drug ou material."}, status=400)
         try:
             if drug_id and not Drug.objects.filter(pk=drug_id).exists():
                 return Response({"detail": "Medicamento não encontrado."}, status=400)
