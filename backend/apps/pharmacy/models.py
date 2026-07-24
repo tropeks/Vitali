@@ -47,6 +47,19 @@ class Drug(models.Model):
     # populated by a human/import per establishment.
     active_ingredients = models.JSONField(default=list, blank=True)
     anvisa_code = models.CharField(max_length=20, blank=True, db_index=True)
+    # E3-T2 — governed cross-schema FK to the SHARED ANVISA catalog
+    # (core.AnvisaProduct). Nullable during the transition; the legacy free-text
+    # ``anvisa_code`` is kept until every Drug is reconciled. Mirrors the
+    # emr→core.CID10Code pattern: DO_NOTHING (Postgres cannot enforce FKs across
+    # schemas) + a pre_delete protection signal in core.signals.
+    anvisa_product = models.ForeignKey(
+        "core.AnvisaProduct",
+        null=True,
+        blank=True,
+        on_delete=models.DO_NOTHING,
+        related_name="+",
+        verbose_name="Produto ANVISA (catálogo)",
+    )
     barcode = models.CharField(max_length=50, blank=True, unique=True, null=True)
     dosage_form = models.CharField(max_length=100, blank=True)
     concentration = models.CharField(max_length=100, blank=True)

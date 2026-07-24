@@ -980,3 +980,7 @@ class WedgeValueSnapshot(models.Model):
 
     def __str__(self) -> str:
         return f"WedgeValueSnapshot({self.schema_name}, {self.snapshot_date})"
+
+
+# ─── E3-T1: domain terminology catalogs (AnvisaProduct) ──────────────────────
+from .catalog_models import *  # noqa: E402,F401,F403

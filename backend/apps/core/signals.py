@@ -187,6 +187,34 @@ def protect_cid10_code_deletion(sender, instance, **kwargs):
                 )
 
 
+# ─── AnvisaProduct cross-schema PROTECT (E3-T2) ──────────────────────────────
+# Same rationale as protect_cid10_code_deletion: PostgreSQL does not enforce FK
+# integrity across schemas (public → tenant), so an application-layer PROTECT
+# blocks deleting an ANVISA catalog product referenced by tenant pharmacy data.
+
+
+@receiver(pre_delete, sender="core.AnvisaProduct")
+def protect_anvisa_product_deletion(sender, instance, **kwargs):
+    """Block deletion of an AnvisaProduct referenced by tenant pharmacy data.
+
+    Covers ``pharmacy.Drug.anvisa_product`` (FK) in every tenant. Mirrors the
+    MedicalHistory→CID10Code guard.
+    """
+    from django_tenants.utils import get_tenant_model, schema_context
+
+    TenantModel = get_tenant_model()
+    for tenant in TenantModel.objects.exclude(schema_name="public"):
+        with schema_context(tenant.schema_name):
+            from apps.pharmacy.models import Drug
+
+            if Drug.objects.filter(anvisa_product=instance).exists():
+                raise ProtectedError(
+                    f"AnvisaProduct {instance.code} is referenced by Drug in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+
+
 # ─── Tenant → TenantAIConfig + emr FeatureFlag ───────────────────────────────
 
 
