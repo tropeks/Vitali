@@ -73,6 +73,15 @@ class TestEncounterAddendumAPI(TenantTestCase):
     def _url(self):
         return "/api/v1/encounter-addenda/"
 
+    def test_malformed_target_id_returns_400_not_500(self):
+        # A non-UUID target_id must be a clean 400, never a 500 from the pk lookup.
+        resp = self._client(self.medico_user).post(
+            self._url(),
+            {"target_type": "encounter", "target_id": "not-a-uuid", "reason": "x", "body": "y"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 400, resp.data)
+
     # ── Create on signed doc → 201 + appears in chain ──────────────────────
 
     def test_create_addendum_on_signed_encounter_returns_201_and_in_chain(self):
