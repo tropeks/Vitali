@@ -260,11 +260,68 @@ class Allergy(models.Model):
         ("resolved", "Resolvida"),
     ]
 
+    # E2-T2: coded reaction manifestation (FHIR AllergyIntolerance.reaction). The
+    # free-text ``reaction`` field is kept for detail; ``reaction_type`` gives a
+    # machine-usable code for the dose/interaction safety checks.
+    class ReactionType(models.TextChoices):
+        RASH = "rash", "Erupção cutânea"
+        URTICARIA = "urticaria", "Urticária"
+        ANGIOEDEMA = "angioedema", "Angioedema"
+        ANAPHYLAXIS = "anaphylaxis", "Anafilaxia"
+        BRONCHOSPASM = "bronchospasm", "Broncoespasmo"
+        GI = "gi", "Gastrointestinal"
+        OTHER = "other", "Outra"
+
+    # FHIR AllergyIntolerance.criticality (potential for serious harm).
+    class Criticality(models.TextChoices):
+        LOW = "low", "Baixa"
+        HIGH = "high", "Alta"
+
+    # FHIR AllergyIntolerance.verificationStatus.
+    class VerificationStatus(models.TextChoices):
+        UNCONFIRMED = "unconfirmed", "Não confirmada"
+        CONFIRMED = "confirmed", "Confirmada"
+        REFUTED = "refuted", "Refutada"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name="allergies")
     substance = models.CharField(max_length=200)
+    # E2-T2: governed link to the curated allergen cross-reactivity class. Both
+    # emr and pharmacy are TENANT apps living in the SAME schema, so this is a
+    # NORMAL FK (no cross-schema DO_NOTHING dance). Nullable during the transition
+    # from free-text ``substance`` — the data migration best-effort maps existing
+    # substances, and unmatched rows keep ``substance`` + ``allergen_unmatched``.
+    allergen_class = models.ForeignKey(
+        "pharmacy.AllergenClass",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="allergies",
+        verbose_name="Classe de alérgeno",
+    )
+    allergen_unmatched = models.BooleanField(
+        default=False,
+        help_text="True quando substance não foi mapeada para nenhuma AllergenClass.",
+    )
     reaction = models.CharField(max_length=500, blank=True)
+    reaction_type = models.CharField(
+        max_length=20,
+        choices=ReactionType.choices,
+        blank=True,
+        default="",
+    )
     severity = models.CharField(max_length=20, choices=SEVERITY_CHOICES)
+    criticality = models.CharField(
+        max_length=10,
+        choices=Criticality.choices,
+        blank=True,
+        default="",
+    )
+    verification_status = models.CharField(
+        max_length=20,
+        choices=VerificationStatus.choices,
+        default=VerificationStatus.UNCONFIRMED,
+    )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="active")
     confirmed_by = models.ForeignKey("core.User", on_delete=models.SET_NULL, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -1819,3 +1876,4 @@ class NoShowRisk(models.Model):
 from .scheduling_models import *  # noqa: E402,F401,F403
 from .forms_models import *  # noqa: E402,F401,F403
 from .addendum_models import *  # noqa: E402,F401,F403
+from .problem_models import *  # noqa: E402,F401,F403

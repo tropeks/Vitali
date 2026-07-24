@@ -37,6 +37,7 @@ from .views_safety import (
     NoShowRiskView,
     PrescriptionItemSafetyCheckView,
 )
+from .views_problems import AllergyViewSet, ImmunizationViewSet, ProblemListItemViewSet
 from .views_scribe import ScribeStartView, ScribeStatusView, ScribeTranscribeView
 from .views_setup import WizardProfessionalSetupView, WizardStatusView
 from .views_waitlist import WaitlistDetailView, WaitlistViewSet
@@ -71,6 +72,9 @@ router.register("prescriptions", PrescriptionViewSet, basename="prescription")
 router.register("prescription-items", PrescriptionItemViewSet, basename="prescription-item")
 router.register("emar", MedicationAdministrationViewSet, basename="emar")
 router.register("nursing-assessments", NursingAssessmentViewSet, basename="nursing-assessment")
+router.register("problems", ProblemListItemViewSet, basename="problem")
+router.register("allergies", AllergyViewSet, basename="allergy")
+router.register("immunizations", ImmunizationViewSet, basename="immunization")
 
 urlpatterns = (
     [
