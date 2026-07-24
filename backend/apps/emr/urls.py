@@ -8,6 +8,7 @@ from .views import (
     ClinicalFormResponseViewSet,
     ClinicalFormTemplateViewSet,
     DuplicatePatientCandidateViewSet,
+    EncounterAddendumViewSet,
     EncounterViewSet,
     LabOrderViewSet,
     LabTestViewSet,
@@ -59,6 +60,7 @@ router.register(
 router.register(
     "clinical-form-responses", ClinicalFormResponseViewSet, basename="clinical-form-response"
 )
+router.register("encounter-addenda", EncounterAddendumViewSet, basename="encounter-addendum")
 router.register("lab-tests", LabTestViewSet, basename="lab-test")
 router.register("lab-orders", LabOrderViewSet, basename="lab-order")
 router.register("lab-integrations", LabIntegrationMessageViewSet, basename="lab-integration")

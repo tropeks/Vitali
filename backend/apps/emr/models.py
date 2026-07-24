@@ -1818,3 +1818,4 @@ class NoShowRisk(models.Model):
 
 from .scheduling_models import *  # noqa: E402,F401,F403
 from .forms_models import *  # noqa: E402,F401,F403
+from .addendum_models import *  # noqa: E402,F401,F403
