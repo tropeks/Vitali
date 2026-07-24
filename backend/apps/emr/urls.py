@@ -5,6 +5,8 @@ from .views import (
     AppointmentViewSet,
     AvailableSlotsView,
     ClinicalDocumentViewSet,
+    ClinicalFormResponseViewSet,
+    ClinicalFormTemplateViewSet,
     DuplicatePatientCandidateViewSet,
     EncounterViewSet,
     LabOrderViewSet,
@@ -51,6 +53,12 @@ router.register("encounters", EncounterViewSet, basename="encounter")
 router.register("soap-notes", SOAPNoteViewSet, basename="soap-note")
 router.register("vital-signs", VitalSignsViewSet, basename="vital-signs")
 router.register("documents", ClinicalDocumentViewSet, basename="document")
+router.register(
+    "clinical-form-templates", ClinicalFormTemplateViewSet, basename="clinical-form-template"
+)
+router.register(
+    "clinical-form-responses", ClinicalFormResponseViewSet, basename="clinical-form-response"
+)
 router.register("lab-tests", LabTestViewSet, basename="lab-test")
 router.register("lab-orders", LabOrderViewSet, basename="lab-order")
 router.register("lab-integrations", LabIntegrationMessageViewSet, basename="lab-integration")

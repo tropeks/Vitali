@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
@@ -17,6 +18,8 @@ from .filters import PatientFilter, PatientSearchFilter
 from .models import (
     Appointment,
     ClinicalDocument,
+    ClinicalFormResponse,
+    ClinicalFormTemplate,
     DuplicatePatientCandidate,
     Encounter,
     EncounterProcedure,
@@ -37,6 +40,8 @@ from .serializers import (
     AllergySerializer,
     AppointmentSerializer,
     ClinicalDocumentSerializer,
+    ClinicalFormResponseSerializer,
+    ClinicalFormTemplateSerializer,
     DuplicatePatientCandidateSerializer,
     EncounterListSerializer,
     EncounterProcedureSerializer,
@@ -942,6 +947,94 @@ class ClinicalDocumentViewSet(viewsets.ModelViewSet):
             new_data={"signed_by": str(request.user.id), "signed_at": str(doc.signed_at)},
         )
         return Response(ClinicalDocumentSerializer(doc).data)
+
+
+class ClinicalFormTemplateViewSet(viewsets.ModelViewSet):
+    """Templates de formulário/anamnese configuráveis (E4).
+
+    Publicar via ``POST /clinical-form-templates/{id}/publish/`` congela o
+    template; alterações de conteúdo exigem nova versão via
+    ``POST /clinical-form-templates/{id}/new-version/``.
+    """
+
+    queryset = ClinicalFormTemplate.objects.all()
+    serializer_class = ClinicalFormTemplateSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ["specialty", "active", "is_published"]
+    search_fields = ["name", "specialty"]
+
+    def get_permissions(self):
+        permission = "emr.read" if self.action in {"list", "retrieve"} else "emr.write"
+        return [IsAuthenticated(), HasPermission(permission)]
+
+    def perform_create(self, serializer):
+        template = serializer.save()
+        log_audit(
+            self.request,
+            "form_template_create",
+            "ClinicalFormTemplate",
+            template.id,
+            new_data={"name": template.name, "specialty": template.specialty},
+        )
+
+    @action(detail=True, methods=["post"], url_path="publish")
+    def publish(self, request, pk=None):
+        template = self.get_object()
+        try:
+            template.publish()
+        except DjangoValidationError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+        log_audit(request, "form_template_publish", "ClinicalFormTemplate", template.id)
+        return Response(self.get_serializer(template).data)
+
+    @action(detail=True, methods=["post"], url_path="new-version")
+    def new_version(self, request, pk=None):
+        template = self.get_object()
+        try:
+            new_template = template.new_version(schema=request.data.get("schema"))
+        except DjangoValidationError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        log_audit(
+            request,
+            "form_template_new_version",
+            "ClinicalFormTemplate",
+            new_template.id,
+            new_data={"version": new_template.version},
+        )
+        return Response(self.get_serializer(new_template).data, status=status.HTTP_201_CREATED)
+
+
+class ClinicalFormResponseViewSet(viewsets.ModelViewSet):
+    """Respostas de formulário/anamnese preenchidas, vinculadas a um Encounter."""
+
+    serializer_class = ClinicalFormResponseSerializer
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["template", "encounter", "patient"]
+    http_method_names = ("get", "post", "head", "options")
+
+    def get_queryset(self):
+        qs = ClinicalFormResponse.objects.select_related(
+            "template", "encounter", "patient", "filled_by"
+        )
+        encounter_id = self.request.query_params.get("encounter")
+        if encounter_id:
+            qs = qs.filter(encounter_id=encounter_id)
+        return qs
+
+    def get_permissions(self):
+        permission = "emr.read" if self.action in {"list", "retrieve"} else "emr.write"
+        return [IsAuthenticated(), HasPermission(permission)]
+
+    def perform_create(self, serializer):
+        encounter = serializer.validated_data["encounter"]
+        response = serializer.save(patient=encounter.patient, filled_by=self.request.user)
+        log_audit(
+            self.request,
+            "form_response_create",
+            "ClinicalFormResponse",
+            response.id,
+            new_data={"template": str(response.template_id), "encounter": str(encounter.id)},
+        )
 
 
 class LabTestViewSet(viewsets.ModelViewSet):
