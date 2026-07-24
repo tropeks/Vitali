@@ -1,0 +1,4 @@
+# TEST FIXTURE — fabricated, malformed (blank code on data line 4). No network.
+CODIGO;DESCRICAO;CAPITULO;GRUPO;CATEGORIA;PARENT;SEXO;IDADE_MIN;IDADE_MAX;NOTIFICACAO
+A00;FAKE-Colera;I Algumas doencas;A00-A09;A00-A09;;B;;;S
+;FAKE-sem codigo;I Algumas doencas;A00-A09;A00-A09;;B;;;N

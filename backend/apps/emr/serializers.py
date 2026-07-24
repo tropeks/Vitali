@@ -131,6 +131,11 @@ class AllergySerializer(serializers.ModelSerializer):
 class MedicalHistorySerializer(serializers.ModelSerializer):
     type_display = serializers.CharField(source="get_type_display", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
+    # E1-T5: cid10_code is now a property backed by the FK core.CID10Code (+ legacy
+    # text for unmatched). Declared explicitly since it is no longer a model field;
+    # read returns the code string, write routes through the property setter
+    # (resolves to FK when the code is governed, else preserves as legacy).
+    cid10_code = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:
         model = MedicalHistory
@@ -385,6 +390,13 @@ class VitalSignsSerializer(serializers.ModelSerializer):
 
 
 class SOAPNoteSerializer(serializers.ModelSerializer):
+    # E1-T5: cid10_codes is now a property over the governed M2M (+ legacy list).
+    # Declared explicitly; read returns the code-string list, write reconciles the
+    # codes onto the M2M (matched) / legacy (unmatched).
+    cid10_codes = serializers.ListField(
+        child=serializers.CharField(), required=False, allow_empty=True
+    )
+
     class Meta:
         model = SOAPNote
         fields = [
@@ -399,6 +411,39 @@ class SOAPNoteSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
+
+    def create(self, validated_data):
+        codes = validated_data.pop("cid10_codes", None)
+        soap = super().create(validated_data)
+        if codes is not None:
+            self._apply_codes(soap, codes)
+        return soap
+
+    def update(self, instance, validated_data):
+        codes = validated_data.pop("cid10_codes", None)
+        soap = super().update(instance, validated_data)
+        if codes is not None:
+            self._apply_codes(soap, codes)
+        return soap
+
+    @staticmethod
+    def _apply_codes(soap, codes):
+        from apps.core.models import CID10Code
+
+        soap.cid10.clear()
+        unmatched: list[str] = []
+        for value in codes:
+            code = (value or "").strip().upper()
+            if not code:
+                continue
+            cid = CID10Code.objects.filter(code=code).first()
+            if cid is not None:
+                soap.cid10.add(cid)
+            elif code not in unmatched:
+                unmatched.append(code)
+        soap.legacy_cid_codes = unmatched
+        soap.cid_unmatched = bool(unmatched)
+        soap.save(update_fields=["legacy_cid_codes", "cid_unmatched"])
 
 
 class ClinicalDocumentSerializer(serializers.ModelSerializer):

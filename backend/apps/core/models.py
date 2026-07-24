@@ -24,6 +24,11 @@ from encrypted_model_fields.fields import EncryptedCharField
 
 from .managers import UserManager
 
+# E1-T1: register the terminology backbone models (provenance log) with the core
+# app. TerminologyCatalog is abstract; TerminologyImportLog is a concrete SHARED
+# model whose table must be migrated alongside the rest of core.
+from .terminology_base import TerminologyImportLog  # noqa: E402,F401
+
 # ─── Public Schema Models ─────────────────────────────────────────────────────
 
 
@@ -365,18 +370,111 @@ class CID10Code(models.Model):
 
     Follows the same pattern as TUSSCode (Sprint 8).
     CID10Suggester validates all LLM suggestions against this table (anti-hallucination gate).
+
+    E1-T2 — evolved into a rich, hierarchical, versioned catalog: chapter/group/
+    category labels + a self-referential ``parent`` build the CID-10 tree, and the
+    governed metadata (``sex_allowed`` / ``age_min`` / ``age_max`` /
+    ``is_notifiable``) supports clinical validity checks via :meth:`applies_to`.
+    ``description`` is kept for backward compatibility; ``normalized_description``
+    (accent/case-folded) backs accent-insensitive search (E1-T4). It shares the
+    terminology backbone's field vocabulary (see ``terminology_base``) but does
+    not structurally inherit — its ``code`` is already globally unique on a
+    populated table.
     """
+
+    # sex constraint alphabet mirrors TUSSCode.SEX_CHOICES (B = both/any = no
+    # constraint = default). ANS/DATASUS truth only — never fabricated in code.
+    SEX_CHOICES = [
+        ("M", "Masculino"),
+        ("F", "Feminino"),
+        ("B", "Ambos/Qualquer"),
+    ]
 
     code = models.CharField(max_length=10, unique=True, db_index=True)
     description = models.CharField(max_length=500)
+    normalized_description = models.CharField(
+        "Descrição normalizada",
+        max_length=500,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="description sem acentos e em minúsculas — mantido em sincronia no save().",
+    )
     active = models.BooleanField(default=True, db_index=True)
+    version = models.CharField("Versão", max_length=32, blank=True, default="")
     search_vector = SearchVectorField(null=True)
+
+    # ── Hierarchy (CID-10 tree) ───────────────────────────────────────────────
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="children",
+        verbose_name="Código pai",
+    )
+    chapter = models.CharField(
+        "Capítulo", max_length=200, blank=True, default="", help_text="Ex.: I Algumas doenças…"
+    )
+    group = models.CharField("Grupo", max_length=200, blank=True, default="")
+    category = models.CharField(
+        "Categoria", max_length=200, blank=True, default="", help_text="Ex.: A00-A09"
+    )
+
+    # ── Governed clinical metadata (DATASUS/SINAN truth; inert defaults) ───────
+    sex_allowed = models.CharField(
+        "Sexo permitido",
+        max_length=1,
+        choices=SEX_CHOICES,
+        default="B",
+        help_text="Sexo compatível com o diagnóstico (B = ambos, sem restrição).",
+    )
+    age_min = models.IntegerField(
+        "Idade mínima (dias)",
+        null=True,
+        blank=True,
+        help_text="Idade mínima do paciente, em dias. Null = sem limite inferior.",
+    )
+    age_max = models.IntegerField(
+        "Idade máxima (dias)",
+        null=True,
+        blank=True,
+        help_text="Idade máxima do paciente, em dias. Null = sem limite superior.",
+    )
+    is_notifiable = models.BooleanField(
+        "Notificação compulsória",
+        default=False,
+        help_text="Doença de notificação compulsória (SINAN).",
+    )
 
     class Meta:
         app_label = "core"
         verbose_name = "CID-10"
         verbose_name_plural = "CID-10 Codes"
         indexes = [GinIndex(fields=["search_vector"])]
+
+    def save(self, *args, **kwargs):
+        # Keep the accent/case-folded search column in sync on every write.
+        from .terminology_base import normalize_text
+
+        self.normalized_description = normalize_text(self.description)
+        super().save(*args, **kwargs)
+
+    def applies_to(self, sex: str | None = None, age_days: int | None = None) -> bool:
+        """Whether this diagnosis is clinically valid for the given sex/age.
+
+        Governance helper — inert by default (``sex_allowed="B"`` + null age
+        window ⇒ always applies). A ``None`` argument means "not supplied" and is
+        never used to filter out. ``age_days`` is the patient age in days.
+        """
+        if sex and self.sex_allowed != "B" and sex != self.sex_allowed:
+            return False
+        if age_days is not None:
+            if self.age_min is not None and age_days < self.age_min:
+                return False
+            if self.age_max is not None and age_days > self.age_max:
+                return False
+        return True
 
     def __str__(self):
         return f"{self.code} — {self.description[:60]}"

@@ -293,7 +293,32 @@ class MedicalHistory(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name="medical_history")
     condition = models.CharField(max_length=300)
-    cid10_code = models.CharField(max_length=10, blank=True)
+    # E1-T5: governed FK to the SHARED core.CID10Code catalog. PostgreSQL does not
+    # enforce FK integrity across schemas (tenant → public), so — exactly like
+    # EncounterProcedure.tuss_code — we use DO_NOTHING and rely on the
+    # protect_cid10_code_deletion pre_delete signal (apps/core/signals.py) to block
+    # deleting a CID that any tenant references. Using an FK instead of a free
+    # CharField is what makes an invalid/absent CID impossible to persist.
+    cid10 = models.ForeignKey(
+        "core.CID10Code",
+        on_delete=models.DO_NOTHING,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="CID-10",
+    )
+    # Raw code preserved when it could not be reconciled to a governed CID10Code
+    # (data-migration safety — NEVER lose data).
+    legacy_cid_text = models.CharField(
+        max_length=10,
+        blank=True,
+        default="",
+        help_text="Código CID-10 bruto não reconciliado com core.CID10Code.",
+    )
+    cid_unmatched = models.BooleanField(
+        default=False,
+        help_text="True quando legacy_cid_text não corresponde a nenhum CID10Code governado.",
+    )
     type = models.CharField(max_length=20, choices=TYPE_CHOICES)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="active")
     onset_date = models.DateField(null=True, blank=True)
@@ -303,6 +328,38 @@ class MedicalHistory(models.Model):
     class Meta:
         ordering = ["condition"]
         verbose_name_plural = "medical histories"
+
+    @property
+    def cid10_code(self) -> str:
+        """Backward-compatible string accessor for the CID-10 code.
+
+        Returns the governed FK's code when linked, otherwise the raw (unmatched)
+        legacy text. Keeps existing readers/serializers/FHIR mappers working after
+        the CharField→FK migration.
+        """
+        if self.cid10_id:
+            return self.cid10.code
+        return self.legacy_cid_text
+
+    @cid10_code.setter
+    def cid10_code(self, value: str) -> None:
+        code = (value or "").strip()
+        if not code:
+            self.cid10 = None
+            self.legacy_cid_text = ""
+            self.cid_unmatched = False
+            return
+        from apps.core.models import CID10Code
+
+        match = CID10Code.objects.filter(code=code).first()
+        if match is not None:
+            self.cid10 = match
+            self.legacy_cid_text = ""
+            self.cid_unmatched = False
+        else:
+            self.cid10 = None
+            self.legacy_cid_text = code
+            self.cid_unmatched = True
 
     def __str__(self):
         return f"{self.condition} ({self.cid10_code or 'sem CID'})"
@@ -504,12 +561,67 @@ class SOAPNote(models.Model):
     objective = EncryptedTextField(blank=True, help_text="Exame físico, sinais vitais, achados")
     assessment = EncryptedTextField(blank=True, help_text="Diagnóstico, CID-10, impressão clínica")
     plan = EncryptedTextField(blank=True, help_text="Conduta, prescrição, retorno")
-    cid10_codes = models.JSONField(default=list, help_text="Lista de códigos CID-10")
+    # E1-T5: governed M2M to the SHARED core.CID10Code catalog via an EXPLICIT
+    # cross-schema through model, whose cid10 FK is DO_NOTHING (Postgres does not
+    # enforce cross-schema FK integrity) — the protect_cid10_code_deletion
+    # pre_delete signal blocks deleting a referenced code (mirrors EncounterProcedure).
+    cid10 = models.ManyToManyField(
+        "core.CID10Code",
+        through="SOAPNoteCID10",
+        related_name="+",
+        blank=True,
+        verbose_name="CID-10",
+    )
+    # Raw codes preserved when they could not be reconciled (NEVER lose data).
+    legacy_cid_codes = models.JSONField(
+        default=list, help_text="Códigos CID-10 brutos não reconciliados com core.CID10Code."
+    )
+    cid_unmatched = models.BooleanField(
+        default=False, help_text="True quando há códigos em legacy_cid_codes."
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    @property
+    def cid10_codes(self) -> list:
+        """Backward-compatible list of CID-10 code strings.
+
+        Governed M2M codes first, then any unmatched legacy codes (de-duplicated).
+        Keeps existing readers/serializers working after the JSON→M2M migration.
+        """
+        seen: set[str] = set()
+        out: list[str] = []
+        for code in [c.code for c in self.cid10.all()] + list(self.legacy_cid_codes or []):
+            if code not in seen:
+                seen.add(code)
+                out.append(code)
+        return out
+
     def __str__(self):
         return f"SOAP — {self.encounter}"
+
+
+class SOAPNoteCID10(models.Model):
+    """Explicit cross-schema through for ``SOAPNote.cid10`` → ``core.CID10Code``.
+
+    The ``cid10`` FK uses ``DO_NOTHING`` for the same reason as
+    ``EncounterProcedure.tuss_code``: Django's deletion Collector runs in the
+    public schema and would query this tenant-schema table (crashing) before the
+    pre_delete protection signal can raise a graceful ProtectedError. Deletion of
+    a referenced CID is blocked by ``protect_cid10_code_deletion``.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    soap_note = models.ForeignKey(SOAPNote, on_delete=models.CASCADE, related_name="cid10_links")
+    cid10 = models.ForeignKey("core.CID10Code", on_delete=models.DO_NOTHING, related_name="+")
+
+    class Meta:
+        verbose_name = "Vínculo SOAP–CID10"
+        verbose_name_plural = "Vínculos SOAP–CID10"
+        unique_together = ("soap_note", "cid10")
+
+    def __str__(self):
+        return f"{self.soap_note_id} → {self.cid10_id}"
 
 
 class VitalSigns(models.Model):

@@ -157,15 +157,26 @@ class CID10AcceptView(APIView):
             encounter.save(update_fields=["diagnosis_cid10"])
             encounter_updated = True
         elif hasattr(encounter, "soap_note"):
-            # Append to SOAPNote.cid10_codes list if not already present
+            # E1-T5: attach the accepted code to SOAPNote's governed M2M. The code
+            # was already validated as an active CID10Code above; on the rare
+            # fail-open path where it is not governed, preserve it as legacy.
             try:
+                from apps.core.models import CID10Code
+
                 soap = encounter.soap_note
-                current_codes = soap.cid10_codes or []
-                if code not in current_codes:
-                    current_codes.append(code)
-                    soap.cid10_codes = current_codes
-                    soap.save(update_fields=["cid10_codes"])
-                    encounter_updated = True
+                cid = CID10Code.objects.filter(code=code, active=True).first()
+                if cid is not None:
+                    if not soap.cid10.filter(code=code).exists():
+                        soap.cid10.add(cid)
+                        encounter_updated = True
+                else:
+                    legacy = list(soap.legacy_cid_codes or [])
+                    if code not in legacy:
+                        legacy.append(code)
+                        soap.legacy_cid_codes = legacy
+                        soap.cid_unmatched = True
+                        soap.save(update_fields=["legacy_cid_codes", "cid_unmatched"])
+                        encounter_updated = True
             except Exception:
                 logger.debug("Could not update SOAP note CID10 codes", exc_info=True)
 

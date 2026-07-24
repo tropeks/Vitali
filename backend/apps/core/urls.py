@@ -16,6 +16,7 @@ from .views_onboarding import OnboardingView
 from .views_platform import TenantSubscriptionView
 from .views_privacy import PrivacySettingsView
 from .views_telemetry import WedgeTelemetryView
+from .views_terminology import TerminologySearchView
 from .views_test_helpers import IssueInvitationTokenView
 
 app_name = "core"
@@ -57,6 +58,12 @@ urlpatterns = [
     path("wedge-telemetry/", WedgeTelemetryView.as_view(), name="wedge-telemetry"),
     # AI: TUSS sync status (admin-only)
     path("ai/tuss-sync-status/", views.TUSSSyncStatusView.as_view(), name="tuss-sync-status"),
+    # E1-T4: terminology autocomplete (read-only) — GET /terminology/<system>/?q=
+    path(
+        "terminology/<str:system>/",
+        TerminologySearchView.as_view(),
+        name="terminology-search",
+    ),
     # Clinic identity (issue #116 — onboarding wizard Step 1)
     path("settings/clinic/", ClinicProfileView.as_view(), name="clinic-profile"),
     # DPA (S-070)

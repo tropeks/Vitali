@@ -1,0 +1,6 @@
+# TEST FIXTURE — fabricated CID-10 rows, NOT clinical truth. No network.
+CODIGO;DESCRICAO;CAPITULO;GRUPO;CATEGORIA;PARENT;SEXO;IDADE_MIN;IDADE_MAX;NOTIFICACAO
+A00;FAKE-Colera;I Algumas doencas infecciosas;A00-A09 Doencas infecciosas intestinais;A00-A09;;B;;;S
+A000;FAKE-Colera devida a Vibrio cholerae;I Algumas doencas infecciosas;A00-A09 Doencas infecciosas intestinais;A00-A09;A00;B;;;N
+O00;FAKE-Gravidez ectopica;XV Gravidez parto e puerperio;O00-O08 Gravidez que termina em aborto;O00-O08;;F;;;N
+P00;FAKE-Afeccao perinatal;XVI Afeccoes originadas no periodo perinatal;P00-P04;P00-P04;;B;0;28;N

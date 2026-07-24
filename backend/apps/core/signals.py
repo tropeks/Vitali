@@ -153,6 +153,40 @@ def protect_tuss_code_deletion(sender, instance, **kwargs):
                 )
 
 
+# ─── CID10Code cross-schema PROTECT (E1-T5) ──────────────────────────────────
+# Same rationale as protect_tuss_code_deletion: PostgreSQL does not enforce FK
+# integrity across schemas (public → tenant), so an application-layer PROTECT
+# blocks deleting a CID-10 code referenced by clinical capture in any tenant.
+
+
+@receiver(pre_delete, sender="core.CID10Code")
+def protect_cid10_code_deletion(sender, instance, **kwargs):
+    """Block deletion of a CID10Code referenced by tenant EMR data in any tenant.
+
+    Covers ``emr.MedicalHistory.cid10`` (FK) and ``emr.SOAPNote.cid10`` (M2M via
+    the ``SOAPNoteCID10`` through). Mirrors the EncounterProcedure→TUSSCode guard.
+    """
+    from django_tenants.utils import get_tenant_model, schema_context
+
+    TenantModel = get_tenant_model()
+    for tenant in TenantModel.objects.exclude(schema_name="public"):
+        with schema_context(tenant.schema_name):
+            from apps.emr.models import MedicalHistory, SOAPNoteCID10
+
+            if MedicalHistory.objects.filter(cid10=instance).exists():
+                raise ProtectedError(
+                    f"CID10Code {instance.code} is referenced by MedicalHistory in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+            if SOAPNoteCID10.objects.filter(cid10=instance).exists():
+                raise ProtectedError(
+                    f"CID10Code {instance.code} is referenced by SOAPNote in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+
+
 # ─── Tenant → TenantAIConfig + emr FeatureFlag ───────────────────────────────
 
 
