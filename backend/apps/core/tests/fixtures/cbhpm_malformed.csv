@@ -1,0 +1,7 @@
+# M1-S1 per-row isolation fixture: one good row + three bad ones (blank code,
+# blank description, non-numeric porte). The good row must still import.
+CODIGO;DESCRICAO;PORTE;VALOR_CH;PORTE_ANESTESICO;NUMERO_FILME;NUMERO_AUXILIARES;VIGENCIA
+10101012;FAKE-Consulta em consultório;1.5000;12.500000;0;0;0;2024
+;FAKE-Sem Código;2.0000;10.000000;0;0;0;2024
+30715016;;7.2500;12.500000;4;0;1;2024
+40901165;FAKE-Porte inválido;abc;10.000000;0;0;0;2024

@@ -211,6 +211,20 @@ class TUSSCode(models.Model):
     subgroup = models.CharField(max_length=100, blank=True)
     version = models.CharField(max_length=20)  # e.g. "2024-01"
     active = models.BooleanField(default=True, db_index=True)
+    # Source TUSS table this row belongs to (ANS publishes numbered tables:
+    # 22 = procedimentos, 18 = OPME/materiais, 19 = medicamentos, 20 = taxas…).
+    # Nullable — added in M1-S1 so CBHPM porte rows can be linked to the right
+    # TUSS table. Populated out of band by import_tuss; never fabricated in code.
+    # null=True (not just blank) so an unpopulated tag is semantically distinct
+    # from a real empty-string table number — DJ001 suppressed per repo convention.
+    table_number = models.CharField(  # noqa: DJ001
+        "Número da tabela TUSS",
+        max_length=8,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Número da tabela TUSS de origem (ex.: '22'). Null = não informado.",
+    )
     search_vector = SearchVectorField(null=True)  # pg_trgm + tsvector for fuzzy search
 
     # ── Clinical-compatibility metadata (glosa wedge PR G3b) ──────────────────
@@ -984,3 +998,4 @@ class WedgeValueSnapshot(models.Model):
 
 # ─── E3-T1: domain terminology catalogs (AnvisaProduct) ──────────────────────
 from .catalog_models import *  # noqa: E402,F401,F403
+from .cbhpm_models import *  # noqa: E402,F401,F403
