@@ -27,14 +27,19 @@ class HRAccessPermission:
     """Allow platform/tenant administrators or explicitly delegated HR users."""
 
     def has_permission(self, request, view):
-        from apps.core.permissions import is_platform_admin
+        from apps.core.permissions import is_platform_admin, role_has_admin_capability
 
         if not request.user or not request.user.is_authenticated:
             return False
         if is_platform_admin(request.user):
             return True
         role = request.user.effective_role()
-        return bool(role and (role.name == "admin" or "hr.manage" in (role.permissions or [])))
+        # Authorize off the non-forgeable admin capability (permissions list or a
+        # read-only is_system admin role), NOT the user-settable role.name — a
+        # free-text name shortcut was a privilege-escalation vector (A01).
+        return bool(
+            role and (role_has_admin_capability(role) or "hr.manage" in (role.permissions or []))
+        )
 
     def __call__(self):
         return self

@@ -27,6 +27,59 @@ def is_platform_admin(user) -> bool:
     )
 
 
+def role_has_admin_capability(role) -> bool:
+    """True when ``role`` is the canonical tenant-admin role.
+
+    Keyed off signals a tenant user CANNOT set on themselves, so it is NOT an
+    escalation vector:
+
+    - the literal ``"admin"`` capability in the JSON permissions list (present in
+      the canonical ADMIN_PERMISSIONS set for newly provisioned roles), OR
+    - a *system* role named ``"admin"`` — ``is_system`` is read-only in
+      RoleSerializer (read_only_fields), so an attacker who POSTs/PATCHes a role
+      named "admin" cannot also set ``is_system=True``. This branch keeps
+      already-provisioned admin roles working even though their stored
+      permissions list predates the literal ``"admin"`` entry.
+
+    Deliberately NOT keyed off ``role.name`` alone: name is user-writable via
+    RoleSerializer, so a free-text ``name == "admin"`` shortcut let any
+    authenticated tenant user escalate to admin (finding A01).
+    """
+    if not role:
+        return False
+    if "admin" in (role.permissions or []):
+        return True
+    return bool(getattr(role, "is_system", False) and role.name == "admin")
+
+
+def is_tenant_admin(user) -> bool:
+    """True for Vitali platform operators or a tenant user whose effective role
+    carries the admin capability (see :func:`role_has_admin_capability`)."""
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    if is_platform_admin(user):
+        return True
+    return role_has_admin_capability(user.effective_role())
+
+
+class IsTenantAdmin(BasePermission):
+    """Grants access to tenant administrators (or Vitali platform operators).
+
+    Used to gate role management and privileged user administration (creating
+    roles, editing other users, reassigning role_id). Authorizes off a
+    non-forgeable admin capability rather than the user-settable ``role.name``.
+
+    Usage:
+        permission_classes = [IsAuthenticated, IsTenantAdmin]
+    """
+
+    def has_permission(self, request, view):
+        return is_tenant_admin(request.user)
+
+    def has_object_permission(self, request, view, obj):
+        return is_tenant_admin(request.user)
+
+
 class IsPlatformAdmin(BasePermission):
     """
     Grants access only to Vitali platform operators.
@@ -110,10 +163,13 @@ class HasPermission(BasePermission):
         if not role:
             return False
         # ``admin`` is the canonical role capability. Older tenants may have
-        # been provisioned with the role name but without the literal
-        # ``admin`` entry in the JSON permissions list; keep the role contract
+        # been provisioned with the admin role but without the literal ``admin``
+        # entry in the JSON permissions list; keep the role contract
         # authoritative so administrative endpoints do not unexpectedly 403.
-        if self.permission_required == "admin" and role.name == "admin":
+        # Keyed off the non-forgeable admin capability (permissions list or a
+        # read-only is_system admin role), NOT the user-settable role.name — a
+        # free-text name shortcut was a privilege-escalation vector (A01).
+        if self.permission_required == "admin" and role_has_admin_capability(role):
             return True
         return self.permission_required in role.permissions
 
@@ -132,6 +188,11 @@ def require_permission(perm: str):
 # ─── Default role permission sets ─────────────────────────────────────────────
 
 ADMIN_PERMISSIONS = [
+    # Canonical admin capability. Newly provisioned admin roles carry this
+    # literal entry so HasPermission("admin") passes via the normal permissions
+    # check (no reliance on the user-settable role.name). See
+    # role_has_admin_capability for how already-provisioned roles are covered.
+    "admin",
     "emr.read",
     "emr.write",
     "emr.sign",

@@ -42,7 +42,11 @@ class ModulePermissionTestCase(TenantTestCase):
         self.assertEqual(response.status_code, 403)
 
     def test_canonical_admin_role_grants_admin_capability(self):
-        role = Role.objects.create(name="admin", permissions=[])
+        # A canonical admin is a SYSTEM role named "admin" (is_system is
+        # read-only via the API, so it is not attacker-forgeable). A role merely
+        # *named* "admin" with no permissions and is_system=False must NOT grant
+        # admin — that was the A01 escalation this fix closes.
+        role = Role.objects.create(name="admin", permissions=[], is_system=True)
         user = User.objects.create_user(
             email="canonical-admin@test.com",
             password="TestPass123!",

@@ -33,6 +33,7 @@ from .models import (
     UserInvitation,
     UserTenantMembership,
 )
+from .permissions import IsTenantAdmin, is_tenant_admin
 from .serializers import (
     ChangePasswordSerializer,
     LoginSerializer,
@@ -660,7 +661,17 @@ class TenantRegistrationView(APIView):
 
 
 class UserListCreateView(generics.ListCreateAPIView):
-    permission_classes = [permissions.IsAuthenticated]
+    def get_permissions(self):
+        # Creating users provisions credentials AND assigns role_id (admin role
+        # included) — a secondary A01 escalation route around Finding 1: a
+        # non-admin could POST a new user bound to the admin role with a known
+        # password. Provisioning is admin-only (public tenant onboarding uses
+        # TenantRegistrationView; public self-serve uses views_signup — neither
+        # routes through here), so gate POST behind tenant admin. Listing stays
+        # available to any authenticated tenant user.
+        if self.request.method == "POST":
+            return [permissions.IsAuthenticated(), IsTenantAdmin()]
+        return [permissions.IsAuthenticated()]
 
     def get_serializer_class(self):
         if self.request.method == "POST":
@@ -672,14 +683,36 @@ class UserListCreateView(generics.ListCreateAPIView):
 
 
 class UserDetailView(generics.RetrieveUpdateAPIView):
-    permission_classes = [permissions.IsAuthenticated]
     serializer_class = UserSerializer
-    queryset = User.objects.all()
     lookup_field = "id"
+
+    def get_permissions(self):
+        # Reads (GET) require only authentication + the object-scoping in
+        # get_queryset (a non-admin only ever sees their own record). Writes
+        # (PUT/PATCH) to an arbitrary user — including reassigning role_id, the
+        # A01 escalation path — require tenant admin.
+        if self.request.method in permissions.SAFE_METHODS:
+            return [permissions.IsAuthenticated()]
+        return [permissions.IsAuthenticated(), IsTenantAdmin()]
+
+    def get_queryset(self):
+        # IDOR fix (finding 2): a non-admin may only retrieve/update THEIR OWN
+        # record; admins (gated above for writes) may address any user.
+        qs = User.objects.select_related("role").all()
+        if is_tenant_admin(self.request.user):
+            return qs
+        return qs.filter(id=self.request.user.id)
+
+    def perform_update(self, serializer):
+        # Defense in depth: even though writes are admin-gated above, never let a
+        # non-admin change role_id (privilege escalation). Admins may.
+        if "role" in serializer.validated_data and not is_tenant_admin(self.request.user):
+            serializer.validated_data.pop("role", None)
+        serializer.save()
 
 
 class RoleListCreateView(generics.ListCreateAPIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsTenantAdmin]
     serializer_class = RoleSerializer
     queryset = Role.objects.all()
 
