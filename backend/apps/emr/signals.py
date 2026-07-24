@@ -19,10 +19,37 @@ Prescription safety signal:
 import logging
 
 from django.db import transaction
-from django.db.models.signals import post_save
+from django.db.models.deletion import ProtectedError
+from django.db.models.signals import post_save, pre_delete
 from django.dispatch import receiver
 
 logger = logging.getLogger(__name__)
+
+
+# ─── CID10Code cross-schema PROTECT for ProblemListItem (E2-T1) ───────────────
+# Sibling of apps/core/signals.py::protect_cid10_code_deletion (which covers
+# MedicalHistory + SOAPNote). Same rationale: PostgreSQL cannot enforce FK
+# integrity across schemas (public core.CID10Code → tenant emr), so deleting a
+# CID-10 code referenced by a ProblemListItem in ANY tenant is blocked here at
+# the application layer. Lives in emr (not core) so E2 stays self-contained.
+
+
+@receiver(pre_delete, sender="core.CID10Code")
+def protect_cid10_code_deletion_problems(sender, instance, **kwargs):
+    """Block deletion of a CID10Code referenced by ProblemListItem in any tenant."""
+    from django_tenants.utils import get_tenant_model, schema_context
+
+    TenantModel = get_tenant_model()
+    for tenant in TenantModel.objects.exclude(schema_name="public"):
+        with schema_context(tenant.schema_name):
+            from apps.emr.models import ProblemListItem
+
+            if ProblemListItem.objects.filter(cid10=instance).exists():
+                raise ProtectedError(
+                    f"CID10Code {instance.code} is referenced by ProblemListItem in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
 
 
 @receiver(post_save, sender="emr.PrescriptionItem")

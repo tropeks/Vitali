@@ -114,21 +114,37 @@ def digits_only_identifier(value: str, *, length: int, label: str) -> str:
 class AllergySerializer(serializers.ModelSerializer):
     severity_display = serializers.CharField(source="get_severity_display", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
+    # E2-T2: governed allergen class + coded reaction/criticality/verification.
+    reaction_type_display = serializers.CharField(
+        source="get_reaction_type_display", read_only=True
+    )
+    criticality_display = serializers.CharField(source="get_criticality_display", read_only=True)
+    verification_status_display = serializers.CharField(
+        source="get_verification_status_display", read_only=True
+    )
 
     class Meta:
         model = Allergy
         fields = [
             "id",
             "substance",
+            "allergen_class",
+            "allergen_unmatched",
             "reaction",
+            "reaction_type",
+            "reaction_type_display",
             "severity",
             "severity_display",
+            "criticality",
+            "criticality_display",
+            "verification_status",
+            "verification_status_display",
             "status",
             "status_display",
             "confirmed_by",
             "created_at",
         ]
-        read_only_fields = ["id", "created_at"]
+        read_only_fields = ["id", "allergen_unmatched", "created_at"]
 
 
 class MedicalHistorySerializer(serializers.ModelSerializer):
