@@ -1702,3 +1702,6 @@ class NoShowRisk(models.Model):
         self.acknowledged_at = timezone.now()
         self.status = self.Status.ACKNOWLEDGED
         self.save(update_fields=["acknowledged_by", "note", "acknowledged_at", "status"])
+
+
+from .forms_models import *  # noqa: E402,F401,F403

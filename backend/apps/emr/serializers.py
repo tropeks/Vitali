@@ -7,6 +7,8 @@ from .models import (
     Allergy,
     Appointment,
     ClinicalDocument,
+    ClinicalFormResponse,
+    ClinicalFormTemplate,
     DuplicatePatientCandidate,
     Encounter,
     EncounterProcedure,
@@ -940,4 +942,80 @@ class NursingAssessmentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"encounter": "O atendimento não pode ser alterado."})
         if self.instance and self.instance.signed_at:
             raise serializers.ValidationError("Registro SAE assinado é imutável.")
+        return attrs
+
+
+class ClinicalFormTemplateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ClinicalFormTemplate
+        fields = [
+            "id",
+            "name",
+            "specialty",
+            "version",
+            "schema",
+            "active",
+            "is_published",
+            "published_at",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "is_published", "published_at", "created_at", "updated_at"]
+
+    def validate(self, attrs):
+        # Editing a published template in place is rejected by the model's
+        # clean()/full_clean() at save() time — surface that as a DRF error
+        # up front too, so a PATCH gets a clean 400 instead of a 500.
+        if self.instance and self.instance.is_published:
+            immutable = {"name", "specialty", "version", "schema"}
+            changed = {
+                field
+                for field in immutable & set(attrs)
+                if attrs[field] != getattr(self.instance, field)
+            }
+            if changed:
+                raise serializers.ValidationError(
+                    "Template publicado é imutável; crie uma nova versão "
+                    f"(campos: {sorted(changed)})."
+                )
+        return attrs
+
+
+class ClinicalFormResponseSerializer(serializers.ModelSerializer):
+    template_name = serializers.CharField(source="template.name", read_only=True)
+    filled_by_name = serializers.CharField(
+        source="filled_by.full_name", read_only=True, default=None
+    )
+
+    class Meta:
+        model = ClinicalFormResponse
+        fields = [
+            "id",
+            "template",
+            "template_name",
+            "encounter",
+            "patient",
+            "answers",
+            "filled_by",
+            "filled_by_name",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "patient", "filled_by", "created_at", "updated_at"]
+
+    def validate(self, attrs):
+        # Surface schema violations as a 400 here (instead of letting the
+        # model's clean()/full_clean() blow up at save() time as a 500) —
+        # same intent as ClinicalFormTemplateSerializer.validate above.
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        from .forms_models import validate_form_answers
+
+        template = attrs.get("template", getattr(self.instance, "template", None))
+        answers = attrs.get("answers", getattr(self.instance, "answers", None))
+        if template is not None and answers is not None:
+            try:
+                validate_form_answers(template.schema, answers)
+            except DjangoValidationError as exc:
+                raise serializers.ValidationError({"answers": exc.messages}) from exc
         return attrs
