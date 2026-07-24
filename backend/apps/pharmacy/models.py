@@ -1694,3 +1694,6 @@ class NFeCatalogMapping(models.Model):
 
     def __str__(self):
         return f"Mapeamento NF-e {self.item_id} ({self.status})"
+
+
+from .controlled_ledger_models import *  # noqa: E402,F401,F403
