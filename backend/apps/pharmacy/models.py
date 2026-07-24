@@ -1610,6 +1610,17 @@ class NFeReceipt(models.Model):
     approved_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        constraints = [
+            # Idempotency-Key uniqueness (per-tenant is automatic via schema isolation).
+            # Partial so the many blank external_id rows don't collide.
+            models.UniqueConstraint(
+                fields=["external_id"],
+                condition=~models.Q(external_id=""),
+                name="nfe_external_id_unique_when_present",
+            )
+        ]
+
     def __str__(self):
         return f"NF-e {self.number or self.access_key} ({self.status})"
 

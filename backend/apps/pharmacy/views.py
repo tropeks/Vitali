@@ -6,12 +6,13 @@ import hmac
 from decimal import Decimal
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -83,7 +84,7 @@ _PHARMACY_MODULE = ModuleRequiredPermission("pharmacy")
 class NFeReceiptViewSet(viewsets.ModelViewSet):
     queryset = NFeReceipt.objects.prefetch_related("items")
     serializer_class = NFeReceiptSerializer
-    parser_classes = (MultiPartParser, FormParser)
+    parser_classes = (MultiPartParser, FormParser, JSONParser)
 
     def get_permissions(self):
         p = (
@@ -159,11 +160,24 @@ class NFeReceiptViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=("post",), url_path=r"items/(?P<item_id>[^/.]+)/map")
     def map_item(self, request, pk=None, item_id=None):
         item = get_object_or_404(NFeReceiptItem, receipt=self.get_object(), pk=item_id)
+        drug_id = request.data.get("drug")
+        material_id = request.data.get("material")
+        if bool(drug_id) == bool(material_id):
+            return Response(
+                {"detail": "Informe exatamente um de drug ou material."}, status=400
+            )
+        try:
+            if drug_id and not Drug.objects.filter(pk=drug_id).exists():
+                return Response({"detail": "Medicamento não encontrado."}, status=400)
+            if material_id and not Material.objects.filter(pk=material_id).exists():
+                return Response({"detail": "Material não encontrado."}, status=400)
+        except (ValueError, ValidationError):
+            return Response({"detail": "Identificador de catálogo inválido."}, status=400)
         mapping, _ = NFeCatalogMapping.objects.update_or_create(
             item=item,
             defaults={
-                "drug_id": request.data.get("drug"),
-                "material_id": request.data.get("material"),
+                "drug_id": drug_id,
+                "material_id": material_id,
                 "match_type": "manual",
                 "confidence": 100,
                 "status": "confirmed",
@@ -187,9 +201,15 @@ class NFeReceiptViewSet(viewsets.ModelViewSet):
             if receipt.status != "pending":
                 return Response({"detail": "Status inválido."}, status=409)
             tenant_cnpj = getattr(getattr(request, "tenant", None), "cnpj", None)
-            if tenant_cnpj and "".join(
-                ch for ch in receipt.recipient_cnpj if ch.isdigit()
-            ) != "".join(ch for ch in tenant_cnpj if ch.isdigit()):
+            tenant_digits = "".join(ch for ch in (tenant_cnpj or "") if ch.isdigit())
+            if not tenant_digits:
+                # Fail closed: without a configured CNPJ we cannot prove the NF-e
+                # was addressed to this clinic, so refuse instead of approving blindly.
+                return Response(
+                    {"detail": "CNPJ da clínica não configurado; configure antes de aprovar NF-e."},
+                    status=409,
+                )
+            if "".join(ch for ch in receipt.recipient_cnpj if ch.isdigit()) != tenant_digits:
                 return Response({"detail": "CNPJ destinatário não pertence à clínica."}, status=409)
             if (
                 receipt.items.filter(catalog_mapping__isnull=True).exists()
@@ -356,7 +376,7 @@ class StockReceiptViewSet(viewsets.ModelViewSet):
         lines = list(
             receipt.lines.select_related(
                 "purchase_item__drug", "purchase_item__material"
-            ).select_for_update()
+            ).select_for_update(of=("self",))
         )
         for line in lines:
             item = line.purchase_item
@@ -393,9 +413,17 @@ class StockReceiptViewSet(viewsets.ModelViewSet):
         receipt.approved_by = request.user
         receipt.approved_at = timezone.now()
         receipt.save(update_fields=("status", "approved_by", "approved_at"))
+        log_audit(
+            request,
+            "approve_stock_receipt",
+            "StockReceipt",
+            receipt.id,
+            new_data={"status": StockReceipt.Status.APPROVED},
+        )
         return Response(self.get_serializer(receipt).data)
 
     @action(detail=True, methods=("post",))
+    @transaction.atomic
     def reject(self, request, pk=None):
         receipt = StockReceipt.objects.select_for_update().get(pk=self.get_object().pk)
         if receipt.status != StockReceipt.Status.PENDING:
@@ -403,29 +431,56 @@ class StockReceiptViewSet(viewsets.ModelViewSet):
         receipt.status = StockReceipt.Status.REJECTED
         receipt.notes = request.data.get("notes", receipt.notes)
         receipt.save(update_fields=("status", "notes"))
+        log_audit(
+            request,
+            "reject_stock_receipt",
+            "StockReceipt",
+            receipt.id,
+            new_data={"status": StockReceipt.Status.REJECTED},
+        )
         return Response(self.get_serializer(receipt).data)
 
     @action(detail=True, methods=("post",), url_path="return")
+    @transaction.atomic
     def return_receipt(self, request, pk=None):
         receipt = StockReceipt.objects.select_for_update().get(pk=self.get_object().pk)
         if receipt.status != StockReceipt.Status.APPROVED:
             return Response(
                 {"detail": "Somente recebimentos efetivados podem ser devolvidos."}, status=400
             )
-        with transaction.atomic():
-            for line in receipt.lines.select_related("stock_item"):
-                if line.stock_item_id:
-                    StockMovement.objects.create(
-                        stock_item=line.stock_item,
-                        movement_type="return",
-                        quantity=-line.quantity,
-                        reference=str(receipt.id),
-                        notes="Devolução de recebimento",
-                        performed_by=request.user,
-                    )
-        receipt.status = StockReceipt.Status.RETURNED
-        receipt.notes = request.data.get("notes", receipt.notes)
-        receipt.save(update_fields=("status", "notes"))
+        try:
+            # Whole devolução is atomic: if any negative movement would drive stock
+            # below zero, StockMovement.save() raises ValueError and the entire
+            # transaction rolls back — the receipt stays consistently APPROVED.
+            with transaction.atomic():
+                for line in receipt.lines.select_related(
+                    "stock_item", "purchase_item"
+                ).select_for_update(of=("self",)):
+                    if line.stock_item_id:
+                        StockMovement.objects.create(
+                            stock_item=line.stock_item,
+                            movement_type="return",
+                            quantity=-line.quantity,
+                            reference=str(receipt.id),
+                            notes="Devolução de recebimento",
+                            performed_by=request.user,
+                        )
+                    # Restore the PO line's received quantity that approve() added.
+                    item = line.purchase_item
+                    item.quantity_received = item.quantity_received - line.quantity
+                    item.save(update_fields=("quantity_received",))
+                receipt.status = StockReceipt.Status.RETURNED
+                receipt.notes = request.data.get("notes", receipt.notes)
+                receipt.save(update_fields=("status", "notes"))
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        log_audit(
+            request,
+            "return_stock_receipt",
+            "StockReceipt",
+            receipt.id,
+            new_data={"status": StockReceipt.Status.RETURNED},
+        )
         return Response(self.get_serializer(receipt).data)
 
 
