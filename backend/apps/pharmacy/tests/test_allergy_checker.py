@@ -36,6 +36,35 @@ _BETA_LACTAMS = CrossReactivityClass(
 )
 
 
+class TestCodedAllergenClass:
+    """A governed ``allergen_class`` (E2 Allergy FK) must drive cross-reactivity
+    even when the free-text substance does NOT tokenize to the class members —
+    but it must stay ADVISE (cross-reactivity), never upgrade to a direct BLOCK."""
+
+    # Substance text that tokenizes to nothing in the beta-lactam member list.
+    _CODED = AllergyInput(substance="reação a antibiótico", allergen_class="Beta-lactâmicos")
+
+    def test_coded_class_triggers_cross_reactivity(self):
+        v = _check(drug_name="Cefalexina 500mg", allergies=[self._CODED], classes=[_BETA_LACTAMS])
+        assert v.verdict == VERDICT_CROSS_REACTIVITY
+        assert v.cross_reactivity_class == "Beta-lactâmicos"
+
+    def test_coded_class_does_not_direct_block(self):
+        v = _check(drug_name="Cefalexina 500mg", allergies=[self._CODED], classes=[_BETA_LACTAMS])
+        assert v.verdict != VERDICT_ALLERGY_CONFLICT
+
+    def test_coded_class_not_in_drug_class_is_safe(self):
+        v = _check(drug_name="Dipirona 500mg", allergies=[self._CODED], classes=[_BETA_LACTAMS])
+        assert v.verdict == VERDICT_SAFE
+
+    def test_no_coded_class_falls_back_to_text(self):
+        # Legacy allergy (no allergen_class): behavior unchanged — substance text
+        # that isn't a class member yields SAFE.
+        legacy = AllergyInput(substance="reação a antibiótico")
+        v = _check(drug_name="Cefalexina 500mg", allergies=[legacy], classes=[_BETA_LACTAMS])
+        assert v.verdict == VERDICT_SAFE
+
+
 class TestNormalize:
     def test_casefold_and_accents(self):
         assert normalize_tokens("Ácido Acetilsalicílico") == frozenset(

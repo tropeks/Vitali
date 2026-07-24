@@ -68,6 +68,7 @@ class AllergyInput:
 
     substance: str
     severity: str = ""  # carried for reporting only — does NOT gate the block
+    allergen_class: str = ""  # governed AllergenClass name (E2 Allergy FK); "" = legacy text-only
 
 
 @dataclass(frozen=True)
@@ -171,7 +172,11 @@ class AllergyChecker:
                 continue
             for allergy in allergies:
                 allergy_tokens = normalize_tokens(allergy.substance)
-                if allergy_tokens and _member_in(allergy_tokens, cls.members):
+                # A governed allergen_class is authoritative membership: it triggers
+                # cross-reactivity (advise) even when the free-text substance doesn't
+                # tokenize to a member. It never upgrades to a direct block (step 1).
+                coded_match = bool(allergy.allergen_class) and allergy.allergen_class == cls.name
+                if coded_match or (allergy_tokens and _member_in(allergy_tokens, cls.members)):
                     return AllergyVerdict(
                         verdict=VERDICT_CROSS_REACTIVITY,
                         matched_substances=[allergy.substance],

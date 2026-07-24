@@ -90,8 +90,14 @@ class AllergySafetyService:
 
         # Resolve the patient's ACTIVE allergies once (not per item).
         allergies = [
-            AllergyInput(substance=a.substance, severity=a.severity)
-            for a in prescription.patient.allergies.filter(status="active")
+            AllergyInput(
+                substance=a.substance,
+                severity=a.severity,
+                allergen_class=(a.allergen_class.name if a.allergen_class_id else ""),
+            )
+            for a in prescription.patient.allergies.select_related("allergen_class").filter(
+                status="active"
+            )
         ]
         if allergies:
             # Resolve the curated cross-reactivity classes once (wedge A2). Empty
