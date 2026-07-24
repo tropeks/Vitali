@@ -117,6 +117,10 @@ class Migration(migrations.Migration):
         ("emr", "0034_clinicalformtemplate_clinicalformresponse"),
     ]
 
+    # Reverse is a no-op (not a DELETE): the seed is idempotent (guarded by
+    # .exists()), and deleting the row on reverse before a later DROP TABLE in the
+    # same transaction triggers Postgres "cannot DROP TABLE ... pending trigger
+    # events" during full history reversal. The table drop discards the seed anyway.
     operations = [
-        migrations.RunPython(seed_anamnesis_template, remove_anamnesis_template),
+        migrations.RunPython(seed_anamnesis_template, migrations.RunPython.noop),
     ]
