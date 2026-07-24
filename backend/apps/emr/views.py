@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from django.db import transaction
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import filters, status, viewsets
+from rest_framework import filters, mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -19,6 +19,7 @@ from .models import (
     ClinicalDocument,
     DuplicatePatientCandidate,
     Encounter,
+    EncounterAddendum,
     EncounterProcedure,
     LabOrder,
     LabOrderItem,
@@ -38,6 +39,7 @@ from .serializers import (
     AppointmentSerializer,
     ClinicalDocumentSerializer,
     DuplicatePatientCandidateSerializer,
+    EncounterAddendumSerializer,
     EncounterListSerializer,
     EncounterProcedureSerializer,
     EncounterSerializer,
@@ -942,6 +944,50 @@ class ClinicalDocumentViewSet(viewsets.ModelViewSet):
             new_data={"signed_by": str(request.user.id), "signed_at": str(doc.signed_at)},
         )
         return Response(ClinicalDocumentSerializer(doc).data)
+
+
+class EncounterAddendumViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.CreateModelMixin,
+    viewsets.GenericViewSet,
+):
+    """E6-T2 — Adendo pós-assinatura (CFM). Append-only: no update/destroy
+    routes are exposed (the model itself also refuses them — see
+    EncounterAddendum.save()/delete()).
+
+    List the chain for a document with ?target_type=&target_id=.
+    """
+
+    queryset = EncounterAddendum.objects.select_related(
+        "author", "signed_by", "previous_addendum"
+    ).all()
+    serializer_class = EncounterAddendumSerializer
+    permission_classes = [IsAuthenticated, HasPermission("emr.write")]  # type: ignore[list-item]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        target_type = self.request.query_params.get("target_type")
+        target_id = self.request.query_params.get("target_id")
+        if target_type:
+            qs = qs.filter(target_type=target_type)
+        if target_id:
+            qs = qs.filter(target_id=str(target_id))
+        return qs
+
+    def perform_create(self, serializer):
+        addendum = serializer.save()
+        log_audit(
+            self.request,
+            "encounter_addendum_create",
+            "EncounterAddendum",
+            addendum.id,
+            new_data={
+                "target_type": addendum.target_type,
+                "target_id": addendum.target_id,
+                "sequence": addendum.sequence,
+            },
+        )
 
 
 class LabTestViewSet(viewsets.ModelViewSet):

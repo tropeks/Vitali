@@ -9,6 +9,7 @@ from .models import (
     ClinicalDocument,
     DuplicatePatientCandidate,
     Encounter,
+    EncounterAddendum,
     EncounterProcedure,
     LabOrder,
     LabOrderItem,
@@ -423,6 +424,79 @@ class ClinicalDocumentSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = ["id", "signed_at", "signed_by", "created_at"]
+
+
+class EncounterAddendumSerializer(serializers.ModelSerializer):
+    """E6-T2 — create/list the append-only addendum chain for a signed
+    Encounter or ClinicalDocument. `target_type`/`target_id` are write-only
+    input identifying the signed document; everything else (sequence, chain
+    link, author) is derived server-side — never client-supplied."""
+
+    target_type = serializers.ChoiceField(
+        choices=EncounterAddendum.TARGET_TYPE_CHOICES, write_only=True
+    )
+    target_id = serializers.CharField(write_only=True, max_length=64)
+    author_name = serializers.CharField(source="author.full_name", read_only=True, default=None)
+    is_signed = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = EncounterAddendum
+        fields = [
+            "id",
+            "target_type",
+            "target_id",
+            "sequence",
+            "previous_addendum",
+            "author",
+            "author_name",
+            "reason",
+            "body",
+            "is_signed",
+            "signed_at",
+            "signed_by",
+            "signature_hash",
+            "is_icp_brasil",
+            "created_at",
+        ]
+        read_only_fields = [
+            "id",
+            "sequence",
+            "previous_addendum",
+            "author",
+            "signed_at",
+            "signed_by",
+            "signature_hash",
+            "is_icp_brasil",
+            "created_at",
+        ]
+
+    def validate(self, attrs):
+        target_type = attrs.get("target_type")
+        target_id = attrs.get("target_id")
+        model_class = {
+            EncounterAddendum.TARGET_ENCOUNTER: Encounter,
+            EncounterAddendum.TARGET_CLINICAL_DOCUMENT: ClinicalDocument,
+        }[target_type]
+        target = model_class.objects.filter(pk=target_id).first()
+        if target is None:
+            raise serializers.ValidationError({"target_id": "Documento não encontrado."})
+        attrs["_target"] = target
+        return attrs
+
+    def create(self, validated_data):
+        target = validated_data.pop("_target")
+        validated_data.pop("target_type")
+        validated_data.pop("target_id")
+        request = self.context["request"]
+        try:
+            return EncounterAddendum.objects.create_addendum(
+                target=target,
+                author=request.user,
+                reason=validated_data["reason"],
+                body=validated_data["body"],
+            )
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
 
 
 class LabTestSerializer(serializers.ModelSerializer):
