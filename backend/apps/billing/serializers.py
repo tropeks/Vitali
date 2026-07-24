@@ -41,7 +41,16 @@ class ProfessionalSettlementSerializer(serializers.ModelSerializer):
             "calculated_at",
             "paid_at",
         ]
-        read_only_fields = ["id", "gross_amount", "net_amount", "calculated_at", "paid_at"]
+        # ``status`` is read-only so a plain PATCH cannot jump draft→approved→paid
+        # without going through approve()/pay() (which lock, recheck and audit).
+        read_only_fields = [
+            "id",
+            "gross_amount",
+            "net_amount",
+            "status",
+            "calculated_at",
+            "paid_at",
+        ]
 
 
 # ─── TUSS ─────────────────────────────────────────────────────────────────────
@@ -371,14 +380,18 @@ class PayableSerializer(serializers.ModelSerializer):
     class Meta:
         model = Payable
         fields = "__all__"
-        read_only_fields = ["id", "created_by", "created_at", "updated_at", "paid_at"]
+        # ``status`` is read-only so a payable is always created as 'planned' and
+        # can only reach 'approved'/'paid' through approve()/pay() (maker-checker).
+        read_only_fields = ["id", "created_by", "status", "created_at", "updated_at", "paid_at"]
 
 
 class CashFlowEntrySerializer(serializers.ModelSerializer):
     class Meta:
         model = CashFlowEntry
         fields = "__all__"
-        read_only_fields = ["id", "created_at", "realized_at"]
+        # ``status``/``realized_at`` are driven by realize() (maker-checker);
+        # ``created_by`` is stamped server-side from the request user.
+        read_only_fields = ["id", "created_at", "realized_at", "status", "created_by"]
 
 
 class AccountingCategorySerializer(serializers.ModelSerializer):

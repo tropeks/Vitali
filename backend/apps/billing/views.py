@@ -17,7 +17,8 @@ from django.core.files.storage import default_storage
 from django.db.models import Count, Sum
 from django.http import FileResponse, Http404
 from django.utils import timezone
-from rest_framework import filters, serializers, status, viewsets
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import exceptions, filters, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -66,6 +67,16 @@ from .serializers import (
 
 logger = logging.getLogger(__name__)
 _BILLING_MODULE = ModuleRequiredPermission("billing")
+
+
+class Conflict(exceptions.APIException):
+    """HTTP 409 that, when raised inside ``transaction.atomic()``, rolls the
+    block back — unlike returning a 409 ``Response`` (a normal function exit,
+    which COMMITS any pending writes)."""
+
+    status_code = status.HTTP_409_CONFLICT
+    default_detail = "Conflito de estado."
+    default_code = "conflict"
 
 
 class BankStatementImportView(APIView):
@@ -188,10 +199,13 @@ class ProfessionalSettlementViewSet(viewsets.ModelViewSet):
     queryset = ProfessionalSettlement.objects.select_related("professional__user")
     serializer_class = ProfessionalSettlementSerializer
     permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
+    # Per-viewset filter backend: DjangoFilterBackend is NOT in the project-wide
+    # DEFAULT_FILTER_BACKENDS, so filterset_fields is inert without this line.
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ["professional", "competency", "status"]
 
     def perform_create(self, serializer):
-        obj = serializer.save()
+        obj = serializer.save(created_by=self.request.user)
         obj.recalculate()
         obj.save(update_fields=["gross_amount", "net_amount", "calculated_at"])
 
@@ -200,6 +214,62 @@ class ProfessionalSettlementViewSet(viewsets.ModelViewSet):
         obj = self.get_object()
         obj.recalculate()
         obj.save(update_fields=["gross_amount", "net_amount", "calculated_at"])
+        return Response(self.get_serializer(obj).data)
+
+    @action(detail=True, methods=["post"])
+    def approve(self, request, pk=None):
+        """Maker-checker: draft → approved. The approver MUST differ from the
+        settlement's creator. Locks + rechecks state inside atomic()."""
+        with transaction.atomic():
+            obj = ProfessionalSettlement.objects.select_for_update().get(
+                pk=self.get_object().pk
+            )
+            if obj.status == "approved":
+                return Response(self.get_serializer(obj).data)  # idempotent
+            if obj.status != "draft":
+                raise Conflict(f"Repasse em status '{obj.status}' não pode ser aprovado.")
+            if obj.created_by_id and obj.created_by_id == request.user.id:
+                return Response(
+                    {"detail": "Aprovador deve ser diferente de quem criou o repasse."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            obj.status = "approved"
+            obj.approved_by = request.user
+            obj.approved_at = timezone.now()
+            obj.save(update_fields=["status", "approved_by", "approved_at"])
+            from apps.core.signals import _write_audit
+
+            _write_audit(
+                "settlement_approved",
+                "professional_settlement",
+                str(obj.pk),
+                new_data={"approved_by": str(request.user.id), "net_amount": str(obj.net_amount)},
+            )
+        return Response(self.get_serializer(obj).data)
+
+    @action(detail=True, methods=["post"])
+    def pay(self, request, pk=None):
+        """approved → paid. Requires a prior approval (an explicit approved
+        state). Locks + rechecks inside atomic() and writes an audit row."""
+        with transaction.atomic():
+            obj = ProfessionalSettlement.objects.select_for_update().get(
+                pk=self.get_object().pk
+            )
+            if obj.status == "paid":
+                return Response(self.get_serializer(obj).data)  # idempotent
+            if obj.status != "approved":
+                raise Conflict("Repasse deve ser aprovado antes do pagamento.")
+            obj.status = "paid"
+            obj.paid_at = timezone.now()
+            obj.save(update_fields=["status", "paid_at"])
+            from apps.core.signals import _write_audit
+
+            _write_audit(
+                "settlement_paid",
+                "professional_settlement",
+                str(obj.pk),
+                new_data={"paid_by": str(request.user.id), "net_amount": str(obj.net_amount)},
+            )
         return Response(self.get_serializer(obj).data)
 
 
@@ -252,6 +322,7 @@ class AccountingCategoryViewSet(viewsets.ModelViewSet):
 class AccountingEntryViewSet(viewsets.ModelViewSet):
     serializer_class = AccountingEntrySerializer
     permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ["kind", "competency", "unit", "cost_center", "reconciled"]
 
     def get_queryset(self):
@@ -272,10 +343,19 @@ class AccountingEntryViewSet(viewsets.ModelViewSet):
     def dre(self, request):
         qs = self.get_queryset()
         start, end = request.query_params.get("start"), request.query_params.get("end")
+        # DRE cockpit dimension controls. `unit` exists only on AccountingEntry;
+        # `cost_center` exists on AccountingEntry, CashFlowEntry and Payable, so
+        # it is applied to every section it can scope.
+        unit = request.query_params.get("unit")
+        cost_center = request.query_params.get("cost_center")
         if start:
             qs = qs.filter(competency__gte=start)
         if end:
             qs = qs.filter(competency__lte=end)
+        if unit:
+            qs = qs.filter(unit=unit)
+        if cost_center:
+            qs = qs.filter(cost_center=cost_center)
         revenue = qs.filter(kind="revenue").aggregate(total=Sum("amount"))["total"] or Decimal("0")
         expense = qs.filter(kind="expense").aggregate(total=Sum("amount"))["total"] or Decimal("0")
         cash = CashFlowEntry.objects.exclude(status="cancelled")
@@ -283,11 +363,15 @@ class AccountingEntryViewSet(viewsets.ModelViewSet):
             cash = cash.filter(due_date__gte=start)
         if end:
             cash = cash.filter(due_date__lte=end)
+        if cost_center:
+            cash = cash.filter(cost_center=cost_center)
         payables = Payable.objects.exclude(status="cancelled")
         if start:
             payables = payables.filter(due_date__gte=start)
         if end:
             payables = payables.filter(due_date__lte=end)
+        if cost_center:
+            payables = payables.filter(cost_center=cost_center)
         cash_in = sum(
             (x.amount for x in cash if x.kind == "inflow" and x.status == "realized"), Decimal("0")
         )
@@ -312,6 +396,7 @@ class AccountingEntryViewSet(viewsets.ModelViewSet):
 class BankTransactionViewSet(viewsets.ModelViewSet):
     serializer_class = BankTransactionSerializer
     permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ["status"]
 
     def get_queryset(self):
@@ -323,7 +408,7 @@ class BankTransactionViewSet(viewsets.ModelViewSet):
 
         with transaction.atomic():
             tx = (
-                BankTransaction.objects.select_for_update()
+                BankTransaction.objects.select_for_update(of=("self",))
                 .select_related("receivable")
                 .get(pk=self.get_object().pk)
             )
@@ -343,15 +428,24 @@ class BankTransactionViewSet(viewsets.ModelViewSet):
             tx.status, tx.confidence = "review", 0
             tx.save(update_fields=["status", "confidence"])
             return Response(self.get_serializer(tx).data)
-        tx.receivable, tx.confidence, tx.status = candidate, 100, "review"
-        # A receivable can only be matched once; prevent concurrent bank rows
-        # from silently double-allocating it.
+        # Lock the chosen receivable BEFORE binding, so two concurrent match()
+        # calls on two different bank rows cannot both allocate the same
+        # receivable. The candidate is re-fetched under select_for_update; the
+        # second caller blocks here until the first commits, then sees the
+        # sibling below and is rejected.
+        candidate = AccountsReceivable.objects.select_for_update().get(pk=candidate.pk)
+        # A receivable can only be allocated once. Consider siblings already
+        # 'matched' (settled) OR still under 'review' (bound, awaiting approval):
+        # either means this receivable is spoken for.
         if (
-            BankTransaction.objects.filter(receivable=candidate, status="matched")
+            BankTransaction.objects.filter(
+                receivable=candidate, status__in=["matched", "review"]
+            )
             .exclude(pk=tx.pk)
             .exists()
         ):
             return Response({"detail": "Recebível já conciliado."}, status=409)
+        tx.receivable, tx.confidence, tx.status = candidate, 100, "review"
         tx.save(update_fields=["receivable", "confidence", "status"])
         return Response(self.get_serializer(tx).data)
 
@@ -361,7 +455,7 @@ class BankTransactionViewSet(viewsets.ModelViewSet):
 
         with transaction.atomic():
             tx = (
-                BankTransaction.objects.select_for_update()
+                BankTransaction.objects.select_for_update(of=("self",))
                 .select_related("receivable")
                 .get(pk=self.get_object().pk)
             )
@@ -369,13 +463,18 @@ class BankTransactionViewSet(viewsets.ModelViewSet):
                 return Response(self.get_serializer(tx).data)
             if not tx.receivable:
                 return Response({"detail": "Transação sem recebível conciliado."}, status=400)
-            tx.status, tx.matched_at, tx.matched_by = "matched", timezone.now(), request.user
-            tx.save(update_fields=["status", "matched_at", "matched_by"])
-            rec = tx.receivable
-            rec = AccountsReceivable.objects.select_for_update().get(pk=rec.pk)
+            # Lock + recheck the receivable BEFORE mutating/saving the tx. If it
+            # is already received we RAISE (Conflict, 409) rather than return, so
+            # atomic() rolls back and no phantom 'matched' tx is committed. The
+            # previous order (save tx → recheck → return 409) committed a matched
+            # transaction on the already-settled path.
+            rec = AccountsReceivable.objects.select_for_update().get(pk=tx.receivable_id)
             if rec.status == "received":
-                return Response({"detail": "Recebível já baixado."}, status=409)
-            rec.status, rec.received_at = "received", tx.matched_at
+                raise Conflict("Recebível já baixado.")
+            now = timezone.now()
+            tx.status, tx.matched_at, tx.matched_by = "matched", now, request.user
+            tx.save(update_fields=["status", "matched_at", "matched_by"])
+            rec.status, rec.received_at = "received", now
             rec.save(update_fields=["status", "received_at", "updated_at"])
             from apps.core.signals import _write_audit
 
@@ -387,10 +486,65 @@ class BankTransactionViewSet(viewsets.ModelViewSet):
             )
         return Response(self.get_serializer(tx).data)
 
+    @action(detail=True, methods=["post"])
+    def reject(self, request, pk=None):
+        """Reject a suggested/confirmed match: unbind the receivable and return
+        the tx to 'unmatched'. Symmetric to approve()/match(): locks the row
+        under atomic() and is idempotent (a tx already unmatched with nothing
+        bound is a no-op)."""
+        from django.db import transaction
+
+        with transaction.atomic():
+            tx = (
+                BankTransaction.objects.select_for_update(of=("self",))
+                .select_related("receivable")
+                .get(pk=self.get_object().pk)
+            )
+            # Idempotent: nothing to reject.
+            if tx.status == "unmatched" and tx.receivable_id is None:
+                return Response(self.get_serializer(tx).data)
+
+            old_status = tx.status
+            old_receivable_id = tx.receivable_id
+
+            # If this tx had SETTLED a receivable (approve() sets rec→received),
+            # un-settle it too — otherwise we would leave a 'received' receivable
+            # whose only settling transaction was just rejected, which is
+            # inconsistent. A tx in 'review' never settled the receivable, so the
+            # common suggested-match rejection path skips this block.
+            if tx.status == "matched" and tx.receivable_id:
+                rec = AccountsReceivable.objects.select_for_update().get(pk=tx.receivable_id)
+                if rec.status == "received":
+                    rec.status, rec.received_at = "billed", None
+                    rec.save(update_fields=["status", "received_at", "updated_at"])
+
+            tx.receivable = None
+            tx.status = "unmatched"
+            tx.confidence = None
+            tx.matched_at = None
+            tx.matched_by = None
+            tx.save(
+                update_fields=["receivable", "status", "confidence", "matched_at", "matched_by"]
+            )
+            from apps.core.signals import _write_audit
+
+            _write_audit(
+                "bank_tx_rejected",
+                "bank_transaction",
+                str(tx.pk),
+                old_data={
+                    "status": old_status,
+                    "receivable": str(old_receivable_id) if old_receivable_id else None,
+                },
+                new_data={"status": "unmatched"},
+            )
+        return Response(self.get_serializer(tx).data)
+
 
 class PayableViewSet(viewsets.ModelViewSet):
     serializer_class = PayableSerializer
     permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ["status", "category", "cost_center"]
 
     def get_queryset(self):
@@ -405,6 +559,33 @@ class PayableViewSet(viewsets.ModelViewSet):
         )
 
     @action(detail=True, methods=["post"])
+    def approve(self, request, pk=None):
+        """Maker-checker: planned → approved. The approver MUST differ from the
+        payable's creator (segregation of duties). Locks + rechecks in atomic()."""
+        with transaction.atomic():
+            obj = Payable.objects.select_for_update().get(pk=self.get_object().pk)
+            if obj.status == "cancelled":
+                return Response({"detail": "Conta cancelada."}, status=400)
+            if obj.status in ("approved", "paid"):
+                return Response(self.get_serializer(obj).data)  # idempotent
+            if obj.created_by_id and obj.created_by_id == request.user.id:
+                return Response(
+                    {"detail": "Aprovador deve ser diferente de quem criou a conta."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            obj.status = "approved"
+            obj.save(update_fields=["status", "updated_at"])
+            from apps.core.signals import _write_audit
+
+            _write_audit(
+                "payable_approved",
+                "payable",
+                str(obj.pk),
+                new_data={"approved_by": str(request.user.id), "amount": str(obj.amount)},
+            )
+        return Response(self.get_serializer(obj).data)
+
+    @action(detail=True, methods=["post"])
     def pay(self, request, pk=None):
         with transaction.atomic():
             obj = Payable.objects.select_for_update().get(pk=self.get_object().pk)
@@ -412,6 +593,11 @@ class PayableViewSet(viewsets.ModelViewSet):
                 return Response({"detail": "Conta cancelada."}, status=400)
             if obj.status == "paid":
                 return Response(self.get_serializer(obj).data)
+            # Maker-checker gate: a payable must be explicitly approved (by a
+            # DIFFERENT user than its creator) before it can be paid. A planned
+            # payable can no longer be paid in one step.
+            if obj.status != "approved":
+                raise Conflict("Conta deve ser aprovada antes do pagamento.")
             obj.status, obj.paid_at = "paid", timezone.now()
             obj.save(update_fields=["status", "paid_at", "updated_at"])
             CashFlowEntry.objects.update_or_create(
@@ -436,13 +622,14 @@ class PayableViewSet(viewsets.ModelViewSet):
 class CashFlowEntryViewSet(viewsets.ModelViewSet):
     serializer_class = CashFlowEntrySerializer
     permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ["kind", "status", "category", "cost_center"]
 
     def get_queryset(self):
         return CashFlowEntry.objects.all()
 
     def perform_create(self, serializer):
-        obj = serializer.save()
+        obj = serializer.save(created_by=self.request.user)
         from apps.core.signals import _write_audit
 
         _write_audit(
@@ -451,6 +638,35 @@ class CashFlowEntryViewSet(viewsets.ModelViewSet):
             str(obj.pk),
             new_data={"amount": str(obj.amount), "status": obj.status},
         )
+
+    @action(detail=True, methods=["post"])
+    def realize(self, request, pk=None):
+        """Maker-checker: forecast → realized. The user realizing the entry MUST
+        differ from its creator (segregation of duties). Locks + rechecks state
+        inside atomic() and writes an audit row. A realized entry is immutable
+        (perform_update/perform_destroy already block it)."""
+        with transaction.atomic():
+            obj = CashFlowEntry.objects.select_for_update().get(pk=self.get_object().pk)
+            if obj.status == "cancelled":
+                return Response({"detail": "Lançamento cancelado."}, status=400)
+            if obj.status == "realized":
+                return Response(self.get_serializer(obj).data)  # idempotent
+            if obj.created_by_id and obj.created_by_id == request.user.id:
+                return Response(
+                    {"detail": "Quem realiza deve ser diferente de quem criou o lançamento."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            obj.status, obj.realized_at = "realized", timezone.now()
+            obj.save(update_fields=["status", "realized_at"])
+            from apps.core.signals import _write_audit
+
+            _write_audit(
+                "cashflow_realized",
+                "cash_flow_entry",
+                str(obj.pk),
+                new_data={"realized_by": str(request.user.id), "amount": str(obj.amount)},
+            )
+        return Response(self.get_serializer(obj).data)
 
     def perform_update(self, serializer):
         current = self.get_object()

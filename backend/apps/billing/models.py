@@ -360,6 +360,23 @@ class ProfessionalSettlement(models.Model):
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="draft")
     calculated_at = models.DateTimeField(auto_now=True)
     paid_at = models.DateTimeField(null=True, blank=True)
+    # Maker-checker (segregation of duties): the creator (maker) cannot be the
+    # approver (checker). Enforced in ProfessionalSettlementViewSet.approve.
+    created_by = models.ForeignKey(
+        "core.User",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="settlements_created",
+    )
+    approved_by = models.ForeignKey(
+        "core.User",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="settlements_approved",
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         constraints = [
@@ -370,16 +387,21 @@ class ProfessionalSettlement(models.Model):
         ordering = ["-competency"]
 
     def recalculate(self, rate=0):
+        from decimal import Decimal
+
         from django.db.models import Sum
 
         total = (
             self.professional.encounters.filter(
                 encounter_date__startswith=self.competency, status="signed"
             ).aggregate(v=Sum("tiss_guides__total_value"))["v"]
-            or 0
+            or Decimal("0")
         )
+        # ``rate`` may arrive as a float/int/str; coerce to Decimal so the
+        # multiplication below never raises Decimal * float TypeError.
+        rate_dec = Decimal(str(rate)) if rate else Decimal("1")
         self.gross_amount = total
-        self.net_amount = max(0, total - self.deductions) * (rate or 1)
+        self.net_amount = max(Decimal("0"), total - self.deductions) * rate_dec
         return self
 
     def __str__(self):
@@ -449,6 +471,18 @@ class BankTransaction(models.Model):
 
     class Meta:
         ordering = ["-occurred_at"]
+        constraints = [
+            # DB-level guard: at most ONE settled ('matched') bank transaction per
+            # receivable. Even if two concurrent approve() calls slipped past the
+            # application locks, the second commit would violate this partial
+            # unique index and fail loudly instead of double-allocating the
+            # receivable. NULL receivables are exempt (they are never 'matched').
+            models.UniqueConstraint(
+                fields=["receivable"],
+                condition=models.Q(status="matched"),
+                name="uniq_matched_tx_per_receivable",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.external_id} — R$ {self.amount}"
@@ -509,6 +543,16 @@ class CashFlowEntry(models.Model):
     cost_center = models.CharField(max_length=120, blank=True)
     status = models.CharField(
         max_length=10, choices=STATUS_CHOICES, default="forecast", db_index=True
+    )
+    # Maker-checker: the creator (maker) cannot be the one who realizes (checker)
+    # the entry. Enforced in CashFlowEntryViewSet.realize. Nullable because
+    # system-generated entries (e.g. Payable.pay's update_or_create) have no user.
+    created_by = models.ForeignKey(
+        "core.User",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="cashflow_entries_created",
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
