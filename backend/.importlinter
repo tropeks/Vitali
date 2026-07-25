@@ -75,6 +75,10 @@ ignore_imports =
     apps.imaging.** -> apps.emr.**
     # patient_portal -> emr
     apps.patient_portal.** -> apps.emr.**
+    # patient_portal -> whatsapp (M1-S5: reuse the slot engine for self-service scheduling)
+    apps.patient_portal.** -> apps.whatsapp.**
+    # patient_portal -> billing (M1-S5: view/pay own receivables via PIXCharge)
+    apps.patient_portal.** -> apps.billing.**
     # pharmacy -> emr
     apps.pharmacy.** -> apps.emr.**
     # pharmacy_ai -> pharmacy

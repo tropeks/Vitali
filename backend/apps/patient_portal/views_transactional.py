@@ -266,15 +266,14 @@ class MeCancelAppointmentView(_SelfView):
 class MeReceivablesView(_SelfView):
     """GET `/portal/me/receivables/` — the patient's own open receivables.
 
-    NOTE (S4): current ``AccountsReceivable`` reaches the patient via
-    ``guide.patient``. S4 is untethering AR; the parent should swap this filter
-    for the origin-agnostic patient link when it lands.
+    Uses the origin-agnostic ``AccountsReceivable.patient`` FK (M1 integration),
+    so guia-less private/PIX/package receivables are visible too.
     """
 
     def get(self, request):
         patient = self._patient(request)
         qs = AccountsReceivable.objects.filter(
-            guide__patient=patient, status__in=_OPEN_RECEIVABLE_STATUSES
+            patient=patient, status__in=_OPEN_RECEIVABLE_STATUSES
         ).select_related("guide")
         data = [_receivable_dict(r) for r in qs[:200]]
         return Response(data)
@@ -291,7 +290,7 @@ class MeReceivablePixView(_SelfView):
         try:
             receivable = AccountsReceivable.objects.select_related(
                 "guide", "guide__encounter", "guide__encounter__appointment"
-            ).get(pk=receivable_id, guide__patient=patient)
+            ).get(pk=receivable_id, patient=patient)
         except (AccountsReceivable.DoesNotExist, ValueError):
             # 404 (not 403) so a patient can't probe other patients' receivable ids.
             return Response(

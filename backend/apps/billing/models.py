@@ -507,6 +507,16 @@ class AccountsReceivable(models.Model):
         blank=True,
         related_name="receivables",
     )
+    # Denormalized patient link so a receivable is patient-queryable regardless of
+    # origin — guia-less private/PIX/package receivables have no guide->patient
+    # path. Derived from guide.patient on save when a guia is set (M1 integration).
+    patient = models.ForeignKey(
+        "emr.Patient",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="receivables",
+    )
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     # Partial settlement: cumulative amount received so far. status becomes
     # 'partial' while 0 < paid_amount < amount, 'received' once it reaches amount.
@@ -525,6 +535,12 @@ class AccountsReceivable(models.Model):
         indexes = [
             models.Index(fields=["status", "due_date"], name="billing_acc_status_ea3ffa_idx")
         ]
+
+    def save(self, *args, **kwargs):
+        # Keep the denormalized patient link in sync from the guia when present.
+        if self.patient_id is None and self.guide_id is not None:
+            self.patient_id = self.guide.patient_id
+        super().save(*args, **kwargs)
 
     @property
     def remaining_amount(self) -> Decimal:
