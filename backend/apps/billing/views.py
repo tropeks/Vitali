@@ -351,7 +351,9 @@ class AccountingEntryViewSet(viewsets.ModelViewSet):
         if unit:
             qs = qs.filter(unit=unit)
         if cost_center:
-            qs = qs.filter(cost_center=cost_center)
+            # AccountingEntry.cost_center is now an FK (S4-T2); the DRE query param
+            # remains the cost-center CODE, matched via the related row.
+            qs = qs.filter(cost_center__code=cost_center)
         revenue = qs.filter(kind="revenue").aggregate(total=Sum("amount"))["total"] or Decimal("0")
         expense = qs.filter(kind="expense").aggregate(total=Sum("amount"))["total"] or Decimal("0")
         cash = CashFlowEntry.objects.exclude(status="cancelled")
@@ -367,7 +369,8 @@ class AccountingEntryViewSet(viewsets.ModelViewSet):
         if end:
             payables = payables.filter(due_date__lte=end)
         if cost_center:
-            payables = payables.filter(cost_center=cost_center)
+            # Payable.cost_center is now an FK (S4-T2); match by CODE.
+            payables = payables.filter(cost_center__code=cost_center)
         cash_in = sum(
             (x.amount for x in cash if x.kind == "inflow" and x.status == "realized"), Decimal("0")
         )
@@ -417,7 +420,13 @@ class BankTransactionViewSet(viewsets.ModelViewSet):
             status__in=["expected", "billed", "overdue"], amount=tx.amount
         )
         desc = (tx.description or "").lower()
-        candidate = next((r for r in candidates if r.guide.guide_number.lower() in desc), None)
+        # Guard tx→guide description match against origin-agnostic receivables:
+        # a private/PIX/package receivable has no guia (guide is None), so only
+        # guia-backed candidates can be matched by guide number here.
+        candidate = next(
+            (r for r in candidates if r.guide_id and r.guide.guide_number.lower() in desc),
+            None,
+        )
         if candidate is None and candidates.count() == 1:
             candidate = candidates.first()
         if candidate is None:
@@ -603,7 +612,9 @@ class PayableViewSet(viewsets.ModelViewSet):
                     "due_date": obj.due_date,
                     "realized_at": obj.paid_at,
                     "category": obj.category,
-                    "cost_center": obj.cost_center,
+                    # CashFlowEntry.cost_center stays a CharField; carry the FK's
+                    # code across (empty when the payable has no cost center).
+                    "cost_center": obj.cost_center.code if obj.cost_center_id else "",
                     "status": "realized",
                 },
             )

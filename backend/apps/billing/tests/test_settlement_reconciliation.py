@@ -31,6 +31,7 @@ from apps.billing.models import (
 )
 from apps.core.models import AuditLog, FeatureFlag, Role, User
 from apps.emr.models import Encounter, Patient, Professional
+from apps.organization.models import CostCenter, LegalEntity
 from apps.test_utils import TenantTestCase
 
 
@@ -360,6 +361,10 @@ class SettlementReconciliationTestCase(TenantTestCase):
         """The DRE @action must scope revenue/expense by the unit and cost_center
         query params (previously ignored)."""
         cat = AccountingCategory.objects.create(code="3.1", name="Receitas", kind="revenue")
+        # S4-T2: cost_center is now an FK to organization.CostCenter.
+        le = LegalEntity.objects.create(code="LE-DRE", name="Clínica DRE")
+        cc_a = CostCenter.objects.create(code="cc-a", name="Matriz CC", legal_entity=le)
+        cc_b = CostCenter.objects.create(code="cc-b", name="Filial CC", legal_entity=le)
         # Two revenue entries in the same competency, different unit + cost_center.
         AccountingEntry.objects.create(
             category=cat,
@@ -367,7 +372,7 @@ class SettlementReconciliationTestCase(TenantTestCase):
             amount=Decimal("1000.00"),
             competency=datetime.date(2026, 3, 1),
             unit="matriz",
-            cost_center="cc-a",
+            cost_center=cc_a,
         )
         AccountingEntry.objects.create(
             category=cat,
@@ -375,7 +380,7 @@ class SettlementReconciliationTestCase(TenantTestCase):
             amount=Decimal("250.00"),
             competency=datetime.date(2026, 3, 1),
             unit="filial",
-            cost_center="cc-b",
+            cost_center=cc_b,
         )
 
         client = self._auth(self.maker_token)

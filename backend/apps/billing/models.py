@@ -10,6 +10,7 @@ apps/core/signals.py) compensates by checking live references.
 """
 
 import uuid
+from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
@@ -273,13 +274,41 @@ class TISSGuide(models.Model):
     guide_type = models.CharField(
         "Tipo",
         max_length=20,
-        choices=[("sadt", "SP/SADT"), ("consulta", "Consulta")],
+        choices=[
+            ("sadt", "SP/SADT"),
+            ("consulta", "Consulta"),
+            ("honorarios", "Honorários"),
+        ],
     )
     encounter = models.ForeignKey(
         "emr.Encounter", on_delete=models.PROTECT, related_name="tiss_guides"
     )
     patient = models.ForeignKey("emr.Patient", on_delete=models.PROTECT, related_name="tiss_guides")
     provider = models.ForeignKey(InsuranceProvider, on_delete=models.PROTECT, related_name="guides")
+    # ── S4-T3: Honorários guide (guia de honorários médicos) ─────────────────────
+    # The executing professional whose honorário this guide bills. Same-schema FK
+    # (emr is per-tenant). NULL for non-honorarios guides.
+    executor = models.ForeignKey(
+        "emr.Professional",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="honorario_guides",
+        help_text="Profissional executor (guia de honorários). Vazio nas demais guias.",
+    )
+    # Cross-schema FK to public-schema CBHPMItem — app-layer PROTECT only (like
+    # PriceTableItem.tuss_code). Drives porte-based valuation of the honorário.
+    honorario_cbhpm = models.ForeignKey(
+        "core.CBHPMItem",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="honorario_guides",
+        help_text="Procedimento CBHPM que valora o honorário (porte × valor-CH).",
+    )
+    honorario_value = models.DecimalField(
+        "Valor do honorário (R$)", max_digits=12, decimal_places=4, default=Decimal("0")
+    )
     price_table = models.ForeignKey(
         PriceTable, on_delete=models.SET_NULL, null=True, blank=True, related_name="guides"
     )
@@ -340,6 +369,19 @@ class TISSGuide(models.Model):
                         continue
             raise IntegrityError("Failed to generate a unique guide number after 3 attempts.")
         super().save(*args, **kwargs)
+
+    def price_honorario(self):
+        """Value an honorários guide from its CBHPM porte (porte × valor_ch).
+
+        Sets ``honorario_value`` from :meth:`CBHPMItem.valor` and mirrors it into
+        ``total_value`` (the guide-level amount). No-op valuation (0) when no
+        CBHPM is linked — never fabricates a value.
+        """
+        valor = self.honorario_cbhpm.valor() if self.honorario_cbhpm_id else Decimal("0")
+        self.honorario_value = valor
+        self.total_value = valor
+        self.save(update_fields=["honorario_value", "total_value", "updated_at"])
+        return self
 
     def __str__(self):
         return f"Guia {self.guide_number} — {self.patient}"
@@ -406,17 +448,69 @@ class ProfessionalSettlement(models.Model):
 
 
 class AccountsReceivable(models.Model):
-    """Receivable ledger entry linked to exactly one TISS guide."""
+    """Receivable ledger entry — origin-agnostic (S4-T2).
+
+    A receivable may originate from a TISS guia OR a private bill OR a package OR
+    a PIX charge. The ``guide`` link is now nullable/optional and an ``origin``
+    discriminator records the source. Partial settlement is tracked via
+    ``paid_amount`` vs ``amount`` (status open/partial/received). The cost center
+    is a real FK to ``organization.CostCenter``.
+    """
 
     STATUS_CHOICES = [
         ("expected", "Previsto"),
         ("billed", "Faturado"),
+        ("partial", "Parcialmente recebido"),
         ("received", "Recebido"),
         ("overdue", "Vencido"),
         ("contested", "Contestado"),
     ]
-    guide = models.OneToOneField(TISSGuide, on_delete=models.PROTECT, related_name="receivable")
+    ORIGIN_CHOICES = [
+        ("tiss", "Guia TISS"),
+        ("private", "Particular"),
+        ("package", "Pacote"),
+        ("pix", "PIX"),
+        ("other", "Outro"),
+    ]
+    # Guia link kept for the existing TISS flow but now OPTIONAL (was OneToOne,
+    # PROTECT, non-null). NULL when the receivable originates from a private
+    # bill / package / PIX charge instead of a TISS guia.
+    guide = models.OneToOneField(
+        TISSGuide,
+        on_delete=models.PROTECT,
+        related_name="receivable",
+        null=True,
+        blank=True,
+    )
+    origin = models.CharField(
+        "Origem", max_length=12, choices=ORIGIN_CHOICES, default="tiss", db_index=True
+    )
+    # Optional source discriminators for non-guia origins.
+    package = models.ForeignKey(
+        "billing.Package",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="receivables",
+    )
+    pix_charge = models.ForeignKey(
+        "billing.PIXCharge",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="receivables",
+    )
+    cost_center = models.ForeignKey(
+        "organization.CostCenter",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="receivables",
+    )
     amount = models.DecimalField(max_digits=12, decimal_places=2)
+    # Partial settlement: cumulative amount received so far. status becomes
+    # 'partial' while 0 < paid_amount < amount, 'received' once it reaches amount.
+    paid_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0"))
     due_date = models.DateField(null=True, blank=True)
     received_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(
@@ -432,8 +526,35 @@ class AccountsReceivable(models.Model):
             models.Index(fields=["status", "due_date"], name="billing_acc_status_ea3ffa_idx")
         ]
 
+    @property
+    def remaining_amount(self) -> Decimal:
+        """Amount still outstanding: ``amount − paid_amount`` (never negative)."""
+        paid = self.paid_amount or Decimal("0")
+        remaining = (self.amount or Decimal("0")) - paid
+        return remaining if remaining > 0 else Decimal("0.00")
+
+    def register_payment(self, value: Decimal, *, when=None):
+        """Record a (possibly partial) payment against this receivable.
+
+        Increments ``paid_amount`` and transitions status: ``partial`` while
+        still outstanding, ``received`` (stamping ``received_at``) once the total
+        is met or exceeded. Persists via a scoped ``update_fields`` save.
+        """
+        value = Decimal(str(value))
+        self.paid_amount = (self.paid_amount or Decimal("0")) + value
+        fields = ["paid_amount", "status", "updated_at"]
+        if self.paid_amount >= (self.amount or Decimal("0")):
+            self.status = "received"
+            self.received_at = when or timezone.now()
+            fields.append("received_at")
+        elif self.paid_amount > 0:
+            self.status = "partial"
+        self.save(update_fields=fields)
+        return self
+
     def __str__(self):
-        return f"CR {self.guide.guide_number} — R$ {self.amount}"
+        ref = self.guide.guide_number if self.guide_id else self.get_origin_display()
+        return f"CR {ref} — R$ {self.amount}"
 
 
 class BankTransaction(models.Model):
@@ -499,7 +620,16 @@ class Payable(models.Model):
     )
     description = models.CharField(max_length=300)
     category = models.CharField(max_length=120, blank=True)
-    cost_center = models.CharField(max_length=120, blank=True)
+    # S4-T2: real FK to organization.CostCenter (was a free-text CharField). Same
+    # tenant schema, so a DB-enforced FK is fine. Nullable — legacy free-text
+    # values with no matching CostCenter.code become NULL in the data migration.
+    cost_center = models.ForeignKey(
+        "organization.CostCenter",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="payables",
+    )
     amount = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(0)])
     due_date = models.DateField()
     paid_at = models.DateTimeField(null=True, blank=True)
@@ -586,7 +716,15 @@ class AccountingEntry(models.Model):
     amount = models.DecimalField(max_digits=14, decimal_places=2, validators=[MinValueValidator(0)])
     competency = models.DateField(db_index=True)
     unit = models.CharField(max_length=120, blank=True)
-    cost_center = models.CharField(max_length=120, blank=True)
+    # S4-T2: real FK to organization.CostCenter (was a free-text CharField). See
+    # Payable.cost_center for the migration rationale.
+    cost_center = models.ForeignKey(
+        "organization.CostCenter",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="accounting_entries",
+    )
     description = models.CharField(max_length=300, blank=True)
     receivable = models.ForeignKey(
         AccountsReceivable,
@@ -1032,3 +1170,6 @@ class BankStatementImport(models.Model):
 
     def __str__(self):
         return f"{self.filename} ({self.created_at:%Y-%m-%d})"
+
+
+from .revenue_models import *  # noqa: E402,F401,F403
