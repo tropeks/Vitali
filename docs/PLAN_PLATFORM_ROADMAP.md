@@ -255,3 +255,16 @@ Cada um é módulo opcional composto pelo control plane por plano.
 
 > Cada sprint: superpowers/TDD nas tasks → suíte verde no Docker → `/cso` → corrigir →
 > commit → atualizar Shrimp + memória.
+
+---
+
+## MÓDULOS TIER (ativáveis por tenant via `core.FeatureFlag`)
+
+- **`diagnostic_concession` — Comodato & Suprimentos de Diagnóstico** (integração do TCX-SMART).
+  Máquina de P&L do outsourcing "all-inclusive" de imagem dirigida por volume de exame:
+  a operadora banca equipamento (comodato) + insumo + logística + manutenção e fatura pelos
+  exames produzidos na unidade. Reusa pharmacy/imaging/organization/billing; adiciona frota em
+  comodato, contrato all-inclusive + recipe de consumo, logística de reposição (requisição→
+  picking→despacho→prova-de-entrega) e P&L por contrato. Plano: `docs/PLAN_MODULE_CONCESSION.md`.
+  Sprints: C1 frota · C2 contrato+recipe · C3 logística · C4 consumo-por-exame + P&L.
+  App: `apps/concession` (tenant, gated). Estado: bootstrap feito; C1–C4 em fanout TDD.
