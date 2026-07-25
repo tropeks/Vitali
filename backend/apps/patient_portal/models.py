@@ -179,3 +179,6 @@ class PortalConsent(models.Model):
 
     def __str__(self):
         return f"{self.patient} — {self.purpose}"
+
+
+from .transactional_models import *  # noqa: E402,F401,F403
