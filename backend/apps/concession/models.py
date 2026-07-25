@@ -36,4 +36,7 @@ class ConcessionService(models.Model):
         return f"{self.code} — {self.name}"
 
 
-# Sprint model modules are appended below (one `from .X_models import *` line each).
+# Sprint model modules (defined after ConcessionService so their imports resolve).
+from .asset_models import *  # noqa: E402,F401,F403
+from .contract_models import *  # noqa: E402,F401,F403
+from .logistics_models import *  # noqa: E402,F401,F403
