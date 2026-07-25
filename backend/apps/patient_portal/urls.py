@@ -23,6 +23,15 @@ from .views_imaging import (
     MeImagingViewerAuthorizationView,
 )
 from .views_lab import MeLabReportPDFView, MeLabResultsView
+from .views_transactional import (
+    MeAvailableSlotsView,
+    MeBookAppointmentView,
+    MeCancelAppointmentView,
+    MePreConsultFormView,
+    MeReceivablePixView,
+    MeReceivablesView,
+    MeRescheduleAppointmentView,
+)
 
 urlpatterns = [
     path("portal/access/", AccessListCreateView.as_view(), name="portal-access-list"),
@@ -89,4 +98,42 @@ urlpatterns = [
     ),
     path("portal/me/export/", MeExportView.as_view(), name="portal-me-export"),
     path("portal/me/delete-request/", MeDeletionRequestView.as_view(), name="portal-me-delete"),
+    # ── S5-T1 · Self-service scheduling ──
+    path(
+        "portal/me/schedule/slots/",
+        MeAvailableSlotsView.as_view(),
+        name="portal-me-slots",
+    ),
+    path(
+        "portal/me/appointments/book/",
+        MeBookAppointmentView.as_view(),
+        name="portal-me-appt-book",
+    ),
+    path(
+        "portal/me/appointments/<uuid:appointment_id>/reschedule/",
+        MeRescheduleAppointmentView.as_view(),
+        name="portal-me-appt-reschedule",
+    ),
+    path(
+        "portal/me/appointments/<uuid:appointment_id>/cancel/",
+        MeCancelAppointmentView.as_view(),
+        name="portal-me-appt-cancel",
+    ),
+    # ── S5-T2 · PIX payment ──
+    path(
+        "portal/me/receivables/",
+        MeReceivablesView.as_view(),
+        name="portal-me-receivables",
+    ),
+    path(
+        "portal/me/receivables/<int:receivable_id>/pix/",
+        MeReceivablePixView.as_view(),
+        name="portal-me-receivable-pix",
+    ),
+    # ── S5-T3 · Pre-consult forms ──
+    path(
+        "portal/me/appointments/<uuid:appointment_id>/pre-consult-form/",
+        MePreConsultFormView.as_view(),
+        name="portal-me-preconsult-form",
+    ),
 ]
