@@ -40,3 +40,4 @@ class ConcessionService(models.Model):
 from .asset_models import *  # noqa: E402,F401,F403
 from .contract_models import *  # noqa: E402,F401,F403
 from .logistics_models import *  # noqa: E402,F401,F403
+from .pnl_models import *  # noqa: E402,F401,F403

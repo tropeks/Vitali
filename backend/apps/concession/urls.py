@@ -16,6 +16,7 @@ from .views_logistics import (
     ProofOfDeliveryViewSet,
     SupplyRequisitionViewSet,
 )
+from .views_pnl import ContractPnlViewSet
 
 router = DefaultRouter()
 # C1 — Frota em comodato
@@ -41,5 +42,7 @@ router.register("concession/dispatches", DispatchViewSet, basename="dispatch")
 router.register(
     "concession/proof-of-deliveries", ProofOfDeliveryViewSet, basename="proof-of-delivery"
 )
+# C4 — P&L do contrato (endpoint de leitura gated)
+router.register("concession/contracts", ContractPnlViewSet, basename="concession-contract-pnl")
 
 urlpatterns = router.urls
