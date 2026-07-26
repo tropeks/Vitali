@@ -67,7 +67,18 @@ class UserDTOSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ("id", "email", "full_name", "role_name", "active_modules", "permissions")
+        fields = (
+            "id",
+            "email",
+            "full_name",
+            "role_name",
+            "active_modules",
+            "permissions",
+            # Platform-admin (superuser) signal for the client Plataforma nav gate.
+            # Backend IsPlatformAdmin remains the real barrier; this is UX-only.
+            "is_superuser",
+        )
+        read_only_fields = ("is_superuser",)
 
     def get_permissions(self, obj) -> list[str]:
         # Mirror HasPermission's tenant-effective role (membership Model B), not

@@ -10,6 +10,16 @@ export interface UserDTO {
   role_name?: string | null;
   active_modules: string[];
   permissions?: string[];
+  /**
+   * True for Vitali platform operators (Django superusers). Gates the Plataforma
+   * nav group on the client. NOTE: the backend `UserSerializer`
+   * (apps/core/serializers.py) does NOT yet emit this field, so it is currently
+   * always undefined and Plataforma stays hidden by default (fail-safe). Backend
+   * follow-up (S-IA1b): add `is_superuser` to the /me + login serializer fields
+   * so real platform operators get the group. The real security boundary remains
+   * `IsPlatformAdmin` on the backend regardless.
+   */
+  is_superuser?: boolean;
 }
 
 /**
