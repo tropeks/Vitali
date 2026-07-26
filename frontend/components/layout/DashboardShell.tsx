@@ -1,312 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  LayoutDashboard,
-  Users,
-  Calendar,
-  ClipboardList,
-  Stethoscope,
-  Activity,
-  ScanLine,
-  FlaskConical,
-  CalendarX,
-  CalendarClock,
-  Pill,
-  PackageOpen,
-  Receipt,
-  BarChart2,
-  Settings,
-  Building2,
-  Landmark,
-  ShoppingCart,
-  Server,
-  BookMarked,
-  Gauge,
-  Fingerprint,
-  CheckSquare,
   LogOut,
   Bell,
   ChevronDown,
   ChevronRight,
   Menu,
   X,
+  Search,
 } from "lucide-react";
 import type { UserDTO } from "@/lib/auth";
 import { apiFetch } from "@/lib/api";
 import { useActiveModules } from "@/hooks/useHasModule";
 import { LanguageSwitcher } from "@/components/shared/LanguageSwitcher";
-import { PERMISSIONS, canSee, type NavGate } from "@/lib/permissions";
-
-interface NavItem extends NavGate {
-  label: string;
-  href: string;
-  icon: React.ElementType;
-  /** Sub-items rendered as an indented group beneath this item */
-  children?: { label: string; href: string }[];
-}
-
-interface NavGroup {
-  /** Domain label (pt-BR) — rendered as a collapsible section header. */
-  label: string;
-  items: NavItem[];
-}
-
-/**
- * Home launcher — always visible, outside the collapsible groups.
- */
-const HOME_ITEM: NavItem = { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard };
-
-/**
- * Domain-grouped navigation (UI_NAVIGATION_IA.md §2). Each item carries its own
- * visibility gate (`module` / `permissions` / `superuser`) evaluated by
- * {@link canSee}. `adminOnly` (role_name-based) is RETIRED — items now gate on a
- * real backend permission (see §6). Permissions come from `@/lib/permissions`.
- */
-const NAV_GROUPS: NavGroup[] = [
-  {
-    label: "Atendimento",
-    items: [
-      {
-        label: "Pacientes",
-        href: "/patients",
-        icon: Users,
-        module: "emr",
-        permissions: [PERMISSIONS.PATIENTS_READ, PERMISSIONS.PATIENTS_LIMITED_READ],
-      },
-      {
-        label: "Agenda",
-        href: "/appointments",
-        icon: Calendar,
-        module: "emr",
-        permissions: [PERMISSIONS.SCHEDULE_READ],
-        children: [{ label: "Lista de espera", href: "/appointments/waitlist" }],
-      },
-      {
-        label: "Sala de Espera",
-        href: "/waiting-room",
-        icon: ClipboardList,
-        module: "emr",
-        permissions: [PERMISSIONS.EMR_READ, PERMISSIONS.SCHEDULE_READ],
-      },
-      {
-        label: "Consultas",
-        href: "/encounters",
-        icon: Stethoscope,
-        module: "emr",
-        permissions: [PERMISSIONS.EMR_READ],
-      },
-      {
-        label: "Deterioração",
-        href: "/deterioracao",
-        icon: Activity,
-        module: "emr",
-        permissions: [PERMISSIONS.EMR_READ],
-      },
-      {
-        label: "Faltas",
-        href: "/faltas",
-        icon: CalendarX,
-        module: "emr",
-        permissions: [PERMISSIONS.SCHEDULE_READ],
-      },
-    ],
-  },
-  {
-    label: "Apoio Diagnóstico",
-    items: [
-      {
-        label: "Laboratório",
-        href: "/laboratorio",
-        icon: FlaskConical,
-        module: "emr",
-        permissions: [PERMISSIONS.EMR_READ],
-      },
-      {
-        label: "Vitali Imagem",
-        href: "/imagens",
-        icon: ScanLine,
-        module: "imaging",
-        permissions: [PERMISSIONS.IMAGING_READ],
-      },
-    ],
-  },
-  {
-    label: "Pessoas & Operações",
-    items: [
-      {
-        label: "RH",
-        href: "/rh/funcionarios",
-        icon: Users,
-        module: "rh",
-        // HRAccessPermission: admin capability OR hr.manage (apps/hr/views.py).
-        permissions: [PERMISSIONS.HR_MANAGE, PERMISSIONS.ADMIN],
-        children: [
-          { label: "Funcionários", href: "/rh/funcionarios" },
-          { label: "Lotação", href: "/rh/lotacoes" },
-          { label: "Afastamentos", href: "/rh/afastamentos" },
-          { label: "Cargos", href: "/rh/cargos" },
-          { label: "Dependentes", href: "/rh/dependentes" },
-        ],
-      },
-    ],
-  },
-  {
-    // Supervisor/coordinator surface, scoped by unit — escala/plantão
-    // ownership moved here from RH (UI_NAVIGATION_IA.md §3, S-IA2). RBAC gates
-    // on `roster.manage`, with `hr.manage`/`admin` kept as transition
-    // fallbacks until every tenant has roster.manage assigned.
-    //
-    // Future (S-IA2+, once their routes exist): Dimensionamento, Trocas &
-    // folgas, Requisição de insumos, Indicadores (see UI_NAVIGATION_IA.md §2).
-    label: "Painel de Setor",
-    items: [
-      {
-        label: "Escalas",
-        href: "/painel-setor/escalas",
-        icon: CalendarClock,
-        permissions: [PERMISSIONS.ROSTER_MANAGE, PERMISSIONS.HR_MANAGE, PERMISSIONS.ADMIN],
-      },
-    ],
-  },
-  {
-    label: "Financeiro",
-    items: [
-      {
-        label: "Faturamento",
-        href: "/billing",
-        icon: Receipt,
-        module: "billing",
-        permissions: [PERMISSIONS.BILLING_READ],
-        children: [
-          { label: "Guias", href: "/billing/guides" },
-          { label: "Glosas", href: "/billing/glosas" },
-          { label: "Lotes", href: "/billing/batches" },
-          { label: "Tabelas de preço", href: "/billing/price-tables" },
-        ],
-      },
-      {
-        label: "Análise",
-        href: "/billing/analytics",
-        icon: BarChart2,
-        module: "billing",
-        permissions: [PERMISSIONS.BILLING_READ, PERMISSIONS.REPORTS_READ],
-      },
-      {
-        label: "Financeiro",
-        href: "/administracao/resultado-financeiro",
-        icon: Landmark,
-        // Contas a pagar/receber, DRE, conciliação — financial management.
-        permissions: [PERMISSIONS.BILLING_FULL, PERMISSIONS.ADMIN],
-        children: [
-          { label: "Resultado (DRE)", href: "/administracao/resultado-financeiro" },
-          { label: "Conciliação", href: "/administracao/conciliacao-financeira" },
-          { label: "Contas a pagar", href: "/billing/contas-a-pagar" },
-          { label: "Contas a receber", href: "/billing/contas-a-receber" },
-          { label: "Tesouraria", href: "/billing/tesouraria" },
-          { label: "Repasses médicos", href: "/billing/settlements" },
-        ],
-      },
-    ],
-  },
-  {
-    label: "Suprimentos & Farmácia",
-    items: [
-      {
-        label: "Farmácia",
-        href: "/farmacia",
-        icon: Pill,
-        module: "pharmacy",
-        permissions: [PERMISSIONS.PHARMACY_READ],
-        children: [
-          { label: "Cockpit", href: "/farmacia" },
-          { label: "Dispensar", href: "/farmacia/dispense" },
-          { label: "Estoque", href: "/farmacia/stock" },
-          { label: "Risco de estoque", href: "/farmacia/risco-estoque" },
-          { label: "Catálogo", href: "/farmacia/catalog" },
-          { label: "Compras", href: "/farmacia/compras" },
-          { label: "Controlados", href: "/farmacia/controlados" },
-        ],
-      },
-      {
-        label: "Compras",
-        href: "/administracao/compras",
-        icon: ShoppingCart,
-        permissions: [PERMISSIONS.PHARMACY_STOCK_MANAGE, PERMISSIONS.ADMIN],
-        children: [{ label: "Entradas NF-e", href: "/administracao/compras/entradas-nfe" }],
-      },
-    ],
-  },
-  {
-    label: "Concessão",
-    items: [
-      {
-        label: "Concessão",
-        href: "/concessao",
-        icon: PackageOpen,
-        module: "diagnostic_concession",
-        children: [
-          { label: "Ativos", href: "/concessao/ativos" },
-          { label: "Contratos", href: "/concessao/contratos" },
-          { label: "Logística", href: "/concessao/logistica" },
-          { label: "Manutenção", href: "/concessao/manutencao" },
-          { label: "P&L", href: "/concessao/pnl" },
-        ],
-      },
-    ],
-  },
-  {
-    label: "Administração",
-    items: [
-      {
-        label: "Estrutura organizacional",
-        href: "/administracao/organizacao",
-        icon: Building2,
-        permissions: [PERMISSIONS.ORGANIZATION_READ],
-      },
-      {
-        label: "Identidade de pacientes",
-        href: "/administracao/mpi",
-        icon: Fingerprint,
-        permissions: [PERMISSIONS.MPI_READ],
-      },
-      {
-        label: "Aprovações",
-        href: "/administracao/aprovacoes",
-        icon: CheckSquare,
-        permissions: [PERMISSIONS.WORKFLOW_READ, PERMISSIONS.WORKFLOW_APPROVE],
-      },
-      {
-        label: "Configurações",
-        href: "/configuracoes/assinatura",
-        icon: Settings,
-        permissions: [PERMISSIONS.ADMIN],
-        children: [
-          { label: "Assinatura", href: "/configuracoes/assinatura" },
-          { label: "WhatsApp", href: "/configuracoes/whatsapp" },
-          { label: "Inteligência Artificial", href: "/configuracoes/ai" },
-          { label: "Profissionais", href: "/configuracoes/profissionais" },
-          { label: "Formulário (doses)", href: "/configuracoes/farmacia/formulario" },
-          { label: "Interações", href: "/configuracoes/farmacia/interacoes" },
-          { label: "Suprimentos", href: "/configuracoes/farmacia/suprimentos" },
-          { label: "Privacidade (LGPD)", href: "/configuracoes/privacidade" },
-        ],
-      },
-    ],
-  },
-  {
-    label: "Plataforma",
-    items: [
-      { label: "Tenants", href: "/platform/tenants", icon: Server, superuser: true },
-      { label: "Terminologia", href: "/platform/terminology", icon: BookMarked, superuser: true },
-      { label: "Monitor", href: "/platform/monitor", icon: Gauge, superuser: true },
-      { label: "Valor (wedge)", href: "/platform/wedge-value", icon: BarChart2, superuser: true },
-      { label: "Telemetria", href: "/wedges/telemetry", icon: Activity, superuser: true },
-    ],
-  },
-];
+import { PERMISSIONS, canSee } from "@/lib/permissions";
+import { NAV_GROUPS, HOME_ITEM, type NavItem } from "./nav";
+import CommandPalette from "./CommandPalette";
+import {
+  PERSONAS,
+  applyPersona,
+  loadPersona,
+  savePersona,
+  type PersonaId,
+} from "@/lib/personas";
 
 interface Props {
   user: UserDTO;
@@ -318,24 +37,56 @@ export default function DashboardShell({ user, children }: Props) {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  // Persona preset (soft UX layer over RBAC — never widens visibility).
+  const [persona, setPersona] = useState<PersonaId>("todos");
+  // User's manual header toggles, as `collapsed` booleans. Overrides the
+  // persona default for a group; reset whenever the persona changes.
+  const [collapsedOverrides, setCollapsedOverrides] = useState<Record<string, boolean>>({});
   const clinicalWorkspace = /^\/encounters\/[^/]+$/.test(pathname ?? "");
 
   const activeModules = useActiveModules();
+
+  // Restore the persisted persona (keyed per user) once mounted.
+  useEffect(() => {
+    setPersona(loadPersona(user.id));
+    setCollapsedOverrides({});
+  }, [user.id]);
 
   // Three ordered gates (UI_NAVIGATION_IA.md §6), all UX-only. Module fails OPEN
   // while loading; superuser + permission never fail open.
   const itemVisible = (item: NavItem) => canSee(user, item, activeModules);
 
   // Groups (and their gated items) resolved for the current session. A group with
-  // no visible items is dropped entirely.
+  // no visible items is dropped entirely. This is the HARD RBAC filter — the
+  // persona layer below only reorders/collapses within this already-visible set.
   const visibleGroups = NAV_GROUPS.map((group) => ({
     label: group.label,
     items: group.items.filter(itemVisible),
   })).filter((group) => group.items.length > 0);
 
+  // Persona layout: reorder + default expansion over the visible labels only.
+  const layout = applyPersona(
+    persona,
+    visibleGroups.map((group) => group.label),
+  );
+  const orderedGroups = layout.order
+    .map((label) => visibleGroups.find((group) => group.label === label))
+    .filter((group): group is (typeof visibleGroups)[number] => group !== undefined);
+
+  // A group is open when the user hasn't overridden it and the persona expands
+  // it; a manual toggle wins.
+  const groupOpen = (label: string) =>
+    label in collapsedOverrides ? !collapsedOverrides[label] : layout.expanded.has(label);
+
   const toggleGroup = (label: string) =>
-    setCollapsedGroups((prev) => ({ ...prev, [label]: !prev[label] }));
+    setCollapsedOverrides((prev) => ({ ...prev, [label]: groupOpen(label) }));
+
+  const changePersona = (next: PersonaId) => {
+    setPersona(next);
+    setCollapsedOverrides({});
+    savePersona(user.id, next);
+  };
 
   // Admin capability for the topbar dropdown — keyed off the non-forgeable
   // `admin` permission (not the user-settable role_name).
@@ -447,8 +198,8 @@ export default function DashboardShell({ user, children }: Props) {
           <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
             {renderNavItem(HOME_ITEM)}
 
-            {visibleGroups.map((group) => {
-              const open = !collapsedGroups[group.label];
+            {orderedGroups.map((group) => {
+              const open = groupOpen(group.label);
               return (
                 <div key={group.label} className="pt-2">
                   <button
@@ -508,7 +259,7 @@ export default function DashboardShell({ user, children }: Props) {
           )}
 
           {/* Tenant name placeholder */}
-          <div className="flex flex-1 items-center gap-3 min-w-0">
+          <div className="flex items-center gap-3 min-w-0">
             <span className="text-sm font-medium text-neu-ink">
               Vitali Health
             </span>
@@ -518,6 +269,40 @@ export default function DashboardShell({ user, children }: Props) {
               </span>
             )}
           </div>
+
+          {/* "Ir para…" — opens the ⌘K command palette */}
+          <button
+            type="button"
+            onClick={() => setPaletteOpen(true)}
+            aria-label="Ir para… (busca global)"
+            aria-keyshortcuts="Meta+K Control+K"
+            className="flex flex-1 max-w-sm items-center gap-2 rounded-lg border border-neu-app bg-neu-input px-3 py-1.5 text-sm text-neu-inkMuted shadow-neu-inset transition-colors hover:text-neu-ink"
+          >
+            <Search size={15} className="shrink-0" aria-hidden />
+            <span className="flex-1 text-left">Ir para…</span>
+            <kbd className="hidden rounded border border-neu-app px-1.5 py-0.5 text-[10px] font-medium sm:block">
+              ⌘K
+            </kbd>
+          </button>
+
+          {/* Persona preset switcher (soft UX layer over RBAC) */}
+          {!clinicalWorkspace && (
+            <label className="hidden items-center gap-1.5 md:flex">
+              <span className="sr-only">Perfil de navegação</span>
+              <select
+                aria-label="Perfil de navegação"
+                value={persona}
+                onChange={(event) => changePersona(event.target.value as PersonaId)}
+                className="rounded-lg border border-neu-app bg-neu-input px-2 py-1.5 text-sm text-neu-ink shadow-neu-inset focus:outline-none focus:ring-2 focus:ring-neu-brand"
+              >
+                {PERSONAS.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
 
           {/* Language */}
           <LanguageSwitcher />
@@ -593,6 +378,14 @@ export default function DashboardShell({ user, children }: Props) {
         {/* Page content */}
         <main className={`flex-1 overflow-y-auto ${clinicalWorkspace ? "p-0" : "p-6"}`}>{children}</main>
       </div>
+
+      {/* Global "Ir para…" command palette (⌘K) — RBAC-scoped like the sidebar. */}
+      <CommandPalette
+        user={user}
+        activeModules={activeModules}
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+      />
     </div>
   );
 }
