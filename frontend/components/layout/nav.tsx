@@ -145,7 +145,9 @@ export const NAV_GROUPS: NavGroup[] = [
         children: [
           { label: "Funcionários", href: "/rh/funcionarios" },
           { label: "Lotação", href: "/rh/lotacoes" },
+          { label: "Ponto", href: "/rh/ponto" },
           { label: "Afastamentos", href: "/rh/afastamentos" },
+          { label: "ASO", href: "/rh/aso" },
           { label: "Cargos", href: "/rh/cargos" },
           { label: "Dependentes", href: "/rh/dependentes" },
         ],
