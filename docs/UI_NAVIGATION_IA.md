@@ -65,10 +65,31 @@ Movimentos que a revisão adversarial destravou (features que **já existem** ma
 | Financeiro (contas a pagar/receber, DRE, conciliação) | backend substancial, sem entrada no menu | ➜ item "Financeiro" |
 | Plataforma (toggle de tier, terminologia) | acessível só por URL | ➜ seção **Plataforma** dedicada (superuser) |
 
-## 6. Backlog de implementação (ondas — curso corrigido)
+## 6. Visibilidade do menu = RBAC (não achismo)
 
-- **S-IA1 · Nav shell + expor o que já existe** (frontend): `DashboardShell` agrupado colapsável; adicionar ao
-  menu os módulos já construídos (Financeiro/DRE, pacotes/repasse, reconciliação); seção Plataforma. *Barato, alto valor — corrige o "reconstruímos o que já existia".*
+O que aparece no menu é decidido por **três gates**, nesta ordem, e **todos são UX — a segurança real é o
+`permission_classes` do backend** (defense in depth; nunca esconder menu como controle de acesso):
+
+1. **Módulo/Tier** — `useActiveModules()` (FeatureFlag por tenant). Item some se o tenant não tem o módulo.
+2. **Permissão RBAC** — `item.permissions[]` × `user.permissions` (`.some`). **Este é o gate correto e deve ser o dominante.**
+3. **Persona (preset)** — camada SOFT que reordena/colapsa grupos dentro do que 1+2 já liberam; **nunca amplia acesso**.
+
+**Correções (entram na S-IA1):**
+- **Aposentar o `adminOnly`** (que olha `role_name`) e trocar por permissão real por item. `role_name` é sinal
+  user-settable — o backend já foi endurecido pra NÃO confiar nele (A01/CSO, `HRAccessPermission`); o front tem que seguir.
+- **Catálogo canônico de permissões** (fonte única) — hoje as strings (`emr.read`, `hr.manage`, `workflow.request`…)
+  estão espalhadas. Criar um registro para mapear nav↔permissão e Role↔permissões sem ambiguidade.
+- **Mapear cada item de menu → permissão(ões)**: ex. Escala → `roster.manage`; Financeiro → `billing.read`;
+  Plataforma → `is_platform_admin`/superuser (gate no client também, não só backend).
+- **Fail-safe correto**: enquanto carrega, `module` é fail-open (evita flicker) mas **permissão nunca deve ser
+  fail-open** — na dúvida, não mostrar. Backend continua sendo a barreira dura.
+
+## 7. Backlog de implementação (ondas — curso corrigido)
+
+- **S-IA1 · Nav shell + RBAC + expor o que já existe** (frontend): `DashboardShell` agrupado colapsável;
+  **visibilidade RBAC-por-permissão (§6): aposentar `adminOnly`, mapear item→permissão, catálogo canônico,
+  seção Plataforma gated por superuser**; adicionar ao menu os módulos já construídos que têm página (e listar
+  os backend-only p/ a S-IA1b). *Barato, alto valor — corrige o "reconstruímos o que já existia" + o gate por role_name.*
 - **S-IA2 · Escala → Painel de Setor** (backend+frontend): permissão `roster.manage`, escopo por unidade
   (object-level), suporte a plantão que cruza meia-noite, swap/folga self-service; mover a rota. *Fecha a pergunta original.*
 - **S-IA3 · Command palette (⌘K)** + presets por persona.
