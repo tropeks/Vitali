@@ -438,13 +438,112 @@ class Professional(models.Model):
     council_number = models.CharField(max_length=20)
     council_state = models.CharField(max_length=2)
     specialty = models.CharField(max_length=100, blank=True)
-    cbo_code = models.CharField(max_length=10, blank=True)
-    cnes_code = models.CharField(max_length=10, blank=True)
+
+    # ── M2-S1-T3: governed FKs to the SHARED CBO/CNES catalogs ────────────────
+    # PostgreSQL does not enforce FK integrity across schemas (tenant → public),
+    # so — exactly like MedicalHistory.cid10 / EncounterProcedure.tuss_code — we
+    # use DO_NOTHING and rely on the protect_cbo_code_deletion /
+    # protect_cnes_establishment_deletion pre_delete signals (apps/core/signals.py)
+    # to block deleting a catalog entry that any tenant references. The legacy
+    # free-text columns are preserved for the CharField→FK transition (never lose
+    # data), surfaced through the backward-compatible ``cbo_code`` / ``cnes_code``
+    # properties below so existing readers/serializers/FHIR mappers keep working.
+    cbo = models.ForeignKey(
+        "core.CBOCode",
+        on_delete=models.DO_NOTHING,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="Ocupação CBO",
+    )
+    legacy_cbo_text = models.CharField(
+        max_length=10,
+        blank=True,
+        default="",
+        help_text="Código CBO bruto não reconciliado com core.CBOCode.",
+    )
+    cbo_unmatched = models.BooleanField(
+        default=False,
+        help_text="True quando legacy_cbo_text não corresponde a nenhum CBOCode governado.",
+    )
+    cnes = models.ForeignKey(
+        "core.CNESEstablishment",
+        on_delete=models.DO_NOTHING,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="Estabelecimento CNES",
+    )
+    legacy_cnes_text = models.CharField(
+        max_length=10,
+        blank=True,
+        default="",
+        help_text="Código CNES bruto não reconciliado com core.CNESEstablishment.",
+    )
+    cnes_unmatched = models.BooleanField(
+        default=False,
+        help_text="True quando legacy_cnes_text não corresponde a nenhum CNESEstablishment governado.",
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         unique_together = [["council_type", "council_number", "council_state"]]
+
+    # ── Backward-compatible string accessors (CharField → FK transition) ──────
+    @property
+    def cbo_code(self) -> str:
+        """CBO code string: the governed FK's code when linked, else raw legacy text."""
+        if self.cbo_id:
+            return self.cbo.code  # type: ignore[union-attr]
+        return self.legacy_cbo_text
+
+    @cbo_code.setter
+    def cbo_code(self, value: str) -> None:
+        code = (value or "").strip()
+        if not code:
+            self.cbo = None
+            self.legacy_cbo_text = ""
+            self.cbo_unmatched = False
+            return
+        from apps.core.models import CBOCode
+
+        match = CBOCode.objects.filter(code=code).first()
+        if match is not None:
+            self.cbo = match
+            self.legacy_cbo_text = ""
+            self.cbo_unmatched = False
+        else:
+            self.cbo = None
+            self.legacy_cbo_text = code
+            self.cbo_unmatched = True
+
+    @property
+    def cnes_code(self) -> str:
+        """CNES code string: the governed FK's code when linked, else raw legacy text."""
+        if self.cnes_id:
+            return self.cnes.code  # type: ignore[union-attr]
+        return self.legacy_cnes_text
+
+    @cnes_code.setter
+    def cnes_code(self, value: str) -> None:
+        code = (value or "").strip()
+        if not code:
+            self.cnes = None
+            self.legacy_cnes_text = ""
+            self.cnes_unmatched = False
+            return
+        from apps.core.models import CNESEstablishment
+
+        match = CNESEstablishment.objects.filter(code=code).first()
+        if match is not None:
+            self.cnes = match
+            self.legacy_cnes_text = ""
+            self.cnes_unmatched = False
+        else:
+            self.cnes = None
+            self.legacy_cnes_text = code
+            self.cnes_unmatched = True
 
     def __str__(self):
         return f"{self.user.full_name} - {self.council_type} {self.council_number}/{self.council_state}"

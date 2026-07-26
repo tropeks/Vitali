@@ -999,3 +999,4 @@ class WedgeValueSnapshot(models.Model):
 # ─── E3-T1: domain terminology catalogs (AnvisaProduct) ──────────────────────
 from .catalog_models import *  # noqa: E402,F401,F403
 from .cbhpm_models import *  # noqa: E402,F401,F403
+from .cbo_cnes_models import *  # noqa: E402,F401,F403

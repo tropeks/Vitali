@@ -300,6 +300,12 @@ class ProfessionalSerializer(serializers.ModelSerializer):
     user_name = serializers.CharField(source="user.full_name", read_only=True)
     user_email = serializers.CharField(source="user.email", read_only=True)
     council_type_display = serializers.CharField(source="get_council_type_display", read_only=True)
+    # M2-S1-T3: cbo_code/cnes_code are now backward-compatible model *properties*
+    # backed by the governed cbo/cnes FKs. Declared explicitly so they stay
+    # writable through the property setters (a ModelSerializer would otherwise
+    # infer a property as read-only).
+    cbo_code = serializers.CharField(required=False, allow_blank=True)
+    cnes_code = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:
         model = Professional

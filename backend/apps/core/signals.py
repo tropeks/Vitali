@@ -215,6 +215,68 @@ def protect_anvisa_product_deletion(sender, instance, **kwargs):
                 )
 
 
+# ─── CBOCode cross-schema PROTECT (M2-S1-T3) ─────────────────────────────────
+# Same rationale as protect_cid10_code_deletion: PostgreSQL does not enforce FK
+# integrity across schemas (public → tenant), so an application-layer PROTECT
+# blocks deleting a CBO occupation referenced by tenant HR/EMR data.
+
+
+@receiver(pre_delete, sender="core.CBOCode")
+def protect_cbo_code_deletion(sender, instance, **kwargs):
+    """Block deletion of a CBOCode referenced by tenant data in any tenant.
+
+    Covers ``emr.Professional.cbo`` (FK) in every tenant. Mirrors the
+    MedicalHistory→CID10Code guard.
+    """
+    from django_tenants.utils import get_tenant_model, schema_context
+
+    TenantModel = get_tenant_model()
+    for tenant in TenantModel.objects.exclude(schema_name="public"):
+        with schema_context(tenant.schema_name):
+            from apps.emr.models import Professional
+
+            if Professional.objects.filter(cbo=instance).exists():
+                raise ProtectedError(
+                    f"CBOCode {instance.code} is referenced by Professional in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+
+
+# ─── CNESEstablishment cross-schema PROTECT (M2-S1-T3) ───────────────────────
+# Blocks deleting a CNES establishment referenced by tenant data — both
+# ``emr.Professional.cnes`` and ``organization.Facility.cnes``.
+
+
+@receiver(pre_delete, sender="core.CNESEstablishment")
+def protect_cnes_establishment_deletion(sender, instance, **kwargs):
+    """Block deletion of a CNESEstablishment referenced by tenant data in any tenant.
+
+    Covers ``emr.Professional.cnes`` and ``organization.Facility.cnes`` (FKs) in
+    every tenant. Mirrors the MedicalHistory→CID10Code guard.
+    """
+    from django_tenants.utils import get_tenant_model, schema_context
+
+    TenantModel = get_tenant_model()
+    for tenant in TenantModel.objects.exclude(schema_name="public"):
+        with schema_context(tenant.schema_name):
+            from apps.emr.models import Professional
+            from apps.organization.models import Facility
+
+            if Professional.objects.filter(cnes=instance).exists():
+                raise ProtectedError(
+                    f"CNESEstablishment {instance.code} is referenced by Professional in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+            if Facility.objects.filter(cnes=instance).exists():
+                raise ProtectedError(
+                    f"CNESEstablishment {instance.code} is referenced by Facility in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+
+
 # ─── Tenant → TenantAIConfig + emr FeatureFlag ───────────────────────────────
 
 
