@@ -11463,6 +11463,851 @@ paths:
               schema:
                 $ref: '#/components/schemas/NursingAssessment'
           description: ''
+  /api/v1/nursing-care-interventions/:
+    get:
+      operationId: v1_nursing_care_interventions_list
+      description: NIC interventions attached to a care plan (careplan 1—* NIC).
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - v1
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedNursingCareplanInterventionList'
+          description: ''
+    post:
+      operationId: v1_nursing_care_interventions_create
+      description: NIC interventions attached to a care plan (careplan 1—* NIC).
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NursingCareplanInterventionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/NursingCareplanInterventionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NursingCareplanInterventionRequest'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NursingCareplanIntervention'
+          description: ''
+  /api/v1/nursing-care-interventions/{id}/:
+    get:
+      operationId: v1_nursing_care_interventions_retrieve
+      description: NIC interventions attached to a care plan (careplan 1—* NIC).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Intervenção de Enfermagem (NIC).
+        required: true
+      tags:
+      - v1
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NursingCareplanIntervention'
+          description: ''
+    put:
+      operationId: v1_nursing_care_interventions_update
+      description: NIC interventions attached to a care plan (careplan 1—* NIC).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Intervenção de Enfermagem (NIC).
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NursingCareplanInterventionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/NursingCareplanInterventionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NursingCareplanInterventionRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NursingCareplanIntervention'
+          description: ''
+    patch:
+      operationId: v1_nursing_care_interventions_partial_update
+      description: NIC interventions attached to a care plan (careplan 1—* NIC).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Intervenção de Enfermagem (NIC).
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedNursingCareplanInterventionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedNursingCareplanInterventionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedNursingCareplanInterventionRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NursingCareplanIntervention'
+          description: ''
+    delete:
+      operationId: v1_nursing_care_interventions_destroy
+      description: NIC interventions attached to a care plan (careplan 1—* NIC).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Intervenção de Enfermagem (NIC).
+        required: true
+      tags:
+      - v1
+      responses:
+        '204':
+          description: No response body
+  /api/v1/nursing-careplans/:
+    get:
+      operationId: v1_nursing_careplans_list
+      description: 'Care plans: expected NOC outcome + target for a diagnosis.'
+      parameters:
+      - in: query
+        name: encounter
+        schema:
+          type: string
+        description: Filtra por atendimento (UUID).
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: patient
+        schema:
+          type: string
+        description: Filtra por paciente (UUID).
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - v1
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedNursingCareplanList'
+          description: ''
+    post:
+      operationId: v1_nursing_careplans_create
+      description: 'Care plans: expected NOC outcome + target for a diagnosis.'
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NursingCareplanRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/NursingCareplanRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NursingCareplanRequest'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NursingCareplan'
+          description: ''
+  /api/v1/nursing-careplans/{id}/:
+    get:
+      operationId: v1_nursing_careplans_retrieve
+      description: 'Care plans: expected NOC outcome + target for a diagnosis.'
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Planejamento de Enfermagem.
+        required: true
+      tags:
+      - v1
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NursingCareplan'
+          description: ''
+    put:
+      operationId: v1_nursing_careplans_update
+      description: 'Care plans: expected NOC outcome + target for a diagnosis.'
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Planejamento de Enfermagem.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NursingCareplanRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/NursingCareplanRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NursingCareplanRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NursingCareplan'
+          description: ''
+    patch:
+      operationId: v1_nursing_careplans_partial_update
+      description: 'Care plans: expected NOC outcome + target for a diagnosis.'
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Planejamento de Enfermagem.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedNursingCareplanRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedNursingCareplanRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedNursingCareplanRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NursingCareplan'
+          description: ''
+    delete:
+      operationId: v1_nursing_careplans_destroy
+      description: 'Care plans: expected NOC outcome + target for a diagnosis.'
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Planejamento de Enfermagem.
+        required: true
+      tags:
+      - v1
+      responses:
+        '204':
+          description: No response body
+  /api/v1/nursing-diagnoses/:
+    get:
+      operationId: v1_nursing_diagnoses_list
+      description: Nursing diagnoses (NANDA). Writes are enfermeiro-privativo (``sae.write``).
+      parameters:
+      - in: query
+        name: encounter
+        schema:
+          type: string
+        description: Filtra por atendimento (UUID).
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: patient
+        schema:
+          type: string
+        description: Filtra por paciente (UUID).
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - v1
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedNursingDiagnosisList'
+          description: ''
+    post:
+      operationId: v1_nursing_diagnoses_create
+      description: Nursing diagnoses (NANDA). Writes are enfermeiro-privativo (``sae.write``).
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NursingDiagnosisRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/NursingDiagnosisRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NursingDiagnosisRequest'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NursingDiagnosis'
+          description: ''
+  /api/v1/nursing-diagnoses/{id}/:
+    get:
+      operationId: v1_nursing_diagnoses_retrieve
+      description: Nursing diagnoses (NANDA). Writes are enfermeiro-privativo (``sae.write``).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Diagnóstico de Enfermagem.
+        required: true
+      tags:
+      - v1
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NursingDiagnosis'
+          description: ''
+    put:
+      operationId: v1_nursing_diagnoses_update
+      description: Nursing diagnoses (NANDA). Writes are enfermeiro-privativo (``sae.write``).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Diagnóstico de Enfermagem.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NursingDiagnosisRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/NursingDiagnosisRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NursingDiagnosisRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NursingDiagnosis'
+          description: ''
+    patch:
+      operationId: v1_nursing_diagnoses_partial_update
+      description: Nursing diagnoses (NANDA). Writes are enfermeiro-privativo (``sae.write``).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Diagnóstico de Enfermagem.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedNursingDiagnosisRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedNursingDiagnosisRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedNursingDiagnosisRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NursingDiagnosis'
+          description: ''
+    delete:
+      operationId: v1_nursing_diagnoses_destroy
+      description: Nursing diagnoses (NANDA). Writes are enfermeiro-privativo (``sae.write``).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Diagnóstico de Enfermagem.
+        required: true
+      tags:
+      - v1
+      responses:
+        '204':
+          description: No response body
+  /api/v1/nursing-evolutions/:
+    get:
+      operationId: v1_nursing_evolutions_list
+      description: Nursing evolution notes (evolução).
+      parameters:
+      - in: query
+        name: encounter
+        schema:
+          type: string
+        description: Filtra por atendimento (UUID).
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: patient
+        schema:
+          type: string
+        description: Filtra por paciente (UUID).
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - v1
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedNursingEvolutionList'
+          description: ''
+    post:
+      operationId: v1_nursing_evolutions_create
+      description: Nursing evolution notes (evolução).
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NursingEvolutionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/NursingEvolutionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NursingEvolutionRequest'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NursingEvolution'
+          description: ''
+  /api/v1/nursing-evolutions/{id}/:
+    get:
+      operationId: v1_nursing_evolutions_retrieve
+      description: Nursing evolution notes (evolução).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Evolução de Enfermagem.
+        required: true
+      tags:
+      - v1
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NursingEvolution'
+          description: ''
+    put:
+      operationId: v1_nursing_evolutions_update
+      description: Nursing evolution notes (evolução).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Evolução de Enfermagem.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NursingEvolutionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/NursingEvolutionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NursingEvolutionRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NursingEvolution'
+          description: ''
+    patch:
+      operationId: v1_nursing_evolutions_partial_update
+      description: Nursing evolution notes (evolução).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Evolução de Enfermagem.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedNursingEvolutionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedNursingEvolutionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedNursingEvolutionRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NursingEvolution'
+          description: ''
+    delete:
+      operationId: v1_nursing_evolutions_destroy
+      description: Nursing evolution notes (evolução).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Evolução de Enfermagem.
+        required: true
+      tags:
+      - v1
+      responses:
+        '204':
+          description: No response body
+  /api/v1/nursing-prescription-items/:
+    get:
+      operationId: v1_nursing_prescription_items_list
+      description: Executable nursing prescription lines (drive aprazamento). Enfermeiro-privativo.
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: patient
+        schema:
+          type: string
+        description: Filtra por paciente (UUID).
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - v1
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedNursingPrescriptionItemList'
+          description: ''
+    post:
+      operationId: v1_nursing_prescription_items_create
+      description: Executable nursing prescription lines (drive aprazamento). Enfermeiro-privativo.
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NursingPrescriptionItemRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/NursingPrescriptionItemRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NursingPrescriptionItemRequest'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NursingPrescriptionItem'
+          description: ''
+  /api/v1/nursing-prescription-items/{id}/:
+    get:
+      operationId: v1_nursing_prescription_items_retrieve
+      description: Executable nursing prescription lines (drive aprazamento). Enfermeiro-privativo.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Prescrição de Enfermagem (item).
+        required: true
+      tags:
+      - v1
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NursingPrescriptionItem'
+          description: ''
+    put:
+      operationId: v1_nursing_prescription_items_update
+      description: Executable nursing prescription lines (drive aprazamento). Enfermeiro-privativo.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Prescrição de Enfermagem (item).
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NursingPrescriptionItemRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/NursingPrescriptionItemRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NursingPrescriptionItemRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NursingPrescriptionItem'
+          description: ''
+    patch:
+      operationId: v1_nursing_prescription_items_partial_update
+      description: Executable nursing prescription lines (drive aprazamento). Enfermeiro-privativo.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Prescrição de Enfermagem (item).
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedNursingPrescriptionItemRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedNursingPrescriptionItemRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedNursingPrescriptionItemRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NursingPrescriptionItem'
+          description: ''
+    delete:
+      operationId: v1_nursing_prescription_items_destroy
+      description: Executable nursing prescription lines (drive aprazamento). Enfermeiro-privativo.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Prescrição de Enfermagem (item).
+        required: true
+      tags:
+      - v1
+      responses:
+        '204':
+          description: No response body
   /api/v1/onboarding/:
     get:
       operationId: v1_onboarding_retrieve
@@ -24708,6 +25553,370 @@ components:
       required:
       - encounter
       - kind
+    NursingCareplan:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        diagnosis:
+          type: string
+          format: uuid
+        noc:
+          type: integer
+          nullable: true
+          title: Resultado NOC
+        noc_code:
+          type: string
+          readOnly: true
+        legacy_noc_text:
+          type: string
+          readOnly: true
+          description: Código NOC bruto não reconciliado com core.NocOutcome.
+        noc_unmatched:
+          type: boolean
+          readOnly: true
+          description: True quando legacy_noc_text não corresponde a nenhum NocOutcome
+            governado.
+        expected_outcome:
+          type: string
+          title: Resultado esperado
+          description: Descrição do resultado esperado (complementa o rótulo NOC).
+        target:
+          type: string
+          title: Meta
+          description: 'Meta / alvo do indicador NOC (ex.: ''escala de dor ≤ 2 em
+            48h'').'
+          maxLength: 200
+        created_by:
+          type: string
+          format: uuid
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - created_by
+      - diagnosis
+      - id
+      - legacy_noc_text
+      - noc_code
+      - noc_unmatched
+      - updated_at
+    NursingCareplanIntervention:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        careplan:
+          type: string
+          format: uuid
+        nic:
+          type: integer
+          nullable: true
+          title: Intervenção NIC
+        nic_code:
+          type: string
+          readOnly: true
+        legacy_nic_text:
+          type: string
+          readOnly: true
+          description: Código NIC bruto não reconciliado com core.NicIntervention.
+        nic_unmatched:
+          type: boolean
+          readOnly: true
+          description: True quando legacy_nic_text não corresponde a nenhum NicIntervention
+            governado.
+        notes:
+          type: string
+          title: Observações
+          description: Detalhamento / atividades específicas da intervenção neste
+            paciente.
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - careplan
+      - created_at
+      - id
+      - legacy_nic_text
+      - nic_code
+      - nic_unmatched
+    NursingCareplanInterventionRequest:
+      type: object
+      properties:
+        careplan:
+          type: string
+          format: uuid
+        nic:
+          type: integer
+          nullable: true
+          title: Intervenção NIC
+        notes:
+          type: string
+          title: Observações
+          description: Detalhamento / atividades específicas da intervenção neste
+            paciente.
+      required:
+      - careplan
+    NursingCareplanRequest:
+      type: object
+      properties:
+        diagnosis:
+          type: string
+          format: uuid
+        noc:
+          type: integer
+          nullable: true
+          title: Resultado NOC
+        expected_outcome:
+          type: string
+          title: Resultado esperado
+          description: Descrição do resultado esperado (complementa o rótulo NOC).
+        target:
+          type: string
+          title: Meta
+          description: 'Meta / alvo do indicador NOC (ex.: ''escala de dor ≤ 2 em
+            48h'').'
+          maxLength: 200
+      required:
+      - diagnosis
+    NursingDiagnosis:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        patient:
+          type: string
+          format: uuid
+          readOnly: true
+        encounter:
+          type: string
+          format: uuid
+        nanda:
+          type: integer
+          nullable: true
+          title: Diagnóstico NANDA-I
+        nanda_code:
+          type: string
+          readOnly: true
+        legacy_nanda_text:
+          type: string
+          readOnly: true
+          description: Código NANDA-I bruto não reconciliado com core.NandaDiagnosis.
+        nanda_unmatched:
+          type: boolean
+          readOnly: true
+          description: True quando legacy_nanda_text não corresponde a nenhum NandaDiagnosis
+            governado.
+        related_factors:
+          type: string
+          title: Fatores relacionados
+          description: Fatores relacionados / de risco identificados neste paciente.
+        defining_characteristics:
+          type: string
+          title: Características definidoras
+          description: Características definidoras observadas neste paciente.
+        status:
+          $ref: '#/components/schemas/NursingDiagnosisStatusEnum'
+        priority:
+          $ref: '#/components/schemas/PriorityEnum'
+        created_by:
+          type: string
+          format: uuid
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - created_by
+      - encounter
+      - id
+      - legacy_nanda_text
+      - nanda_code
+      - nanda_unmatched
+      - patient
+      - updated_at
+    NursingDiagnosisRequest:
+      type: object
+      properties:
+        encounter:
+          type: string
+          format: uuid
+        nanda:
+          type: integer
+          nullable: true
+          title: Diagnóstico NANDA-I
+        related_factors:
+          type: string
+          title: Fatores relacionados
+          description: Fatores relacionados / de risco identificados neste paciente.
+        defining_characteristics:
+          type: string
+          title: Características definidoras
+          description: Características definidoras observadas neste paciente.
+        status:
+          $ref: '#/components/schemas/NursingDiagnosisStatusEnum'
+        priority:
+          $ref: '#/components/schemas/PriorityEnum'
+      required:
+      - encounter
+    NursingDiagnosisStatusEnum:
+      enum:
+      - active
+      - resolved
+      type: string
+      description: |-
+        * `active` - Ativo
+        * `resolved` - Resolvido
+    NursingEvolution:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        patient:
+          type: string
+          format: uuid
+          readOnly: true
+        encounter:
+          type: string
+          format: uuid
+        text:
+          type: string
+          title: Evolução
+          description: Texto da evolução de enfermagem.
+        created_by:
+          type: string
+          format: uuid
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - created_by
+      - encounter
+      - id
+      - patient
+      - text
+      - updated_at
+    NursingEvolutionRequest:
+      type: object
+      properties:
+        encounter:
+          type: string
+          format: uuid
+        text:
+          type: string
+          minLength: 1
+          title: Evolução
+          description: Texto da evolução de enfermagem.
+      required:
+      - encounter
+      - text
+    NursingPrescriptionItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        intervention:
+          type: string
+          format: uuid
+        description:
+          type: string
+          title: Descrição
+          description: 'O que executar (ex.: ''Verificar sinais vitais'').'
+          maxLength: 300
+        frequency_hours:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          title: Frequência (horas)
+          description: 'Intervalo em horas entre execuções (ex.: 6 = de 6/6h). Base
+            do aprazamento.'
+        start_at:
+          type: string
+          format: date-time
+          title: Início
+          description: Momento da primeira execução; âncora da grade de aprazamento.
+        active:
+          type: boolean
+        created_by:
+          type: string
+          format: uuid
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - created_by
+      - frequency_hours
+      - id
+      - intervention
+      - start_at
+      - updated_at
+    NursingPrescriptionItemRequest:
+      type: object
+      properties:
+        intervention:
+          type: string
+          format: uuid
+        description:
+          type: string
+          title: Descrição
+          description: 'O que executar (ex.: ''Verificar sinais vitais'').'
+          maxLength: 300
+        frequency_hours:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          title: Frequência (horas)
+          description: 'Intervalo em horas entre execuções (ex.: 6 = de 6/6h). Base
+            do aprazamento.'
+        start_at:
+          type: string
+          format: date-time
+          title: Início
+          description: Momento da primeira execução; âncora da grade de aprazamento.
+        active:
+          type: boolean
+      required:
+      - frequency_hours
+      - intervention
+      - start_at
     OccupationalHealthExam:
       type: object
       properties:
@@ -26428,6 +27637,121 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/NursingAssessment'
+    PaginatedNursingCareplanInterventionList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/NursingCareplanIntervention'
+    PaginatedNursingCareplanList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/NursingCareplan'
+    PaginatedNursingDiagnosisList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/NursingDiagnosis'
+    PaginatedNursingEvolutionList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/NursingEvolution'
+    PaginatedNursingPrescriptionItemList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/NursingPrescriptionItem'
     PaginatedOccupationalHealthExamList:
       type: object
       required:
@@ -28307,6 +29631,99 @@ components:
         encounter:
           type: string
           format: uuid
+    PatchedNursingCareplanInterventionRequest:
+      type: object
+      properties:
+        careplan:
+          type: string
+          format: uuid
+        nic:
+          type: integer
+          nullable: true
+          title: Intervenção NIC
+        notes:
+          type: string
+          title: Observações
+          description: Detalhamento / atividades específicas da intervenção neste
+            paciente.
+    PatchedNursingCareplanRequest:
+      type: object
+      properties:
+        diagnosis:
+          type: string
+          format: uuid
+        noc:
+          type: integer
+          nullable: true
+          title: Resultado NOC
+        expected_outcome:
+          type: string
+          title: Resultado esperado
+          description: Descrição do resultado esperado (complementa o rótulo NOC).
+        target:
+          type: string
+          title: Meta
+          description: 'Meta / alvo do indicador NOC (ex.: ''escala de dor ≤ 2 em
+            48h'').'
+          maxLength: 200
+    PatchedNursingDiagnosisRequest:
+      type: object
+      properties:
+        encounter:
+          type: string
+          format: uuid
+        nanda:
+          type: integer
+          nullable: true
+          title: Diagnóstico NANDA-I
+        related_factors:
+          type: string
+          title: Fatores relacionados
+          description: Fatores relacionados / de risco identificados neste paciente.
+        defining_characteristics:
+          type: string
+          title: Características definidoras
+          description: Características definidoras observadas neste paciente.
+        status:
+          $ref: '#/components/schemas/NursingDiagnosisStatusEnum'
+        priority:
+          $ref: '#/components/schemas/PriorityEnum'
+    PatchedNursingEvolutionRequest:
+      type: object
+      properties:
+        encounter:
+          type: string
+          format: uuid
+        text:
+          type: string
+          minLength: 1
+          title: Evolução
+          description: Texto da evolução de enfermagem.
+    PatchedNursingPrescriptionItemRequest:
+      type: object
+      properties:
+        intervention:
+          type: string
+          format: uuid
+        description:
+          type: string
+          title: Descrição
+          description: 'O que executar (ex.: ''Verificar sinais vitais'').'
+          maxLength: 300
+        frequency_hours:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          title: Frequência (horas)
+          description: 'Intervalo em horas entre execuções (ex.: 6 = de 6/6h). Base
+            do aprazamento.'
+        start_at:
+          type: string
+          format: date-time
+          title: Início
+          description: Momento da primeira execução; âncora da grade de aprazamento.
+        active:
+          type: boolean
     PatchedOccupationalHealthExamRequest:
       type: object
       properties:
@@ -30400,6 +31817,16 @@ components:
       - name
       - provider
       - valid_from
+    PriorityEnum:
+      enum:
+      - high
+      - medium
+      - low
+      type: string
+      description: |-
+        * `high` - Alta
+        * `medium` - Média
+        * `low` - Baixa
     ProblemListItem:
       type: object
       properties:

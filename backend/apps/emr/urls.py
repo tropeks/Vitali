@@ -32,6 +32,13 @@ from .views_lis import LabIntegrationMessageViewSet, LabOrderORMView, LISInbound
 from .views_pdf import PrescriptionPDFView
 from .views_problems import AllergyViewSet, ImmunizationViewSet, ProblemListItemViewSet
 from .views_reconciliation import MedicationReconciliationViewSet, OrderSetViewSet
+from .views_sae import (
+    NursingCareplanInterventionViewSet,
+    NursingCareplanViewSet,
+    NursingDiagnosisViewSet,
+    NursingEvolutionViewSet,
+    NursingPrescriptionItemViewSet,
+)
 from .views_safety import (
     AcknowledgeDeteriorationAlertView,
     AcknowledgeNoShowRiskView,
@@ -75,6 +82,20 @@ router.register("prescriptions", PrescriptionViewSet, basename="prescription")
 router.register("prescription-items", PrescriptionItemViewSet, basename="prescription-item")
 router.register("emar", MedicationAdministrationViewSet, basename="emar")
 router.register("nursing-assessments", NursingAssessmentViewSet, basename="nursing-assessment")
+# ── N2: executable SAE domain (diagnóstico → planejamento → intervenção → prescrição → evolução)
+router.register("nursing-diagnoses", NursingDiagnosisViewSet, basename="nursing-diagnosis")
+router.register("nursing-careplans", NursingCareplanViewSet, basename="nursing-careplan")
+router.register(
+    "nursing-care-interventions",
+    NursingCareplanInterventionViewSet,
+    basename="nursing-care-intervention",
+)
+router.register(
+    "nursing-prescription-items",
+    NursingPrescriptionItemViewSet,
+    basename="nursing-prescription-item",
+)
+router.register("nursing-evolutions", NursingEvolutionViewSet, basename="nursing-evolution")
 router.register("problems", ProblemListItemViewSet, basename="problem")
 router.register("allergies", AllergyViewSet, basename="allergy")
 router.register("immunizations", ImmunizationViewSet, basename="immunization")

@@ -279,18 +279,67 @@ def protect_loinc_code_deletion(sender, instance, **kwargs):
                 )
 
 
-# ─── Nursing taxonomies cross-schema PROTECT (N1 — deferred to N2) ────────────
-# NandaDiagnosis / NicIntervention / NocOutcome are governed SHARED catalogs, but
-# in N1 they are STANDALONE: no tenant model references them yet, so there is no
-# cross-schema FK to protect and therefore NO pre_delete guard is registered here
-# (a guard querying a not-yet-existing tenant relation would only add dead code).
-#
-# When N2 wires the SAE care-plan capture in ``emr`` (e.g. a NursingDiagnosis
-# entry FK → core.NandaDiagnosis, and NIC/NOC links), add guards mirroring
-# ``protect_cbo_code_deletion`` above — one @receiver(pre_delete, sender=...) per
-# catalog, iterating tenants under schema_context and raising ProtectedError when
-# the tenant relation references the instance. Mirroring CBOCode's shape exactly
-# (done in nursing_catalog_models.py) makes that a drop-in one-block addition.
+# ─── Nursing taxonomies cross-schema PROTECT (N2 — SAE domain wired) ──────────
+# N2 wires the tenant-side SAE domain (apps.emr.sae_models): NursingDiagnosis.nanda
+# → core.NandaDiagnosis, NursingCareplan.noc → core.NocOutcome, and
+# NursingCareplanIntervention.nic → core.NicIntervention. PostgreSQL does not
+# enforce FK integrity across schemas (tenant → public), so — exactly like
+# protect_cbo_code_deletion — these application-layer guards block hard-deleting a
+# catalog row any tenant references.
+
+
+@receiver(pre_delete, sender="core.NandaDiagnosis")
+def protect_nanda_diagnosis_deletion(sender, instance, **kwargs):
+    """Block deletion of a NandaDiagnosis referenced by ``emr.NursingDiagnosis.nanda`` in any tenant."""
+    from django_tenants.utils import get_tenant_model, schema_context
+
+    TenantModel = get_tenant_model()
+    for tenant in TenantModel.objects.exclude(schema_name="public"):
+        with schema_context(tenant.schema_name):
+            from apps.emr.models import NursingDiagnosis
+
+            if NursingDiagnosis.objects.filter(nanda=instance).exists():
+                raise ProtectedError(
+                    f"NandaDiagnosis {instance.code} is referenced by NursingDiagnosis in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+
+
+@receiver(pre_delete, sender="core.NicIntervention")
+def protect_nic_intervention_deletion(sender, instance, **kwargs):
+    """Block deletion of a NicIntervention referenced by ``emr.NursingCareplanIntervention.nic``."""
+    from django_tenants.utils import get_tenant_model, schema_context
+
+    TenantModel = get_tenant_model()
+    for tenant in TenantModel.objects.exclude(schema_name="public"):
+        with schema_context(tenant.schema_name):
+            from apps.emr.models import NursingCareplanIntervention
+
+            if NursingCareplanIntervention.objects.filter(nic=instance).exists():
+                raise ProtectedError(
+                    f"NicIntervention {instance.code} is referenced by NursingCareplanIntervention "
+                    f"in schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+
+
+@receiver(pre_delete, sender="core.NocOutcome")
+def protect_noc_outcome_deletion(sender, instance, **kwargs):
+    """Block deletion of a NocOutcome referenced by ``emr.NursingCareplan.noc`` in any tenant."""
+    from django_tenants.utils import get_tenant_model, schema_context
+
+    TenantModel = get_tenant_model()
+    for tenant in TenantModel.objects.exclude(schema_name="public"):
+        with schema_context(tenant.schema_name):
+            from apps.emr.models import NursingCareplan
+
+            if NursingCareplan.objects.filter(noc=instance).exists():
+                raise ProtectedError(
+                    f"NocOutcome {instance.code} is referenced by NursingCareplan in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
 
 
 # ─── Tenant → TenantAIConfig + emr FeatureFlag ───────────────────────────────
