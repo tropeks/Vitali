@@ -15,6 +15,7 @@ import {
   Stethoscope,
   Activity,
   ScanLine,
+  ScanBarcode,
   FlaskConical,
   CalendarX,
   CalendarClock,
@@ -103,6 +104,15 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Activity,
         module: "emr",
         permissions: [PERMISSIONS.EMR_READ],
+      },
+      {
+        // BCMA bedside "5 certos" checagem (N5) — gated emar.administer
+        // (técnico/enfermeiro à beira-leito). Backend EmarCheck is the real gate.
+        label: "Checagem (MAR)",
+        href: "/enfermagem/checagem",
+        icon: ScanBarcode,
+        module: "emr",
+        permissions: [PERMISSIONS.EMAR_ADMINISTER],
       },
       {
         label: "Faltas",

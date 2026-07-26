@@ -23,6 +23,34 @@ export interface UserDTO {
 }
 
 /**
+ * Reads the current user from the (non-httpOnly) `vitali_user` cookie set at
+ * login. Client-only — returns null on the server or when the cookie is absent
+ * or malformed. The cookie is a UX snapshot; the backend `permission_classes`
+ * remains the real security boundary (a hidden control never grants access).
+ */
+export function getCurrentUser(): UserDTO | null {
+  if (typeof document === "undefined") return null;
+  const raw = document.cookie
+    .split("; ")
+    .find((c) => c.startsWith("vitali_user="))
+    ?.slice("vitali_user=".length);
+  if (!raw) return null;
+  try {
+    return JSON.parse(decodeURIComponent(raw)) as UserDTO;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * True when the current user holds `permission`. UX-only gate (defense in
+ * depth): hiding a control is never access control — the backend enforces 403.
+ */
+export function hasPermission(permission: string): boolean {
+  return (getCurrentUser()?.permissions ?? []).includes(permission);
+}
+
+/**
  * Returns the JWT access token from the non-httpOnly access_token_js cookie.
  * The httpOnly access_token cookie (used by server-side middleware) is not readable
  * by JS — access_token_js is the parallel client-readable mirror set on login/refresh.

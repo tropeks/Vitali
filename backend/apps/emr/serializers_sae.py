@@ -22,8 +22,47 @@ from .models import (
 )
 
 
-class NursingDiagnosisSerializer(serializers.ModelSerializer):
-    nanda_code = serializers.CharField(read_only=True)
+class _CatalogCodeWriteMixin(serializers.ModelSerializer):
+    """Make the governed ``*_code`` field writable by routing it through the
+    model's property setter, which resolves the code to a governed FK (or marks
+    the row unmatched + stores the legacy text) — the same reconcile-safe shape
+    as ``cbo``/``cnes``.
+
+    The terminology search endpoint exposes only ``code``/``display`` (no catalog
+    PK), so the SAE workspace posts ``nanda_code``/``noc_code``/``nic_code``.
+    ``ModelSerializer.create`` can't hand a *property* kwarg to ``Model.__init__``
+    (it only accepts real fields), so we pop the code and apply it via ``setattr``
+    after the instance exists. An explicit FK pk (``nanda``/``noc``/``nic``), if
+    ever sent, wins over the code.
+    """
+
+    #: subclasses set the ("<x>_code", "<x>") pair.
+    catalog_code_field: str = ""
+    catalog_fk_field: str = ""
+
+    def create(self, validated_data):
+        code = validated_data.pop(self.catalog_code_field, None)
+        fk_provided = self.catalog_fk_field in validated_data
+        instance = super().create(validated_data)
+        if code is not None and not fk_provided:
+            setattr(instance, self.catalog_code_field, code)
+            instance.save()
+        return instance
+
+    def update(self, instance, validated_data):
+        code = validated_data.pop(self.catalog_code_field, None)
+        fk_provided = self.catalog_fk_field in validated_data
+        instance = super().update(instance, validated_data)
+        if code is not None and not fk_provided:
+            setattr(instance, self.catalog_code_field, code)
+            instance.save()
+        return instance
+
+
+class NursingDiagnosisSerializer(_CatalogCodeWriteMixin):
+    nanda_code = serializers.CharField(required=False, allow_blank=True)
+    catalog_code_field = "nanda_code"
+    catalog_fk_field = "nanda"
 
     class Meta:
         model = NursingDiagnosis
@@ -60,8 +99,10 @@ class NursingDiagnosisSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class NursingCareplanSerializer(serializers.ModelSerializer):
-    noc_code = serializers.CharField(read_only=True)
+class NursingCareplanSerializer(_CatalogCodeWriteMixin):
+    noc_code = serializers.CharField(required=False, allow_blank=True)
+    catalog_code_field = "noc_code"
+    catalog_fk_field = "noc"
 
     class Meta:
         model = NursingCareplan
@@ -88,8 +129,10 @@ class NursingCareplanSerializer(serializers.ModelSerializer):
         )
 
 
-class NursingCareplanInterventionSerializer(serializers.ModelSerializer):
-    nic_code = serializers.CharField(read_only=True)
+class NursingCareplanInterventionSerializer(_CatalogCodeWriteMixin):
+    nic_code = serializers.CharField(required=False, allow_blank=True)
+    catalog_code_field = "nic_code"
+    catalog_fk_field = "nic"
 
     class Meta:
         model = NursingCareplanIntervention

@@ -22,6 +22,7 @@ import {
   WalletCards,
 } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
+import { hasPermission } from '@/lib/auth'
 import {
   ALLERGY_SEVERITY_BLOCK,
   ALLERGY_SEVERITY_META,
@@ -37,8 +38,10 @@ import { PageShell, SectionState, StatusBadge } from '@/components/shared'
 import ProblemList from '@/components/patients/ProblemList'
 import ImmunizationList from '@/components/patients/ImmunizationList'
 import ReconciliationList from '@/components/patients/ReconciliationList'
+import SaeDiagnosisList from '@/components/nursing/SaeDiagnosisList'
+import SaeEvolution from '@/components/nursing/SaeEvolution'
 
-type TabId = 'resumo' | 'timeline' | 'clinico' | 'reconciliacao' | 'convenios' | 'dados'
+type TabId = 'resumo' | 'timeline' | 'clinico' | 'reconciliacao' | 'sae' | 'convenios' | 'dados'
 
 interface Patient {
   id: string
@@ -610,6 +613,8 @@ export default function PatientDetailPage() {
     .filter((appointment) => appointment.start_time)
     .sort((a, b) => new Date(a.start_time ?? 0).getTime() - new Date(b.start_time ?? 0).getTime())[0]
   const openEncounters = related.encounters.filter((encounter) => encounter.status === 'open')
+  const saeEncounterId = openEncounters[0]?.id ?? null
+  const canWriteSae = useMemo(() => hasPermission('sae.write'), [])
   const pendingGuides = related.guides.filter((guide) => guide.status && !['paid'].includes(guide.status))
   const glosaGuides = related.guides.filter((guide) => guide.status === 'denied' || guide.status === 'appeal')
   const activePrescriptions = related.prescriptions.filter((rx) =>
@@ -627,6 +632,7 @@ export default function PatientDetailPage() {
     { id: 'timeline', label: `Timeline${related.timeline.length ? ` (${related.timeline.length})` : ''}` },
     { id: 'clinico', label: `Clínico${activeAllergies.length ? ` (${activeAllergies.length})` : ''}` },
     { id: 'reconciliacao', label: 'Reconciliação' },
+    { id: 'sae', label: 'SAE' },
     { id: 'convenios', label: `Convênios${activeCards.length ? ` (${activeCards.length})` : ''}` },
     { id: 'dados', label: 'Dados cadastrais' },
   ]
@@ -1100,6 +1106,46 @@ export default function PatientDetailPage() {
                     </p>
                   </div>
                   <ReconciliationList patientId={id} />
+                </div>
+              )}
+
+              {activeTab === 'sae' && (
+                <div className="space-y-6">
+                  <section>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <h2 className="text-base font-semibold text-slate-900">
+                        Diagnósticos de enfermagem (SAE)
+                      </h2>
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Processo de enfermagem
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Diagnóstico (NANDA) → plano de cuidados (resultado NOC + intervenções NIC) →
+                      prescrição de enfermagem executável. Registro governado do prontuário.
+                    </p>
+                    <div className="mt-3">
+                      <SaeDiagnosisList
+                        patientId={id}
+                        encounterId={saeEncounterId}
+                        canWrite={canWriteSae}
+                      />
+                    </div>
+                  </section>
+
+                  <section>
+                    <h2 className="text-base font-semibold text-slate-900">Evolução de enfermagem</h2>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Evoluções de enfermagem do paciente em ordem cronológica.
+                    </p>
+                    <div className="mt-3">
+                      <SaeEvolution
+                        patientId={id}
+                        encounterId={saeEncounterId}
+                        canWrite={canWriteSae}
+                      />
+                    </div>
+                  </section>
                 </div>
               )}
 

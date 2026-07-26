@@ -75,6 +75,33 @@ class TestNursingDiagnosisAPI(SAEAPITestBase):
         assert dx.nanda_id == self.nanda.pk
         assert resp.data["nanda_code"] == "00132"
 
+    def test_create_diagnosis_by_nanda_code_resolves_fk(self):
+        # The terminology picker exposes only code/display (no catalog PK), so the
+        # SAE workspace posts nanda_code. The writable *_code accessor must resolve
+        # it to the governed FK — not silently drop the link.
+        resp = self._client(self.enf).post(
+            f"{BASE}/nursing-diagnoses/",
+            {"encounter": str(self.encounter.id), "nanda_code": "00132", "priority": "high"},
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        dx = NursingDiagnosis.objects.get(pk=resp.data["id"])
+        assert dx.nanda_id == self.nanda.pk
+        assert dx.nanda_unmatched is False
+        assert resp.data["nanda_code"] == "00132"
+
+    def test_create_diagnosis_by_unknown_code_marks_unmatched(self):
+        resp = self._client(self.enf).post(
+            f"{BASE}/nursing-diagnoses/",
+            {"encounter": str(self.encounter.id), "nanda_code": "99999"},
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        dx = NursingDiagnosis.objects.get(pk=resp.data["id"])
+        assert dx.nanda_id is None
+        assert dx.nanda_unmatched is True
+        assert dx.legacy_nanda_text == "99999"
+
     def test_medico_can_read_but_not_write_diagnosis(self):
         NursingDiagnosis.objects.create(
             patient=self.patient, encounter=self.encounter, nanda=self.nanda, created_by=self.enf
