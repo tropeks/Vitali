@@ -47,6 +47,17 @@ class DicomStudy(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     patient = models.ForeignKey(Patient, on_delete=models.PROTECT, related_name="dicom_studies")
+    # Unit (Facility) where the study was performed. Nullable — legacy/external
+    # studies may not carry it; multi-unit installs and the diagnostic-concession
+    # consumption wiring rely on it. Referenced by string to avoid import coupling.
+    unit = models.ForeignKey(
+        "organization.Facility",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="dicom_studies",
+        help_text="Unidade onde o estudo foi realizado (multi-unidade / concessão).",
+    )
     encounter = models.ForeignKey(
         Encounter,
         on_delete=models.SET_NULL,

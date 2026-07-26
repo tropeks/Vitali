@@ -175,6 +175,16 @@ class Dispatch(models.Model):
     status = models.CharField(
         max_length=20, choices=Status.choices, default=Status.PENDING, db_index=True
     )
+    # Freight cost the operator bears for this dispatch. Feeds the P&L freight
+    # leg (``services_pnl._freight_for``). NULL/absent contributes 0.
+    freight_cost = models.DecimalField(
+        "Custo de frete",
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Custo de frete deste despacho; entra na perna de frete do P&L.",
+    )
     shipped_at = models.DateTimeField(null=True, blank=True)
     delivered_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
