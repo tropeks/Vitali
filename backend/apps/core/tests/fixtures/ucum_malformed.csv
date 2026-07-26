@@ -1,0 +1,4 @@
+# Malformed UCUM fixture (M2-S3-T1): one row missing UCUM_CODE, one missing DISPLAY.
+UCUM_CODE;DISPLAY
+;milligram per deciliter
+g/L;

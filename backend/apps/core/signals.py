@@ -215,6 +215,34 @@ def protect_anvisa_product_deletion(sender, instance, **kwargs):
                 )
 
 
+# ─── LoincCode cross-schema PROTECT (M2-S3-T2) ───────────────────────────────
+# Same rationale as protect_anvisa_product_deletion: PostgreSQL does not enforce
+# FK integrity across schemas (public → tenant), so an application-layer PROTECT
+# blocks deleting a LOINC catalog code referenced by tenant lab data.
+
+
+@receiver(pre_delete, sender="core.LoincCode")
+def protect_loinc_code_deletion(sender, instance, **kwargs):
+    """Block deletion of a LoincCode referenced by tenant EMR lab data.
+
+    Covers ``emr.LabTest.loinc`` (FK) in every tenant. Mirrors the
+    Drug→AnvisaProduct guard.
+    """
+    from django_tenants.utils import get_tenant_model, schema_context
+
+    TenantModel = get_tenant_model()
+    for tenant in TenantModel.objects.exclude(schema_name="public"):
+        with schema_context(tenant.schema_name):
+            from apps.emr.models import LabTest
+
+            if LabTest.objects.filter(loinc=instance).exists():
+                raise ProtectedError(
+                    f"LoincCode {instance.code} is referenced by LabTest in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+
+
 # ─── Tenant → TenantAIConfig + emr FeatureFlag ───────────────────────────────
 
 
