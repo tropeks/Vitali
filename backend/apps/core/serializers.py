@@ -84,8 +84,19 @@ class UserDTOSerializer(serializers.ModelSerializer):
         # Mirror HasPermission's tenant-effective role (membership Model B), not
         # merely the user's legacy/global role, so navigation never advertises
         # actions from another tenant membership.
+        from apps.core.permissions import role_has_admin_capability
+
         role = obj.effective_role()
-        return list(role.permissions or []) if role else []
+        if not role:
+            return []
+        perms = list(role.permissions or [])
+        # Emit the EFFECTIVE admin capability so the client RBAC (canSee) matches
+        # the backend: is_system admin roles carry the capability via is_system +
+        # name (role_has_admin_capability), not necessarily the literal "admin"
+        # string (their stored list may predate it). Never keyed off role_name.
+        if "admin" not in perms and role_has_admin_capability(role):
+            perms.append("admin")
+        return perms
 
     def get_active_modules(self, obj) -> list:
         """Return active modules for the current tenant via FeatureFlag."""
