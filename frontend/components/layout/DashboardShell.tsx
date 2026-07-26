@@ -186,6 +186,10 @@ const NAV_GROUPS: NavGroup[] = [
         children: [
           { label: "Resultado (DRE)", href: "/administracao/resultado-financeiro" },
           { label: "Conciliação", href: "/administracao/conciliacao-financeira" },
+          { label: "Contas a pagar", href: "/billing/contas-a-pagar" },
+          { label: "Contas a receber", href: "/billing/contas-a-receber" },
+          { label: "Tesouraria", href: "/billing/tesouraria" },
+          { label: "Repasses médicos", href: "/billing/settlements" },
         ],
       },
     ],
