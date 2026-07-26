@@ -1140,7 +1140,9 @@ class LabDeltaAlert(models.Model):
         ]
 
     def __str__(self):
-        return f"Delta {self.test_id}: {self.previous_value}→{self.current_value} ({self.delta_pct}%)"
+        return (
+            f"Delta {self.test_id}: {self.previous_value}→{self.current_value} ({self.delta_pct}%)"
+        )
 
 
 class LabIntegrationMessage(models.Model):

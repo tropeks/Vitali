@@ -103,9 +103,9 @@ class TestProfessionalBackfill(TenantTestCase):
     def test_reconcile_matches_and_preserves_unmatched(self):
         CBOCode.objects.create(code="225125", display="Médico clínico")
         # Two professionals carrying only legacy text (as after the CharField rename).
-        matched = _professional(_user("h@x.com"))
+        matched = _professional(_user("h@x.com"), council_number="1")
         Professional.objects.filter(pk=matched.pk).update(legacy_cbo_text="225125")
-        unmatched = _professional(_user("i@x.com"))
+        unmatched = _professional(_user("i@x.com"), council_number="2")
         Professional.objects.filter(pk=unmatched.pk).update(legacy_cbo_text="999999")
 
         linked, unlinked = reconcile_catalog_fk(
