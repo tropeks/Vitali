@@ -76,6 +76,11 @@ const NAV_ITEMS: NavItem[] = [
     adminOnly: true,
     children: [
       { label: "Funcionários", href: "/rh/funcionarios" },
+      { label: "Escalas", href: "/rh/escalas" },
+      { label: "Lotação", href: "/rh/lotacoes" },
+      { label: "Afastamentos", href: "/rh/afastamentos" },
+      { label: "Cargos", href: "/rh/cargos" },
+      { label: "Dependentes", href: "/rh/dependentes" },
     ],
   },
   { label: "Faturamento", href: "/billing", icon: Receipt, module: "billing" },
