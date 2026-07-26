@@ -1,0 +1,5 @@
+# One good row, one missing CODIGO, one missing TITULO (M2-S1-T1 parse-error test).
+CODIGO;TITULO;FAMILIA
+225125;FAKE-Médico clínico;2251
+;FAKE-Sem Codigo;2235
+515110;;5151
