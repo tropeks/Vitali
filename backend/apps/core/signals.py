@@ -279,6 +279,20 @@ def protect_loinc_code_deletion(sender, instance, **kwargs):
                 )
 
 
+# ─── Nursing taxonomies cross-schema PROTECT (N1 — deferred to N2) ────────────
+# NandaDiagnosis / NicIntervention / NocOutcome are governed SHARED catalogs, but
+# in N1 they are STANDALONE: no tenant model references them yet, so there is no
+# cross-schema FK to protect and therefore NO pre_delete guard is registered here
+# (a guard querying a not-yet-existing tenant relation would only add dead code).
+#
+# When N2 wires the SAE care-plan capture in ``emr`` (e.g. a NursingDiagnosis
+# entry FK → core.NandaDiagnosis, and NIC/NOC links), add guards mirroring
+# ``protect_cbo_code_deletion`` above — one @receiver(pre_delete, sender=...) per
+# catalog, iterating tenants under schema_context and raising ProtectedError when
+# the tenant relation references the instance. Mirroring CBOCode's shape exactly
+# (done in nursing_catalog_models.py) makes that a drop-in one-block addition.
+
+
 # ─── Tenant → TenantAIConfig + emr FeatureFlag ───────────────────────────────
 
 

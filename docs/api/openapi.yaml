@@ -7957,7 +7957,10 @@ paths:
   /api/v1/hr/duty-rosters/:
     get:
       operationId: v1_hr_duty_rosters_list
-      description: perform_create that writes an AuditLog row attributing the actor.
+      description: Lista escalas (DutyRoster). Requer capacidade admin, `hr.manage`
+        (transição) ou `roster.manage`. Supervisores com apenas `roster.manage` veem
+        só as escalas da(s) sua(s) unidade(s)/unidade.
+      summary: Escalas do setor
       parameters:
       - name: ordering
         required: false
@@ -7994,7 +7997,20 @@ paths:
           description: ''
     post:
       operationId: v1_hr_duty_rosters_create
-      description: perform_create that writes an AuditLog row attributing the actor.
+      description: |-
+        Object-level unit scope for non-admin ``roster.manage`` users (S-IA2 Task B).
+
+        Admins and central ``hr.manage`` users see every roster in the tenant. A
+        sector supervisor holding only ``roster.manage`` is narrowed to the
+        OrganizationalUnit(s) of their active EmployeeAssignment:
+
+        - ``RosterSlot`` (``roster_scope`` = "slot") filters by ``unit`` directly,
+          also surfacing unit-less slots on rosters at the supervisor's facility;
+        - ``DutyRoster`` (``roster_scope`` = "roster") has no unit column, so it is
+          scoped by the facilities of those units.
+
+        A supervisor with no active assignment sees nothing (fail-closed) — the
+        correct restrictive default until a richer coordinator↔unit link exists.
       tags:
       - v1
       requestBody:
@@ -8019,7 +8035,20 @@ paths:
   /api/v1/hr/duty-rosters/{id}/:
     get:
       operationId: v1_hr_duty_rosters_retrieve
-      description: perform_create that writes an AuditLog row attributing the actor.
+      description: |-
+        Object-level unit scope for non-admin ``roster.manage`` users (S-IA2 Task B).
+
+        Admins and central ``hr.manage`` users see every roster in the tenant. A
+        sector supervisor holding only ``roster.manage`` is narrowed to the
+        OrganizationalUnit(s) of their active EmployeeAssignment:
+
+        - ``RosterSlot`` (``roster_scope`` = "slot") filters by ``unit`` directly,
+          also surfacing unit-less slots on rosters at the supervisor's facility;
+        - ``DutyRoster`` (``roster_scope`` = "roster") has no unit column, so it is
+          scoped by the facilities of those units.
+
+        A supervisor with no active assignment sees nothing (fail-closed) — the
+        correct restrictive default until a richer coordinator↔unit link exists.
       parameters:
       - in: path
         name: id
@@ -8039,7 +8068,20 @@ paths:
           description: ''
     put:
       operationId: v1_hr_duty_rosters_update
-      description: perform_create that writes an AuditLog row attributing the actor.
+      description: |-
+        Object-level unit scope for non-admin ``roster.manage`` users (S-IA2 Task B).
+
+        Admins and central ``hr.manage`` users see every roster in the tenant. A
+        sector supervisor holding only ``roster.manage`` is narrowed to the
+        OrganizationalUnit(s) of their active EmployeeAssignment:
+
+        - ``RosterSlot`` (``roster_scope`` = "slot") filters by ``unit`` directly,
+          also surfacing unit-less slots on rosters at the supervisor's facility;
+        - ``DutyRoster`` (``roster_scope`` = "roster") has no unit column, so it is
+          scoped by the facilities of those units.
+
+        A supervisor with no active assignment sees nothing (fail-closed) — the
+        correct restrictive default until a richer coordinator↔unit link exists.
       parameters:
       - in: path
         name: id
@@ -8071,7 +8113,20 @@ paths:
           description: ''
     patch:
       operationId: v1_hr_duty_rosters_partial_update
-      description: perform_create that writes an AuditLog row attributing the actor.
+      description: |-
+        Object-level unit scope for non-admin ``roster.manage`` users (S-IA2 Task B).
+
+        Admins and central ``hr.manage`` users see every roster in the tenant. A
+        sector supervisor holding only ``roster.manage`` is narrowed to the
+        OrganizationalUnit(s) of their active EmployeeAssignment:
+
+        - ``RosterSlot`` (``roster_scope`` = "slot") filters by ``unit`` directly,
+          also surfacing unit-less slots on rosters at the supervisor's facility;
+        - ``DutyRoster`` (``roster_scope`` = "roster") has no unit column, so it is
+          scoped by the facilities of those units.
+
+        A supervisor with no active assignment sees nothing (fail-closed) — the
+        correct restrictive default until a richer coordinator↔unit link exists.
       parameters:
       - in: path
         name: id
@@ -8102,7 +8157,20 @@ paths:
           description: ''
     delete:
       operationId: v1_hr_duty_rosters_destroy
-      description: perform_create that writes an AuditLog row attributing the actor.
+      description: |-
+        Object-level unit scope for non-admin ``roster.manage`` users (S-IA2 Task B).
+
+        Admins and central ``hr.manage`` users see every roster in the tenant. A
+        sector supervisor holding only ``roster.manage`` is narrowed to the
+        OrganizationalUnit(s) of their active EmployeeAssignment:
+
+        - ``RosterSlot`` (``roster_scope`` = "slot") filters by ``unit`` directly,
+          also surfacing unit-less slots on rosters at the supervisor's facility;
+        - ``DutyRoster`` (``roster_scope`` = "roster") has no unit column, so it is
+          scoped by the facilities of those units.
+
+        A supervisor with no active assignment sees nothing (fail-closed) — the
+        correct restrictive default until a richer coordinator↔unit link exists.
       parameters:
       - in: path
         name: id
@@ -8735,7 +8803,10 @@ paths:
   /api/v1/hr/roster-slots/:
     get:
       operationId: v1_hr_roster_slots_list
-      description: perform_create that writes an AuditLog row attributing the actor.
+      description: 'Lista plantões (RosterSlot), incluindo plantões que cruzam a meia-noite
+        (ex.: 19h→07h). Mesmo gating de `roster.manage`; supervisores são escopados
+        por unidade.'
+      summary: Plantões do setor
       parameters:
       - name: ordering
         required: false
@@ -8772,7 +8843,20 @@ paths:
           description: ''
     post:
       operationId: v1_hr_roster_slots_create
-      description: perform_create that writes an AuditLog row attributing the actor.
+      description: |-
+        Object-level unit scope for non-admin ``roster.manage`` users (S-IA2 Task B).
+
+        Admins and central ``hr.manage`` users see every roster in the tenant. A
+        sector supervisor holding only ``roster.manage`` is narrowed to the
+        OrganizationalUnit(s) of their active EmployeeAssignment:
+
+        - ``RosterSlot`` (``roster_scope`` = "slot") filters by ``unit`` directly,
+          also surfacing unit-less slots on rosters at the supervisor's facility;
+        - ``DutyRoster`` (``roster_scope`` = "roster") has no unit column, so it is
+          scoped by the facilities of those units.
+
+        A supervisor with no active assignment sees nothing (fail-closed) — the
+        correct restrictive default until a richer coordinator↔unit link exists.
       tags:
       - v1
       requestBody:
@@ -8797,7 +8881,20 @@ paths:
   /api/v1/hr/roster-slots/{id}/:
     get:
       operationId: v1_hr_roster_slots_retrieve
-      description: perform_create that writes an AuditLog row attributing the actor.
+      description: |-
+        Object-level unit scope for non-admin ``roster.manage`` users (S-IA2 Task B).
+
+        Admins and central ``hr.manage`` users see every roster in the tenant. A
+        sector supervisor holding only ``roster.manage`` is narrowed to the
+        OrganizationalUnit(s) of their active EmployeeAssignment:
+
+        - ``RosterSlot`` (``roster_scope`` = "slot") filters by ``unit`` directly,
+          also surfacing unit-less slots on rosters at the supervisor's facility;
+        - ``DutyRoster`` (``roster_scope`` = "roster") has no unit column, so it is
+          scoped by the facilities of those units.
+
+        A supervisor with no active assignment sees nothing (fail-closed) — the
+        correct restrictive default until a richer coordinator↔unit link exists.
       parameters:
       - in: path
         name: id
@@ -8817,7 +8914,20 @@ paths:
           description: ''
     put:
       operationId: v1_hr_roster_slots_update
-      description: perform_create that writes an AuditLog row attributing the actor.
+      description: |-
+        Object-level unit scope for non-admin ``roster.manage`` users (S-IA2 Task B).
+
+        Admins and central ``hr.manage`` users see every roster in the tenant. A
+        sector supervisor holding only ``roster.manage`` is narrowed to the
+        OrganizationalUnit(s) of their active EmployeeAssignment:
+
+        - ``RosterSlot`` (``roster_scope`` = "slot") filters by ``unit`` directly,
+          also surfacing unit-less slots on rosters at the supervisor's facility;
+        - ``DutyRoster`` (``roster_scope`` = "roster") has no unit column, so it is
+          scoped by the facilities of those units.
+
+        A supervisor with no active assignment sees nothing (fail-closed) — the
+        correct restrictive default until a richer coordinator↔unit link exists.
       parameters:
       - in: path
         name: id
@@ -8849,7 +8959,20 @@ paths:
           description: ''
     patch:
       operationId: v1_hr_roster_slots_partial_update
-      description: perform_create that writes an AuditLog row attributing the actor.
+      description: |-
+        Object-level unit scope for non-admin ``roster.manage`` users (S-IA2 Task B).
+
+        Admins and central ``hr.manage`` users see every roster in the tenant. A
+        sector supervisor holding only ``roster.manage`` is narrowed to the
+        OrganizationalUnit(s) of their active EmployeeAssignment:
+
+        - ``RosterSlot`` (``roster_scope`` = "slot") filters by ``unit`` directly,
+          also surfacing unit-less slots on rosters at the supervisor's facility;
+        - ``DutyRoster`` (``roster_scope`` = "roster") has no unit column, so it is
+          scoped by the facilities of those units.
+
+        A supervisor with no active assignment sees nothing (fail-closed) — the
+        correct restrictive default until a richer coordinator↔unit link exists.
       parameters:
       - in: path
         name: id
@@ -8880,7 +9003,20 @@ paths:
           description: ''
     delete:
       operationId: v1_hr_roster_slots_destroy
-      description: perform_create that writes an AuditLog row attributing the actor.
+      description: |-
+        Object-level unit scope for non-admin ``roster.manage`` users (S-IA2 Task B).
+
+        Admins and central ``hr.manage`` users see every roster in the tenant. A
+        sector supervisor holding only ``roster.manage`` is narrowed to the
+        OrganizationalUnit(s) of their active EmployeeAssignment:
+
+        - ``RosterSlot`` (``roster_scope`` = "slot") filters by ``unit`` directly,
+          also surfacing unit-less slots on rosters at the supervisor's facility;
+        - ``DutyRoster`` (``roster_scope`` = "roster") has no unit column, so it is
+          scoped by the facilities of those units.
+
+        A supervisor with no active assignment sees nothing (fail-closed) — the
+        correct restrictive default until a richer coordinator↔unit link exists.
       parameters:
       - in: path
         name: id

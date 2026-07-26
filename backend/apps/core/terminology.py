@@ -27,6 +27,7 @@ from django.db.models import Case, IntegerField, Q, Value, When
 from apps.core.cbo_cnes_models import CBOCode, CNESEstablishment
 from apps.core.loinc_models import LoincCode, UcumUnit
 from apps.core.models import CID10Code
+from apps.core.nursing_catalog_models import NandaDiagnosis, NicIntervention, NocOutcome
 from apps.core.terminology_base import normalize_text
 
 # Registry: terminology system id → catalog model.
@@ -36,6 +37,10 @@ _SYSTEMS: dict[str, type] = {
     "cnes": CNESEstablishment,
     "loinc": LoincCode,
     "ucum": UcumUnit,
+    # N1-T3: governed nursing taxonomies (SAE) — NANDA-I / NIC / NOC.
+    "nanda": NandaDiagnosis,
+    "nic": NicIntervention,
+    "noc": NocOutcome,
 }
 
 # CID-10 keeps the legacy ``description`` vocabulary + a ``parent`` hierarchy; the
@@ -132,6 +137,16 @@ def _context(system: str, row) -> dict:
             "property": row.property,
             "loinc_system": row.loinc_system,
         }
+    if system == "nanda":
+        return {
+            "domain": row.domain,
+            "class": row.nanda_class,
+            "definition": row.definition,
+        }
+    if system == "nic":
+        return {"definition": row.definition}
+    if system == "noc":
+        return {"definition": row.definition}
     # ucum (and any future flat catalog) carries no extra context columns.
     return {}
 

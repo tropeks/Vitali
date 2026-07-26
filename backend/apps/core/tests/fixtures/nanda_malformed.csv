@@ -1,0 +1,5 @@
+# One good row, one missing CODIGO, one missing TITULO (N1-T2 parse-error test).
+CODIGO;TITULO;DOMINIO;CLASSE;DEFINICAO;CARACTERISTICAS;FATORES
+00132;FAKE-Dor aguda;12 Conforto;1 Conforto físico;FAKE-Definição;FAKE-Carac;FAKE-Fator
+;FAKE-Sem Codigo;12 Conforto;1 Conforto físico;FAKE-Definição;FAKE-Carac;FAKE-Fator
+00004;;11 Segurança/proteção;1 Infecção;FAKE-Definição;FAKE-Carac;FAKE-Fator
