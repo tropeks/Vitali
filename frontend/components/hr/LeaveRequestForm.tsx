@@ -22,12 +22,15 @@ export interface LeaveRequestFormProps {
   employees: LeaveEmployeeOption[]
 }
 
+// Values MUST match backend LeaveRequest.Type (apps/hr/rh_models.py). Sending
+// pt-BR slugs (ferias/licenca_medica/…) makes the API reject the request with 400.
 const LEAVE_TYPES: { value: string; label: string }[] = [
-  { value: 'ferias', label: 'Férias' },
-  { value: 'licenca_medica', label: 'Licença médica' },
-  { value: 'licenca_maternidade', label: 'Licença maternidade' },
-  { value: 'abono', label: 'Abono' },
-  { value: 'outro', label: 'Outro' },
+  { value: 'vacation', label: 'Férias' },
+  { value: 'sick', label: 'Afastamento médico' },
+  { value: 'maternity', label: 'Licença-maternidade' },
+  { value: 'paternity', label: 'Licença-paternidade' },
+  { value: 'unpaid', label: 'Licença não remunerada' },
+  { value: 'other', label: 'Outro' },
 ]
 
 const INPUT_CLASS =
@@ -42,7 +45,7 @@ const SECONDARY_BTN =
 
 const INITIAL = {
   employee: '',
-  leave_type: 'ferias',
+  leave_type: 'vacation',
   start_date: '',
   end_date: '',
   reason: '',

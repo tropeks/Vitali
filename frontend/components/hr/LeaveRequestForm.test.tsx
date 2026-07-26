@@ -25,7 +25,7 @@ const EMPLOYEES = [
 
 function fillValidForm() {
   fireEvent.change(screen.getByLabelText(/Funcionário/), { target: { value: 'emp-2' } })
-  fireEvent.change(screen.getByLabelText(/Tipo/), { target: { value: 'licenca_medica' } })
+  fireEvent.change(screen.getByLabelText(/Tipo/), { target: { value: 'sick' } })
   fireEvent.change(screen.getByLabelText(/Início/), { target: { value: '2026-09-01' } })
   fireEvent.change(screen.getByLabelText(/Fim/), { target: { value: '2026-09-05' } })
   fireEvent.change(screen.getByLabelText(/Motivo/), { target: { value: 'Consulta médica' } })
@@ -61,7 +61,7 @@ describe('LeaveRequestForm', () => {
     const body = JSON.parse(options?.body as string)
     expect(body).toEqual({
       employee: 'emp-2',
-      leave_type: 'licenca_medica',
+      leave_type: 'sick',
       start_date: '2026-09-01',
       end_date: '2026-09-05',
       reason: 'Consulta médica',

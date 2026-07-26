@@ -1,14 +1,20 @@
 # Vitali — Mapa de Funcionalidades Canônico (HIS/EMR)
 
-> **Status:** documento CANÔNICO. Decisões de produto, arquitetura de informação (IA), RBAC e roadmap
-> devem **seguir este documento**. Quando a realidade do código divergir daqui, ou este documento é
-> atualizado (com justificativa), ou o código é ajustado — não se decide ownership/IA no achismo.
+> **Status: DRAFT AUDITÁVEL v0.2 — NÃO canônico ainda.** Uma revisão adversarial independente por Codex
+> (7 domínios + 1 holística, 2026-07-26) deu **média ~4,6/10 de precisão** e reprovou o status "canônico":
+> a coluna Vitali estava errada **nas duas direções** (superestima E subestima features), há **erros
+> factuais de norma** (COFEN, RDC, SBIS, TISS/TUSS/CBHPM, RNDS), as duas claims principais precisam de
+> nuance, e **faltam domínios inteiros**. **NÃO tratar como contrato de produto/IA** até o re-inventário
+> da §"Revisão adversarial" abaixo estar aplicado. Os PRINCÍPIOS (PEP único, bidirecionalidade, ownership
+> explícito, delta check/CQ, maturidade por camada) permanecem válidos; a PRECISÃO linha-a-linha, não.
 >
-> **Origem:** pesquisa profunda (2026-07-26) em 7 domínios funcionais dos HIS líderes, feita por 7 agentes
-> em paralelo com busca/leitura na web. **Referência primária: Philips Tasy** (HIS dominante no Brasil).
-> **Comparação:** MV (Soul MV), TOTVS Saúde (RM/Protheus), Wareline, Pixeon; **contraste enterprise:**
-> Epic e Oracle Health (Cerner). Inferências (onde a fonte pública é rasa) estão rotuladas `(inferido)`.
-> Fontes por domínio no fim.
+> **Origem:** pesquisa (7 agentes) + verificação adversarial code-verified (Codex). **Referência primária
+> ESCOLHIDA: Philips Tasy** (larga presença — não é "dominância" comprovada). Comparação: MV, TOTVS, Wareline,
+> Pixeon; contraste: Epic e Oracle Health (Cerner). Inferências rotuladas `(inferido)`.
+>
+> ⚠️ **Antes de usar qualquer linha, ler a §"Revisão adversarial (Codex 2026-07-26)" no fim.** A régua
+> `tem/parcial/falta` é semanticamente instável (mistura "existe model" com "capacidade entregue") —
+> substituir por **maturidade por camada: modelo · API · UI · RBAC · integração · e2e · conformidade**.
 
 ---
 
@@ -305,6 +311,78 @@ benefícios, ASO, dependentes) como domínio **central** separado.
 
 **Regras transversais a seguir sempre:**
 - PEP único multiprofissional (não separar por profissão). · Bidirecionalidade em toda integração. · Toda feature nova declara `persona × escopo` + RBAC. · Delta check/CQ nativos no motor de resultado.
+
+---
+
+## Revisão adversarial (Codex 2026-07-26) — correções pendentes
+
+Verificação independente por Codex (modelo distinto), lendo o **código real** do repo. Notas de precisão:
+**§1 Assistencial 5,2 · §2 Fluxo 4,5 · §3 Pessoas/Escala 4,0 · §4 Diagnóstico 4,5 · §5 Faturamento 4,5 ·
+§6 Suprimentos 5,5 · §7 Governança 4,5** (holística 4,5). Transcrições completas em
+`scratchpad/codex/crit_{1..7}.txt` e `codex_review.txt` (rastreabilidade da sessão).
+
+### A. Coluna Vitali — SUPERESTIMADA (rebaixar)
+| Feature (§) | Doc dizia | Real (code-verified) | Evidência |
+|---|---|---|---|
+| Evolução multiprofissional (§1) | ✅ tem | 🟡 — `SOAPNote` é **nota única por encontro**, 1 `professional`; não há evoluções independentes MED/ENF/fisio | emr/models.py:666,711 |
+| Problemas/CID (§1) | ✅ tem | 🟡 — `ProblemListItem` existe, **sem UI** de manutenção | emr/problem_models.py:27 |
+| CPOE integrado (§1) | ✅ tem | 🟡 — só medicamentos; `OrderSet` não gera LabOrder/imagem/tarefa executável | encounters/[id]/page.tsx:625 |
+| Deterioração/escores (§1) | ✅ tem | 🟡 — **só NEWS2**; sem MEWS/sepse/código azul/RRT | emr/services/news2.py |
+| **Delta check "bloqueia liberação" (§4)** | ✅ tem | ⚠️ **FALSO** — o signal declara que erro **nunca bloqueia** o resultado | emr/signals.py:93 |
+| Interfaceamento LIS/ASTM (§4) | (parcial) | 🟡 primitivo — enum ASTM existe mas **sem parser ASTM** (chama parse_canonical) | emr/services/lis.py:75 |
+| Encaixe/overbooking (§2) | ✅ tem | 🟡 — endpoint normal não usa o serviço de encaixe; `unique_together(professional,start_time)` **impede overbooking simultâneo** | emr/views.py:454, models.py:631 |
+| MPI "probabilístico" (§2) | 🟡 (probabilístico) | 🟡 mas **determinístico** (digest exato/nome+DN), sem fuzzy/merge/cross-tenant | emr/services_mpi.py:32 |
+| Censo (§2) | 🟡 parcial | ⬜ falta — sem internação/leito não há censo | — |
+| Terminologias "incl CIAP/SNOMED" (§7) | ✅ tem | 🟡 — tem CID/TUSS/CBHPM/CBO/CNES/LOINC/UCUM; **CIAP e SNOMED não existem** | core/loinc_models.py |
+| Multiunidade/multiempresa (§7) | ✅ tem | 🟡 — `django-tenants` = isolamento por tenant, **não** rede multiempresa/consolidação | core/models.py:35 |
+| RBAC "+ break-glass" (§7) | ✅ tem | 🟡 — RBAC+AuditLog sim; **break-glass não existe** no código | core/permissions.py |
+| SAE (§1) | ⬜ falta | 🟡 — `NursingAssessment` (admissão/diag/plano/evolução/alta) existe; falta catálogo NANDA/NIC/NOC | emr/models.py:1510 |
+| Alta/sumário (§1) | 🟡 parcial | ⬜ (separar: receita ambulatorial tem; **sumário/alta clínica falta** — sem tipo discharge_summary) | emr/models.py:669 |
+| Aprazamento (§1) | 🟡 parcial | ⬜ — `scheduled_at` é horário recebido na API, não grade gerada/reprogramável | emr/models.py:1478 |
+
+### B. Coluna Vitali — SUBESTIMADA (o doc marcou falta/ignorou, mas EXISTE)
+| Feature | Real | Evidência |
+|---|---|---|
+| Reconciliação medicamentosa (admissão/transf/alta, maker-checker) | ✅ backend | emr/reconciliation_models.py:38 |
+| Imunizações (modelo) | 🟡 | emr/problem_models.py:149 |
+| Waitlist ambulatorial (preferências, próxima vaga, WhatsApp, UI) | ✅ | emr/views_waitlist.py, tasks_waitlist.py:105 |
+| eMAR (administração append-only, prescrição assinada, validação farm., testemunha) | 🟡 (sem BCMA) | emr/models.py:1459 |
+| Resultado crítico + acknowledgement + cadeia de custódia (§4) | 🟡/✅ | emr/models.py:1249,1278 |
+| Gestão de pacotes (§5) | ✅ | billing/revenue_models.py:87 |
+| Repasse a terceiros (maker-checker) (§5) | ✅ | billing/views.py:199 |
+| Financeiro (receivables/payables/fluxo/contábil/DRE/conciliação) (§5) | 🟡 substancial | billing/views.py:273 |
+| CBHPM (catálogo + valoração honorários) (§5) | ✅ | core/cbhpm_models.py:42, billing/models.py:299 |
+| Analytics de glosa/denial_rate/receita mensal (§5) | ✅ | analytics/views.py:395 |
+| Ponto (jornada + eventos imutáveis) / ASO (§3) | 🟡 | hr/models.py:60,123 |
+| Compras: SupplierContract, ordem de compra, recebimento three-way match (§6) | 🟡 | pharmacy/models.py:1481, views.py:350 |
+| Medicamentos controlados (classes, ledger, alertas — Portaria 344/98) (§6) | 🟡 | pharmacy/controlled_ledger_models.py:24 |
+| MFA/TOTP (setup/verify/enforce) (§7) | 🟡 (SSO falta) | core/mfa.py:197 |
+| CDS medicamentoso (dose/alergia/interação com gate bloqueante) (§1) | 🟡 | emr/services/dose_safety.py, allergy_safety.py |
+
+### C. Erros factuais (corrigir)
+1. **COFEN**: privatividade da SAE (diag/prescrição de enfermagem) = **Res. 736/2024**; dimensionamento = **Parecer Normativo 1/2024** (a 743/2024 só revoga a 543). Não dizer "seguir a 743".
+2. **RDC 302/2005 revogada** — cadeia atualizada (786/2023 → 824/2023 → verificar a vigente antes de citar). Não usar 302/2005.
+3. **SBIS**: existe **NGS1 e NGS2** + "estágios de maturidade" separados — **não existe "NGS3"**.
+4. **TISS ≠ TUSS ≠ CBHPM ≠ Brasíndice ≠ SIMPRO** (não agrupar): TUSS é a terminologia do TISS; CBHPM honorários AMB; Brasíndice/SIMPRO referenciais comerciais. TISS tem 5 componentes; gerar guia SP/SADT ≠ "TISS implementado".
+5. **RNDS ≠ "FHIR R4 + ICP-Brasil"**: exige credenciamento, perfis, operações, identificadores, terminologias e conformidade por documento.
+6. **Farmacovigilância BR** = **VigiMed** (não só "NOTIVISA"); dona = Farmácia + Segurança do Paciente/Qualidade, não CCIH.
+7. **Personas ad-hoc** (`FARM-bioq`, `TEC-coleta`) fora do glossário — normalizar.
+
+### D. Persona/escopo a corrigir
+REGUL não é só médico · QUAL ≠ NIR (NIR é regulação interna/leitos) · censo/alta têm ownership multi-ator (NIR+enfermagem+hotelaria+internação/faturamento) · auditoria de contas tem 3+ tipos · **comodato não é só engenharia clínica** (jurídico/compras/fiscal/patrimônio) · farmacêutico como dono de resultado de lab depende do RT (biomédico/patologista) · SAE decompor por Res. 736/2024 (diag/prescrição privativos; execução do técnico sob supervisão) · WhatsApp precisa de persona/governança (opt-in/DPO/templates/falha) · "corporativo" usado onde é "institucional/tenant".
+
+### E. As duas claims — reescritas
+- **Escala:** a direção (dono local da adequação) está certa, mas **não é "exclusão absoluta do RH"** — o modelo enterprise é **híbrido** (Oracle Workforce Scheduling: admin/schedule-manager/line-manager/worker + self-scheduling; Epic+QGenda; central de escalas existe). E o Vitali **nem tem escala setorial de verdade**: `DutyRoster→Facility`, `slot.unit` opcional, CRUD sob `hr.manage` sem `roster.manage` nem object-level scope, sem swap/open-shift/publicação, e plantão noturno 19h–07h nem é representável (`end_time>start_time`). Correto: **Painel de Setor + domínio de Workforce Scheduling compartilhado (setor cria, coordenação aprova, central balanceia, RH downstream, self-service), RBAC por área**.
+- **Comodato:** **refutada como conclusão de mercado** — TOTVS **tem** contrato de comodato/locação e OPME em comodato (NF-e/CFOP); Epic/Oracle via ERP/EAM. Reescrever para: *"o Vitali integra numa superfície única um ciclo de concessão que os concorrentes fragmentam entre contratos, ativos, suprimentos, fiscal e engenharia clínica"* — não "nenhum líder tem".
+
+### F. Domínios inteiros faltando (adicionar)
+Banco de sangue/hemoterapia · nutrição clínica · diálise · reabilitação (fisio/TO/fono) · terapia respiratória · **CME separada de rouparia** · hotelaria (higienização/transporte) · engenharia clínica completa (patrimônio/calibração/preventiva/recalls/tecnovigilância) · GED/gestão documental · codificação clínica/CDI/DRG · utilization management/gestão de permanência · referência-contrarreferência · imunização/vigilância/SINAN · gestão populacional/crônicos · home care · atenção primária · pesquisa clínica · educação do paciente/consentimentos/diretivas · mensageria segura equipe↔paciente · credenciamento médico/privilégios · filas de trabalho/inbox clínico · dispositivos implantáveis · revenue integrity/charge capture · governança de dados mestres · contingência/downtime clínico.
+
+### G. Bugs concretos achados pela revisão
+- **Afastamentos (A7) estava quebrado**: frontend enviava `ferias/licenca_medica/abono`, backend espera `vacation/sick/maternity/…` → HTTP 400 no submit. O teste passava porque mockava o mesmo valor errado (nunca batia no enum real). **CORRIGIDO** nesta rodada (`LeaveRequestForm.tsx` + teste). Lição: testes de UI que mockam a API não pegam divergência de contrato — precisa de e2e ou teste de contrato contra o schema.
+
+### H. Ações antes de promover a canônico (checklist Codex)
+1. Manter status **draft auditável**. 2. Trocar `tem/parcial/falta` por **maturidade por camada**. 3. Corrigir COFEN/RDC/SBIS/TISS/RNDS. 4. **Re-inventário automatizado do código** revisando toda a coluna Vitali (usar as evidências A/B acima). 5. Reescrever escala (híbrido) e comodato (integração superior). 6. Adicionar os domínios da §F. 7. Versionar **cada linha** com responsável, evidência e data.
 
 ---
 
