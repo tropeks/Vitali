@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import ProfissionaisPage from './page'
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
@@ -30,8 +30,10 @@ const PROFESSIONAL_1 = {
   council_number: '12345',
   council_state: 'SP',
   specialty: 'Clínica Médica',
-  cbo_code: null,
+  cbo_code: '2231-05',
   cnes_code: null,
+  cbo_unmatched: false,
+  cnes_unmatched: false,
   is_active: true,
   created_at: '2024-01-15T10:00:00Z',
 }
@@ -47,7 +49,9 @@ const PROFESSIONAL_2 = {
   council_state: 'RJ',
   specialty: 'Odontologia',
   cbo_code: null,
-  cnes_code: null,
+  cnes_code: '9999999',
+  cbo_unmatched: false,
+  cnes_unmatched: true,
   is_active: false,
   created_at: '2023-06-01T08:00:00Z',
 }
@@ -121,5 +125,49 @@ describe('ProfissionaisPage', () => {
     const badge = screen.getByText('Inativo')
     expect(badge.className).toContain('bg-red-100')
     expect(badge.className).toContain('text-red-700')
+  })
+
+  it('shows governed CBO/CNES codes and an unmatched badge when reconciliation failed', async () => {
+    mockApiFetch.mockResolvedValueOnce([PROFESSIONAL_1, PROFESSIONAL_2])
+
+    render(<ProfissionaisPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Dra. Ana Souza')).toBeInTheDocument()
+    })
+
+    // Reconciled CBO for professional 1 — no warning badge.
+    expect(screen.getByText('2231-05')).toBeInTheDocument()
+    // Unreconciled CNES for professional 2 — warning badge shown.
+    expect(screen.getByText('9999999')).toBeInTheDocument()
+    expect(screen.getByText('não reconciliado')).toBeInTheDocument()
+  })
+
+  it('opens the edit modal and PATCHes cbo_code/cnes_code on save', async () => {
+    mockApiFetch.mockResolvedValueOnce([PROFESSIONAL_1])
+
+    render(<ProfissionaisPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Dra. Ana Souza')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Editar' })[0])
+
+    expect(await screen.findByRole('button', { name: 'Salvar' })).toBeInTheDocument()
+
+    mockApiFetch.mockResolvedValueOnce({ ...PROFESSIONAL_1, cbo_code: '2231-05', cnes_code: null })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+
+    await waitFor(() => {
+      const patchCall = mockApiFetch.mock.calls.find(([url]) => url === '/api/v1/professionals/pro-1/')
+      expect(patchCall).toBeTruthy()
+    })
+
+    const patchCall = mockApiFetch.mock.calls.find(([url]) => url === '/api/v1/professionals/pro-1/')
+    const [, init] = patchCall!
+    expect(init.method).toBe('PATCH')
+    expect(JSON.parse(init.body)).toEqual({ cbo_code: '2231-05', cnes_code: '' })
   })
 })

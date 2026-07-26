@@ -5,11 +5,13 @@ import { apiFetch } from '@/lib/api'
 import { PageShell, SectionState } from '@/components/shared'
 import ProfessionalRow from '@/components/professionals/ProfessionalRow'
 import type { Professional } from '@/components/professionals/ProfessionalRow'
+import ProfessionalEditModal from '@/components/professionals/ProfessionalEditModal'
 
 export default function ProfissionaisPage() {
   const [professionals, setProfessionals] = useState<Professional[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [editing, setEditing] = useState<Professional | null>(null)
 
   const loadProfessionals = useCallback(async () => {
     setLoading(true)
@@ -61,7 +63,7 @@ export default function ProfissionaisPage() {
           <table className="w-full text-sm min-w-[720px]">
             <thead>
               <tr className="border-b border-white bg-neu-panel">
-                {['Nome', 'Email', 'Conselho', 'Especialidade', 'Status'].map((h) => (
+                {['Nome', 'Email', 'Conselho', 'Especialidade', 'CBO', 'CNES', 'Status', 'Ações'].map((h) => (
                   <th
                     key={h}
                     className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-neu-inkMuted"
@@ -73,11 +75,22 @@ export default function ProfissionaisPage() {
             </thead>
             <tbody>
               {professionals.map((pro) => (
-                <ProfessionalRow key={pro.id} professional={pro} />
+                <ProfessionalRow key={pro.id} professional={pro} onEdit={setEditing} />
               ))}
             </tbody>
           </table>
         </div>
+      )}
+
+      {editing && (
+        <ProfessionalEditModal
+          professional={editing}
+          onClose={() => setEditing(null)}
+          onSaved={(updated) => {
+            setProfessionals((previous) => previous.map((p) => (p.id === updated.id ? updated : p)))
+            setEditing(null)
+          }}
+        />
       )}
     </PageShell>
   )

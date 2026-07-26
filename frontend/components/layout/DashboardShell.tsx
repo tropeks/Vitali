@@ -14,6 +14,7 @@ import {
   FlaskConical,
   CalendarX,
   Pill,
+  PackageOpen,
   Receipt,
   BarChart2,
   Settings,
@@ -85,6 +86,18 @@ const NAV_ITEMS: NavItem[] = [
   },
   { label: "Faturamento", href: "/billing", icon: Receipt, module: "billing" },
   { label: "Análise", href: "/billing/analytics", icon: BarChart2, module: "billing" },
+  {
+    label: "Concessão",
+    href: "/concessao",
+    icon: PackageOpen,
+    module: "diagnostic_concession",
+    children: [
+      { label: "Ativos", href: "/concessao/ativos" },
+      { label: "Contratos", href: "/concessao/contratos" },
+      { label: "Logística", href: "/concessao/logistica" },
+      { label: "P&L", href: "/concessao/pnl" },
+    ],
+  },
   {
     label: "Administração",
     href: "/administracao/organizacao",

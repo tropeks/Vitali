@@ -16,11 +16,15 @@ interface Props<T> {
   placeholder?: string
   allLabel?: string
   disabled?: boolean
+  /** Query string param name for the search term. Defaults to 'search'
+   * (DRF SearchFilter convention). Pass 'q' for endpoints like the
+   * terminology autocomplete (`/api/v1/terminology/<system>/?q=`). */
+  queryParam?: string
 }
 
 export default function RemoteCombobox<T>({
   label, endpoint, value, getKey, getLabel, onChange, placeholder = 'Buscar...',
-  allLabel, disabled,
+  allLabel, disabled, queryParam = 'search',
 }: Props<T>) {
   const id = useId()
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -35,7 +39,7 @@ export default function RemoteCombobox<T>({
     const current = ++request.current
     setLoading(true)
     try {
-      const url = nextUrl ?? `${endpoint}${endpoint.includes('?') ? '&' : '?'}search=${encodeURIComponent(term)}&page_size=20`
+      const url = nextUrl ?? `${endpoint}${endpoint.includes('?') ? '&' : '?'}${queryParam}=${encodeURIComponent(term)}&page_size=20`
       const data = await apiFetch<Page<T> | T[]>(url)
       if (current !== request.current) return
       const results = Array.isArray(data) ? data : data.results ?? []
@@ -50,7 +54,7 @@ export default function RemoteCombobox<T>({
     } finally {
       if (current === request.current) setLoading(false)
     }
-  }, [endpoint])
+  }, [endpoint, queryParam])
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current) }, [])
 

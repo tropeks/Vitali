@@ -11,8 +11,12 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push, refresh: vi.fn() }),
 }))
 
+const activeModulesMock = vi.hoisted(() => ({
+  current: ['emr', 'billing', 'pharmacy', 'rh'] as string[],
+}))
+
 vi.mock('@/hooks/useHasModule', () => ({
-  useActiveModules: () => ['emr', 'billing', 'pharmacy', 'rh'],
+  useActiveModules: () => activeModulesMock.current,
 }))
 
 vi.mock('@/lib/api', () => ({
@@ -34,6 +38,7 @@ const user: UserDTO = {
 
 beforeEach(() => {
   pathname = '/dashboard'
+  activeModulesMock.current = ['emr', 'billing', 'pharmacy', 'rh']
   vi.clearAllMocks()
 })
 
@@ -73,5 +78,15 @@ describe('DashboardShell', () => {
 
     rerender(<DashboardShell user={{ ...user, permissions: [] }}><div /></DashboardShell>)
     expect(screen.queryByRole('link', { name: /Administração/ })).not.toBeInTheDocument()
+  })
+
+  it('hides Concessão when the tenant module is inactive and shows it once active', () => {
+    activeModulesMock.current = ['emr', 'billing', 'pharmacy', 'rh']
+    const { rerender } = render(<DashboardShell user={user}><div /></DashboardShell>)
+    expect(screen.queryByRole('link', { name: /Concessão/ })).not.toBeInTheDocument()
+
+    activeModulesMock.current = ['emr', 'billing', 'pharmacy', 'rh', 'diagnostic_concession']
+    rerender(<DashboardShell user={user}><div /></DashboardShell>)
+    expect(screen.getByRole('link', { name: /Concessão/ })).toHaveAttribute('href', '/concessao')
   })
 })
