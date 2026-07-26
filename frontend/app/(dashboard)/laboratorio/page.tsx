@@ -5,6 +5,10 @@ import { Check, FlaskConical, Plus, Search, TestTube2, X } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { ImagingPanel } from "@/components/imaging/ImagingPanel";
 import PatientAutocomplete, { type PatientOption } from "@/components/patients/PatientAutocomplete";
+import LabTestFormModal from "@/components/laboratory/LabTestFormModal";
+import DeltaAlertBadge from "@/components/laboratory/DeltaAlertBadge";
+import LabOrderBillingAction from "@/components/laboratory/LabOrderBillingAction";
+import type { LabDeltaAlert } from "@/components/laboratory/types";
 
 type LabTest = {
   id: string;
@@ -20,6 +24,7 @@ type LabTest = {
   result_type_display?: string;
   method?: string;
   loinc_code?: string;
+  delta_threshold_pct?: string | null;
   components?: Array<{
     code?: string;
     name: string;
@@ -51,6 +56,7 @@ type LabItem = {
   }>;
   result_data?: Record<string, unknown>;
   microbiology?: Record<string, unknown>;
+  delta_alert?: LabDeltaAlert | null;
 };
 type LabOrder = {
   id: string;
@@ -295,6 +301,11 @@ export default function LaboratorioPage() {
   const [orderQuery, setOrderQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [showCatalog, setShowCatalog] = useState(false);
+  const [testModal, setTestModal] = useState<{
+    open: boolean;
+    test: LabTest | null;
+  }>({ open: false, test: null });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -533,16 +544,28 @@ export default function LaboratorioPage() {
               Pedidos, coleta, resultados e validação clínica.
             </p>
           </div>
-          <button
-            type="button"
-            aria-expanded={showNew}
-            aria-controls="new-lab-order"
-            onClick={() => setShowNew((v) => !v)}
-            className="neu-btn-primary inline-flex items-center justify-center gap-2 px-4 py-2 text-sm"
-          >
-            <Plus aria-hidden="true" size={16} />
-            Novo pedido
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              aria-expanded={showCatalog}
+              aria-controls="lab-catalog"
+              onClick={() => setShowCatalog((v) => !v)}
+              className="neu-btn inline-flex items-center justify-center gap-2 px-4 py-2 text-sm"
+            >
+              <TestTube2 aria-hidden="true" size={16} />
+              Catálogo
+            </button>
+            <button
+              type="button"
+              aria-expanded={showNew}
+              aria-controls="new-lab-order"
+              onClick={() => setShowNew((v) => !v)}
+              className="neu-btn-primary inline-flex items-center justify-center gap-2 px-4 py-2 text-sm"
+            >
+              <Plus aria-hidden="true" size={16} />
+              Novo pedido
+            </button>
+          </div>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-3">
@@ -572,6 +595,83 @@ export default function LaboratorioPage() {
             );
           })}
         </div>
+
+        {showCatalog && (
+          <section
+            id="lab-catalog"
+            aria-labelledby="lab-catalog-title"
+            className="neu-panel space-y-4 p-5"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 id="lab-catalog-title" className="font-semibold text-neu-ink">
+                  Catálogo de exames
+                </h2>
+                <p className="text-xs text-neu-inkSoft">
+                  Configure LOINC e o limiar de delta-check por exame.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTestModal({ open: true, test: null })}
+                className="neu-btn-primary inline-flex items-center gap-2 px-3 py-2 text-sm"
+              >
+                <Plus aria-hidden="true" size={15} />
+                Novo exame
+              </button>
+            </div>
+            <ul className="divide-y divide-neu-app">
+              {tests.map((test) => (
+                <li
+                  key={test.id}
+                  className="flex flex-wrap items-center justify-between gap-2 py-2"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-neu-ink">
+                      {test.name}
+                      <span className="ml-2 font-mono text-xs text-neu-inkSoft">
+                        {test.code}
+                      </span>
+                    </p>
+                    <p className="text-xs text-neu-inkSoft">
+                      {[
+                        test.loinc_code && `LOINC ${test.loinc_code}`,
+                        test.delta_threshold_pct
+                          ? `Delta ${test.delta_threshold_pct}%`
+                          : "Delta-check desligado",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setTestModal({ open: true, test })}
+                    className="neu-btn px-3 py-1.5 text-xs"
+                  >
+                    Editar
+                  </button>
+                </li>
+              ))}
+              {tests.length === 0 && (
+                <li className="py-2 text-sm text-neu-inkSoft">
+                  Nenhum exame no catálogo. Crie o primeiro exame.
+                </li>
+              )}
+            </ul>
+          </section>
+        )}
+
+        {testModal.open && (
+          <LabTestFormModal
+            test={testModal.test}
+            onClose={() => setTestModal({ open: false, test: null })}
+            onSaved={() => {
+              setTestModal({ open: false, test: null });
+              void load();
+            }}
+          />
+        )}
 
         {showNew && (
           <section
@@ -809,6 +909,9 @@ export default function LaboratorioPage() {
                         Laudo liberado
                       </span>
                     )}
+                    <LabOrderBillingAction
+                      order={{ id: order.id, status: order.status }}
+                    />
                   </div>
                 </header>
                 {signingOrder === order.id && (
@@ -966,6 +1069,7 @@ export default function LaboratorioPage() {
                               </span>
                             </p>
                           )}
+                          <DeltaAlertBadge alert={item.delta_alert} />
                         </div>
                         <div className="flex flex-wrap gap-2">
                           {!item.is_validated && (
