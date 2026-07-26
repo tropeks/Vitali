@@ -80,6 +80,10 @@ export const PERMISSIONS = {
   // People & operations (HR)
   HR_MANAGE: "hr.manage",
 
+  // Sector panel — escala/plantão ownership lives with the sector
+  // supervisor/coordinator, NOT central RH (see UI_NAVIGATION_IA.md §3).
+  ROSTER_MANAGE: "roster.manage",
+
   // Users / roles administration
   USERS_READ: "users.read",
   USERS_WRITE: "users.write",

@@ -96,6 +96,68 @@ class RosterSlotTests(TenantTestCase):
         assert RosterSlot.on_duty(self.unit, _aware(day, time(18, 0))).count() == 0
 
 
+class OvernightRosterSlotTests(TenantTestCase):
+    """S-IA2 Task C — a plantão crossing midnight (19h→07h) is representable."""
+
+    def setUp(self):
+        self.facility = _facility(code="ON")
+        self.unit = _unit(self.facility, code="ONU-1")
+        self.roster = DutyRoster.objects.create(
+            facility=self.facility,
+            name="Escala noturna",
+            start_date=date(2026, 8, 1),
+            end_date=date(2026, 8, 31),
+        )
+        self.prof = _professional(email="doc.night@test.local", suffix="ON1")
+
+    def _overnight(self, day):
+        return RosterSlot.objects.create(
+            roster=self.roster,
+            professional=self.prof,
+            unit=self.unit,
+            date=day,
+            shift=RosterSlot.Shift.NIGHT,
+            start_time=time(19, 0),
+            end_time=time(7, 0),  # next day — end < start
+        )
+
+    def test_overnight_slot_can_be_created(self):
+        day = date(2026, 8, 10)
+        slot = self._overnight(day)
+        slot.full_clean()  # clean() must not reject end < start
+        assert RosterSlot.objects.filter(pk=slot.pk).exists()
+
+    def test_on_duty_matches_evening_and_early_morning(self):
+        day = date(2026, 8, 10)
+        self._overnight(day)
+        assert RosterSlot.on_duty(self.unit, _aware(day, time(23, 0))).count() == 1
+        assert RosterSlot.on_duty(self.unit, _aware(day, time(5, 0))).count() == 1
+
+    def test_on_duty_excludes_daytime_gap(self):
+        day = date(2026, 8, 10)
+        self._overnight(day)
+        # 12:00 is outside the 19h→07h window.
+        assert RosterSlot.on_duty(self.unit, _aware(day, time(12, 0))).count() == 0
+
+    def test_zero_length_slot_still_rejected(self):
+        from django.core.exceptions import ValidationError
+
+        slot = RosterSlot(
+            roster=self.roster,
+            professional=self.prof,
+            unit=self.unit,
+            date=date(2026, 8, 11),
+            start_time=time(8, 0),
+            end_time=time(8, 0),
+        )
+        try:
+            slot.full_clean()
+            raised = False
+        except ValidationError:
+            raised = True
+        assert raised, "end_time == start_time must still be rejected"
+
+
 class RosterAvailabilityIntegrationTests(TenantTestCase):
     """The duty roster constrains emr availability without breaking pre-roster use."""
 

@@ -158,4 +158,39 @@ describe('DashboardShell', () => {
       '/platform/tenants',
     )
   })
+
+  it('shows Painel de Setor with Escalas for a user holding only roster.manage', () => {
+    render(
+      <DashboardShell user={{ ...user, permissions: ['roster.manage'] }}>
+        <div />
+      </DashboardShell>,
+    )
+    expect(screen.getByRole('button', { name: /Painel de Setor/ })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Escalas/ })).toHaveAttribute(
+      'href',
+      '/painel-setor/escalas',
+    )
+  })
+
+  it('hides Painel de Setor when the session lacks roster.manage, hr.manage and admin', () => {
+    render(
+      <DashboardShell user={{ ...user, permissions: ['emr.read'] }}>
+        <div />
+      </DashboardShell>,
+    )
+    expect(screen.queryByRole('button', { name: /Painel de Setor/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Escalas/ })).not.toBeInTheDocument()
+  })
+
+  it('no longer lists Escalas as a child of RH — it only exists under Painel de Setor', () => {
+    pathname = '/rh/funcionarios'
+    render(<DashboardShell user={user}><div /></DashboardShell>)
+    // RH item is active, so its remaining children render.
+    expect(screen.getByRole('link', { name: 'Funcionários' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Lotação' })).toBeInTheDocument()
+    // Exactly one Escalas link exists app-wide, and it points to Painel de Setor.
+    const escalasLinks = screen.getAllByRole('link', { name: /Escalas/ })
+    expect(escalasLinks).toHaveLength(1)
+    expect(escalasLinks[0]).toHaveAttribute('href', '/painel-setor/escalas')
+  })
 })

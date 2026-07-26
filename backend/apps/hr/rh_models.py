@@ -279,34 +279,49 @@ class RosterSlot(models.Model):
             models.Index(fields=["professional", "date"]),
         ]
         constraints = [
+            # S-IA2: an overnight plantão (e.g. 19h→07h) is a real shift, so
+            # end_time < start_time is allowed and MEANS "ends next day". Only a
+            # zero-length window (end == start) is rejected.
             models.CheckConstraint(
-                condition=models.Q(end_time__gt=models.F("start_time")),
+                condition=~models.Q(end_time=models.F("start_time")),
                 name="hr_rosterslot_valid_window",
             ),
         ]
+
+    @property
+    def is_overnight(self) -> bool:
+        """True when the shift crosses midnight (end_time on the following day)."""
+        return bool(self.start_time and self.end_time and self.end_time < self.start_time)
 
     def clean(self):
         super().clean()
         if self.professional_id is None and self.employee_id is None:
             raise ValidationError("Informe um profissional ou um funcionário para o plantão.")
-        if self.start_time and self.end_time and self.end_time <= self.start_time:
-            raise ValidationError({"end_time": "Horário de fim deve ser após o início."})
+        # end == start is a zero-length window (invalid); end < start is a valid
+        # overnight plantão (ends next day), so only equality is rejected.
+        if self.start_time and self.end_time and self.end_time == self.start_time:
+            raise ValidationError({"end_time": "Horário de fim não pode ser igual ao início."})
 
     @classmethod
     def on_duty(cls, unit, when):
         """RosterSlots covering ``when`` (aware datetime) in ``unit``.
 
-        Returns the queryset of active-roster slots for ``unit`` whose date matches
-        ``when`` and whose ``[start_time, end_time)`` window contains its time.
+        Returns the queryset of active-roster slots for ``unit`` (dated on
+        ``when``'s day) whose shift window contains its time. A same-day slot
+        (start < end) covers ``[start, end)``; an overnight slot (start > end,
+        e.g. 19h→07h) covers ``[start, 24h)`` and ``[00h, end)`` — so both 23:00
+        and 05:00 fall inside a 19h→07h plantão.
         """
         when_local = timezone.localtime(when) if timezone.is_aware(when) else when
+        t = when_local.time()
+        overnight = models.Q(start_time__gt=models.F("end_time"))
+        same_day_cover = models.Q(start_time__lte=t, end_time__gt=t)
+        overnight_cover = overnight & (models.Q(start_time__lte=t) | models.Q(end_time__gt=t))
         return cls.objects.filter(
             unit=unit,
             roster__active=True,
             date=when_local.date(),
-            start_time__lte=when_local.time(),
-            end_time__gt=when_local.time(),
-        )
+        ).filter((~overnight & same_day_cover) | overnight_cover)
 
     def __str__(self):
         who = self.professional_id or self.employee_id

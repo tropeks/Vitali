@@ -13,6 +13,7 @@ describe('permission catalog', () => {
     expect(PERMISSIONS.ORGANIZATION_READ).toBe('organization.read')
     expect(PERMISSIONS.HR_MANAGE).toBe('hr.manage')
     expect(PERMISSIONS.BILLING_FULL).toBe('billing.full')
+    expect(PERMISSIONS.ROSTER_MANAGE).toBe('roster.manage')
   })
 
   it('ALL_PERMISSIONS contains every catalog value', () => {

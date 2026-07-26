@@ -32,4 +32,15 @@ def roster_availability_hook(professional, start, end) -> bool:
 
     start_t = start_local.time()
     end_t = end_local.time()
-    return any(slot.start_time <= start_t and slot.end_time >= end_t for slot in slots)
+
+    def _covers(slot) -> bool:
+        if slot.start_time <= slot.end_time:
+            # Same-day window: the interval must fit inside [start, end].
+            return slot.start_time <= start_t and slot.end_time >= end_t
+        # Overnight window (e.g. 19h→07h): the [start, midnight) evening portion
+        # covers intervals at/after start; the [00h, end] morning portion covers
+        # intervals ending at/before end. Appointment intervals do not cross
+        # midnight, so either portion fully containing it is enough.
+        return start_t >= slot.start_time or end_t <= slot.end_time
+
+    return any(_covers(slot) for slot in slots)

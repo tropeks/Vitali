@@ -13,6 +13,7 @@ import {
   ScanLine,
   FlaskConical,
   CalendarX,
+  CalendarClock,
   Pill,
   PackageOpen,
   Receipt,
@@ -141,16 +142,32 @@ const NAV_GROUPS: NavGroup[] = [
         icon: Users,
         module: "rh",
         // HRAccessPermission: admin capability OR hr.manage (apps/hr/views.py).
-        // Escala stays here until S-IA2 moves it to the Painel de Setor.
         permissions: [PERMISSIONS.HR_MANAGE, PERMISSIONS.ADMIN],
         children: [
           { label: "Funcionários", href: "/rh/funcionarios" },
-          { label: "Escalas", href: "/rh/escalas" },
           { label: "Lotação", href: "/rh/lotacoes" },
           { label: "Afastamentos", href: "/rh/afastamentos" },
           { label: "Cargos", href: "/rh/cargos" },
           { label: "Dependentes", href: "/rh/dependentes" },
         ],
+      },
+    ],
+  },
+  {
+    // Supervisor/coordinator surface, scoped by unit — escala/plantão
+    // ownership moved here from RH (UI_NAVIGATION_IA.md §3, S-IA2). RBAC gates
+    // on `roster.manage`, with `hr.manage`/`admin` kept as transition
+    // fallbacks until every tenant has roster.manage assigned.
+    //
+    // Future (S-IA2+, once their routes exist): Dimensionamento, Trocas &
+    // folgas, Requisição de insumos, Indicadores (see UI_NAVIGATION_IA.md §2).
+    label: "Painel de Setor",
+    items: [
+      {
+        label: "Escalas",
+        href: "/painel-setor/escalas",
+        icon: CalendarClock,
+        permissions: [PERMISSIONS.ROSTER_MANAGE, PERMISSIONS.HR_MANAGE, PERMISSIONS.ADMIN],
       },
     ],
   },

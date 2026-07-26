@@ -255,6 +255,9 @@ ADMIN_PERMISSIONS = [
     "sae.read",
     "sae.write",
     "pharmacy.clinical_validate",
+    # Escala/plantão de setor (S-IA2). Admin carries it so tenant admins keep
+    # full roster access; sector supervisors get it standalone via RosterAccessPermission.
+    "roster.manage",
 ]
 
 CLINICAL_PRESCRIBER_PERMISSIONS = [
