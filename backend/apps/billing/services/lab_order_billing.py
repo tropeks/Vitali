@@ -136,4 +136,14 @@ def generate_sadt_guide_for_lab_order(order: LabOrder) -> TISSGuide:
                 unit_value=_unit_value(price_table, tuss),
             )
 
+        # No ordered test resolved to a payer-billable TUSS procedure — there is
+        # nothing to bill. Raise INSIDE the atomic block so the just-created guide
+        # rolls back (keeping the "one guide per lab order" invariant and this
+        # function idempotent: a later, billable re-run is not blocked by an empty
+        # guide left behind here).
+        if not guide.items.exists():
+            raise ValidationError(
+                "Pedido sem itens faturáveis: nenhum procedimento com código TUSS correspondente."
+            )
+
         return guide

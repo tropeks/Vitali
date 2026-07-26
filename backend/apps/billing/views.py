@@ -18,6 +18,7 @@ from django.db.models import Count, Sum
 from django.http import FileResponse, Http404
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import exceptions, filters, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
@@ -835,6 +836,12 @@ class PriceTableViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
+class LabOrderBillingRequestSerializer(serializers.Serializer):
+    """Request body for POST /guides/from-lab-order/ — the finalized LabOrder id."""
+
+    lab_order = serializers.UUIDField(help_text="UUID of the finalized (COMPLETED) LabOrder.")
+
+
 class TISSGuideViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -880,6 +887,53 @@ class TISSGuideViewSet(viewsets.ModelViewSet):
                 id__in=glosa_prediction_ids,
                 guide__isnull=True,
             ).update(guide=guide)
+
+    @extend_schema(
+        request=LabOrderBillingRequestSerializer,
+        responses={
+            201: OpenApiResponse(TISSGuideSerializer, description="Guia SP/SADT criada."),
+            200: OpenApiResponse(
+                TISSGuideSerializer, description="Guia já existente (re-faturamento idempotente)."
+            ),
+            400: OpenApiResponse(description="Pré-condição de faturamento não satisfeita."),
+            404: OpenApiResponse(description="Pedido de exame (LabOrder) não encontrado."),
+        },
+        summary="Faturar um LabOrder finalizado em uma guia TISS SP/SADT",
+        description=(
+            "Gera (ou retorna, de forma idempotente) a guia SP/SADT que fatura um "
+            "LabOrder concluído, delegando ao serviço "
+            "`generate_sadt_guide_for_lab_order`. Retorna 400 com mensagem clara "
+            "quando o pedido não é faturável (não concluído, sem atendimento, sem "
+            "convênio ativo / operadora não cadastrada, ou sem itens com código "
+            "TUSS correspondente)."
+        ),
+    )
+    @action(detail=False, methods=["post"], url_path="from-lab-order")
+    def from_lab_order(self, request):
+        """Bill a finalized LabOrder into an SP/SADT guide (billing→emr trigger).
+
+        The precondition errors raised by ``generate_sadt_guide_for_lab_order``
+        are DRF ``ValidationError``s, so they surface as HTTP 400 with the
+        service's PT-BR message. Idempotent: a second call returns the existing
+        guide (200 vs 201 on first creation)."""
+        from apps.emr.models import LabOrder
+
+        from .services.lab_order_billing import generate_sadt_guide_for_lab_order
+
+        payload = LabOrderBillingRequestSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            order = LabOrder.objects.get(pk=payload.validated_data["lab_order"])
+        except LabOrder.DoesNotExist:
+            return Response(
+                {"detail": "Pedido de exame não encontrado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        already_billed = TISSGuide.objects.filter(lab_order=order).exists()
+        # Raises DRF ValidationError (→ 400) when the order is not billable.
+        guide = generate_sadt_guide_for_lab_order(order)
+        http_status = status.HTTP_200_OK if already_billed else status.HTTP_201_CREATED
+        return Response(TISSGuideSerializer(guide).data, status=http_status)
 
     @action(detail=True, methods=["post"], url_path="generate-xml")
     def generate_xml(self, request, pk=None):

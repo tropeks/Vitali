@@ -4,6 +4,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import filters, mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -24,6 +25,7 @@ from .models import (
     Encounter,
     EncounterAddendum,
     EncounterProcedure,
+    LabDeltaAlert,
     LabOrder,
     LabOrderItem,
     LabTest,
@@ -48,6 +50,7 @@ from .serializers import (
     EncounterListSerializer,
     EncounterProcedureSerializer,
     EncounterSerializer,
+    LabDeltaAlertSerializer,
     LabOrderItemSerializer,
     LabOrderSerializer,
     LabTestSerializer,
@@ -1270,6 +1273,48 @@ class LabOrderViewSet(viewsets.ModelViewSet):
             order.completed_at = timezone.now()
             order.save(update_fields=["status", "completed_at"])
         return Response(self.get_serializer(order).data)
+
+
+@extend_schema_view(
+    list=extend_schema(
+        summary="Lista alertas de delta-check laboratorial",
+        parameters=[
+            OpenApiParameter(
+                "patient", str, description="Filtra por paciente do resultado que disparou."
+            ),
+            OpenApiParameter(
+                "order_item", str, description="Filtra pelo item de resultado que disparou."
+            ),
+        ],
+        responses=LabDeltaAlertSerializer(many=True),
+    ),
+    retrieve=extend_schema(
+        summary="Detalha um alerta de delta-check", responses=LabDeltaAlertSerializer
+    ),
+)
+class LabDeltaAlertViewSet(viewsets.ReadOnlyModelViewSet):
+    """A3-T3 — read-only feed of laboratory delta-check alerts (emr.read).
+
+    Alerts are raised by ``run_delta_check`` when a numeric result varies from
+    the patient's most recent prior result for the same test beyond the test's
+    configured ``delta_threshold_pct``. Tenant-scoped by schema; optional
+    ``?patient=`` / ``?order_item=`` filters.
+    """
+
+    serializer_class = LabDeltaAlertSerializer
+    permission_classes = [IsAuthenticated, HasPermission("emr.read")]  # type: ignore[list-item]
+
+    def get_queryset(self):
+        qs = LabDeltaAlert.objects.select_related("test", "order_item", "previous_item").order_by(
+            "-created_at"
+        )
+        patient = self.request.query_params.get("patient")
+        if patient:
+            qs = qs.filter(order_item__order__patient_id=patient)
+        order_item = self.request.query_params.get("order_item")
+        if order_item:
+            qs = qs.filter(order_item_id=order_item)
+        return qs
 
 
 # ─── Sprint 7 (S-015): Prescription ───────────────────────────────────────────

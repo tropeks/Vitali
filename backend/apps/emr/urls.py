@@ -10,6 +10,7 @@ from .views import (
     DuplicatePatientCandidateViewSet,
     EncounterAddendumViewSet,
     EncounterViewSet,
+    LabDeltaAlertViewSet,
     LabOrderViewSet,
     LabTestViewSet,
     MedicationAdministrationViewSet,
@@ -65,6 +66,7 @@ router.register(
 router.register("encounter-addenda", EncounterAddendumViewSet, basename="encounter-addendum")
 router.register("lab-tests", LabTestViewSet, basename="lab-test")
 router.register("lab-orders", LabOrderViewSet, basename="lab-order")
+router.register("lab-delta-alerts", LabDeltaAlertViewSet, basename="lab-delta-alert")
 router.register("lab-integrations", LabIntegrationMessageViewSet, basename="lab-integration")
 router.register("lab-instruments", LabInstrumentViewSet, basename="lab-instrument")
 router.register("lab-specimens", LabSpecimenViewSet, basename="lab-specimen")

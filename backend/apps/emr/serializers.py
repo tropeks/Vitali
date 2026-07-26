@@ -1,6 +1,7 @@
 import re
 
 from django.db import transaction
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import (
@@ -13,6 +14,7 @@ from .models import (
     Encounter,
     EncounterAddendum,
     EncounterProcedure,
+    LabDeltaAlert,
     LabOrder,
     LabOrderItem,
     LabTest,
@@ -590,6 +592,7 @@ class LabTestSerializer(serializers.ModelSerializer):
             "reference_range",
             "components",
             "reference_ranges",
+            "delta_threshold_pct",
             "active",
             "created_at",
             "updated_at",
@@ -629,6 +632,26 @@ class LabTestSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class LabDeltaAlertSerializer(serializers.ModelSerializer):
+    """A3-T3 — read-only view of a persisted laboratory delta-check alert."""
+
+    class Meta:
+        model = LabDeltaAlert
+        fields = [
+            "id",
+            "order_item",
+            "previous_item",
+            "test",
+            "previous_value",
+            "current_value",
+            "delta_absolute",
+            "delta_pct",
+            "threshold_pct",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
 class LabOrderItemSerializer(serializers.ModelSerializer):
     abnormal_flag_display = serializers.CharField(
         source="get_abnormal_flag_display", read_only=True
@@ -637,6 +660,20 @@ class LabOrderItemSerializer(serializers.ModelSerializer):
     validated_by_name = serializers.CharField(
         source="validated_by.full_name", read_only=True, default=None
     )
+    delta_alert = serializers.SerializerMethodField()
+
+    @extend_schema_field(LabDeltaAlertSerializer)
+    def get_delta_alert(self, obj):
+        """The delta-check alert on this result, or None (A3-T3 nested field).
+
+        ``delta_alert`` is a reverse OneToOne that only exists when the result
+        breached the test threshold, so guard the RelatedObjectDoesNotExist.
+        """
+        try:
+            alert = obj.delta_alert
+        except LabDeltaAlert.DoesNotExist:
+            return None
+        return LabDeltaAlertSerializer(alert, context=self.context).data
 
     class Meta:
         model = LabOrderItem
@@ -664,6 +701,7 @@ class LabOrderItemSerializer(serializers.ModelSerializer):
             "validated_by",
             "validated_by_name",
             "is_validated",
+            "delta_alert",
         ]
         read_only_fields = [
             "id",

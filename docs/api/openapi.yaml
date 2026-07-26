@@ -2254,6 +2254,46 @@ paths:
               schema:
                 $ref: '#/components/schemas/TISSGuide'
           description: ''
+  /api/v1/billing/guides/from-lab-order/:
+    post:
+      operationId: v1_billing_guides_from_lab_order_create
+      description: Gera (ou retorna, de forma idempotente) a guia SP/SADT que fatura
+        um LabOrder concluído, delegando ao serviço `generate_sadt_guide_for_lab_order`.
+        Retorna 400 com mensagem clara quando o pedido não é faturável (não concluído,
+        sem atendimento, sem convênio ativo / operadora não cadastrada, ou sem itens
+        com código TUSS correspondente).
+      summary: Faturar um LabOrder finalizado em uma guia TISS SP/SADT
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LabOrderBillingRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LabOrderBillingRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LabOrderBillingRequestRequest'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TISSGuide'
+          description: Guia SP/SADT criada.
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TISSGuide'
+          description: Guia já existente (re-faturamento idempotente).
+        '400':
+          description: Pré-condição de faturamento não satisfeita.
+        '404':
+          description: Pedido de exame (LabOrder) não encontrado.
   /api/v1/billing/payables/:
     get:
       operationId: v1_billing_payables_list
@@ -9731,6 +9771,89 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/v1/lab-delta-alerts/:
+    get:
+      operationId: v1_lab_delta_alerts_list
+      description: |-
+        A3-T3 — read-only feed of laboratory delta-check alerts (emr.read).
+
+        Alerts are raised by ``run_delta_check`` when a numeric result varies from
+        the patient's most recent prior result for the same test beyond the test's
+        configured ``delta_threshold_pct``. Tenant-scoped by schema; optional
+        ``?patient=`` / ``?order_item=`` filters.
+      summary: Lista alertas de delta-check laboratorial
+      parameters:
+      - in: query
+        name: order_item
+        schema:
+          type: string
+        description: Filtra pelo item de resultado que disparou.
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: patient
+        schema:
+          type: string
+        description: Filtra por paciente do resultado que disparou.
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - v1
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedLabDeltaAlertList'
+          description: ''
+  /api/v1/lab-delta-alerts/{id}/:
+    get:
+      operationId: v1_lab_delta_alerts_retrieve
+      description: |-
+        A3-T3 — read-only feed of laboratory delta-check alerts (emr.read).
+
+        Alerts are raised by ``run_delta_check`` when a numeric result varies from
+        the patient's most recent prior result for the same test beyond the test's
+        configured ``delta_threshold_pct``. Tenant-scoped by schema; optional
+        ``?patient=`` / ``?order_item=`` filters.
+      summary: Detalha um alerta de delta-check
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this lab delta alert.
+        required: true
+      tags:
+      - v1
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LabDeltaAlert'
+          description: ''
   /api/v1/lab-instruments/:
     get:
       operationId: v1_lab_instruments_list
@@ -22325,6 +22448,69 @@ components:
       description: |-
         * `revenue` - Receita
         * `expense` - Despesa
+    LabDeltaAlert:
+      type: object
+      description: A3-T3 — read-only view of a persisted laboratory delta-check alert.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        order_item:
+          type: string
+          format: uuid
+          readOnly: true
+          description: Resultado atual que disparou o alerta.
+        previous_item:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+          description: Resultado anterior comparado (o mais recente antes deste).
+        test:
+          type: string
+          format: uuid
+          readOnly: true
+        previous_value:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,6})?$
+          readOnly: true
+        current_value:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,6})?$
+          readOnly: true
+        delta_absolute:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,6})?$
+          readOnly: true
+        delta_pct:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
+          readOnly: true
+        threshold_pct:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,4}(?:\.\d{0,2})?$
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - current_value
+      - delta_absolute
+      - delta_pct
+      - id
+      - order_item
+      - previous_item
+      - previous_value
+      - test
+      - threshold_pct
     LabInstrument:
       type: object
       properties:
@@ -22566,6 +22752,17 @@ components:
       - specimen_details
       - status
       - status_display
+    LabOrderBillingRequestRequest:
+      type: object
+      description: Request body for POST /guides/from-lab-order/ — the finalized LabOrder
+        id.
+      properties:
+        lab_order:
+          type: string
+          format: uuid
+          description: UUID of the finalized (COMPLETED) LabOrder.
+      required:
+      - lab_order
     LabOrderItem:
       type: object
       properties:
@@ -22639,10 +22836,15 @@ components:
         is_validated:
           type: boolean
           readOnly: true
+        delta_alert:
+          allOf:
+          - $ref: '#/components/schemas/LabDeltaAlert'
+          readOnly: true
       required:
       - abnormal_flag_display
       - category
       - components
+      - delta_alert
       - id
       - is_validated
       - loinc_code
@@ -22904,6 +23106,14 @@ components:
           maxLength: 160
         components: {}
         reference_ranges: {}
+        delta_threshold_pct:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,4}(?:\.\d{0,2})?$
+          nullable: true
+          title: Limiar de delta-check (%)
+          description: Variação percentual que dispara um alerta de delta. Vazio =
+            inerte.
         active:
           type: boolean
         created_at:
@@ -22952,6 +23162,14 @@ components:
           maxLength: 160
         components: {}
         reference_ranges: {}
+        delta_threshold_pct:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,4}(?:\.\d{0,2})?$
+          nullable: true
+          title: Limiar de delta-check (%)
+          description: Variação percentual que dispara um alerta de delta. Vazio =
+            inerte.
         active:
           type: boolean
       required:
@@ -25660,6 +25878,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/InventoryCount'
+    PaginatedLabDeltaAlertList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/LabDeltaAlert'
     PaginatedLabInstrumentList:
       type: object
       required:
@@ -27725,6 +27966,14 @@ components:
           maxLength: 160
         components: {}
         reference_ranges: {}
+        delta_threshold_pct:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,4}(?:\.\d{0,2})?$
+          nullable: true
+          title: Limiar de delta-check (%)
+          description: Variação percentual que dispara um alerta de delta. Vazio =
+            inerte.
         active:
           type: boolean
     PatchedLegalEntityRequest:
