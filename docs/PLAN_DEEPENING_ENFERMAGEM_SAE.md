@@ -36,14 +36,22 @@ Reusa o backbone de terminologia (`core.terminology_base.TerminologyCatalog` + `
   vínculo à prescrição/aprazamento, alerta de divergência. Endpoint de checagem que valida paciente×medicamento×horário.
   pytest TDD.
 
-### N4 · Workspace SAE (frontend)  ·  **Opus**
-No prontuário (`patients/[id]` ou `encounters/[id]`): fluxo SAE — Histórico → Diagnósticos (picker NANDA via terminology
-search) → Plano (NOC/NIC) → Prescrição de enfermagem + grade de aprazamento → Evolução. RBAC `sae.write` (enfermeiro).
-Vitest TDD.
+### N4 · Workspace SAE (frontend)  ·  **Opus**  ·  ✅ FEITO
+No prontuário (`patients/[id]`): nova aba **SAE** — Diagnósticos (picker NANDA via terminology search) → Plano (NOC/NIC)
+→ Prescrição de enfermagem → Evolução. Leitura para todos; adicionar gated em `sae.write` (enfermeiro). Componentes
+`components/nursing/Sae*` + `types.ts`. Vitest TDD (20 testes nursing + 29 no escopo patients+nursing).
+> **Fix de backend acoplado** (`serializers_sae._CatalogCodeWriteMixin`): o picker de terminologia só expõe `code`/`display`
+> (sem PK do catálogo), então a UI posta `nanda_code`/`noc_code`/`nic_code`. Esses campos eram `read_only` → o vínculo à
+> catálogo governada era perdido (FK nula → unmatched). Agora o `*_code` é gravável e roteia pelo setter do modelo
+> (resolve code→FK, senão marca unmatched + guarda texto) — mesma forma reconcile-safe de `cbo`/`cnes`.
 
-### N5 · Checagem beira-leito / MAR (frontend)  ·  **Opus**
-Grade de administração (MAR) por leito/turno + fluxo de checagem com scan (input de código de barras), os "5 certos",
-registro de não-administração com motivo. Vitest TDD. RBAC `emar.administer`.
+### N5 · Checagem beira-leito / MAR (frontend)  ·  **Opus**  ·  ✅ FEITO
+Nova rota `/enfermagem/checagem` (nav "Checagem (MAR)" em Atendimento, gated `emar.administer`): scan paciente+medicamento
+→ `POST /emar/check/` → 201 registra / 422 mostra os "5 certos" com o direito que falhou / override justificado. Meds
+devidos vêm das prescrições assinadas (`/prescriptions/?patient=` → `items[]`). Componentes `Mar*`/`Bcma*`. Vitest TDD (13).
+
+> **Épico N1..N5 concluído** (2026-07-26): catálogos NANDA/NIC/NOC governados → domínio SAE executável + aprazamento →
+> BCMA/eMAR beira-leito → workspace SAE no prontuário → checagem MAR. Camadas modelo/API/UI/RBAC cobertas.
 
 ## Ordem
 N1 → N2 (dependência de catálogo) → N3 (BCMA, paralelo a N2 possível) → N4 (depende N2) → N5 (depende N3).
