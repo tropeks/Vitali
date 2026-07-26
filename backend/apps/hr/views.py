@@ -6,21 +6,41 @@ create() is an explicit method that delegates to EmployeeOnboardingService
 destroy() delegates to EmployeeDeactivationService (F-15 soft-delete cascade).
 """
 
+from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from rest_framework import mixins, viewsets
+from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .models import Employee, OccupationalHealthExam, TimeEntry, WorkSchedule
+from .models import (
+    Dependent,
+    DutyRoster,
+    Employee,
+    EmployeeAssignment,
+    LeaveRequest,
+    OccupationalHealthExam,
+    Position,
+    RosterSlot,
+    TimeEntry,
+    WorkSchedule,
+)
 from .serializers import (
+    DependentSerializer,
+    DutyRosterSerializer,
+    EmployeeAssignmentSerializer,
     EmployeeOnboardingSerializer,
     EmployeeSerializer,
+    LeaveRequestSerializer,
     OccupationalHealthExamSerializer,
+    PositionSerializer,
+    RosterSlotSerializer,
     TimeEntrySerializer,
     WorkScheduleSerializer,
 )
-from .services import AttendanceService, EmployeeOnboardingService
+from .services import AssignmentService, AttendanceService, EmployeeOnboardingService, LeaveService
 
 
 class HRAccessPermission:
@@ -297,3 +317,117 @@ class TimeEntryViewSet(viewsets.ReadOnlyModelViewSet):
             external_id=serializer.validated_data.get("external_id"),
         )
         return Response(TimeEntrySerializer(entry).data, status=201 if created else 200)
+
+
+# ── Sprint M2-S2 — RH operacional (gated + audited) ──────────────────────────
+
+
+class _AuditedCreateMixin:
+    """perform_create that writes an AuditLog row attributing the actor."""
+
+    audit_action = ""
+    audit_resource_type = ""
+
+    def perform_create(self, serializer):
+        from apps.core.models import AuditLog
+
+        obj = serializer.save()
+        AuditLog.objects.create(
+            user=self.request.user,
+            action=self.audit_action,
+            resource_type=self.audit_resource_type,
+            resource_id=str(obj.pk),
+            new_data={"created": True},
+        )
+
+
+class PositionViewSet(HRManagePermissionMixin, _AuditedCreateMixin, viewsets.ModelViewSet):  # type: ignore[misc]
+    queryset = Position.objects.all()
+    serializer_class = PositionSerializer
+    audit_action = "position_created"
+    audit_resource_type = "position"
+
+
+class DependentViewSet(HRManagePermissionMixin, _AuditedCreateMixin, viewsets.ModelViewSet):  # type: ignore[misc]
+    queryset = Dependent.objects.select_related("employee__user").all()
+    serializer_class = DependentSerializer
+    audit_action = "dependent_created"
+    audit_resource_type = "dependent"
+
+
+class EmployeeAssignmentViewSet(HRManagePermissionMixin, viewsets.ModelViewSet):  # type: ignore[misc]
+    queryset = EmployeeAssignment.objects.select_related("employee__user", "unit").all()
+    serializer_class = EmployeeAssignmentSerializer
+
+    def create(self, request, *args, **kwargs):
+        # Delegate to AssignmentService for the single-active invariant + audit.
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        assignment = AssignmentService.assign(
+            employee=data["employee"],
+            unit=data["unit"],
+            start_date=data["start_date"],
+            cost_center=data.get("cost_center"),
+            position=data.get("position"),
+            role=data.get("role", ""),
+            actor=request.user,
+        )
+        return Response(self.get_serializer(assignment).data, status=201)
+
+
+class DutyRosterViewSet(HRManagePermissionMixin, _AuditedCreateMixin, viewsets.ModelViewSet):  # type: ignore[misc]
+    queryset = DutyRoster.objects.select_related("facility").all()
+    serializer_class = DutyRosterSerializer
+    audit_action = "duty_roster_created"
+    audit_resource_type = "duty_roster"
+
+
+class RosterSlotViewSet(HRManagePermissionMixin, _AuditedCreateMixin, viewsets.ModelViewSet):  # type: ignore[misc]
+    queryset = RosterSlot.objects.select_related("roster", "unit", "professional", "employee").all()
+    serializer_class = RosterSlotSerializer
+    audit_action = "roster_slot_created"
+    audit_resource_type = "roster_slot"
+
+
+class LeaveRequestViewSet(HRManagePermissionMixin, viewsets.ModelViewSet):  # type: ignore[misc]
+    queryset = LeaveRequest.objects.select_related("employee__user", "approval").all()
+    serializer_class = LeaveRequestSerializer
+    http_method_names = ["get", "post", "head", "options"]
+
+    def create(self, request, *args, **kwargs):
+        from rest_framework.exceptions import PermissionDenied as DRFPermissionDenied
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        try:
+            leave = LeaveService.request_leave(
+                employee=data["employee"],
+                requested_by=request.user,
+                leave_type=data["leave_type"],
+                start_date=data["start_date"],
+                end_date=data["end_date"],
+                reason=data.get("reason", ""),
+            )
+        except DjangoPermissionDenied as exc:
+            raise DRFPermissionDenied(str(exc)) from exc
+        except DjangoValidationError as exc:
+            raise DRFValidationError(exc.messages) from exc
+        return Response(self.get_serializer(leave).data, status=201)
+
+    @action(detail=True, methods=["post"])
+    def decide(self, request, pk=None):
+        """POST /hr/leave-requests/{id}/decide/ {approve: bool, note: str}."""
+        from rest_framework.exceptions import PermissionDenied as DRFPermissionDenied
+
+        leave = self.get_object()
+        approve = bool(request.data.get("approve", True))
+        note = request.data.get("note", "")
+        try:
+            leave = LeaveService.decide(leave=leave, actor=request.user, approve=approve, note=note)
+        except DjangoPermissionDenied as exc:
+            raise DRFPermissionDenied(str(exc)) from exc
+        except DjangoValidationError as exc:
+            raise DRFValidationError(exc.messages) from exc
+        return Response(self.get_serializer(leave).data, status=200)

@@ -21,6 +21,19 @@ from apps.emr.models import Appointment, ScheduleConfig, ScheduleException
 # RBAC permission required to authorise an encaixe (overbooking outside grid).
 ENCAIXE_PERMISSION = "emr.appointment_encaixe"
 
+# Read-side availability extension points. Other apps (e.g. hr, for the duty
+# roster) register a callable ``hook(professional, start, end) -> bool`` here at
+# AppConfig.ready(); a hook returning False makes the interval unavailable. This
+# keeps the dependency direction one-way (hr imports emr, never the reverse):
+# emr merely exposes the registry and does NOT import any consumer.
+_AVAILABILITY_HOOKS: list = []
+
+
+def register_availability_hook(hook) -> None:
+    """Register an extra availability predicate (idempotent by identity)."""
+    if hook not in _AVAILABILITY_HOOKS:
+        _AVAILABILITY_HOOKS.append(hook)
+
 
 def is_professional_available(professional, start, end) -> bool:
     """True if ``[start, end)`` is bookable for ``professional``.
@@ -31,6 +44,9 @@ def is_professional_available(professional, start, end) -> bool:
       * does not overlap the lunch window, and
       * is not covered by a ``ScheduleException`` (vacation/holiday/block).
     Times are compared in local wall-clock (``timezone.localtime``).
+
+    Finally, every registered availability hook must also approve the interval
+    (e.g. the hr duty roster: a rostered professional is only available on shift).
     """
     config = ScheduleConfig.objects.filter(professional=professional, is_active=True).first()
     if config is None:
@@ -52,6 +68,10 @@ def is_professional_available(professional, start, end) -> bool:
 
     if ScheduleException.is_blocked(professional, start, end):
         return False
+
+    for hook in _AVAILABILITY_HOOKS:
+        if not hook(professional, start, end):
+            return False
 
     return True
 
