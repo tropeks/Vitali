@@ -95,6 +95,7 @@ const NAV_ITEMS: NavItem[] = [
       { label: "Ativos", href: "/concessao/ativos" },
       { label: "Contratos", href: "/concessao/contratos" },
       { label: "Logística", href: "/concessao/logistica" },
+      { label: "Manutenção", href: "/concessao/manutencao" },
       { label: "P&L", href: "/concessao/pnl" },
     ],
   },
