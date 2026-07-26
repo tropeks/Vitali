@@ -6344,6 +6344,26 @@ paths:
               schema:
                 $ref: '#/components/schemas/MedicationAdministration'
           description: ''
+  /api/v1/emar/check/:
+    post:
+      operationId: v1_emar_check_create
+      description: Escaneia paciente + medicamento à beira-leito, verifica os 5 certos
+        (paciente/medicamento/dose/via/hora) contra a ordem assinada e, em caso de
+        sucesso, registra a administração (append-only, bcma_verified=True). Se um
+        certo falhar, retorna o mismatch estruturado (422); o enfermeiro só prossegue
+        enviando override_reason (registro com bcma_verified=False).
+      summary: 'BCMA beira-leito: checagem dos 5 certos e registro da administração'
+      tags:
+      - v1
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MedicationAdministration'
+          description: ''
+        '422':
+          description: Um dos '5 certos' falhou; informe override_reason.
   /api/v1/emr/setup/professional/:
     post:
       operationId: v1_emr_setup_professional_create
@@ -24787,6 +24807,16 @@ components:
           - $ref: '#/components/schemas/BlankEnum'
         reason:
           type: string
+        patient_barcode_scanned:
+          type: string
+          maxLength: 64
+        medication_barcode_scanned:
+          type: string
+          maxLength: 64
+        bcma_verified:
+          type: boolean
+        bcma_override_reason:
+          type: string
         created_at:
           type: string
           format: date-time
@@ -24844,6 +24874,16 @@ components:
           - $ref: '#/components/schemas/RouteEnum'
           - $ref: '#/components/schemas/BlankEnum'
         reason:
+          type: string
+        patient_barcode_scanned:
+          type: string
+          maxLength: 64
+        medication_barcode_scanned:
+          type: string
+          maxLength: 64
+        bcma_verified:
+          type: boolean
+        bcma_override_reason:
           type: string
         prescription_item:
           type: string

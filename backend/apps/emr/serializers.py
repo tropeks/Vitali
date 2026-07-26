@@ -1105,6 +1105,22 @@ class MedicationAdministrationSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "encounter", "patient", "administered_by", "created_at")
 
 
+class BCMACheckSerializer(serializers.Serializer):
+    """Request body for the BCMA beira-leito checagem (POST .../emar/check/).
+
+    Runs the "5 certos" verifier for a bedside scan against the signed order.
+    ``override_reason`` is optional: supplied only to proceed past a failed
+    right (records the append-only event with ``bcma_verified=False``).
+    """
+
+    prescription_item = serializers.PrimaryKeyRelatedField(queryset=PrescriptionItem.objects.all())
+    patient_barcode = serializers.CharField(max_length=64)
+    medication_barcode = serializers.CharField(max_length=64)
+    override_reason = serializers.CharField(
+        required=False, allow_blank=True, default="", max_length=2000
+    )
+
+
 class NursingAssessmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = NursingAssessment

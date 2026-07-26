@@ -80,6 +80,11 @@ class Patient(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     medical_record_number = models.CharField(max_length=20, unique=True, blank=True)
+    # BCMA beira-leito: the value encoded on the patient's identification
+    # wristband, scanned to verify the "paciente certo". Blank by default so
+    # existing patients are unaffected; the verifier falls back to the MRN when
+    # no dedicated wristband barcode has been printed.
+    wristband_barcode = models.CharField(max_length=64, blank=True, db_index=True)
     # PII encrypted at rest (LGPD). Encrypted fields are stored as opaque
     # ciphertext, so they cannot be DB-indexed, ordered or filtered with
     # SQL — name search/ordering is handled in Python (see filters.py / views.py).
@@ -1492,6 +1497,16 @@ class MedicationAdministration(models.Model):
         blank=True,
         related_name="witnessed_medication_administrations",
     )
+    # ─── BCMA beira-leito (N3): barcode scan evidence for the "5 certos" ──────
+    # The raw values scanned at the bedside — patient wristband + medication
+    # barcode — persisted as the audit trail for the check that gated this
+    # append-only event. bcma_verified is True only when every "certo" passed;
+    # when a nurse proceeds past a failed right, bcma_verified stays False and
+    # bcma_override_reason carries the mandatory justification.
+    patient_barcode_scanned = models.CharField(max_length=64, blank=True)
+    medication_barcode_scanned = models.CharField(max_length=64, blank=True)
+    bcma_verified = models.BooleanField(default=False)
+    bcma_override_reason = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
