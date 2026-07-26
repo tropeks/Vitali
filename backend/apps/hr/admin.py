@@ -2,7 +2,18 @@
 
 from django.contrib import admin
 
-from .models import Employee, OccupationalHealthExam, TimeEntry, WorkSchedule
+from .models import (
+    Dependent,
+    DutyRoster,
+    Employee,
+    EmployeeAssignment,
+    LeaveRequest,
+    OccupationalHealthExam,
+    Position,
+    RosterSlot,
+    TimeEntry,
+    WorkSchedule,
+)
 
 
 @admin.register(Employee)
@@ -16,3 +27,9 @@ class EmployeeAdmin(admin.ModelAdmin):
 admin.site.register(WorkSchedule)
 admin.site.register(TimeEntry)
 admin.site.register(OccupationalHealthExam)
+admin.site.register(Position)
+admin.site.register(EmployeeAssignment)
+admin.site.register(Dependent)
+admin.site.register(LeaveRequest)
+admin.site.register(DutyRoster)
+admin.site.register(RosterSlot)

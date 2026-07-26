@@ -6,7 +6,18 @@ from rest_framework import serializers
 
 from apps.core.models import Role, User
 
-from .models import Employee, OccupationalHealthExam, TimeEntry, WorkSchedule
+from .models import (
+    Dependent,
+    DutyRoster,
+    Employee,
+    EmployeeAssignment,
+    LeaveRequest,
+    OccupationalHealthExam,
+    Position,
+    RosterSlot,
+    TimeEntry,
+    WorkSchedule,
+)
 from .services import CLINICAL_ROLES
 
 CONTRACT_TYPE_ALIASES = {
@@ -171,3 +182,58 @@ class OccupationalHealthExamSerializer(serializers.ModelSerializer):
         model = OccupationalHealthExam
         fields = "__all__"
         read_only_fields = ["id", "recorded_by", "created_at", "updated_at"]
+
+
+# ── Sprint M2-S2 — RH operacional ────────────────────────────────────────────
+
+
+class PositionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Position
+        fields = "__all__"
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class EmployeeAssignmentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmployeeAssignment
+        fields = "__all__"
+        # ``active``/``end_date`` are managed by AssignmentService (single-active
+        # invariant); clients POST the new posting, not the close of the old one.
+        read_only_fields = ["id", "active", "end_date", "created_at", "updated_at"]
+
+
+class DependentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Dependent
+        fields = "__all__"
+        read_only_fields = ["id", "created_at"]
+
+
+class LeaveRequestSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LeaveRequest
+        fields = "__all__"
+        # status/approval/requested_by are governed by the maker-checker flow.
+        read_only_fields = [
+            "id",
+            "status",
+            "approval",
+            "requested_by",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class DutyRosterSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DutyRoster
+        fields = "__all__"
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class RosterSlotSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RosterSlot
+        fields = "__all__"
+        read_only_fields = ["id", "created_at"]

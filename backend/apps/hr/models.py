@@ -159,3 +159,8 @@ class OccupationalHealthExam(models.Model):
 
     def __str__(self):
         return f"{self.employee} — {self.get_exam_type_display()} ({self.performed_on})"
+
+
+# Sprint M2-S2 — RH operacional (cargo/lotação/férias/escala). Single import line
+# so the parent worktree merge touches this file by exactly one line.
+from .rh_models import *  # noqa: E402,F401,F403
