@@ -7,7 +7,15 @@ GET /api/v1/terminology/<system>/?q= contract (200 authed / 401 anon / no write)
 
 from rest_framework.test import APIClient
 
-from apps.core.models import CID10Code, Role, User
+from apps.core.models import (
+    CBOCode,
+    CID10Code,
+    CNESEstablishment,
+    LoincCode,
+    Role,
+    UcumUnit,
+    User,
+)
 from apps.core.terminology import UnknownTerminologySystem, search
 from apps.test_utils import TenantTestCase
 
@@ -73,6 +81,82 @@ class TestTerminologySearchService(TenantTestCase):
     def test_unknown_system_raises(self):
         with self.assertRaises(UnknownTerminologySystem):
             search("bogus", "x")
+
+
+class TestSharedCatalogSearchService(TenantTestCase):
+    """A1-T1: cbo/cnes/loinc/ucum registered in the search registry.
+
+    The shared catalogs (CBOCode/CNESEstablishment/LoincCode/UcumUnit) use the
+    governed ``display`` / ``normalized_display`` shape (no ``parent``), so the
+    generalized search must handle them without the CID-10-specific hierarchy.
+    """
+
+    def setUp(self):
+        CBOCode.objects.create(code="225125", display="Médico clínico", family="2251")
+        CBOCode.objects.create(code="223505", display="Enfermeiro", family="2235")
+        CBOCode.objects.create(code="999999", display="Inativo antigo", active=False)
+
+        CNESEstablishment.objects.create(
+            code="2077469",
+            display="Hospital São Lucas",
+            establishment_type="HOSPITAL GERAL",
+            municipality_ibge="3550308",
+        )
+        LoincCode.objects.create(
+            code="718-7",
+            display="Hemoglobin [Mass/volume] in Blood",
+            component="Hemoglobin",
+            property="MCnc",
+            loinc_system="Bld",
+        )
+        UcumUnit.objects.create(code="mg/dL", display="milligram per deciliter")
+
+    def test_cbo_exact_code(self):
+        results = search("cbo", "225125")
+        self.assertEqual(results[0]["code"], "225125")
+        self.assertEqual(results[0]["system"], "cbo")
+        self.assertEqual(results[0]["display"], "Médico clínico")
+        self.assertTrue(results[0]["active"])
+
+    def test_cbo_accent_insensitive_display(self):
+        codes = [r["code"] for r in search("cbo", "medico")]
+        self.assertIn("225125", codes)
+
+    def test_cbo_active_only(self):
+        codes = [r["code"] for r in search("cbo", "999999")]
+        self.assertNotIn("999999", codes)
+
+    def test_cbo_context_has_family(self):
+        results = search("cbo", "225125")
+        self.assertEqual(results[0]["context"]["family"], "2251")
+
+    def test_cnes_context_fields(self):
+        results = search("cnes", "2077469")
+        ctx = results[0]["context"]
+        self.assertEqual(ctx["establishment_type"], "HOSPITAL GERAL")
+        self.assertEqual(ctx["municipality_ibge"], "3550308")
+
+    def test_cnes_display_substring(self):
+        codes = [r["code"] for r in search("cnes", "lucas")]
+        self.assertIn("2077469", codes)
+
+    def test_loinc_context_axes(self):
+        results = search("loinc", "718-7")
+        ctx = results[0]["context"]
+        self.assertEqual(ctx["component"], "Hemoglobin")
+        self.assertEqual(ctx["property"], "MCnc")
+        self.assertEqual(ctx["loinc_system"], "Bld")
+
+    def test_ucum_exact_code(self):
+        results = search("ucum", "mg/dL")
+        self.assertEqual(results[0]["code"], "mg/dL")
+        self.assertEqual(results[0]["display"], "milligram per deciliter")
+        self.assertIn("context", results[0])
+
+    def test_all_four_registered(self):
+        for system in ("cbo", "cnes", "loinc", "ucum"):
+            # No exception → system is registered.
+            self.assertIsInstance(search(system, "zzz-nomatch"), list)
 
 
 class TestTerminologySearchAPI(TenantTestCase):

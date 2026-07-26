@@ -4136,6 +4136,182 @@ paths:
               schema:
                 $ref: '#/components/schemas/AssetMovement'
           description: ''
+  /api/v1/concession/asset-services/:
+    get:
+      operationId: v1_concession_asset_services_list
+      description: |-
+        B0-T2 — which services/exams an asset enables (asset → enabled exams).
+
+        Filter by ``?asset=<id>`` to list the exams a given equipment enables.
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - v1
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAssetServiceList'
+          description: ''
+    post:
+      operationId: v1_concession_asset_services_create
+      description: |-
+        B0-T2 — which services/exams an asset enables (asset → enabled exams).
+
+        Filter by ``?asset=<id>`` to list the exams a given equipment enables.
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssetServiceRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AssetServiceRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AssetServiceRequest'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetService'
+          description: ''
+  /api/v1/concession/asset-services/{id}/:
+    get:
+      operationId: v1_concession_asset_services_retrieve
+      description: |-
+        B0-T2 — which services/exams an asset enables (asset → enabled exams).
+
+        Filter by ``?asset=<id>`` to list the exams a given equipment enables.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this asset service.
+        required: true
+      tags:
+      - v1
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetService'
+          description: ''
+    put:
+      operationId: v1_concession_asset_services_update
+      description: |-
+        B0-T2 — which services/exams an asset enables (asset → enabled exams).
+
+        Filter by ``?asset=<id>`` to list the exams a given equipment enables.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this asset service.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssetServiceRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AssetServiceRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AssetServiceRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetService'
+          description: ''
+    patch:
+      operationId: v1_concession_asset_services_partial_update
+      description: |-
+        B0-T2 — which services/exams an asset enables (asset → enabled exams).
+
+        Filter by ``?asset=<id>`` to list the exams a given equipment enables.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this asset service.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedAssetServiceRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedAssetServiceRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedAssetServiceRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetService'
+          description: ''
+    delete:
+      operationId: v1_concession_asset_services_destroy
+      description: |-
+        B0-T2 — which services/exams an asset enables (asset → enabled exams).
+
+        Filter by ``?asset=<id>`` to list the exams a given equipment enables.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this asset service.
+        required: true
+      tags:
+      - v1
+      responses:
+        '204':
+          description: No response body
   /api/v1/concession/assets/:
     get:
       operationId: v1_concession_assets_list
@@ -4304,6 +4480,71 @@ paths:
       responses:
         '200':
           description: No response body
+  /api/v1/concession/dispatch-discrepancies/:
+    get:
+      operationId: v1_concession_dispatch_discrepancies_list
+      description: |-
+        B0-T5 — read the delivery discrepancies (created inline on deliver).
+
+        Filter by ``?dispatch=<id>`` or ``?type=<missing|damaged|extra>``.
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - v1
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDispatchDiscrepancyList'
+          description: ''
+  /api/v1/concession/dispatch-discrepancies/{id}/:
+    get:
+      operationId: v1_concession_dispatch_discrepancies_retrieve
+      description: |-
+        B0-T5 — read the delivery discrepancies (created inline on deliver).
+
+        Filter by ``?dispatch=<id>`` or ``?type=<missing|damaged|extra>``.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this dispatch discrepancy.
+        required: true
+      tags:
+      - v1
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DispatchDiscrepancy'
+          description: ''
   /api/v1/concession/dispatches/:
     get:
       operationId: v1_concession_dispatches_list
@@ -4447,6 +4688,100 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Dispatch'
+          description: ''
+  /api/v1/concession/exam-consumptions/:
+    get:
+      operationId: v1_concession_exam_consumptions_list
+      description: |-
+        B0-T4 — append-only consumption ledger (list/retrieve only) plus a manual
+        ``record`` endpoint for non-DICOM exams.
+
+        The model refuses updates/deletes, so no PUT/PATCH/DELETE is exposed.
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - v1
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedExamConsumptionList'
+          description: ''
+  /api/v1/concession/exam-consumptions/{id}/:
+    get:
+      operationId: v1_concession_exam_consumptions_retrieve
+      description: |-
+        B0-T4 — append-only consumption ledger (list/retrieve only) plus a manual
+        ``record`` endpoint for non-DICOM exams.
+
+        The model refuses updates/deletes, so no PUT/PATCH/DELETE is exposed.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Consumo por exame.
+        required: true
+      tags:
+      - v1
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExamConsumption'
+          description: ''
+  /api/v1/concession/exam-consumptions/record/:
+    post:
+      operationId: v1_concession_exam_consumptions_record_create
+      description: |-
+        Record one manual (non-DICOM) exam's consumption, delegating to
+        ``services_pnl.record_exam_consumption`` (deducts recipe from stock,
+        freezes cost). Idempotent per ``(unit, service, external_ref)``.
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExamConsumptionRecordRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ExamConsumptionRecordRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ExamConsumptionRecordRequest'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExamConsumption'
           description: ''
   /api/v1/concession/maintenance-tickets/:
     get:
@@ -4594,6 +4929,237 @@ paths:
         schema:
           type: integer
         description: A unique integer value identifying this Chamado de manutenção.
+        required: true
+      tags:
+      - v1
+      responses:
+        '204':
+          description: No response body
+  /api/v1/concession/maintenance-tickets/{id}/complete/:
+    post:
+      operationId: v1_concession_maintenance_tickets_complete_create
+      description: B0-T5 — → COMPLETED; frees the asset back to ACTIVE and records
+        cost.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Chamado de manutenção.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MaintenanceTicketCompleteInputRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/MaintenanceTicketCompleteInputRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MaintenanceTicketCompleteInputRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaintenanceTicket'
+          description: ''
+  /api/v1/concession/maintenance-tickets/{id}/start/:
+    post:
+      operationId: v1_concession_maintenance_tickets_start_create
+      description: B0-T5 — OPEN → IN_PROGRESS; keeps the asset IN_MAINTENANCE.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Chamado de manutenção.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MaintenanceTicketStartInputRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/MaintenanceTicketStartInputRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MaintenanceTicketStartInputRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaintenanceTicket'
+          description: ''
+  /api/v1/concession/material-unit-costs/:
+    get:
+      operationId: v1_concession_material_unit_costs_list
+      description: B0-T3 — CRUD for the operator's concession-local material cost
+        basis.
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - v1
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedMaterialUnitCostList'
+          description: ''
+    post:
+      operationId: v1_concession_material_unit_costs_create
+      description: B0-T3 — CRUD for the operator's concession-local material cost
+        basis.
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MaterialUnitCostRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/MaterialUnitCostRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MaterialUnitCostRequest'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaterialUnitCost'
+          description: ''
+  /api/v1/concession/material-unit-costs/{id}/:
+    get:
+      operationId: v1_concession_material_unit_costs_retrieve
+      description: B0-T3 — CRUD for the operator's concession-local material cost
+        basis.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Custo unitário de insumo
+          (concessão).
+        required: true
+      tags:
+      - v1
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaterialUnitCost'
+          description: ''
+    put:
+      operationId: v1_concession_material_unit_costs_update
+      description: B0-T3 — CRUD for the operator's concession-local material cost
+        basis.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Custo unitário de insumo
+          (concessão).
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MaterialUnitCostRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/MaterialUnitCostRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MaterialUnitCostRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaterialUnitCost'
+          description: ''
+    patch:
+      operationId: v1_concession_material_unit_costs_partial_update
+      description: B0-T3 — CRUD for the operator's concession-local material cost
+        basis.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Custo unitário de insumo
+          (concessão).
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedMaterialUnitCostRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedMaterialUnitCostRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedMaterialUnitCostRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaterialUnitCost'
+          description: ''
+    delete:
+      operationId: v1_concession_material_unit_costs_destroy
+      description: B0-T3 — CRUD for the operator's concession-local material cost
+        basis.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Custo unitário de insumo
+          (concessão).
         required: true
       tags:
       - v1
@@ -4769,6 +5335,164 @@ paths:
               schema:
                 $ref: '#/components/schemas/ProofOfDelivery'
           description: ''
+  /api/v1/concession/services/:
+    get:
+      operationId: v1_concession_services_list
+      description: CRUD for the local service/exam catalog.
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - v1
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedConcessionServiceList'
+          description: ''
+    post:
+      operationId: v1_concession_services_create
+      description: CRUD for the local service/exam catalog.
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConcessionServiceRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ConcessionServiceRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ConcessionServiceRequest'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConcessionService'
+          description: ''
+  /api/v1/concession/services/{id}/:
+    get:
+      operationId: v1_concession_services_retrieve
+      description: CRUD for the local service/exam catalog.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this concession service.
+        required: true
+      tags:
+      - v1
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConcessionService'
+          description: ''
+    put:
+      operationId: v1_concession_services_update
+      description: CRUD for the local service/exam catalog.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this concession service.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConcessionServiceRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ConcessionServiceRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ConcessionServiceRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConcessionService'
+          description: ''
+    patch:
+      operationId: v1_concession_services_partial_update
+      description: CRUD for the local service/exam catalog.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this concession service.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedConcessionServiceRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedConcessionServiceRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedConcessionServiceRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConcessionService'
+          description: ''
+    delete:
+      operationId: v1_concession_services_destroy
+      description: CRUD for the local service/exam catalog.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this concession service.
+        required: true
+      tags:
+      - v1
+      responses:
+        '204':
+          description: No response body
   /api/v1/concession/supply-requisitions/:
     get:
       operationId: v1_concession_supply_requisitions_list
@@ -4950,6 +5674,27 @@ paths:
             schema:
               $ref: '#/components/schemas/SupplyRequisitionRequest'
         required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupplyRequisition'
+          description: ''
+  /api/v1/concession/supply-requisitions/{id}/cancel/:
+    post:
+      operationId: v1_concession_supply_requisitions_cancel_create
+      description: B0-T5 — cancel a not-yet-fulfilled requisition (→ CANCELLED).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this supply requisition.
+        required: true
+      tags:
+      - v1
       responses:
         '200':
           content:
@@ -18436,6 +19181,35 @@ components:
       required:
       - asset
       - movement_type
+    AssetService:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        asset:
+          type: integer
+        service:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - asset
+      - created_at
+      - id
+      - service
+    AssetServiceRequest:
+      type: object
+      properties:
+        asset:
+          type: integer
+        service:
+          type: integer
+      required:
+      - asset
+      - service
     BankTransaction:
       type: object
       properties:
@@ -19016,6 +19790,70 @@ components:
         * `ACTIVE` - Ativo
         * `EXPIRED` - Expirado
         * `TERMINATED` - Rescindido
+    ConcessionService:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        code:
+          type: string
+          title: Código
+          maxLength: 40
+        name:
+          type: string
+          title: Nome
+          maxLength: 200
+        modality:
+          type: string
+          title: Modalidade/categoria
+          maxLength: 60
+        tuss_code:
+          type: string
+          title: TUSS (opcional)
+          maxLength: 20
+        active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - code
+      - created_at
+      - id
+      - name
+      - updated_at
+    ConcessionServiceRequest:
+      type: object
+      properties:
+        code:
+          type: string
+          minLength: 1
+          title: Código
+          maxLength: 40
+        name:
+          type: string
+          minLength: 1
+          title: Nome
+          maxLength: 200
+        modality:
+          type: string
+          title: Modalidade/categoria
+          maxLength: 60
+        tuss_code:
+          type: string
+          title: TUSS (opcional)
+          maxLength: 20
+        active:
+          type: boolean
+      required:
+      - code
+      - name
     ConsciousnessEnum:
       enum:
       - A
@@ -19427,6 +20265,43 @@ components:
       - shipped_at
       - source_warehouse
       - status
+    DispatchDiscrepancy:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        dispatch_item:
+          type: string
+          format: uuid
+          nullable: true
+        type:
+          $ref: '#/components/schemas/DispatchDiscrepancyTypeEnum'
+        material:
+          type: string
+          format: uuid
+        quantity:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,9}(?:\.\d{0,3})?$
+        notes:
+          type: string
+      required:
+      - id
+      - material
+      - quantity
+      - type
+    DispatchDiscrepancyTypeEnum:
+      enum:
+      - missing
+      - damaged
+      - extra
+      type: string
+      description: |-
+        * `missing` - Faltante
+        * `damaged` - Avariado
+        * `extra` - Excedente
     DispatchItem:
       type: object
       properties:
@@ -20693,6 +21568,98 @@ components:
       description: |-
         * `in` - Entrada
         * `out` - Saída
+    ExamConsumption:
+      type: object
+      description: B0-T4 — read view of one append-only consumption ledger row.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        unit:
+          type: string
+          format: uuid
+          readOnly: true
+          title: Unidade
+        service:
+          type: integer
+          readOnly: true
+          title: Serviço/exame
+        external_ref:
+          type: string
+          readOnly: true
+          title: Referência externa do exame
+        dicom_study:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+          title: Estudo DICOM (opcional)
+        source_warehouse:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+          title: Estoque de origem
+        performed_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Realizado em
+        cost_snapshot:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          readOnly: true
+          title: Custo consumido (congelado)
+          description: Σ quantidade_da_receita × custo_unitário no momento do exame.
+        idempotency_key:
+          type: string
+          readOnly: true
+          title: Chave de idempotência
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - cost_snapshot
+      - created_at
+      - dicom_study
+      - external_ref
+      - id
+      - idempotency_key
+      - performed_at
+      - service
+      - source_warehouse
+      - unit
+    ExamConsumptionRecordRequest:
+      type: object
+      description: |-
+        B0-T4 — validate the manual (non-DICOM) consumption record payload.
+
+        Delegates to ``services_pnl.record_exam_consumption``; an ``external_ref`` is
+        required (the manual analog of a DICOM study's identity).
+      properties:
+        service:
+          type: integer
+        unit:
+          type: string
+          format: uuid
+        external_ref:
+          type: string
+          minLength: 1
+          maxLength: 128
+        warehouse:
+          type: string
+          format: uuid
+          nullable: true
+        performed_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - external_ref
+      - service
+      - unit
     ExamTypeEnum:
       enum:
       - admission
@@ -22275,6 +23242,15 @@ components:
       - created_at
       - id
       - updated_at
+    MaintenanceTicketCompleteInputRequest:
+      type: object
+      properties:
+        resolution:
+          type: string
+        cost:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
     MaintenanceTicketRequest:
       type: object
       properties:
@@ -22321,6 +23297,11 @@ components:
           nullable: true
       required:
       - asset
+    MaintenanceTicketStartInputRequest:
+      type: object
+      properties:
+        assigned_to:
+          type: integer
     MaintenanceTicketStatusEnum:
       enum:
       - OPEN
@@ -22448,6 +23429,52 @@ components:
           description: Ponto de reposição explícito (unidades). NULL → não considerado.
       required:
       - name
+    MaterialUnitCost:
+      type: object
+      description: B0-T3 — the operator's concession-local unit cost for a material.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        material:
+          type: string
+          format: uuid
+          title: Insumo
+        unit_cost:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          title: Custo unitário
+          description: Custo unitário do insumo para a economia da concessão.
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - material
+      - updated_at
+    MaterialUnitCostRequest:
+      type: object
+      description: B0-T3 — the operator's concession-local unit cost for a material.
+      properties:
+        material:
+          type: string
+          format: uuid
+          title: Insumo
+        unit_cost:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          title: Custo unitário
+          description: Custo unitário do insumo para a economia da concessão.
+      required:
+      - material
     MedicalHistory:
       type: object
       properties:
@@ -23851,6 +24878,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AssetMovement'
+    PaginatedAssetServiceList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssetService'
     PaginatedBankTransactionList:
       type: object
       required:
@@ -23989,6 +25039,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ConcessionContract'
+    PaginatedConcessionServiceList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConcessionService'
     PaginatedContractServicePriceList:
       type: object
       required:
@@ -24081,6 +25154,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Dependent'
+    PaginatedDispatchDiscrepancyList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/DispatchDiscrepancy'
     PaginatedDispatchList:
       type: object
       required:
@@ -24380,6 +25476,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/EquipmentAsset'
+    PaginatedExamConsumptionList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExamConsumption'
     PaginatedFacilityList:
       type: object
       required:
@@ -24771,6 +25890,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Material'
+    PaginatedMaterialUnitCostList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/MaterialUnitCost'
     PaginatedMedicationAdministrationList:
       type: object
       required:
@@ -25986,6 +27128,13 @@ components:
           type: boolean
         cancellation_reason:
           type: string
+    PatchedAssetServiceRequest:
+      type: object
+      properties:
+        asset:
+          type: integer
+        service:
+          type: integer
     PatchedBankTransactionRequest:
       type: object
       properties:
@@ -26106,6 +27255,29 @@ components:
           title: Fim da vigência
         status:
           $ref: '#/components/schemas/ConcessionContractStatusEnum'
+    PatchedConcessionServiceRequest:
+      type: object
+      properties:
+        code:
+          type: string
+          minLength: 1
+          title: Código
+          maxLength: 40
+        name:
+          type: string
+          minLength: 1
+          title: Nome
+          maxLength: 200
+        modality:
+          type: string
+          title: Modalidade/categoria
+          maxLength: 60
+        tuss_code:
+          type: string
+          title: TUSS (opcional)
+          maxLength: 20
+        active:
+          type: boolean
     PatchedContractServicePriceRequest:
       type: object
       properties:
@@ -26662,6 +27834,20 @@ components:
           pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
           nullable: true
           description: Ponto de reposição explícito (unidades). NULL → não considerado.
+    PatchedMaterialUnitCostRequest:
+      type: object
+      description: B0-T3 — the operator's concession-local unit cost for a material.
+      properties:
+        material:
+          type: string
+          format: uuid
+          title: Insumo
+        unit_cost:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          title: Custo unitário
+          description: Custo unitário do insumo para a economia da concessão.
     PatchedModalityWorklistItemRequest:
       type: object
       properties:
@@ -28969,6 +30155,16 @@ components:
           type: string
         cnes_code:
           type: string
+        cbo_unmatched:
+          type: boolean
+          readOnly: true
+          description: True quando legacy_cbo_text não corresponde a nenhum CBOCode
+            governado.
+        cnes_unmatched:
+          type: boolean
+          readOnly: true
+          description: True quando legacy_cnes_text não corresponde a nenhum CNESEstablishment
+            governado.
         is_active:
           type: boolean
         created_at:
@@ -28976,6 +30172,8 @@ components:
           format: date-time
           readOnly: true
       required:
+      - cbo_unmatched
+      - cnes_unmatched
       - council_number
       - council_state
       - council_type

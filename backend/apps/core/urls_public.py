@@ -17,6 +17,14 @@ from .views_platform import (
     WedgeValueDashboardView,
 )
 from .views_signup import SelfServeSignupView
+from .views_terminology_admin import (
+    CatalogImportStatusView,
+    CatalogImportTriggerView,
+    CBOCodeListView,
+    CNESEstablishmentListView,
+    LoincCodeListView,
+    UcumUnitListView,
+)
 
 urlpatterns = [
     # S-132: Public self-serve signup (no auth) + subscription billing webhook.
@@ -72,5 +80,37 @@ urlpatterns = [
         "platform/wedge-value/",
         WedgeValueDashboardView.as_view(),
         name="platform-wedge-value",
+    ),
+    # A1-T2/T3: governed terminology catalog admin (list / import-status / import).
+    # Static segments first so they never shadow the <system> import route.
+    path(
+        "platform/terminology/import-status/",
+        CatalogImportStatusView.as_view(),
+        name="platform-terminology-import-status",
+    ),
+    path(
+        "platform/terminology/cbo/",
+        CBOCodeListView.as_view(),
+        name="platform-terminology-cbo",
+    ),
+    path(
+        "platform/terminology/cnes/",
+        CNESEstablishmentListView.as_view(),
+        name="platform-terminology-cnes",
+    ),
+    path(
+        "platform/terminology/loinc/",
+        LoincCodeListView.as_view(),
+        name="platform-terminology-loinc",
+    ),
+    path(
+        "platform/terminology/ucum/",
+        UcumUnitListView.as_view(),
+        name="platform-terminology-ucum",
+    ),
+    path(
+        "platform/terminology/<str:system>/import/",
+        CatalogImportTriggerView.as_view(),
+        name="platform-terminology-import",
     ),
 ]

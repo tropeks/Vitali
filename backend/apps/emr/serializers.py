@@ -321,10 +321,16 @@ class ProfessionalSerializer(serializers.ModelSerializer):
             "specialty",
             "cbo_code",
             "cnes_code",
+            # A1-T4: read-only reconciliation flags — True when the raw
+            # cbo_code/cnes_code did NOT match a governed catalog entry, so the
+            # UI can surface an "unreconciled code" badge. Set by the model's
+            # cbo_code/cnes_code setters, never writable directly.
+            "cbo_unmatched",
+            "cnes_unmatched",
             "is_active",
             "created_at",
         ]
-        read_only_fields = ["id", "created_at"]
+        read_only_fields = ["id", "created_at", "cbo_unmatched", "cnes_unmatched"]
 
 
 class ScheduleConfigSerializer(serializers.ModelSerializer):
