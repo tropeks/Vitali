@@ -137,6 +137,59 @@ function mockCommandCenterApi() {
         ],
       })
     }
+    if (path.startsWith('/api/v1/problems/')) {
+      return Promise.resolve([
+        {
+          id: 'prob-1',
+          condition: 'Diabetes mellitus tipo 2',
+          cid10_code: 'E11',
+          cid_unmatched: false,
+          clinical_status: 'active',
+          clinical_status_display: 'Ativo',
+          verification_status: 'confirmed',
+          verification_status_display: 'Confirmado',
+          onset_date: '2022-03-10',
+          abatement_date: null,
+        },
+      ])
+    }
+    if (path.startsWith('/api/v1/immunizations/')) {
+      return Promise.resolve([
+        {
+          id: 'imm-1',
+          immunobiological: 'Influenza (gripe)',
+          dose_number: 'dose única',
+          lot: 'LOTE-2025',
+          manufacturer: 'Butantan',
+          date: '2025-04-01',
+          pni_calendar_reference: 'PNI anual',
+        },
+      ])
+    }
+    if (path.startsWith('/api/v1/medication-reconciliations/')) {
+      return Promise.resolve([
+        {
+          id: 'rec-1',
+          encounter: 'enc-1',
+          moment: 'admission',
+          moment_display: 'Admissão',
+          status: 'completed',
+          status_display: 'Concluída',
+          completed_at: '2026-05-07T11:00:00Z',
+          created_at: '2026-05-07T10:00:00Z',
+          items: [
+            {
+              id: 'reci-1',
+              medication_name: 'Losartana 50mg',
+              home_dosage: '1x ao dia',
+              action: 'continue',
+              action_display: 'Manter',
+              reason: 'Controle pressórico estável',
+            },
+          ],
+        },
+      ])
+    }
     return Promise.reject(new Error(`unexpected path ${path}`))
   })
 }
@@ -172,6 +225,53 @@ describe('PatientDetailPage', () => {
 
     await user.click(screen.getAllByRole('button', { name: /abrir consulta/i })[0])
     expect(push).toHaveBeenCalledWith('/encounters/enc-1')
+  })
+
+  it('surfaces governed problems (CID-10) and immunizations on the clinical tab, not just legacy history', async () => {
+    mockCommandCenterApi()
+    const user = userEvent.setup()
+
+    render(<PatientDetailPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Ana Lima')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: /Clínico/ }))
+
+    // Governed problem list (ProblemListItem), not the legacy medical_history field.
+    await waitFor(() => {
+      expect(screen.getByText('Diabetes mellitus tipo 2')).toBeInTheDocument()
+    })
+    expect(screen.getByText(/CID-10 E11/)).toBeInTheDocument()
+    expect(screen.getByText('Lista de problemas (CID-10)')).toBeInTheDocument()
+
+    // Governed immunization record.
+    expect(screen.getByText('Influenza (gripe)')).toBeInTheDocument()
+
+    // Legacy medical_history still visible but demoted to a secondary section.
+    expect(screen.getByText('Histórico legado')).toBeInTheDocument()
+    expect(screen.getAllByText('Hipertensão arterial').length).toBeGreaterThan(0)
+  })
+
+  it('surfaces medication reconciliation with per-transition decisions', async () => {
+    mockCommandCenterApi()
+    const user = userEvent.setup()
+
+    render(<PatientDetailPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Ana Lima')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Reconciliação' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Losartana 50mg')).toBeInTheDocument()
+    })
+    expect(screen.getByText(/Reconciliação — Admissão/)).toBeInTheDocument()
+    expect(screen.getByText('Concluída')).toBeInTheDocument()
+    expect(screen.getByText('Manter')).toBeInTheDocument()
   })
 
   it('shows degraded module state without blocking the patient header', async () => {
