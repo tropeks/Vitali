@@ -1,0 +1,5 @@
+# Tiny synthetic UCUM catalog fixture (M2-S3-T1) — NOT the full UCUM table.
+UCUM_CODE;DISPLAY
+mg/dL;milligram per deciliter
+g/L;gram per liter
+10*9/L;billion per liter

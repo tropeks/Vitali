@@ -1,0 +1,5 @@
+# Tiny synthetic LOINC catalog fixture (M2-S3-T1) — NOT real LOINC content.
+LOINC_NUM;LONG_COMMON_NAME;COMPONENT;PROPERTY;SYSTEM
+718-7;FAKE-Hemoglobin [Mass/volume] in Blood;Hemoglobin;MCnc;Bld
+2345-7;FAKE-Glucose [Mass/volume] in Serum or Plasma;Glucose;MCnc;Ser/Plas
+2160-0;FAKE-Creatinine [Mass/volume] in Serum or Plasma;Creatinine;MCnc;Ser/Plas

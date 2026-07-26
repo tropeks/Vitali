@@ -312,6 +312,19 @@ class TISSGuide(models.Model):
     price_table = models.ForeignKey(
         PriceTable, on_delete=models.SET_NULL, null=True, blank=True, related_name="guides"
     )
+    # ── M2-S3-T4: LabOrder → SP/SADT bridge ──────────────────────────────────────
+    # Same-schema FK (emr and billing are both tenant apps) linking a SADT guide
+    # to the finalized LabOrder that generated it. Nullable — set only on guides
+    # auto-generated from the lab. Its uniqueness (enforced below) is what makes
+    # the LabOrder→guide generation IDEMPOTENT: at most one guide per lab order.
+    lab_order = models.ForeignKey(
+        "emr.LabOrder",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tiss_guides",
+        help_text="Pedido de exames que originou esta guia (ponte LIS→faturamento).",
+    )
     status = models.CharField(
         "Status", max_length=20, choices=GUIDE_STATUS, default="draft", db_index=True
     )
@@ -337,6 +350,14 @@ class TISSGuide(models.Model):
             models.Index(fields=["status", "created_at"]),
             models.Index(fields=["provider", "competency"]),
             models.Index(fields=["patient", "created_at"]),
+        ]
+        constraints = [
+            # M2-S3-T4: at most ONE guide per lab order (idempotent generation).
+            models.UniqueConstraint(
+                fields=["lab_order"],
+                condition=models.Q(lab_order__isnull=False),
+                name="uniq_tiss_guide_per_lab_order",
+            ),
         ]
 
     def generate_guide_number(self) -> str:

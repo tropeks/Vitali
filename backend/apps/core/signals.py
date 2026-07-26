@@ -216,18 +216,9 @@ def protect_anvisa_product_deletion(sender, instance, **kwargs):
 
 
 # ─── CBOCode cross-schema PROTECT (M2-S1-T3) ─────────────────────────────────
-# Same rationale as protect_cid10_code_deletion: PostgreSQL does not enforce FK
-# integrity across schemas (public → tenant), so an application-layer PROTECT
-# blocks deleting a CBO occupation referenced by tenant HR/EMR data.
-
-
 @receiver(pre_delete, sender="core.CBOCode")
 def protect_cbo_code_deletion(sender, instance, **kwargs):
-    """Block deletion of a CBOCode referenced by tenant data in any tenant.
-
-    Covers ``emr.Professional.cbo`` (FK) in every tenant. Mirrors the
-    MedicalHistory→CID10Code guard.
-    """
+    """Block deletion of a CBOCode referenced by ``emr.Professional.cbo`` in any tenant."""
     from django_tenants.utils import get_tenant_model, schema_context
 
     TenantModel = get_tenant_model()
@@ -244,17 +235,9 @@ def protect_cbo_code_deletion(sender, instance, **kwargs):
 
 
 # ─── CNESEstablishment cross-schema PROTECT (M2-S1-T3) ───────────────────────
-# Blocks deleting a CNES establishment referenced by tenant data — both
-# ``emr.Professional.cnes`` and ``organization.Facility.cnes``.
-
-
 @receiver(pre_delete, sender="core.CNESEstablishment")
 def protect_cnes_establishment_deletion(sender, instance, **kwargs):
-    """Block deletion of a CNESEstablishment referenced by tenant data in any tenant.
-
-    Covers ``emr.Professional.cnes`` and ``organization.Facility.cnes`` (FKs) in
-    every tenant. Mirrors the MedicalHistory→CID10Code guard.
-    """
+    """Block deletion of a CNESEstablishment referenced by Professional.cnes or Facility.cnes."""
     from django_tenants.utils import get_tenant_model, schema_context
 
     TenantModel = get_tenant_model()
@@ -272,6 +255,25 @@ def protect_cnes_establishment_deletion(sender, instance, **kwargs):
             if Facility.objects.filter(cnes=instance).exists():
                 raise ProtectedError(
                     f"CNESEstablishment {instance.code} is referenced by Facility in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+
+
+# ─── LoincCode cross-schema PROTECT (M2-S3-T2) ───────────────────────────────
+@receiver(pre_delete, sender="core.LoincCode")
+def protect_loinc_code_deletion(sender, instance, **kwargs):
+    """Block deletion of a LoincCode referenced by ``emr.LabTest.loinc`` in any tenant."""
+    from django_tenants.utils import get_tenant_model, schema_context
+
+    TenantModel = get_tenant_model()
+    for tenant in TenantModel.objects.exclude(schema_name="public"):
+        with schema_context(tenant.schema_name):
+            from apps.emr.models import LabTest
+
+            if LabTest.objects.filter(loinc=instance).exists():
+                raise ProtectedError(
+                    f"LoincCode {instance.code} is referenced by LabTest in "
                     f"schema '{tenant.schema_name}' and cannot be deleted.",
                     {instance},
                 )
