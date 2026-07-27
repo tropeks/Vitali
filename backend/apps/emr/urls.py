@@ -59,7 +59,10 @@ from .views_setup import WizardProfessionalSetupView, WizardStatusView
 from .views_surgery import (
     OperatingRoomViewSet,
     SurgicalCaseViewSet,
+    SurgicalChecklistViewSet,
     SurgicalProcedureViewSet,
+    SurgicalTeamMemberViewSet,
+    SurgicalTimeViewSet,
 )
 from .views_waitlist import WaitlistDetailView, WaitlistViewSet
 
@@ -128,6 +131,10 @@ router.register("admission-events", AdmissionEventViewSet, basename="admission-e
 router.register("operating-rooms", OperatingRoomViewSet, basename="operating-room")
 router.register("surgical-cases", SurgicalCaseViewSet, basename="surgical-case")
 router.register("surgical-procedures", SurgicalProcedureViewSet, basename="surgical-procedure")
+# ── C3: Centro Cirúrgico — equipe (CRUD) + tempos + checklist OMS (append-only)
+router.register("surgical-team", SurgicalTeamMemberViewSet, basename="surgical-team")
+router.register("surgical-times", SurgicalTimeViewSet, basename="surgical-time")
+router.register("surgical-checklists", SurgicalChecklistViewSet, basename="surgical-checklist")
 
 urlpatterns = (
     [

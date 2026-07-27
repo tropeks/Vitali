@@ -36,11 +36,15 @@ from __future__ import annotations
 import uuid
 
 from django.db import models
+from django.utils import timezone
 
 __all__ = [
     "OperatingRoom",
     "SurgicalCase",
     "SurgicalProcedure",
+    "SurgicalTeamMember",
+    "SurgicalTime",
+    "SurgicalChecklist",
 ]
 
 
@@ -292,3 +296,171 @@ class SurgicalProcedure(models.Model):
 
     def __str__(self):
         return f"{self.tuss_code_id} × {self.quantity} — {self.case_id}"
+
+
+# ─── C3: equipe cirúrgica do caso ─────────────────────────────────────────────
+
+
+class SurgicalTeamMember(models.Model):
+    """A professional on a :class:`SurgicalCase`'s team, in a given ``role``.
+
+    Per-tenant, fully CRUD via the API (add/remove members). Unique per
+    ``(case, professional, role)`` — the same professional may hold two distinct
+    roles on a case, but not the same role twice.
+    """
+
+    class Role(models.TextChoices):
+        CIRURGIAO = "cirurgiao", "Cirurgião"
+        PRIMEIRO_AUXILIAR = "primeiro_auxiliar", "Primeiro auxiliar"
+        ANESTESISTA = "anestesista", "Anestesista"
+        INSTRUMENTADOR = "instrumentador", "Instrumentador"
+        CIRCULANTE = "circulante", "Circulante"
+        OUTRO = "outro", "Outro"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    case = models.ForeignKey(
+        SurgicalCase,
+        on_delete=models.CASCADE,
+        related_name="team",
+        verbose_name="Caso cirúrgico",
+    )
+    professional = models.ForeignKey(
+        "emr.Professional",
+        on_delete=models.PROTECT,
+        related_name="surgical_team_memberships",
+        verbose_name="Profissional",
+    )
+    role = models.CharField("Função", max_length=24, choices=Role.choices)
+    notes = models.TextField("Observações", blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["role", "created_at"]
+        verbose_name = "Membro da Equipe Cirúrgica"
+        verbose_name_plural = "Equipe Cirúrgica"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["case", "professional", "role"],
+                name="uniq_surg_team_case_prof_role",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["case"], name="emr_surgteam_case_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.get_role_display()} — {self.professional_id} ({self.case_id})"
+
+
+# ─── C3: registro de tempos (append-only) ─────────────────────────────────────
+
+
+class SurgicalTime(models.Model):
+    """Append-only intra-op time-stamp log for a :class:`SurgicalCase`.
+
+    Mirrors the append-only shape of ``emr.AdmissionEvent`` /
+    ``emr.MedicationAdministration`` — rows are created (via the intra-op
+    service), never edited/deleted; the DRF surface is read-only. Certain events
+    also advance the case status (documented in
+    :mod:`apps.emr.services.surgery_intraop`): ``sala_entrada`` → ``em_sala``,
+    ``incisao`` → ``em_andamento``, ``sala_saida`` → ``finalizada``.
+    """
+
+    class Event(models.TextChoices):
+        SALA_ENTRADA = "sala_entrada", "Entrada na sala"
+        ANESTESIA_INICIO = "anestesia_inicio", "Início da anestesia"
+        ANESTESIA_FIM = "anestesia_fim", "Fim da anestesia"
+        INCISAO = "incisao", "Incisão"
+        FECHAMENTO = "fechamento", "Fechamento"
+        SALA_SAIDA = "sala_saida", "Saída da sala"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    case = models.ForeignKey(
+        SurgicalCase,
+        on_delete=models.PROTECT,
+        related_name="times",
+        verbose_name="Caso cirúrgico",
+    )
+    event = models.CharField("Evento", max_length=20, choices=Event.choices, db_index=True)
+    recorded_at = models.DateTimeField("Registrado em", default=timezone.now)
+    recorded_by = models.ForeignKey(
+        "core.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="surgical_times",
+        verbose_name="Registrado por",
+    )
+    notes = models.TextField("Observações", blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["recorded_at", "created_at"]
+        verbose_name = "Tempo Cirúrgico"
+        verbose_name_plural = "Tempos Cirúrgicos"
+        indexes = [
+            models.Index(fields=["case", "recorded_at"], name="emr_surgtime_case_dt_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.get_event_display()} — {self.case_id} @ {self.recorded_at:%d/%m %H:%M}"
+
+
+# ─── C3: checklist de cirurgia segura (OMS), append-only por fase ─────────────
+
+
+class SurgicalChecklist(models.Model):
+    """The WHO safe-surgery checklist confirmed for one phase of a case.
+
+    Per-tenant, append-only per phase: a ``(case, phase)`` pair is confirmed
+    exactly once (unique constraint) and never edited afterwards; the DRF
+    surface is read-only (confirmed via the intra-op service action). ``items``
+    holds the confirmed checklist items for the phase as a JSON object, e.g.
+    ``{"identidade_confirmada": true, "sitio_marcado": true, ...}``.
+    """
+
+    class Phase(models.TextChoices):
+        SIGN_IN = "sign_in", "Sign in (antes da anestesia)"
+        TIME_OUT = "time_out", "Time out (antes da incisão)"
+        SIGN_OUT = "sign_out", "Sign out (antes de sair da sala)"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    case = models.ForeignKey(
+        SurgicalCase,
+        on_delete=models.PROTECT,
+        related_name="checklists",
+        verbose_name="Caso cirúrgico",
+    )
+    phase = models.CharField("Fase", max_length=12, choices=Phase.choices, db_index=True)
+    items = models.JSONField("Itens confirmados", default=dict, blank=True)
+    confirmed_at = models.DateTimeField("Confirmado em", default=timezone.now)
+    confirmed_by = models.ForeignKey(
+        "core.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="surgical_checklists",
+        verbose_name="Confirmado por",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["confirmed_at", "created_at"]
+        verbose_name = "Checklist de Cirurgia Segura"
+        verbose_name_plural = "Checklists de Cirurgia Segura"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["case", "phase"],
+                name="uniq_surg_checklist_case_phase",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["case", "phase"], name="emr_surgcl_case_phase_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.get_phase_display()} — {self.case_id}"

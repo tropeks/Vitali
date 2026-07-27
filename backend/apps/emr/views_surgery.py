@@ -24,11 +24,17 @@ from apps.core.permissions import HasPermission
 from .serializers_surgery import (
     OperatingRoomSerializer,
     SurgicalCaseCancelSerializer,
+    SurgicalCaseChecklistSerializer,
+    SurgicalCaseRecordTimeSerializer,
     SurgicalCaseRescheduleSerializer,
     SurgicalCaseScheduleSerializer,
     SurgicalCaseSerializer,
+    SurgicalChecklistSerializer,
     SurgicalProcedureSerializer,
+    SurgicalTeamMemberSerializer,
+    SurgicalTimeSerializer,
 )
+from .services import surgery_intraop as intraop_service
 from .services import surgery_scheduling as scheduling_service
 from .views import log_audit
 
@@ -91,13 +97,14 @@ class SurgicalCaseViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
     serializer_class = SurgicalCaseSerializer
 
     def get_permissions(self):
-        read_actions = {"list", "retrieve", "board"}
+        read_actions = {"list", "retrieve", "board", "timeline"}
         schedule_actions = {"schedule", "reschedule", "confirm", "cancel"}
         if self.action in read_actions:
             permission = "surgery.read"
         elif self.action in schedule_actions:
             permission = "surgery.schedule"
         else:
+            # create / update / destroy / record_time / checklist → surgery.manage
             permission = "surgery.manage"
         return [IsAuthenticated(), HasPermission(permission)]
 
@@ -283,6 +290,153 @@ class SurgicalCaseViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
             for room in rooms_qs
         ]
         return Response({"date": board_date.isoformat(), "rooms": rooms_out})
+
+    # ── C3: intra-op — tempos (append + advance status) + checklist OMS ─────────
+
+    @extend_schema(
+        request=SurgicalCaseRecordTimeSerializer,
+        responses=SurgicalCaseSerializer,
+        description="Registra um tempo cirúrgico (append-only) e avança a situação do "
+        "caso: sala_entrada→em_sala, incisao→em_andamento, sala_saida→finalizada. "
+        "Evento fora de ordem / ilegal → 409. Gated surgery.manage.",
+    )
+    @action(detail=True, methods=["post"], url_path="record-time")
+    def record_time(self, request, pk=None):
+        """Registra um tempo cirúrgico e avança a situação do caso. Ordem inválida → 409."""
+        case = self.get_object()
+        payload = SurgicalCaseRecordTimeSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            case = intraop_service.record_time(
+                case,
+                payload.validated_data["event"],
+                at=payload.validated_data.get("recorded_at"),
+                by=request.user,
+                notes=payload.validated_data.get("notes", ""),
+            )
+        except DjangoValidationError as exc:
+            return Response({"detail": exc.messages[0]}, status=http_status.HTTP_409_CONFLICT)
+        log_audit(request, "surgery_case_record_time", "SurgicalCase", case.id)
+        return Response(self.get_serializer(case).data)
+
+    @extend_schema(
+        request=SurgicalCaseChecklistSerializer,
+        responses=SurgicalChecklistSerializer,
+        description="Confirma o checklist de cirurgia segura (OMS) de uma fase "
+        "(sign_in / time_out / sign_out), append-only por fase. Fase já confirmada "
+        "→ 409. Gated surgery.manage.",
+    )
+    @action(detail=True, methods=["post"])
+    def checklist(self, request, pk=None):
+        """Confirma o checklist OMS de uma fase (uma vez). Fase já confirmada → 409."""
+        case = self.get_object()
+        payload = SurgicalCaseChecklistSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            item = intraop_service.confirm_checklist(
+                case,
+                payload.validated_data["phase"],
+                payload.validated_data.get("items") or {},
+                by=request.user,
+            )
+        except DjangoValidationError as exc:
+            return Response({"detail": exc.messages[0]}, status=http_status.HTTP_409_CONFLICT)
+        log_audit(request, "surgery_case_checklist", "SurgicalChecklist", item.id)
+        return Response(SurgicalChecklistSerializer(item).data, status=http_status.HTTP_201_CREATED)
+
+    @extend_schema(
+        responses=OpenApiTypes.OBJECT,
+        description="Prontuário cirúrgico do caso: tempos + checklists + equipe. "
+        "Gated surgery.read.",
+    )
+    @action(detail=True, methods=["get"])
+    def timeline(self, request, pk=None):
+        """Intra-op timeline of a case: its times, checklists and team."""
+        case = self.get_object()
+        times = case.times.select_related("recorded_by").all()
+        checklists = case.checklists.select_related("confirmed_by").all()
+        team = case.team.select_related("professional", "professional__user").all()
+        return Response(
+            {
+                "case": str(case.id),
+                "status": case.status,
+                "times": SurgicalTimeSerializer(times, many=True).data,
+                "checklists": SurgicalChecklistSerializer(checklists, many=True).data,
+                "team": SurgicalTeamMemberSerializer(team, many=True).data,
+            }
+        )
+
+
+@extend_schema_view(
+    list=extend_schema(parameters=[_CASE_PARAM]),
+)
+class SurgicalTeamMemberViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
+    """Equipe cirúrgica de um caso (CRUD). Read=surgery.read / write=surgery.manage."""
+
+    serializer_class = SurgicalTeamMemberSerializer
+
+    def get_queryset(self):
+        from .models import SurgicalTeamMember
+
+        qs = SurgicalTeamMember.objects.select_related("case", "professional", "professional__user")
+        case = self.request.query_params.get("case")
+        if case:
+            qs = qs.filter(case_id=case)
+        return qs
+
+    def perform_create(self, serializer):
+        obj = serializer.save()
+        log_audit(self.request, "surgery_team_add", "SurgicalTeamMember", obj.id)
+
+    def perform_destroy(self, instance):
+        log_audit(self.request, "surgery_team_remove", "SurgicalTeamMember", instance.id)
+        instance.delete()
+
+
+@extend_schema_view(
+    list=extend_schema(parameters=[_CASE_PARAM]),
+)
+class SurgicalTimeViewSet(viewsets.ReadOnlyModelViewSet):
+    """Tempos cirúrgicos (append-only, read-only). Gated surgery.read.
+
+    Rows are appended via ``POST /surgical-cases/{id}/record-time/`` — this
+    surface is read-only (POST/PATCH/DELETE → 405)."""
+
+    serializer_class = SurgicalTimeSerializer
+
+    def get_permissions(self):
+        return [IsAuthenticated(), HasPermission("surgery.read")]
+
+    def get_queryset(self):
+        from .models import SurgicalTime
+
+        qs = SurgicalTime.objects.select_related("case", "recorded_by")
+        case = self.request.query_params.get("case")
+        if case:
+            qs = qs.filter(case_id=case)
+        return qs
+
+
+@extend_schema_view(
+    list=extend_schema(parameters=[_CASE_PARAM]),
+)
+class SurgicalChecklistViewSet(viewsets.ReadOnlyModelViewSet):
+    """Checklists de cirurgia segura (append-only por fase, read-only). Gated
+    surgery.read. Confirmados via ``POST /surgical-cases/{id}/checklist/``."""
+
+    serializer_class = SurgicalChecklistSerializer
+
+    def get_permissions(self):
+        return [IsAuthenticated(), HasPermission("surgery.read")]
+
+    def get_queryset(self):
+        from .models import SurgicalChecklist
+
+        qs = SurgicalChecklist.objects.select_related("case", "confirmed_by")
+        case = self.request.query_params.get("case")
+        if case:
+            qs = qs.filter(case_id=case)
+        return qs
 
 
 @extend_schema_view(

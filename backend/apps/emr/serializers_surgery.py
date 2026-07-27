@@ -10,8 +10,16 @@ client-set. ``SurgicalProcedure`` exposes a read-only ``tuss_code_value``
 from __future__ import annotations
 
 from rest_framework import serializers
+from rest_framework.validators import UniqueTogetherValidator
 
-from .models import OperatingRoom, SurgicalCase, SurgicalProcedure
+from .models import (
+    OperatingRoom,
+    SurgicalCase,
+    SurgicalChecklist,
+    SurgicalProcedure,
+    SurgicalTeamMember,
+    SurgicalTime,
+)
 
 
 class OperatingRoomSerializer(serializers.ModelSerializer):
@@ -96,3 +104,85 @@ class SurgicalProcedureSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ("id", "tuss_code_value", "created_at", "updated_at")
+
+
+# ─── C3: equipe + tempos (append-only) + checklist OMS ────────────────────────
+
+
+class SurgicalTeamMemberSerializer(serializers.ModelSerializer):
+    """Team member of a case. Writable CRUD; a duplicate ``(case, professional,
+    role)`` is rejected with 400 (UniqueTogetherValidator + DB constraint)."""
+
+    professional_name = serializers.CharField(source="professional.user.full_name", read_only=True)
+
+    class Meta:
+        model = SurgicalTeamMember
+        fields = [
+            "id",
+            "case",
+            "professional",
+            "professional_name",
+            "role",
+            "notes",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ("id", "professional_name", "created_at", "updated_at")
+        validators = [
+            UniqueTogetherValidator(
+                queryset=SurgicalTeamMember.objects.all(),
+                fields=["case", "professional", "role"],
+                message="Este profissional já ocupa essa função no caso.",
+            )
+        ]
+
+
+class SurgicalTimeSerializer(serializers.ModelSerializer):
+    """Read-only representation of an intra-op time. Appended via the
+    ``record-time`` action, never through this serializer."""
+
+    class Meta:
+        model = SurgicalTime
+        fields = [
+            "id",
+            "case",
+            "event",
+            "recorded_at",
+            "recorded_by",
+            "notes",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
+class SurgicalChecklistSerializer(serializers.ModelSerializer):
+    """Read-only representation of a confirmed safe-surgery checklist phase.
+    Confirmed via the ``checklist`` action, never through this serializer."""
+
+    class Meta:
+        model = SurgicalChecklist
+        fields = [
+            "id",
+            "case",
+            "phase",
+            "items",
+            "confirmed_at",
+            "confirmed_by",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
+class SurgicalCaseRecordTimeSerializer(serializers.Serializer):
+    """Input for ``POST /surgical-cases/{id}/record-time/``."""
+
+    event = serializers.ChoiceField(choices=SurgicalTime.Event.choices)
+    recorded_at = serializers.DateTimeField(required=False, allow_null=True)
+    notes = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class SurgicalCaseChecklistSerializer(serializers.Serializer):
+    """Input for ``POST /surgical-cases/{id}/checklist/``."""
+
+    phase = serializers.ChoiceField(choices=SurgicalChecklist.Phase.choices)
+    items = serializers.JSONField(required=False, default=dict)
