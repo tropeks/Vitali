@@ -1,13 +1,14 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { ArrowLeft, Clock, ListChecks, RefreshCw, Users } from 'lucide-react'
+import { ArrowLeft, Clock, ListChecks, Package, RefreshCw, Users } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { SectionState, StatusBadge } from '@/components/shared'
 import SurgeryTimeline from './SurgeryTimeline'
 import RecordTimeControl from './RecordTimeControl'
 import SurgeryChecklist from './SurgeryChecklist'
 import SurgeryTeamPanel from './SurgeryTeamPanel'
+import SurgeryMaterialsPanel from './SurgeryMaterialsPanel'
 import { CASE_STATUS_META, type CaseTimeline } from './surgery-case-types'
 
 interface Props {
@@ -162,6 +163,14 @@ export default function SurgeryIntraopPanel({ caseId, canManage, onBack }: Props
               canManage={canManage}
               onChanged={load}
             />
+          </section>
+
+          <section>
+            <div className="mb-3 flex items-center gap-2">
+              <Package size={16} className="text-blue-600" />
+              <h3 className="text-base font-semibold text-slate-900">Materiais / OPME</h3>
+            </div>
+            <SurgeryMaterialsPanel caseId={caseId} canManage={canManage} />
           </section>
         </>
       )}

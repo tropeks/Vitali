@@ -46,7 +46,10 @@ filtro por sala/dia. Nav "Centro Cirúrgico" gated `surgery.read`. Vitest TDD.
 Tela de sala: checklist OMS (3 fases), registro de tempos, equipe; aba "Cirurgia" no prontuário `patients/[id]` (casos do
 paciente + status + procedimentos + tempos). Vitest TDD. RBAC `surgery.manage`.
 
-### C6 · OPME / consumo de sala (backend+frontend) · **Opus** (dep C1) · ✅ BACKEND FEITO (commit 2cd8557) · UI em andamento
+### C6 · OPME / consumo de sala (backend+frontend) · **Opus** (dep C1) · ✅ FEITO (backend 2cd8557 + UI)
+
+> **Épico Centro Cirúrgico C1..C6 concluído** (2026-07-27): estrutura+caso → agendamento+mapa → checklist OMS+tempos+
+> equipe → mapa cirúrgico UI → prontuário+intra-op UI → OPME/consumo com rastreabilidade StockMovement→SurgicalCase + UI.
 OPME/materiais especiais por caso + vínculo estruturado `StockMovement`→SurgicalCase (nova FK) p/ rastreabilidade de consumo.
 RBAC. Deferível se a prioridade for o fluxo cirúrgico core primeiro.
 

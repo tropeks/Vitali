@@ -86,6 +86,28 @@ export interface SurgicalTeamMemberEntry {
   created_at?: string | null
 }
 
+/**
+ * Material / OPME of a case (`/surgical-materials/?case=`). Mirrors
+ * `SurgicalMaterialSerializer` EXACTLY: `stock_item` is a pk (or null) and
+ * `quantity_consumed` is read-only (advanced only via the `consume` action).
+ */
+export interface SurgicalMaterial {
+  id: string
+  case: string
+  kind: string
+  stock_item?: string | null
+  description?: string | null
+  quantity_planned: number
+  quantity_consumed: number
+  laterality?: string | null
+  lot?: string | null
+  serial?: string | null
+  manufacturer?: string | null
+  notes?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
 /** `GET /surgical-cases/{id}/timeline/` — the intra-op prontuário of a case. */
 export interface CaseTimeline {
   case: string
@@ -180,6 +202,22 @@ export const TEAM_ROLE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'instrumentador', label: 'Instrumentador' },
   { value: 'circulante', label: 'Circulante' },
   { value: 'outro', label: 'Outro' },
+]
+
+/** Material kind (mirror `SurgicalMaterial.Kind` TextChoices). */
+export const MATERIAL_KIND_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'opme', label: 'OPME' },
+  { value: 'material', label: 'Material' },
+  { value: 'medicamento', label: 'Medicamento' },
+  { value: 'outro', label: 'Outro' },
+]
+
+/** Laterality (mirror `SurgicalProcedure.Laterality` TextChoices). */
+export const LATERALITY_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: '', label: 'Não se aplica' },
+  { value: 'esquerda', label: 'Esquerda' },
+  { value: 'direita', label: 'Direita' },
+  { value: 'bilateral', label: 'Bilateral' },
 ]
 
 export function labelOf(
