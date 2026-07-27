@@ -25,7 +25,13 @@ from .views import (
     VitalSignsViewSet,
     WaitingRoomView,
 )
-from .views_adt import BedViewSet, InpatientUnitViewSet, RoomViewSet
+from .views_adt import (
+    AdmissionEventViewSet,
+    AdmissionViewSet,
+    BedViewSet,
+    InpatientUnitViewSet,
+    RoomViewSet,
+)
 from .views_cid10 import CID10AcceptView, CID10SuggestView
 from .views_diagnostics import CriticalLabResultViewSet, LabInstrumentViewSet, LabSpecimenViewSet
 from .views_lab_report import LabReportPDFView, LabReportSignView
@@ -110,6 +116,9 @@ router.register("order-sets", OrderSetViewSet, basename="order-set")
 router.register("inpatient-units", InpatientUnitViewSet, basename="inpatient-unit")
 router.register("rooms", RoomViewSet, basename="room")
 router.register("beds", BedViewSet, basename="bed")
+# ── L2: ADT/Leitos — admissão/internação + log de eventos ADT (append-only)
+router.register("admissions", AdmissionViewSet, basename="admission")
+router.register("admission-events", AdmissionEventViewSet, basename="admission-event")
 
 urlpatterns = (
     [

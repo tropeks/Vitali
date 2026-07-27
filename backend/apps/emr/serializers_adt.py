@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-from .models import Bed, InpatientUnit, Room
+from .models import Admission, AdmissionEvent, Bed, InpatientUnit, Room
 
 
 class _CatalogCodeWriteMixin(serializers.ModelSerializer):
@@ -114,3 +114,74 @@ class BedSerializer(_CatalogCodeWriteMixin):
             "created_at",
             "updated_at",
         )
+
+
+# ─── L2: admissão/internação ─────────────────────────────────────────────────
+
+
+class AdmissionSerializer(serializers.ModelSerializer):
+    """Admission (internação). ``bed`` is a write-only input consumed by the
+    service on create (it drives the bed-occupancy transition); the persisted
+    ``current_bed`` is read-only. Lifecycle fields (status/disposition/discharge
+    datetime) are set by the service, never client-posted."""
+
+    # Client posts ``bed`` to admit; the viewset routes it through the service,
+    # which sets ``current_bed``. Not a model field on write → write_only source.
+    bed = serializers.PrimaryKeyRelatedField(
+        queryset=Bed.objects.all(), write_only=True, required=True
+    )
+
+    class Meta:
+        model = Admission
+        fields = [
+            "id",
+            "patient",
+            "admitting_professional",
+            "attending_professional",
+            "bed",
+            "current_bed",
+            "encounter",
+            "admission_source",
+            "admission_datetime",
+            "expected_discharge_datetime",
+            "actual_discharge_datetime",
+            "disposition",
+            "status",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = (
+            "id",
+            "current_bed",
+            "actual_discharge_datetime",
+            "disposition",
+            "status",
+            "created_at",
+            "updated_at",
+        )
+
+
+class AdmissionDischargeSerializer(serializers.Serializer):
+    """Payload for the ``discharge`` action."""
+
+    disposition = serializers.ChoiceField(choices=Admission.Disposition.choices)
+    actual_discharge_datetime = serializers.DateTimeField(required=False)
+    reason = serializers.CharField(required=False, allow_blank=True)
+
+
+class AdmissionEventSerializer(serializers.ModelSerializer):
+    """Read-only append-only ADT event."""
+
+    class Meta:
+        model = AdmissionEvent
+        fields = [
+            "id",
+            "admission",
+            "event_type",
+            "from_bed",
+            "to_bed",
+            "actor",
+            "reason",
+            "created_at",
+        ]
+        read_only_fields = fields

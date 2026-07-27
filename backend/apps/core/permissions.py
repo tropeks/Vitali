@@ -257,6 +257,9 @@ ADMIN_PERMISSIONS = [
     # ADT/Leitos (L1): estrutura de leitos — leitura + gestão (NIR/Gestão de Leitos).
     "beds.read",
     "beds.manage",
+    # ADT/Leitos (L2): ciclo de admissão/internação — internar + dar alta.
+    "adt.admit",
+    "adt.discharge",
     "pharmacy.clinical_validate",
     # Escala/plantão de setor (S-IA2). Admin carries it so tenant admins keep
     # full roster access; sector supervisors get it standalone via RosterAccessPermission.
@@ -286,6 +289,9 @@ CLINICAL_PRESCRIBER_PERMISSIONS = [
     "emar.read",
     "sae.read",
     "beds.read",
+    # ADT L2: o médico interna e dá alta.
+    "adt.admit",
+    "adt.discharge",
 ]
 
 NURSING_PERMISSIONS = [
@@ -310,6 +316,8 @@ RECEPTION_PERMISSIONS = [
     "triage.read",
     "triage.respond",
     "beds.read",
+    # ADT L2: a recepção interna (admite); a alta é exclusiva do médico.
+    "adt.admit",
 ]
 
 PHARMACY_PERMISSIONS = [

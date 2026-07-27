@@ -10,13 +10,25 @@ FK. On ``Bed`` create/update the denormalized ``unit`` FK is derived from the ro
 
 from __future__ import annotations
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
-from rest_framework import viewsets
+from rest_framework import mixins, viewsets
+from rest_framework import status as http_status
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
 from apps.core.permissions import HasPermission
 
-from .serializers_adt import BedSerializer, InpatientUnitSerializer, RoomSerializer
+from .serializers_adt import (
+    AdmissionDischargeSerializer,
+    AdmissionEventSerializer,
+    AdmissionSerializer,
+    BedSerializer,
+    InpatientUnitSerializer,
+    RoomSerializer,
+)
+from .services import adt as adt_service
 from .views import log_audit
 
 _FACILITY_PARAM = OpenApiParameter(
@@ -25,6 +37,14 @@ _FACILITY_PARAM = OpenApiParameter(
 _UNIT_PARAM = OpenApiParameter("unit", str, description="Filtra por unidade de internação (UUID).")
 _ROOM_PARAM = OpenApiParameter("room", str, description="Filtra por quarto (UUID).")
 _STATUS_PARAM = OpenApiParameter("status", str, description="Filtra leitos por situação.")
+_PATIENT_PARAM = OpenApiParameter("patient", str, description="Filtra por paciente (UUID).")
+_BED_PARAM = OpenApiParameter("bed", str, description="Filtra por leito atual (UUID).")
+_ADM_STATUS_PARAM = OpenApiParameter(
+    "status", str, description="Filtra internações por situação (admitted/discharged/cancelled)."
+)
+_ADMISSION_PARAM = OpenApiParameter(
+    "admission", str, description="Filtra eventos por internação (UUID)."
+)
 
 
 class _BedsPermissionMixin:
@@ -115,3 +135,109 @@ class BedViewSet(_BedsPermissionMixin, viewsets.ModelViewSet):
         else:
             obj = serializer.save()
         log_audit(self.request, "beds_bed_update", "Bed", obj.id)
+
+
+# ─── L2: admissão/internação ─────────────────────────────────────────────────
+
+
+@extend_schema_view(
+    list=extend_schema(parameters=[_PATIENT_PARAM, _ADM_STATUS_PARAM, _BED_PARAM]),
+)
+class AdmissionViewSet(
+    mixins.CreateModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.ListModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Admissões/internações. Create (admit) e a ação ``discharge`` passam SEMPRE
+    pelo serviço ``apps.emr.services.adt`` para manter leito + eventos consistentes.
+
+    Gate: create/list/retrieve → ``adt.admit``; ``discharge`` → ``adt.discharge``.
+    """
+
+    serializer_class = AdmissionSerializer
+
+    def get_permissions(self):
+        permission = "adt.discharge" if self.action == "discharge" else "adt.admit"
+        return [IsAuthenticated(), HasPermission(permission)]
+
+    def get_queryset(self):
+        from .models import Admission
+
+        qs = Admission.objects.select_related(
+            "patient", "admitting_professional", "attending_professional", "current_bed"
+        )
+        patient = self.request.query_params.get("patient")
+        state = self.request.query_params.get("status")
+        bed = self.request.query_params.get("bed")
+        if patient:
+            qs = qs.filter(patient_id=patient)
+        if state:
+            qs = qs.filter(status=state)
+        if bed:
+            qs = qs.filter(current_bed_id=bed)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        # Admit THROUGH the service (bed transition + append-only event), not
+        # raw serializer.save.
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        try:
+            admission = adt_service.admit(
+                patient=data["patient"],
+                bed=data["bed"],
+                admitting_professional=data["admitting_professional"],
+                attending_professional=data["attending_professional"],
+                admission_source=data.get("admission_source", "outro"),
+                admission_datetime=data.get("admission_datetime"),
+                expected_discharge_datetime=data.get("expected_discharge_datetime"),
+                encounter=data.get("encounter"),
+                actor=request.user,
+            )
+        except DjangoValidationError as exc:
+            return Response({"detail": exc.messages[0]}, status=http_status.HTTP_409_CONFLICT)
+        log_audit(request, "adt_admit", "Admission", admission.id)
+        out = self.get_serializer(admission)
+        return Response(out.data, status=http_status.HTTP_201_CREATED)
+
+    @extend_schema(request=AdmissionDischargeSerializer, responses=AdmissionSerializer)
+    @action(detail=True, methods=["post"])
+    def discharge(self, request, pk=None):
+        admission = self.get_object()
+        payload = AdmissionDischargeSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            admission = adt_service.discharge(
+                admission=admission,
+                disposition=payload.validated_data["disposition"],
+                actual_discharge_datetime=payload.validated_data.get("actual_discharge_datetime"),
+                actor=request.user,
+                reason=payload.validated_data.get("reason", ""),
+            )
+        except DjangoValidationError as exc:
+            return Response({"detail": exc.messages[0]}, status=http_status.HTTP_409_CONFLICT)
+        log_audit(request, "adt_discharge", "Admission", admission.id)
+        return Response(self.get_serializer(admission).data)
+
+
+@extend_schema_view(
+    list=extend_schema(parameters=[_ADMISSION_PARAM]),
+)
+class AdmissionEventViewSet(viewsets.ReadOnlyModelViewSet):
+    """Read-only append-only ADT event log. Gated ``beds.read`` (leitura ADT)."""
+
+    serializer_class = AdmissionEventSerializer
+
+    def get_permissions(self):
+        return [IsAuthenticated(), HasPermission("beds.read")]
+
+    def get_queryset(self):
+        from .models import AdmissionEvent
+
+        qs = AdmissionEvent.objects.select_related("admission", "from_bed", "to_bed", "actor")
+        admission = self.request.query_params.get("admission")
+        if admission:
+            qs = qs.filter(admission_id=admission)
+        return qs

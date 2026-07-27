@@ -36,11 +36,14 @@ from __future__ import annotations
 import uuid
 
 from django.db import models
+from django.utils import timezone
 
 __all__ = [
     "InpatientUnit",
     "Room",
     "Bed",
+    "Admission",
+    "AdmissionEvent",
 ]
 
 
@@ -266,3 +269,190 @@ class Bed(models.Model):
 
     def __str__(self):
         return f"Leito {self.identifier} ({self.get_status_display()}) — {self.unit}"
+
+
+# ─── L2: admissão/internação ─────────────────────────────────────────────────
+
+
+class Admission(models.Model):
+    """An inpatient stay (internação): a patient occupying a Bed over time.
+
+    The bed-occupancy state machine (admit → [transfer] → discharge) is driven
+    through :mod:`apps.emr.services.adt` — never by raw ``save`` — so the Bed's
+    operational ``status`` and the append-only :class:`AdmissionEvent` log stay
+    consistent in one ``transaction.atomic``. A DB partial-unique constraint
+    guarantees at most one *active* (status=admitted) admission per bed.
+
+    L3 (transfer/census) consumes this model + :class:`AdmissionEvent`: transfer
+    will move ``current_bed`` and append a ``transfer`` event (both from/to bed);
+    census reads active admissions per unit via ``current_bed__unit``.
+    """
+
+    class AdmissionSource(models.TextChoices):
+        EMERGENCIA = "emergencia", "Emergência"
+        AMBULATORIO = "ambulatorio", "Ambulatório"
+        TRANSFERENCIA_EXTERNA = "transferencia_externa", "Transferência externa"
+        CENTRO_CIRURGICO = "centro_cirurgico", "Centro cirúrgico"
+        OUTRO = "outro", "Outro"
+
+    class Disposition(models.TextChoices):
+        ALTA_MELHORADA = "alta_melhorada", "Alta melhorada"
+        ALTA_A_PEDIDO = "alta_a_pedido", "Alta a pedido"
+        TRANSFERENCIA_EXTERNA = "transferencia_externa", "Transferência externa"
+        OBITO = "obito", "Óbito"
+        EVASAO = "evasao", "Evasão"
+        OUTRO = "outro", "Outro"
+
+    class Status(models.TextChoices):
+        ADMITTED = "admitted", "Internado"
+        DISCHARGED = "discharged", "Alta"
+        CANCELLED = "cancelled", "Cancelada"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    patient = models.ForeignKey(
+        "emr.Patient", on_delete=models.PROTECT, related_name="admissions", verbose_name="Paciente"
+    )
+    admitting_professional = models.ForeignKey(
+        "emr.Professional",
+        on_delete=models.PROTECT,
+        related_name="admissions_admitted",
+        verbose_name="Profissional internador",
+    )
+    attending_professional = models.ForeignKey(
+        "emr.Professional",
+        on_delete=models.PROTECT,
+        related_name="admissions_attending",
+        verbose_name="Profissional responsável",
+    )
+    # Nullable: freed on discharge (bed released), set/moved on admit/transfer.
+    current_bed = models.ForeignKey(
+        Bed,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="admissions",
+        verbose_name="Leito atual",
+    )
+    # Optional link to the admission Encounter (encounter_type=internacao).
+    encounter = models.ForeignKey(
+        "emr.Encounter",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="admissions",
+        verbose_name="Encontro de internação",
+    )
+
+    admission_source = models.CharField(
+        "Origem da internação",
+        max_length=32,
+        choices=AdmissionSource.choices,
+        default=AdmissionSource.OUTRO,
+    )
+    admission_datetime = models.DateTimeField("Data/hora da internação", default=timezone.now)
+    expected_discharge_datetime = models.DateTimeField("Alta prevista", null=True, blank=True)
+    actual_discharge_datetime = models.DateTimeField("Alta efetiva", null=True, blank=True)
+    # NULL = ainda sem desfecho (internação ativa); distinto de "" — DJ001 suprimido
+    # conforme convenção do repo.
+    disposition = models.CharField(  # noqa: DJ001
+        "Desfecho",
+        max_length=32,
+        choices=Disposition.choices,
+        null=True,
+        blank=True,
+    )
+    status = models.CharField(
+        "Situação",
+        max_length=16,
+        choices=Status.choices,
+        default=Status.ADMITTED,
+        db_index=True,
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-admission_datetime"]
+        verbose_name = "Internação"
+        verbose_name_plural = "Internações"
+        constraints = [
+            # At most ONE active admission per bed (partial unique on the active
+            # status). NULL current_bed rows (discharged) are exempt.
+            models.UniqueConstraint(
+                fields=["current_bed"],
+                condition=models.Q(status="admitted", current_bed__isnull=False),
+                name="uniq_active_admission_per_bed",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["patient", "status"], name="emr_adm_patient_status_idx"),
+            models.Index(fields=["status", "admission_datetime"], name="emr_adm_status_dt_idx"),
+        ]
+
+    def __str__(self):
+        return f"Internação {self.patient} ({self.get_status_display()})"
+
+
+class AdmissionEvent(models.Model):
+    """Append-only ADT event log for an :class:`Admission`.
+
+    Mirrors the append-only shape of ``emr.MedicationAdministration`` — rows are
+    created, never edited/deleted; the DRF surface is read-only. Every occupancy
+    transition (admit / transfer / discharge / cancel) writes exactly one event
+    inside the service's ``transaction.atomic``. ``from_bed``/``to_bed`` capture
+    the movement (admit: to only; discharge: from only; transfer: both).
+    """
+
+    class EventType(models.TextChoices):
+        ADMIT = "admit", "Admissão"
+        TRANSFER = "transfer", "Transferência"
+        DISCHARGE = "discharge", "Alta"
+        CANCEL = "cancel", "Cancelamento"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    admission = models.ForeignKey(
+        Admission, on_delete=models.PROTECT, related_name="events", verbose_name="Internação"
+    )
+    event_type = models.CharField(
+        "Tipo de evento", max_length=16, choices=EventType.choices, db_index=True
+    )
+    from_bed = models.ForeignKey(
+        Bed,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="admission_events_from",
+        verbose_name="Leito de origem",
+    )
+    to_bed = models.ForeignKey(
+        Bed,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="admission_events_to",
+        verbose_name="Leito de destino",
+    )
+    actor = models.ForeignKey(
+        "core.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="admission_events",
+        verbose_name="Responsável",
+    )
+    reason = models.TextField("Motivo", blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        verbose_name = "Evento ADT"
+        verbose_name_plural = "Eventos ADT"
+        indexes = [
+            models.Index(fields=["admission", "created_at"], name="emr_admevt_adm_dt_idx"),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.get_event_type_display()} — {self.admission_id} @ {self.created_at:%d/%m %H:%M}"
+        )

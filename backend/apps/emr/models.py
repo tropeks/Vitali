@@ -677,6 +677,17 @@ class Encounter(models.Model):
         ("cancelled", "Cancelada"),
     ]
 
+    # ADT L2: encounter context (ambulatorial / internação / emergência /
+    # observação). Defaults to ``ambulatorial`` so existing rows and flows are
+    # unchanged — Vitali is outpatient-first. Inpatient/ADT (Admission) links its
+    # own admission Encounter with encounter_type=internacao.
+    ENCOUNTER_TYPE_CHOICES = [
+        ("ambulatorial", "Ambulatorial"),
+        ("internacao", "Internação"),
+        ("emergencia", "Emergência"),
+        ("observacao", "Observação"),
+    ]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     patient = models.ForeignKey(Patient, on_delete=models.PROTECT, related_name="encounters")
     professional = models.ForeignKey(
@@ -686,6 +697,13 @@ class Encounter(models.Model):
         Appointment, null=True, blank=True, on_delete=models.SET_NULL, related_name="encounter"
     )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="open")
+    encounter_type = models.CharField(
+        max_length=20,
+        choices=ENCOUNTER_TYPE_CHOICES,
+        default="ambulatorial",
+        db_index=True,
+        help_text="Contexto do encontro (ambulatorial por padrão — não quebra fluxos existentes).",
+    )
     encounter_date = models.DateTimeField(default=timezone.now)
     chief_complaint = EncryptedTextField(blank=True)  # free-text clinical (LGPD)
     signed_at = models.DateTimeField(null=True, blank=True)
