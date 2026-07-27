@@ -18,7 +18,7 @@
 
 ## Sprints
 
-### C1 · Estrutura + caso cirúrgico (backend) · **Opus**
+### C1 · Estrutura + caso cirúrgico (backend) · **Opus** · ✅ FEITO (commit e1ff1d8)
 `OperatingRoom` (sala: FK Facility, code/name/active, tipo). `SurgicalCase` (cirurgia: FK patient, FK encounter opcional,
 FK admission opcional [âncora inpatient], FK surgeon [Professional], FK operating_room opcional, `scheduled_start/end`,
 `priority` [eletiva/urgencia/emergencia], `status` [agendada/confirmada/em_sala/em_andamento/finalizada/cancelada], default agendada).
