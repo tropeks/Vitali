@@ -265,6 +265,8 @@ ADMIN_PERMISSIONS = [
     # Centro Cirúrgico (C1): estrutura + caso cirúrgico — leitura + gestão.
     "surgery.read",
     "surgery.manage",
+    # Centro Cirúrgico (C2): agendamento/lifecycle do caso (schedule/reschedule/confirm/cancel).
+    "surgery.schedule",
     "pharmacy.clinical_validate",
     # Escala/plantão de setor (S-IA2). Admin carries it so tenant admins keep
     # full roster access; sector supervisors get it standalone via RosterAccessPermission.
@@ -302,6 +304,8 @@ CLINICAL_PRESCRIBER_PERMISSIONS = [
     # Centro Cirúrgico (C1): o cirurgião gere (e lê) casos cirúrgicos.
     "surgery.read",
     "surgery.manage",
+    # Centro Cirúrgico (C2): o cirurgião agenda/confirma/cancela seus casos.
+    "surgery.schedule",
 ]
 
 NURSING_PERMISSIONS = [

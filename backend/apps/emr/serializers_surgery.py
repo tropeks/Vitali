@@ -54,6 +54,31 @@ class SurgicalCaseSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "created_by", "created_at", "updated_at")
 
 
+class SurgicalCaseScheduleSerializer(serializers.Serializer):
+    """Input for ``POST /surgical-cases/{id}/schedule/``: room + time window."""
+
+    operating_room = serializers.PrimaryKeyRelatedField(queryset=OperatingRoom.objects.all())
+    scheduled_start = serializers.DateTimeField()
+    scheduled_end = serializers.DateTimeField()
+
+
+class SurgicalCaseRescheduleSerializer(serializers.Serializer):
+    """Input for ``POST /surgical-cases/{id}/reschedule/``: new window, optional
+    new room (omit to keep the case's current room)."""
+
+    operating_room = serializers.PrimaryKeyRelatedField(
+        queryset=OperatingRoom.objects.all(), required=False, allow_null=True
+    )
+    scheduled_start = serializers.DateTimeField()
+    scheduled_end = serializers.DateTimeField()
+
+
+class SurgicalCaseCancelSerializer(serializers.Serializer):
+    """Input for ``POST /surgical-cases/{id}/cancel/``: optional reason."""
+
+    reason = serializers.CharField(required=False, allow_blank=True, default="")
+
+
 class SurgicalProcedureSerializer(serializers.ModelSerializer):
     tuss_code_value = serializers.CharField(read_only=True)
 
