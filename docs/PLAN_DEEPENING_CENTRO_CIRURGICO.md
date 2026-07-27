@@ -25,7 +25,7 @@ FK admission opcional [âncora inpatient], FK surgeon [Professional], FK operati
 `SurgicalProcedure` (procedimentos planejados do caso: FK case, FK tuss_code cross-schema, quantity, lateralidade, porte via CBHPM).
 RBAC `surgery.read`/`surgery.manage`. CRUD DRF (`/api/v1/{operating-rooms,surgical-cases,surgical-procedures}/`). Migração. pytest TDD + `@extend_schema`.
 
-### C2 · Agendamento + mapa cirúrgico (backend) · **Opus** (dep C1)
+### C2 · Agendamento + mapa cirúrgico (backend) · **Opus** (dep C1) · ✅ FEITO (commit pós-ae36688)
 Serviço de agendamento: reservar sala p/ janela (guarda de **overlap por sala** → 409, atômico), reagendar, confirmar,
 cancelar (transições de status). Endpoint **mapa cirúrgico** `/surgical-cases/board/?date=&room=` (salas × dia/turno com os
 casos e status). RBAC `surgery.schedule`. pytest TDD.
