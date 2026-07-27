@@ -31,7 +31,7 @@ expected_discharge, disposition, `status` (admitted/discharged/cancelled), `curr
 e vincula estada↔encounter. **Log ADT append-only** `AdmissionEvent` (admit/transfer/discharge, from_bed/to_bed, actor,
 motivo, timestamp). Admitir **ocupa** o leito; alta **libera** → higienização (transição atômica). RBAC `adt.admit`/`adt.discharge`. pytest TDD.
 
-### L3 · Transferência + Censo/Ocupação (backend) · **Opus** (dep L2)
+### L3 · Transferência + Censo/Ocupação (backend) · **Opus** (dep L2) · ✅ FEITO (commit 2d9b820)
 Serviço de transferência (leito→leito / unidade→unidade: grava `AdmissionEvent`, atualiza status dos dois leitos
 atomicamente, bloqueia destino ocupado). Serviço de **censo/ocupação**: taxa por unidade, contagem de leitos por status,
 lista de internados, **LOS** (tempo de permanência). Endpoints `/api/v1/beds/board/` (mapa de leitos) e

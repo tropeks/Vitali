@@ -16,6 +16,7 @@ import {
   Activity,
   ScanLine,
   ScanBarcode,
+  BedDouble,
   FlaskConical,
   CalendarX,
   CalendarClock,
@@ -113,6 +114,16 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: ScanBarcode,
         module: "emr",
         permissions: [PERMISSIONS.EMAR_ADMINISTER],
+      },
+      {
+        // Painel de Internação / mapa de leitos + censo (ADT L4). Gated beds.read;
+        // ações de transferência/alta gated adt.* dentro do painel. Admissão pelo
+        // prontuário (aba Internação, L5).
+        label: "Internação",
+        href: "/internacao",
+        icon: BedDouble,
+        module: "emr",
+        permissions: [PERMISSIONS.BEDS_READ],
       },
       {
         label: "Faltas",

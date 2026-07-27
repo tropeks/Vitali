@@ -40,8 +40,18 @@ import ImmunizationList from '@/components/patients/ImmunizationList'
 import ReconciliationList from '@/components/patients/ReconciliationList'
 import SaeDiagnosisList from '@/components/nursing/SaeDiagnosisList'
 import SaeEvolution from '@/components/nursing/SaeEvolution'
+import AdmissionPanel from '@/components/inpatient/AdmissionPanel'
+import { PERMISSIONS } from '@/lib/permissions'
 
-type TabId = 'resumo' | 'timeline' | 'clinico' | 'reconciliacao' | 'sae' | 'convenios' | 'dados'
+type TabId =
+  | 'resumo'
+  | 'timeline'
+  | 'clinico'
+  | 'reconciliacao'
+  | 'sae'
+  | 'internacao'
+  | 'convenios'
+  | 'dados'
 
 interface Patient {
   id: string
@@ -615,6 +625,9 @@ export default function PatientDetailPage() {
   const openEncounters = related.encounters.filter((encounter) => encounter.status === 'open')
   const saeEncounterId = openEncounters[0]?.id ?? null
   const canWriteSae = useMemo(() => hasPermission('sae.write'), [])
+  const canReadBeds = useMemo(() => hasPermission(PERMISSIONS.BEDS_READ), [])
+  const canAdmit = useMemo(() => hasPermission(PERMISSIONS.ADT_ADMIT), [])
+  const canDischarge = useMemo(() => hasPermission(PERMISSIONS.ADT_DISCHARGE), [])
   const pendingGuides = related.guides.filter((guide) => guide.status && !['paid'].includes(guide.status))
   const glosaGuides = related.guides.filter((guide) => guide.status === 'denied' || guide.status === 'appeal')
   const activePrescriptions = related.prescriptions.filter((rx) =>
@@ -633,6 +646,7 @@ export default function PatientDetailPage() {
     { id: 'clinico', label: `Clínico${activeAllergies.length ? ` (${activeAllergies.length})` : ''}` },
     { id: 'reconciliacao', label: 'Reconciliação' },
     { id: 'sae', label: 'SAE' },
+    { id: 'internacao', label: 'Internação' },
     { id: 'convenios', label: `Convênios${activeCards.length ? ` (${activeCards.length})` : ''}` },
     { id: 'dados', label: 'Dados cadastrais' },
   ]
@@ -1146,6 +1160,31 @@ export default function PatientDetailPage() {
                       />
                     </div>
                   </section>
+                </div>
+              )}
+
+              {activeTab === 'internacao' && (
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <h2 className="text-base font-semibold text-slate-900">
+                        Internação (ADT / leitos)
+                      </h2>
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Admissão / alta
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Admissão na recepção, leito atual, histórico ADT e alta. Registro governado
+                      do prontuário.
+                    </p>
+                  </div>
+                  <AdmissionPanel
+                    patientId={id}
+                    canRead={canReadBeds}
+                    canAdmit={canAdmit}
+                    canDischarge={canDischarge}
+                  />
                 </div>
               )}
 
