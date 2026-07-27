@@ -380,6 +380,17 @@ class StockMovement(models.Model):
     reference = models.CharField(max_length=200, blank=True)
     notes = models.TextField(blank=True)
     performed_by = models.ForeignKey("core.User", on_delete=models.PROTECT, null=True, blank=True)
+    # C6 — traceability of surgical consumption: when this movement was created to
+    # record a material/OPME consumed in an operating room, it points back at the
+    # surgical case (emr.SurgicalCase). SET_NULL so purging a case never deletes
+    # the stock ledger row (append-only). Both models are TENANT-schema.
+    surgical_case = models.ForeignKey(
+        "emr.SurgicalCase",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="surgical_movements",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

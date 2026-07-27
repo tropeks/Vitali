@@ -45,6 +45,7 @@ __all__ = [
     "SurgicalTeamMember",
     "SurgicalTime",
     "SurgicalChecklist",
+    "SurgicalMaterial",
 ]
 
 
@@ -464,3 +465,86 @@ class SurgicalChecklist(models.Model):
 
     def __str__(self):
         return f"{self.get_phase_display()} — {self.case_id}"
+
+
+# ─── C6: OPME / materiais planejados + consumidos do caso ─────────────────────
+
+
+class SurgicalMaterial(models.Model):
+    """A planned/consumed material or OPME of a :class:`SurgicalCase`. Per-tenant.
+
+    Tracks both the *planned* quantity (``quantity_planned``) and the *consumed*
+    quantity (``quantity_consumed``, advanced only through
+    :func:`apps.emr.services.surgery_materials.record_consumption`). ``stock_item``
+    optionally maps the material to a catalogued pharmacy lot
+    (``pharmacy.StockItem``) — both models are TENANT-schema, so a normal FK is
+    fine (no cross-schema DO_NOTHING dance, which is only for tenant→SHARED). It
+    uses ``PROTECT`` so a referenced stock lot cannot be deleted while a surgical
+    material points at it. When ``stock_item`` is null the material is an
+    uncatalogued OPME whose free-text ``description`` / ``lot`` / ``serial`` carry
+    the rastreabilidade.
+    """
+
+    class Kind(models.TextChoices):
+        OPME = "opme", "OPME"
+        MATERIAL = "material", "Material"
+        MEDICAMENTO = "medicamento", "Medicamento"
+        OUTRO = "outro", "Outro"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    case = models.ForeignKey(
+        SurgicalCase,
+        on_delete=models.CASCADE,
+        related_name="materials",
+        verbose_name="Caso cirúrgico",
+    )
+    kind = models.CharField("Tipo", max_length=12, choices=Kind.choices, db_index=True)
+    # Optional link to a catalogued pharmacy lot. Same-schema (TENANT) FK, so a
+    # normal FK — PROTECT so a referenced stock lot can't be deleted.
+    stock_item = models.ForeignKey(
+        "pharmacy.StockItem",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="surgical_materials",
+        verbose_name="Lote de estoque",
+    )
+    description = models.CharField("Descrição", max_length=300, blank=True)
+    quantity_planned = models.PositiveIntegerField("Quantidade planejada", default=1)
+    quantity_consumed = models.PositiveIntegerField("Quantidade consumida", default=0)
+    laterality = models.CharField(
+        "Lateralidade",
+        max_length=16,
+        choices=SurgicalProcedure.Laterality.choices,
+        blank=True,
+        default="",
+    )
+    # OPME rastreabilidade.
+    lot = models.CharField("Lote (OPME)", max_length=100, blank=True)
+    serial = models.CharField("Número de série (OPME)", max_length=100, blank=True)
+    manufacturer = models.CharField("Fabricante", max_length=200, blank=True)
+    notes = models.TextField("Observações", blank=True)
+
+    created_by = models.ForeignKey(
+        "core.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="surgical_materials_created",
+        verbose_name="Criado por",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        verbose_name = "Material / OPME Cirúrgico"
+        verbose_name_plural = "Materiais / OPME Cirúrgicos"
+        indexes = [
+            models.Index(fields=["case"], name="emr_surgmat_case_idx"),
+            models.Index(fields=["case", "kind"], name="emr_surgmat_case_kind_idx"),
+        ]
+
+    def __str__(self):
+        label = self.description or self.get_kind_display()
+        return f"{label} — {self.case_id} ({self.quantity_consumed}/{self.quantity_planned})"

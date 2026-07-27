@@ -16,6 +16,7 @@ from .models import (
     OperatingRoom,
     SurgicalCase,
     SurgicalChecklist,
+    SurgicalMaterial,
     SurgicalProcedure,
     SurgicalTeamMember,
     SurgicalTime,
@@ -186,3 +187,45 @@ class SurgicalCaseChecklistSerializer(serializers.Serializer):
 
     phase = serializers.ChoiceField(choices=SurgicalChecklist.Phase.choices)
     items = serializers.JSONField(required=False, default=dict)
+
+
+# ─── C6: OPME / materiais + consumo de sala ───────────────────────────────────
+
+
+class SurgicalMaterialSerializer(serializers.ModelSerializer):
+    """Material / OPME planejado + consumido de um caso. ``quantity_consumed`` é
+    read-only (avançado só pela ação ``consume`` via o serviço); ``created_by`` é
+    definido no servidor."""
+
+    class Meta:
+        model = SurgicalMaterial
+        fields = [
+            "id",
+            "case",
+            "kind",
+            "stock_item",
+            "description",
+            "quantity_planned",
+            "quantity_consumed",
+            "laterality",
+            "lot",
+            "serial",
+            "manufacturer",
+            "notes",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = (
+            "id",
+            "quantity_consumed",
+            "created_by",
+            "created_at",
+            "updated_at",
+        )
+
+
+class SurgicalMaterialConsumeSerializer(serializers.Serializer):
+    """Input for ``POST /surgical-materials/{id}/consume/``: units consumed."""
+
+    quantity = serializers.IntegerField(min_value=1)

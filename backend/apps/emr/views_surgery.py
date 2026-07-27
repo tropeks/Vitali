@@ -30,11 +30,14 @@ from .serializers_surgery import (
     SurgicalCaseScheduleSerializer,
     SurgicalCaseSerializer,
     SurgicalChecklistSerializer,
+    SurgicalMaterialConsumeSerializer,
+    SurgicalMaterialSerializer,
     SurgicalProcedureSerializer,
     SurgicalTeamMemberSerializer,
     SurgicalTimeSerializer,
 )
 from .services import surgery_intraop as intraop_service
+from .services import surgery_materials as materials_service
 from .services import surgery_scheduling as scheduling_service
 from .views import log_audit
 
@@ -459,3 +462,59 @@ class SurgicalProcedureViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
     def perform_create(self, serializer):
         obj = serializer.save()
         log_audit(self.request, "surgery_procedure_create", "SurgicalProcedure", obj.id)
+
+
+@extend_schema_view(
+    list=extend_schema(parameters=[_CASE_PARAM]),
+)
+class SurgicalMaterialViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
+    """Materiais / OPME de um caso cirúrgico (CRUD + ação ``consume``).
+
+    Read=``surgery.read`` / write=``surgery.manage``. ``created_by`` é definido no
+    servidor. ``consume`` roteia pelo serviço atômico (incrementa
+    ``quantity_consumed`` e, se houver ``stock_item``, cria um StockMovement
+    rastreável ao caso)."""
+
+    serializer_class = SurgicalMaterialSerializer
+
+    def get_queryset(self):
+        from .models import SurgicalMaterial
+
+        qs = SurgicalMaterial.objects.select_related("case", "stock_item")
+        case = self.request.query_params.get("case")
+        if case:
+            qs = qs.filter(case_id=case)
+        return qs
+
+    def perform_create(self, serializer):
+        obj = serializer.save(created_by=self.request.user)
+        log_audit(self.request, "surgery_material_create", "SurgicalMaterial", obj.id)
+
+    def perform_update(self, serializer):
+        obj = serializer.save()
+        log_audit(self.request, "surgery_material_update", "SurgicalMaterial", obj.id)
+
+    @extend_schema(
+        request=SurgicalMaterialConsumeSerializer,
+        responses=SurgicalMaterialSerializer,
+        description="Registra o consumo de N unidades do material/OPME: incrementa "
+        "quantity_consumed e, se o material estiver ligado a um lote de estoque, cria "
+        "um StockMovement (dispensação, rastreável ao caso) que baixa o estoque. "
+        "Quantidade inválida → 400. Gated surgery.manage.",
+    )
+    @action(detail=True, methods=["post"])
+    def consume(self, request, pk=None):
+        """Registra o consumo de material/OPME (rastreável ao caso). Quantidade inválida → 400."""
+        material = self.get_object()
+        payload = SurgicalMaterialConsumeSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            material = materials_service.record_consumption(
+                material,
+                payload.validated_data["quantity"],
+                actor=request.user,
+            )
+        except DjangoValidationError as exc:
+            return Response({"detail": exc.messages[0]}, status=http_status.HTTP_400_BAD_REQUEST)
+        log_audit(request, "surgery_material_consume", "SurgicalMaterial", material.id)
+        return Response(self.get_serializer(material).data)

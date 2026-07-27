@@ -60,6 +60,7 @@ from .views_surgery import (
     OperatingRoomViewSet,
     SurgicalCaseViewSet,
     SurgicalChecklistViewSet,
+    SurgicalMaterialViewSet,
     SurgicalProcedureViewSet,
     SurgicalTeamMemberViewSet,
     SurgicalTimeViewSet,
@@ -135,6 +136,8 @@ router.register("surgical-procedures", SurgicalProcedureViewSet, basename="surgi
 router.register("surgical-team", SurgicalTeamMemberViewSet, basename="surgical-team")
 router.register("surgical-times", SurgicalTimeViewSet, basename="surgical-time")
 router.register("surgical-checklists", SurgicalChecklistViewSet, basename="surgical-checklist")
+# ── C6: Centro Cirúrgico — materiais / OPME + consumo de sala (rastreabilidade)
+router.register("surgical-materials", SurgicalMaterialViewSet, basename="surgical-material")
 
 urlpatterns = (
     [
