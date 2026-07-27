@@ -37,11 +37,15 @@ atomicamente, bloqueia destino ocupado). Serviço de **censo/ocupação**: taxa 
 lista de internados, **LOS** (tempo de permanência). Endpoints `/api/v1/beds/board/` (mapa de leitos) e
 `/api/v1/admissions/census/`. RBAC `adt.transfer`. pytest TDD.
 
-### L4 · Mapa de Leitos + Painel de Internação (frontend) · **Opus** (dep L3)
+### L4 · Mapa de Leitos + Painel de Internação (frontend) · **Opus** (dep L3) · ✅ FEITO (commit 3da0c68)
 Bed-board (grade por unidade, cor por status), KPIs de censo/ocupação, lista de internados. Ações admitir/transferir/alta
 gated. Nav "Internação" (grupo Atendimento ou novo grupo). Vitest TDD.
 
-### L5 · Fluxo admissão/alta na recepção + prontuário (frontend) · **Opus** (dep L2/L4)
+### L5 · Fluxo admissão/alta na recepção + prontuário (frontend) · **Opus** (dep L2/L4) · ✅ FEITO (commit 3da0c68)
+
+> **Épico ADT L1..L5 concluído** (2026-07-27): estrutura de leitos → admissão+ciclo ADT → transferência+censo →
+> painel/mapa de leitos → fluxo admissão/alta no prontuário. Camadas modelo/API/UI/RBAC cobertas. Encounter agora
+> tem `encounter_type` (destrava o FHIR mapper). Seed de demo: Hospital Demo → Ala A → Quarto 101 → leitos 101-A/B.
 Admitir (da sala de espera ou novo) → atribuir leito → definir responsável; dar alta com disposição. Banner/aba
 "Internação" em `patients/[id]` mostrando a estada corrente + histórico ADT; integra com a aba SAE (leito real).
 Vitest TDD.
