@@ -18,13 +18,13 @@
 
 ## Sprints
 
-### L1 · Estrutura de leitos (backend) · **Opus**
+### L1 · Estrutura de leitos (backend) · **Opus** · ✅ FEITO (commit bc86257)
 Catálogo governado `BedType` (subclass `TerminologyCatalog`, tipos CNES) + hierarquia **InpatientUnit (ala/unidade)** →
 **Room (quarto)** → **Bed (leito)**, todos FK a `Facility`. `Bed.status` enum (livre/ocupado/higienização/bloqueado/
 reservado/interditado) + `bed_type` FK cross-schema (padrão DO_NOTHING + pre_delete protect). CRUD DRF (gestor/NIR),
 RBAC `beds.read`/`beds.manage`. Migração. pytest TDD + `@extend_schema`.
 
-### L2 · Admissão/Internação + ciclo ADT (backend) · **Opus** (dep L1)
+### L2 · Admissão/Internação + ciclo ADT (backend) · **Opus** (dep L1) · ✅ FEITO (commit 715229b)
 `Admission` (estada): patient, admitting/attending professional, admission_source, admission/discharge datetimes,
 expected_discharge, disposition, `status` (admitted/discharged/cancelled), `current_bed` FK. Adiciona `encounter_type`
 (ambulatorial/internação/emergência/observação) em `Encounter` (default ambulatorial — não-quebra; destrava o FHIR mapper)
