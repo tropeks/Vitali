@@ -56,6 +56,11 @@ from .views_safety import (
 )
 from .views_scribe import ScribeStartView, ScribeStatusView, ScribeTranscribeView
 from .views_setup import WizardProfessionalSetupView, WizardStatusView
+from .views_surgery import (
+    OperatingRoomViewSet,
+    SurgicalCaseViewSet,
+    SurgicalProcedureViewSet,
+)
 from .views_waitlist import WaitlistDetailView, WaitlistViewSet
 
 router = DefaultRouter()
@@ -119,6 +124,10 @@ router.register("beds", BedViewSet, basename="bed")
 # ── L2: ADT/Leitos — admissão/internação + log de eventos ADT (append-only)
 router.register("admissions", AdmissionViewSet, basename="admission")
 router.register("admission-events", AdmissionEventViewSet, basename="admission-event")
+# ── C1: Centro Cirúrgico — sala → caso cirúrgico → procedimento (TUSS)
+router.register("operating-rooms", OperatingRoomViewSet, basename="operating-room")
+router.register("surgical-cases", SurgicalCaseViewSet, basename="surgical-case")
+router.register("surgical-procedures", SurgicalProcedureViewSet, basename="surgical-procedure")
 
 urlpatterns = (
     [

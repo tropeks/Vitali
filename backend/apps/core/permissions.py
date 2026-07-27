@@ -262,6 +262,9 @@ ADMIN_PERMISSIONS = [
     "adt.discharge",
     # ADT/Leitos (L3): transferência de leito (beira-leito/NIR).
     "adt.transfer",
+    # Centro Cirúrgico (C1): estrutura + caso cirúrgico — leitura + gestão.
+    "surgery.read",
+    "surgery.manage",
     "pharmacy.clinical_validate",
     # Escala/plantão de setor (S-IA2). Admin carries it so tenant admins keep
     # full roster access; sector supervisors get it standalone via RosterAccessPermission.
@@ -296,6 +299,9 @@ CLINICAL_PRESCRIBER_PERMISSIONS = [
     "adt.discharge",
     # ADT L3: o médico transfere de leito (beira-leito).
     "adt.transfer",
+    # Centro Cirúrgico (C1): o cirurgião gere (e lê) casos cirúrgicos.
+    "surgery.read",
+    "surgery.manage",
 ]
 
 NURSING_PERMISSIONS = [
@@ -311,6 +317,8 @@ NURSING_PERMISSIONS = [
     "beds.read",
     # ADT L3: o enfermeiro transfere de leito (beira-leito/NIR).
     "adt.transfer",
+    # Centro Cirúrgico (C1): a enfermagem de CC lê os casos cirúrgicos.
+    "surgery.read",
 ]
 
 RECEPTION_PERMISSIONS = [

@@ -123,7 +123,8 @@ def protect_tuss_code_deletion(sender, instance, **kwargs):
     """Block deletion of a TUSSCode that is referenced by tenant data in any tenant.
 
     Covers billing references (TISSGuideItem, PriceTableItem) and clinical capture
-    (emr.EncounterProcedure) — a TUSS code used by any of them cannot be hard-deleted.
+    (emr.EncounterProcedure, emr.SurgicalProcedure) — a TUSS code used by any of
+    them cannot be hard-deleted.
     """
     from django_tenants.utils import get_tenant_model, schema_context
 
@@ -131,7 +132,7 @@ def protect_tuss_code_deletion(sender, instance, **kwargs):
     for tenant in TenantModel.objects.exclude(schema_name="public"):
         with schema_context(tenant.schema_name):
             from apps.billing.models import PriceTableItem, TISSGuideItem
-            from apps.emr.models import EncounterProcedure
+            from apps.emr.models import EncounterProcedure, SurgicalProcedure
 
             if TISSGuideItem.objects.filter(tuss_code=instance).exists():
                 raise ProtectedError(
@@ -148,6 +149,12 @@ def protect_tuss_code_deletion(sender, instance, **kwargs):
             if EncounterProcedure.objects.filter(tuss_code=instance).exists():
                 raise ProtectedError(
                     f"TUSSCode {instance.code} is referenced by EncounterProcedure in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+            if SurgicalProcedure.objects.filter(tuss_code=instance).exists():
+                raise ProtectedError(
+                    f"TUSSCode {instance.code} is referenced by SurgicalProcedure in "
                     f"schema '{tenant.schema_name}' and cannot be deleted.",
                     {instance},
                 )
