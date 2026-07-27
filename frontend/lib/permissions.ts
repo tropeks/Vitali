@@ -68,6 +68,13 @@ export const PERMISSIONS = {
   SAE_READ: "sae.read",
   SAE_WRITE: "sae.write",
 
+  // ADT / gestão de leitos / internação (backend apps/emr adt_models + views_adt)
+  BEDS_READ: "beds.read",
+  BEDS_MANAGE: "beds.manage",
+  ADT_ADMIT: "adt.admit",
+  ADT_DISCHARGE: "adt.discharge",
+  ADT_TRANSFER: "adt.transfer",
+
   // Imaging / diagnostics
   IMAGING_READ: "imaging.read",
   IMAGING_WRITE: "imaging.write",
