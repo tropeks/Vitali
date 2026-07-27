@@ -35,11 +35,14 @@ Checklist OMS (sign-in / time-out / sign-out) **append-only** por caso. `Surgica
 incisão, fechamento, saída) — status machine do caso dirigida pelos tempos. `SurgicalTeamMember` (papel: cirurgião/1º auxiliar/
 anestesista/instrumentador/circulante + Professional). RBAC `surgery.manage`. pytest TDD.
 
-### C4 · Mapa cirúrgico (frontend) · **Opus** (dep C2)
+### C4 · Mapa cirúrgico (frontend) · **Opus** (dep C2) · ✅ FEITO
 Rota `/centro-cirurgico`: mapa cirúrgico (salas × dia, casos coloridos por status/prioridade), agendar/reagendar/cancelar,
 filtro por sala/dia. Nav "Centro Cirúrgico" gated `surgery.read`. Vitest TDD.
 
-### C5 · Checklist/tempos + prontuário cirúrgico (frontend) · **Opus** (dep C3/C4)
+### C5 · Checklist/tempos + prontuário cirúrgico (frontend) · **Opus** (dep C3/C4) · ✅ FEITO
+
+> **Núcleo do épico Centro Cirúrgico (C1..C5) concluído** (2026-07-27): estrutura+caso → agendamento+mapa → checklist
+> OMS+tempos+equipe → mapa cirúrgico UI → prontuário cirúrgico+intra-op. C6 (OPME/consumo) fica deferível.
 Tela de sala: checklist OMS (3 fases), registro de tempos, equipe; aba "Cirurgia" no prontuário `patients/[id]` (casos do
 paciente + status + procedimentos + tempos). Vitest TDD. RBAC `surgery.manage`.
 

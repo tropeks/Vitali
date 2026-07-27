@@ -41,6 +41,7 @@ import ReconciliationList from '@/components/patients/ReconciliationList'
 import SaeDiagnosisList from '@/components/nursing/SaeDiagnosisList'
 import SaeEvolution from '@/components/nursing/SaeEvolution'
 import AdmissionPanel from '@/components/inpatient/AdmissionPanel'
+import SurgeryCasePanel from '@/components/surgery/SurgeryCasePanel'
 import { PERMISSIONS } from '@/lib/permissions'
 
 type TabId =
@@ -50,6 +51,7 @@ type TabId =
   | 'reconciliacao'
   | 'sae'
   | 'internacao'
+  | 'cirurgia'
   | 'convenios'
   | 'dados'
 
@@ -628,6 +630,8 @@ export default function PatientDetailPage() {
   const canReadBeds = useMemo(() => hasPermission(PERMISSIONS.BEDS_READ), [])
   const canAdmit = useMemo(() => hasPermission(PERMISSIONS.ADT_ADMIT), [])
   const canDischarge = useMemo(() => hasPermission(PERMISSIONS.ADT_DISCHARGE), [])
+  const canReadSurgery = useMemo(() => hasPermission(PERMISSIONS.SURGERY_READ), [])
+  const canManageSurgery = useMemo(() => hasPermission(PERMISSIONS.SURGERY_MANAGE), [])
   const pendingGuides = related.guides.filter((guide) => guide.status && !['paid'].includes(guide.status))
   const glosaGuides = related.guides.filter((guide) => guide.status === 'denied' || guide.status === 'appeal')
   const activePrescriptions = related.prescriptions.filter((rx) =>
@@ -647,6 +651,7 @@ export default function PatientDetailPage() {
     { id: 'reconciliacao', label: 'Reconciliação' },
     { id: 'sae', label: 'SAE' },
     { id: 'internacao', label: 'Internação' },
+    { id: 'cirurgia', label: 'Cirurgia' },
     { id: 'convenios', label: `Convênios${activeCards.length ? ` (${activeCards.length})` : ''}` },
     { id: 'dados', label: 'Dados cadastrais' },
   ]
@@ -1184,6 +1189,30 @@ export default function PatientDetailPage() {
                     canRead={canReadBeds}
                     canAdmit={canAdmit}
                     canDischarge={canDischarge}
+                  />
+                </div>
+              )}
+
+              {activeTab === 'cirurgia' && (
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <h2 className="text-base font-semibold text-slate-900">
+                        Cirurgia (centro cirúrgico)
+                      </h2>
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Prontuário cirúrgico
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Casos cirúrgicos do paciente, tempos intra-op, checklist de cirurgia
+                      segura (OMS) e equipe. Registro governado do prontuário.
+                    </p>
+                  </div>
+                  <SurgeryCasePanel
+                    patientId={id}
+                    canRead={canReadSurgery}
+                    canManage={canManageSurgery}
                   />
                 </div>
               )}

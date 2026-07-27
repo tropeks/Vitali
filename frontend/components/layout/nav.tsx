@@ -17,6 +17,7 @@ import {
   ScanLine,
   ScanBarcode,
   BedDouble,
+  Scissors,
   FlaskConical,
   CalendarX,
   CalendarClock,
@@ -124,6 +125,16 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: BedDouble,
         module: "emr",
         permissions: [PERMISSIONS.BEDS_READ],
+      },
+      {
+        // Mapa cirúrgico / Centro Cirúrgico (C4). Gated surgery.read; agendar/
+        // confirmar/cancelar gated surgery.schedule dentro do painel. Fluxo intra-op
+        // (checklist/tempos/equipe) pelo prontuário (aba Cirurgia, C5).
+        label: "Centro Cirúrgico",
+        href: "/centro-cirurgico",
+        icon: Scissors,
+        module: "emr",
+        permissions: [PERMISSIONS.SURGERY_READ],
       },
       {
         label: "Faltas",

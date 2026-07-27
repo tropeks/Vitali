@@ -313,6 +313,44 @@ describe('PatientDetailPage', () => {
     document.cookie = 'vitali_user=; expires=Thu, 01 Jan 1970 00:00:00 GMT'
   })
 
+  it('exposes a Cirurgia tab that renders the surgical case panel', async () => {
+    // Grant surgery.read so the panel renders its read view (UX gate only).
+    document.cookie = `vitali_user=${encodeURIComponent(
+      JSON.stringify({ id: 1, full_name: 'U', email: 'u@x', active_modules: [], permissions: ['surgery.read'] }),
+    )}`
+    mockApiFetch.mockImplementation((path: string) => {
+      if (path === '/api/v1/patients/patient-1/') {
+        return Promise.resolve({
+          id: 'patient-1',
+          full_name: 'Ana Lima',
+          medical_record_number: 'PAC-2026-00042',
+          birth_date: '1990-01-01',
+          gender_display: 'Feminino',
+          allergies: [],
+          medical_history: [],
+          is_active: true,
+        })
+      }
+      if (path.startsWith('/api/v1/surgical-cases/?patient=')) return Promise.resolve([])
+      if (path.includes('/timeline/')) return Promise.resolve({ events: [] })
+      if (path.includes('/insurance/')) return Promise.resolve([])
+      return Promise.resolve([])
+    })
+    const user = userEvent.setup()
+
+    render(<PatientDetailPage />)
+    await waitFor(() => {
+      expect(screen.getByText('Ana Lima')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Cirurgia' }))
+    await waitFor(() => {
+      expect(screen.getByText('Sem cirurgia registrada')).toBeInTheDocument()
+    })
+
+    document.cookie = 'vitali_user=; expires=Thu, 01 Jan 1970 00:00:00 GMT'
+  })
+
   it('shows degraded module state without blocking the patient header', async () => {
     mockCommandCenterApi()
     mockApiFetch.mockImplementation((path: string) => {
