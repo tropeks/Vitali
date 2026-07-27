@@ -75,6 +75,11 @@ export const PERMISSIONS = {
   ADT_DISCHARGE: "adt.discharge",
   ADT_TRANSFER: "adt.transfer",
 
+  // Centro Cirúrgico (backend apps/emr surgery_models + views_surgery)
+  SURGERY_READ: "surgery.read",
+  SURGERY_MANAGE: "surgery.manage",
+  SURGERY_SCHEDULE: "surgery.schedule",
+
   // Imaging / diagnostics
   IMAGING_READ: "imaging.read",
   IMAGING_WRITE: "imaging.write",

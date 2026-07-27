@@ -30,7 +30,7 @@ Serviço de agendamento: reservar sala p/ janela (guarda de **overlap por sala**
 cancelar (transições de status). Endpoint **mapa cirúrgico** `/surgical-cases/board/?date=&room=` (salas × dia/turno com os
 casos e status). RBAC `surgery.schedule`. pytest TDD.
 
-### C3 · Checklist cirurgia segura + tempos + equipe (backend) · **Opus** (dep C1/C2)
+### C3 · Checklist cirurgia segura + tempos + equipe (backend) · **Opus** (dep C1/C2) · ✅ FEITO (commit dc67294)
 Checklist OMS (sign-in / time-out / sign-out) **append-only** por caso. `SurgicalTime` (entrada em sala, início/fim anestesia,
 incisão, fechamento, saída) — status machine do caso dirigida pelos tempos. `SurgicalTeamMember` (papel: cirurgião/1º auxiliar/
 anestesista/instrumentador/circulante + Professional). RBAC `surgery.manage`. pytest TDD.
