@@ -254,6 +254,9 @@ ADMIN_PERMISSIONS = [
     "emar.administer",
     "sae.read",
     "sae.write",
+    # ADT/Leitos (L1): estrutura de leitos — leitura + gestão (NIR/Gestão de Leitos).
+    "beds.read",
+    "beds.manage",
     "pharmacy.clinical_validate",
     # Escala/plantão de setor (S-IA2). Admin carries it so tenant admins keep
     # full roster access; sector supervisors get it standalone via RosterAccessPermission.
@@ -282,6 +285,7 @@ CLINICAL_PRESCRIBER_PERMISSIONS = [
     "triage.read",
     "emar.read",
     "sae.read",
+    "beds.read",
 ]
 
 NURSING_PERMISSIONS = [
@@ -294,6 +298,7 @@ NURSING_PERMISSIONS = [
     "emar.administer",
     "sae.read",
     "sae.write",
+    "beds.read",
 ]
 
 RECEPTION_PERMISSIONS = [
@@ -304,6 +309,7 @@ RECEPTION_PERMISSIONS = [
     "billing.read",
     "triage.read",
     "triage.respond",
+    "beds.read",
 ]
 
 PHARMACY_PERMISSIONS = [

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from django.db.models import Case, IntegerField, Q, Value, When
 
+from apps.core.adt_catalog_models import BedType
 from apps.core.cbo_cnes_models import CBOCode, CNESEstablishment
 from apps.core.loinc_models import LoincCode, UcumUnit
 from apps.core.models import CID10Code
@@ -41,6 +42,8 @@ _SYSTEMS: dict[str, type] = {
     "nanda": NandaDiagnosis,
     "nic": NicIntervention,
     "noc": NocOutcome,
+    # L1: governed CNES bed-type catalog (ADT/Leitos).
+    "bed_type": BedType,
 }
 
 # CID-10 keeps the legacy ``description`` vocabulary + a ``parent`` hierarchy; the
@@ -147,6 +150,8 @@ def _context(system: str, row) -> dict:
         return {"definition": row.definition}
     if system == "noc":
         return {"definition": row.definition}
+    if system == "bed_type":
+        return {"category": row.category}
     # ucum (and any future flat catalog) carries no extra context columns.
     return {}
 

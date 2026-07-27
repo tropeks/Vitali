@@ -25,6 +25,7 @@ from .views import (
     VitalSignsViewSet,
     WaitingRoomView,
 )
+from .views_adt import BedViewSet, InpatientUnitViewSet, RoomViewSet
 from .views_cid10 import CID10AcceptView, CID10SuggestView
 from .views_diagnostics import CriticalLabResultViewSet, LabInstrumentViewSet, LabSpecimenViewSet
 from .views_lab_report import LabReportPDFView, LabReportSignView
@@ -105,6 +106,10 @@ router.register(
     basename="medication-reconciliation",
 )
 router.register("order-sets", OrderSetViewSet, basename="order-set")
+# ── L1: ADT/Leitos — estrutura física (unidade → quarto → leito)
+router.register("inpatient-units", InpatientUnitViewSet, basename="inpatient-unit")
+router.register("rooms", RoomViewSet, basename="room")
+router.register("beds", BedViewSet, basename="bed")
 
 urlpatterns = (
     [

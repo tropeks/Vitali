@@ -342,6 +342,42 @@ def protect_noc_outcome_deletion(sender, instance, **kwargs):
                 )
 
 
+# ─── BedType cross-schema PROTECT (L1 — ADT/Leitos structure wired) ───────────
+# L1 wires the tenant-side bed hierarchy (apps.emr.adt_models): Bed.bed_type and
+# InpatientUnit.default_bed_type → core.BedType. PostgreSQL does not enforce FK
+# integrity across schemas (tenant → public), so — exactly like
+# protect_nanda_diagnosis_deletion — this application-layer guard blocks
+# hard-deleting a bed type any tenant references.
+
+
+@receiver(pre_delete, sender="core.BedType")
+def protect_bed_type_deletion(sender, instance, **kwargs):
+    """Block deletion of a BedType referenced by tenant bed structure in any tenant.
+
+    Covers ``emr.Bed.bed_type`` (FK) and ``emr.InpatientUnit.default_bed_type``
+    (FK). Mirrors the NursingDiagnosis→NandaDiagnosis guard.
+    """
+    from django_tenants.utils import get_tenant_model, schema_context
+
+    TenantModel = get_tenant_model()
+    for tenant in TenantModel.objects.exclude(schema_name="public"):
+        with schema_context(tenant.schema_name):
+            from apps.emr.models import Bed, InpatientUnit
+
+            if Bed.objects.filter(bed_type=instance).exists():
+                raise ProtectedError(
+                    f"BedType {instance.code} is referenced by Bed in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+            if InpatientUnit.objects.filter(default_bed_type=instance).exists():
+                raise ProtectedError(
+                    f"BedType {instance.code} is referenced by InpatientUnit in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+
+
 # ─── Tenant → TenantAIConfig + emr FeatureFlag ───────────────────────────────
 
 
