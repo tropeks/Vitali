@@ -11,6 +11,7 @@ FK. On ``Bed`` create/update the denormalized ``unit`` FK is derived from the ro
 from __future__ import annotations
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import mixins, viewsets
 from rest_framework import status as http_status
@@ -24,11 +25,13 @@ from .serializers_adt import (
     AdmissionDischargeSerializer,
     AdmissionEventSerializer,
     AdmissionSerializer,
+    AdmissionTransferSerializer,
     BedSerializer,
     InpatientUnitSerializer,
     RoomSerializer,
 )
 from .services import adt as adt_service
+from .services import census as census_service
 from .views import log_audit
 
 _FACILITY_PARAM = OpenApiParameter(
@@ -51,7 +54,9 @@ class _BedsPermissionMixin:
     """Read=``beds.read`` / write=``beds.manage`` per-action gate."""
 
     def get_permissions(self):
-        permission = "beds.read" if self.action in {"list", "retrieve"} else "beds.manage"
+        # ``board`` is a read-only bed-map view → beds.read, like list/retrieve.
+        read_actions = {"list", "retrieve", "board"}
+        permission = "beds.read" if self.action in read_actions else "beds.manage"
         return [IsAuthenticated(), HasPermission(permission)]
 
 
@@ -136,6 +141,66 @@ class BedViewSet(_BedsPermissionMixin, viewsets.ModelViewSet):
             obj = serializer.save()
         log_audit(self.request, "beds_bed_update", "Bed", obj.id)
 
+    @extend_schema(
+        parameters=[_FACILITY_PARAM, _UNIT_PARAM],
+        responses=OpenApiTypes.OBJECT,
+        description="Mapa de leitos: unidade → quarto → leito (com situação e "
+        "paciente ocupante). Gated beds.read.",
+    )
+    @action(detail=False, methods=["get"])
+    def board(self, request):
+        """Bed-board tree: units → rooms → beds, each bed carrying its status and
+        the occupying patient (id/name) when there is an active admission."""
+        from .models import Admission, InpatientUnit
+
+        units_qs = InpatientUnit.objects.all()
+        facility = request.query_params.get("facility")
+        unit = request.query_params.get("unit")
+        if facility:
+            units_qs = units_qs.filter(facility_id=facility)
+        if unit:
+            units_qs = units_qs.filter(id=unit)
+        units_qs = units_qs.prefetch_related("rooms", "rooms__beds").order_by("code")
+
+        # bed_id → {id, name} for the single active admission occupying it.
+        occupant_by_bed: dict = {}
+        active = Admission.objects.filter(
+            status=Admission.Status.ADMITTED, current_bed__isnull=False
+        ).select_related("patient")
+        if unit:
+            active = active.filter(current_bed__unit_id=unit)
+        if facility:
+            active = active.filter(current_bed__unit__facility_id=facility)
+        for adm in active:
+            occupant_by_bed[adm.current_bed_id] = {
+                "id": str(adm.patient_id),
+                "name": adm.patient.full_name,
+            }
+
+        units_out = []
+        for u in units_qs:
+            rooms_out = []
+            for room in u.rooms.all():
+                beds_out = [
+                    {
+                        "id": str(bed.id),
+                        "identifier": bed.identifier,
+                        "status": bed.status,
+                        "patient": occupant_by_bed.get(bed.id),
+                    }
+                    for bed in room.beds.all()
+                ]
+                rooms_out.append({"id": str(room.id), "name": room.name, "beds": beds_out})
+            units_out.append(
+                {
+                    "id": str(u.id),
+                    "code": u.code,
+                    "name": u.name,
+                    "rooms": rooms_out,
+                }
+            )
+        return Response({"units": units_out})
+
 
 # ─── L2: admissão/internação ─────────────────────────────────────────────────
 
@@ -152,13 +217,19 @@ class AdmissionViewSet(
     """Admissões/internações. Create (admit) e a ação ``discharge`` passam SEMPRE
     pelo serviço ``apps.emr.services.adt`` para manter leito + eventos consistentes.
 
-    Gate: create/list/retrieve → ``adt.admit``; ``discharge`` → ``adt.discharge``.
+    Gate: create/list/retrieve → ``adt.admit``; ``discharge`` → ``adt.discharge``;
+    ``transfer`` → ``adt.transfer``; ``census`` → ``beds.read`` (leitura ADT).
     """
 
     serializer_class = AdmissionSerializer
 
     def get_permissions(self):
-        permission = "adt.discharge" if self.action == "discharge" else "adt.admit"
+        permission_by_action = {
+            "discharge": "adt.discharge",
+            "transfer": "adt.transfer",
+            "census": "beds.read",
+        }
+        permission = permission_by_action.get(self.action, "adt.admit")
         return [IsAuthenticated(), HasPermission(permission)]
 
     def get_queryset(self):
@@ -220,6 +291,48 @@ class AdmissionViewSet(
             return Response({"detail": exc.messages[0]}, status=http_status.HTTP_409_CONFLICT)
         log_audit(request, "adt_discharge", "Admission", admission.id)
         return Response(self.get_serializer(admission).data)
+
+    @extend_schema(request=AdmissionTransferSerializer, responses=AdmissionSerializer)
+    @action(detail=True, methods=["post"])
+    def transfer(self, request, pk=None):
+        """Transfer the admission to another bed THROUGH the service (bed
+        transitions + append-only transfer event). Rejection → 409."""
+        admission = self.get_object()
+        payload = AdmissionTransferSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            admission = adt_service.transfer(
+                admission,
+                payload.validated_data["to_bed"],
+                actor=request.user,
+                reason=payload.validated_data.get("reason", ""),
+            )
+        except DjangoValidationError as exc:
+            return Response({"detail": exc.messages[0]}, status=http_status.HTTP_409_CONFLICT)
+        log_audit(request, "adt_transfer", "Admission", admission.id)
+        return Response(self.get_serializer(admission).data)
+
+    @extend_schema(
+        parameters=[_UNIT_PARAM],
+        responses=OpenApiTypes.OBJECT,
+        description="Censo/ocupação: ocupação por unidade (contagens + taxa) e a "
+        "lista de internações ativas com tempo de permanência (LOS). Gated beds.read.",
+    )
+    @action(detail=False, methods=["get"])
+    def census(self, request):
+        """Occupancy per unit (counts + rate) plus the active-census list with LOS.
+        ``?unit=`` scopes both to a single unit."""
+        from .models import InpatientUnit
+
+        unit_id = request.query_params.get("unit")
+        unit_obj = None
+        if unit_id:
+            unit_obj = InpatientUnit.objects.filter(id=unit_id).first()
+            occupancy = [census_service.unit_occupancy(unit_obj)] if unit_obj else []
+        else:
+            occupancy = census_service.all_unit_occupancy()
+        census_rows = census_service.census(unit=unit_obj)
+        return Response({"occupancy": occupancy, "census": census_rows})
 
 
 @extend_schema_view(

@@ -27,7 +27,8 @@ from apps.emr.models import Admission, AdmissionEvent, Bed
 
 # Bed statuses from which a fresh admission may occupy the bed. ``reservado`` is
 # accepted (bed held for this patient); everything else (ocupado, higienizacao,
-# bloqueado, interditado) is rejected.
+# bloqueado, interditado) is rejected. Transfer reuses the same rule for the
+# destination bed.
 _ADMITTABLE_STATUSES = frozenset({Bed.Status.LIVRE, Bed.Status.RESERVADO})
 
 
@@ -82,6 +83,65 @@ def admit(
         reason=reason,
     )
     return admission
+
+
+@transaction.atomic
+def transfer(
+    admission: Admission,
+    to_bed: Bed,
+    *,
+    actor: Any | None = None,
+    reason: str = "",
+) -> Admission:
+    """Transfer an active ``admission`` to ``to_bed``: free its current bed
+    (→ ``higienizacao``), occupy the destination (→ ``ocupado``), move
+    ``current_bed``, and append one ``transfer`` event (from+to bed) — atomically.
+
+    Raises ``ValidationError`` if the admission is not active, has no current bed,
+    the destination equals the current bed, or the destination is not
+    ``livre``/``reservado`` (same admittable rule as :func:`admit`).
+    """
+    locked = Admission.objects.select_for_update().get(pk=admission.pk)
+    if locked.status != Admission.Status.ADMITTED:
+        raise ValidationError("Internação não está ativa; não pode ser transferida.")
+    if not locked.current_bed_id:
+        raise ValidationError("Internação sem leito atual; não pode ser transferida.")
+    if to_bed.pk == locked.current_bed_id:
+        raise ValidationError("Leito de destino é o mesmo leito atual.")
+
+    # Lock both beds. Acquire in a deterministic order (by pk) to avoid deadlocks
+    # when concurrent transfers touch the same pair from opposite directions.
+    from_pk, to_pk = locked.current_bed_id, to_bed.pk
+    ordered = sorted([from_pk, to_pk])
+    locked_beds = {
+        bed.pk: bed for bed in Bed.objects.select_for_update().filter(pk__in=ordered).order_by("pk")
+    }
+    from_bed = locked_beds[from_pk]
+    to_locked = locked_beds[to_pk]
+
+    if to_locked.status not in _ADMITTABLE_STATUSES:
+        raise ValidationError(
+            f"Leito {to_locked.identifier} indisponível para transferência "
+            f"(situação: {to_locked.get_status_display()})."
+        )
+
+    from_bed.status = Bed.Status.HIGIENIZACAO
+    from_bed.save(update_fields=["status", "updated_at"])
+    to_locked.status = Bed.Status.OCUPADO
+    to_locked.save(update_fields=["status", "updated_at"])
+
+    locked.current_bed = to_locked
+    locked.save(update_fields=["current_bed", "updated_at"])
+
+    AdmissionEvent.objects.create(
+        admission=locked,
+        event_type=AdmissionEvent.EventType.TRANSFER,
+        from_bed=from_bed,
+        to_bed=to_locked,
+        actor=actor,
+        reason=reason,
+    )
+    return locked
 
 
 @transaction.atomic

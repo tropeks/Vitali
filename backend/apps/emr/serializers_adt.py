@@ -169,6 +169,13 @@ class AdmissionDischargeSerializer(serializers.Serializer):
     reason = serializers.CharField(required=False, allow_blank=True)
 
 
+class AdmissionTransferSerializer(serializers.Serializer):
+    """Payload for the ``transfer`` action: destination bed + optional reason."""
+
+    to_bed = serializers.PrimaryKeyRelatedField(queryset=Bed.objects.all())
+    reason = serializers.CharField(required=False, allow_blank=True)
+
+
 class AdmissionEventSerializer(serializers.ModelSerializer):
     """Read-only append-only ADT event."""
 
