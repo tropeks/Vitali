@@ -25,6 +25,7 @@ from __future__ import annotations
 from django.db.models import Case, IntegerField, Q, Value, When
 
 from apps.core.adt_catalog_models import BedType
+from apps.core.blood_catalog_models import BloodComponentCatalog
 from apps.core.cbo_cnes_models import CBOCode, CNESEstablishment
 from apps.core.loinc_models import LoincCode, UcumUnit
 from apps.core.manchester_catalog_models import ManchesterFlowchart
@@ -50,6 +51,8 @@ _SYSTEMS: dict[str, type] = {
     "manchester_flowchart": ManchesterFlowchart,
     # S1: governed SIGTAP procedure catalog (Faturamento SUS).
     "sigtap": SIGTAPProcedure,
+    # H1: governed hemocomponente catalog (Banco de Sangue/Hemoterapia).
+    "blood_component": BloodComponentCatalog,
 }
 
 # CID-10 keeps the legacy ``description`` vocabulary + a ``parent`` hierarchy; the
@@ -158,6 +161,11 @@ def _context(system: str, row) -> dict:
         return {"definition": row.definition}
     if system == "bed_type":
         return {"category": row.category}
+    if system == "blood_component":
+        return {
+            "default_validade_dias": row.default_validade_dias,
+            "context": row.context,
+        }
     if system == "sigtap":
         return {
             "instrumento_registro": row.instrumento_registro,

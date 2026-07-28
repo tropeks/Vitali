@@ -282,6 +282,11 @@ ADMIN_PERMISSIONS = [
     "sus.write",
     # Faturamento SUS (S3): exportar a remessa DATASUS (BPA-Magnético / APAC).
     "sus.export",
+    # Banco de Sangue/Hemoterapia (H1): estoque de bolsas + catálogo de
+    # hemocomponentes — leitura + gestão. Não existe papel de agência
+    # transfusional dedicado; manage fica só no admin.
+    "hemoterapia.read",
+    "hemoterapia.manage",
 ]
 
 CLINICAL_PRESCRIBER_PERMISSIONS = [
@@ -319,6 +324,8 @@ CLINICAL_PRESCRIBER_PERMISSIONS = [
     "surgery.schedule",
     # PS/Emergência (E1): o prescritor lê o catálogo Manchester/acuidade.
     "emergency.read",
+    # Banco de Sangue/Hemoterapia (H1): o prescritor lê o estoque/catálogo.
+    "hemoterapia.read",
 ]
 
 NURSING_PERMISSIONS = [
@@ -339,6 +346,8 @@ NURSING_PERMISSIONS = [
     # PS/Emergência (E1): o enfermeiro classificador lê o catálogo e classifica.
     "emergency.read",
     "emergency.classify",
+    # Banco de Sangue/Hemoterapia (H1): o enfermeiro lê o estoque/catálogo.
+    "hemoterapia.read",
 ]
 
 RECEPTION_PERMISSIONS = [

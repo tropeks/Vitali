@@ -77,6 +77,25 @@ class Patient(models.Model):
         ("indigenous", "Indígena"),
         ("not_informed", "Não informada"),
     ]
+    # Imunohematologia (H1): tipagem estruturada para compatibilidade
+    # transfusional. Distinta do ``blood_type`` livre (informativo, mantido
+    # intocado) — ``abo`` + ``rh_factor`` são o resultado tipado consumido pela
+    # checagem de compatibilidade (H3). Todos blank para não quebrar nada.
+    ABO_CHOICES = [
+        ("A", "A"),
+        ("B", "B"),
+        ("AB", "AB"),
+        ("O", "O"),
+    ]
+    RH_FACTOR_CHOICES = [
+        ("positivo", "Positivo"),
+        ("negativo", "Negativo"),
+    ]
+    ANTIBODY_SCREEN_CHOICES = [
+        ("negativo", "Negativo"),
+        ("positivo", "Positivo"),
+        ("nao_realizado", "Não realizado"),
+    ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     medical_record_number = models.CharField(max_length=20, unique=True, blank=True)
@@ -111,6 +130,11 @@ class Patient(models.Model):
     education_level = models.CharField(max_length=80, blank=True)
     preferred_language = models.CharField(max_length=20, blank=True, default="pt-BR")
     blood_type = models.CharField(max_length=5, choices=BLOOD_TYPE_CHOICES, blank=True)
+    # Tipagem estruturada (H1) — resultado tipado para compatibilidade transfusional.
+    abo = models.CharField(max_length=2, choices=ABO_CHOICES, blank=True)
+    rh_factor = models.CharField(max_length=8, choices=RH_FACTOR_CHOICES, blank=True)
+    # PAI (pesquisa de anticorpos irregulares) — rastreio de anticorpos.
+    antibody_screen = models.CharField(max_length=16, choices=ANTIBODY_SCREEN_CHOICES, blank=True)
     phone = EncryptedCharField(max_length=20, blank=True)
     # whatsapp stays plaintext on purpose: it is the indexed routing/dedup key
     # for the WhatsApp messaging subsystem (has_whatsapp filter, contact mapping).
@@ -2111,6 +2135,7 @@ class NoShowRisk(models.Model):
 
 from .addendum_models import *  # noqa: E402,F401,F403
 from .adt_models import *  # noqa: E402,F401,F403
+from .bloodbank_models import *  # noqa: E402,F401,F403
 from .emergency_models import *  # noqa: E402,F401,F403
 from .forms_models import *  # noqa: E402,F401,F403
 from .problem_models import *  # noqa: E402,F401,F403
