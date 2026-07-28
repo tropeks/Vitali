@@ -171,6 +171,9 @@ def _context(system: str, row) -> dict:
 def _serialize(system: str, row) -> dict:
     display = row.description if system in _LEGACY_DESCRIPTION_SYSTEMS else row.display
     return {
+        # Catalog row pk — lets clients reference a governed row by id on writes
+        # (e.g. BPA-C consolidado posts the CBOCode pk). Additive/harmless.
+        "id": row.pk,
         "system": system,
         "code": row.code,
         "display": display,

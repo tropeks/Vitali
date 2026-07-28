@@ -44,7 +44,12 @@ posicional**: exportador BPA-Magnético (`.txt` fixed-width, header/linhas por c
 `xml_engine`/batch export, mas texto posicional DATASUS. Fechar competência → gerar remessa. RBAC `sus.export` (consequente).
 pytest TDD (valida o layout posicional com fixtures).
 
-### S4 · Painel Faturamento SUS (frontend) · **Opus** (dep S2/S3)
+### S4 · Painel Faturamento SUS (frontend) · **Opus** (dep S2/S3) · ✅ FEITO
+
+> **Épico Faturamento SUS S1..S4 concluído** (2026-07-28): catálogo SIGTAP+CNS → produção BPA+competência (ponte
+> EncounterProcedure→BPA-I) → APAC+remessa DATASUS posicional → painel SUS. Começa a fechar o P0 (ponte clínico→financeiro)
+> pelo lado SUS. AIH (internação SUS) deferido. Fix acoplado: terminology `_serialize` agora expõe `id` (pk) — destrava
+> pickers de catálogo por pk (ex.: CBO no BPA-C).
 Rota `/billing/sus` (na área billing): produção por competência (BPA-C/BPA-I/APAC), gerar produção a partir dos eventos
 clínicos, fechar competência, baixar remessa. KPIs de produção/valor. Nav/entrada na área de faturamento, gated `sus.read`.
 Vitest TDD.

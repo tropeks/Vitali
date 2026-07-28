@@ -239,6 +239,15 @@ export const NAV_GROUPS: NavGroup[] = [
         permissions: [PERMISSIONS.BILLING_READ, PERMISSIONS.REPORTS_READ],
       },
       {
+        // Faturamento SUS (SIGTAP/BPA/APAC, S4). Caminho paralelo ao TISS; gated
+        // sus.read. Gerar/fechar sus.write; exportar remessa DATASUS sus.export.
+        label: "Faturamento SUS",
+        href: "/billing/sus",
+        icon: Landmark,
+        module: "billing",
+        permissions: [PERMISSIONS.SUS_READ],
+      },
+      {
         label: "Financeiro",
         href: "/administracao/resultado-financeiro",
         icon: Landmark,
