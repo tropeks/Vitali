@@ -80,6 +80,11 @@ class Patient(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     medical_record_number = models.CharField(max_length=20, unique=True, blank=True)
+    # BCMA beira-leito: the value encoded on the patient's identification
+    # wristband, scanned to verify the "paciente certo". Blank by default so
+    # existing patients are unaffected; the verifier falls back to the MRN when
+    # no dedicated wristband barcode has been printed.
+    wristband_barcode = models.CharField(max_length=64, blank=True, db_index=True)
     # PII encrypted at rest (LGPD). Encrypted fields are stored as opaque
     # ciphertext, so they cannot be DB-indexed, ordered or filtered with
     # SQL — name search/ordering is handled in Python (see filters.py / views.py).
@@ -438,13 +443,116 @@ class Professional(models.Model):
     council_number = models.CharField(max_length=20)
     council_state = models.CharField(max_length=2)
     specialty = models.CharField(max_length=100, blank=True)
-    cbo_code = models.CharField(max_length=10, blank=True)
-    cnes_code = models.CharField(max_length=10, blank=True)
+
+    # ── M2-S1-T3: governed FKs to the SHARED CBO/CNES catalogs ────────────────
+    # PostgreSQL does not enforce FK integrity across schemas (tenant → public),
+    # so — exactly like MedicalHistory.cid10 / EncounterProcedure.tuss_code — we
+    # use DO_NOTHING and rely on the protect_cbo_code_deletion /
+    # protect_cnes_establishment_deletion pre_delete signals (apps/core/signals.py)
+    # to block deleting a catalog entry that any tenant references. The legacy
+    # free-text columns are preserved for the CharField→FK transition (never lose
+    # data), surfaced through the backward-compatible ``cbo_code`` / ``cnes_code``
+    # properties below so existing readers/serializers/FHIR mappers keep working.
+    cbo = models.ForeignKey(
+        "core.CBOCode",
+        on_delete=models.DO_NOTHING,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="Ocupação CBO",
+    )
+    legacy_cbo_text = models.CharField(
+        max_length=10,
+        blank=True,
+        default="",
+        help_text="Código CBO bruto não reconciliado com core.CBOCode.",
+    )
+    cbo_unmatched = models.BooleanField(
+        default=False,
+        help_text="True quando legacy_cbo_text não corresponde a nenhum CBOCode governado.",
+    )
+    cnes = models.ForeignKey(
+        "core.CNESEstablishment",
+        on_delete=models.DO_NOTHING,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="Estabelecimento CNES",
+    )
+    legacy_cnes_text = models.CharField(
+        max_length=10,
+        blank=True,
+        default="",
+        help_text="Código CNES bruto não reconciliado com core.CNESEstablishment.",
+    )
+    cnes_unmatched = models.BooleanField(
+        default=False,
+        help_text="True quando legacy_cnes_text não corresponde a nenhum CNESEstablishment governado.",
+    )
+    # ── S1: cartão SUS (CNS) do executor — para BPA-I / APAC (Faturamento SUS) ──
+    # Encrypted-at-rest, exactly like Patient.cns. Blank until preenchido; nunca
+    # fabricado. S2 (produção BPA/APAC) consome este campo + cbo/cnes governados.
+    cns = EncryptedCharField(max_length=15, blank=True, default="")
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         unique_together = [["council_type", "council_number", "council_state"]]
+
+    # ── Backward-compatible string accessors (CharField → FK transition) ──────
+    @property
+    def cbo_code(self) -> str:
+        """CBO code string: the governed FK's code when linked, else raw legacy text."""
+        if self.cbo_id:
+            return self.cbo.code  # type: ignore[union-attr]
+        return self.legacy_cbo_text
+
+    @cbo_code.setter
+    def cbo_code(self, value: str) -> None:
+        code = (value or "").strip()
+        if not code:
+            self.cbo = None
+            self.legacy_cbo_text = ""
+            self.cbo_unmatched = False
+            return
+        from apps.core.models import CBOCode
+
+        match = CBOCode.objects.filter(code=code).first()
+        if match is not None:
+            self.cbo = match
+            self.legacy_cbo_text = ""
+            self.cbo_unmatched = False
+        else:
+            self.cbo = None
+            self.legacy_cbo_text = code
+            self.cbo_unmatched = True
+
+    @property
+    def cnes_code(self) -> str:
+        """CNES code string: the governed FK's code when linked, else raw legacy text."""
+        if self.cnes_id:
+            return self.cnes.code  # type: ignore[union-attr]
+        return self.legacy_cnes_text
+
+    @cnes_code.setter
+    def cnes_code(self, value: str) -> None:
+        code = (value or "").strip()
+        if not code:
+            self.cnes = None
+            self.legacy_cnes_text = ""
+            self.cnes_unmatched = False
+            return
+        from apps.core.models import CNESEstablishment
+
+        match = CNESEstablishment.objects.filter(code=code).first()
+        if match is not None:
+            self.cnes = match
+            self.legacy_cnes_text = ""
+            self.cnes_unmatched = False
+        else:
+            self.cnes = None
+            self.legacy_cnes_text = code
+            self.cnes_unmatched = True
 
     def __str__(self):
         return f"{self.user.full_name} - {self.council_type} {self.council_number}/{self.council_state}"
@@ -573,6 +681,17 @@ class Encounter(models.Model):
         ("cancelled", "Cancelada"),
     ]
 
+    # ADT L2: encounter context (ambulatorial / internação / emergência /
+    # observação). Defaults to ``ambulatorial`` so existing rows and flows are
+    # unchanged — Vitali is outpatient-first. Inpatient/ADT (Admission) links its
+    # own admission Encounter with encounter_type=internacao.
+    ENCOUNTER_TYPE_CHOICES = [
+        ("ambulatorial", "Ambulatorial"),
+        ("internacao", "Internação"),
+        ("emergencia", "Emergência"),
+        ("observacao", "Observação"),
+    ]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     patient = models.ForeignKey(Patient, on_delete=models.PROTECT, related_name="encounters")
     professional = models.ForeignKey(
@@ -582,6 +701,13 @@ class Encounter(models.Model):
         Appointment, null=True, blank=True, on_delete=models.SET_NULL, related_name="encounter"
     )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="open")
+    encounter_type = models.CharField(
+        max_length=20,
+        choices=ENCOUNTER_TYPE_CHOICES,
+        default="ambulatorial",
+        db_index=True,
+        help_text="Contexto do encontro (ambulatorial por padrão — não quebra fluxos existentes).",
+    )
     encounter_date = models.DateTimeField(default=timezone.now)
     chief_complaint = EncryptedTextField(blank=True)  # free-text clinical (LGPD)
     signed_at = models.DateTimeField(null=True, blank=True)
@@ -814,18 +940,57 @@ class LabTest(models.Model):
         max_length=16, choices=ResultType.choices, default=ResultType.NUMERIC, db_index=True
     )
     method = models.CharField(max_length=120, blank=True)
+    # LEGACY free-text LOINC code — kept during the M2-S3-T2 transition to the
+    # governed core.LoincCode FK below. Reconciled best-effort by the data
+    # migration; retained until every LabTest is linked (mirrors the CID-10 and
+    # ANVISA transitions).
     loinc_code = models.CharField(max_length=20, blank=True, db_index=True)
+    # M2-S3-T2 — governed cross-schema FK to the SHARED core.LoincCode catalog.
+    # Nullable during the transition. PostgreSQL cannot enforce FK integrity
+    # across schemas (public core.LoincCode → tenant emr), so we use DO_NOTHING
+    # and rely on the protect_loinc_code_deletion pre_delete signal
+    # (apps/core/signals.py) to block deleting a referenced code — mirrors the
+    # emr→core.CID10Code (E1-T5) and pharmacy.Drug→core.AnvisaProduct (E3-T2)
+    # patterns.
+    loinc = models.ForeignKey(
+        "core.LoincCode",
+        null=True,
+        blank=True,
+        on_delete=models.DO_NOTHING,
+        related_name="+",
+        verbose_name="LOINC (catálogo)",
+    )
     specimen_type = models.CharField(max_length=80, blank=True)
     unit = models.CharField(max_length=32, blank=True)
     reference_range = models.CharField(max_length=160, blank=True)
     components = models.JSONField(default=list, blank=True)
     reference_ranges = models.JSONField(default=list, blank=True)
+    # M2-S3-T3 — per-test delta-check threshold (percent variation vs. the
+    # patient's most recent prior result). NULL → the delta check is INERT for
+    # this test (no honest default exists — configured per establishment, never
+    # fabricated in code).
+    delta_threshold_pct = models.DecimalField(
+        "Limiar de delta-check (%)",
+        max_digits=6,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+        help_text="Variação percentual que dispara um alerta de delta. Vazio = inerte.",
+    )
     active = models.BooleanField(default=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["name"]
+
+    @property
+    def loinc_display_code(self) -> str:
+        """The governed LOINC number if linked, else the legacy free-text code."""
+        if self.loinc_id:
+            return self.loinc.code  # type: ignore[union-attr]
+        return self.loinc_code
 
     def __str__(self):
         return f"{self.code} — {self.name}"
@@ -957,6 +1122,54 @@ class LabOrderItem(models.Model):
 
     def __str__(self):
         return f"{self.test_name} — {self.order_id}"
+
+
+class LabDeltaAlert(models.Model):
+    """M2-S3-T3 — a delta-check alert on a new lab result.
+
+    Raised when a numeric result varies from the patient's most recent PRIOR
+    numeric result for the *same test* by more than the test's configured
+    ``delta_threshold_pct``. One alert per triggering result (OneToOne on
+    ``order_item``) → the delta check is idempotent (re-running never
+    duplicates). Persisted for auditability, mirroring the other clinical alert
+    tables (AISafetyAlert / GlosaSafetyAlert). Values are copied as plain
+    Decimals here (they were already decrypted to be compared) — the encrypted
+    source of truth remains on LabOrderItem.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    order_item = models.OneToOneField(
+        LabOrderItem,
+        on_delete=models.CASCADE,
+        related_name="delta_alert",
+        help_text="Resultado atual que disparou o alerta.",
+    )
+    previous_item = models.ForeignKey(
+        LabOrderItem,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="delta_alerts_as_previous",
+        help_text="Resultado anterior comparado (o mais recente antes deste).",
+    )
+    test = models.ForeignKey(LabTest, on_delete=models.PROTECT, related_name="delta_alerts")
+    previous_value = models.DecimalField(max_digits=18, decimal_places=6)
+    current_value = models.DecimalField(max_digits=18, decimal_places=6)
+    delta_absolute = models.DecimalField(max_digits=18, decimal_places=6)
+    delta_pct = models.DecimalField(max_digits=12, decimal_places=4)
+    threshold_pct = models.DecimalField(max_digits=6, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["test", "-created_at"], name="emr_delta_test_date_idx"),
+        ]
+
+    def __str__(self):
+        return (
+            f"Delta {self.test_id}: {self.previous_value}→{self.current_value} ({self.delta_pct}%)"
+        )
 
 
 class LabIntegrationMessage(models.Model):
@@ -1306,6 +1519,16 @@ class MedicationAdministration(models.Model):
         blank=True,
         related_name="witnessed_medication_administrations",
     )
+    # ─── BCMA beira-leito (N3): barcode scan evidence for the "5 certos" ──────
+    # The raw values scanned at the bedside — patient wristband + medication
+    # barcode — persisted as the audit trail for the check that gated this
+    # append-only event. bcma_verified is True only when every "certo" passed;
+    # when a nurse proceeds past a failed right, bcma_verified stays False and
+    # bcma_override_reason carries the mandatory justification.
+    patient_barcode_scanned = models.CharField(max_length=64, blank=True)
+    medication_barcode_scanned = models.CharField(max_length=64, blank=True)
+    bcma_verified = models.BooleanField(default=False)
+    bcma_override_reason = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -1693,6 +1916,19 @@ class EncounterProcedure(models.Model):
     tuss_code = models.ForeignKey(
         "core.TUSSCode", on_delete=models.DO_NOTHING, related_name="encounter_procedures"
     )
+    # SUS coding (Faturamento SUS S2): the SIGTAP code of this clinically-captured
+    # procedure, analogous to tuss_code. Nullable so nothing breaks — a procedure
+    # is SUS-billable only once faturamento assigns its SIGTAP. Cross-schema
+    # (public) FK: DO_NOTHING + the protect_sigtap_procedure_deletion pre_delete
+    # signal (apps/core/signals.py), exactly like tuss_code above.
+    sigtap = models.ForeignKey(
+        "core.SIGTAPProcedure",
+        on_delete=models.DO_NOTHING,
+        null=True,
+        blank=True,
+        related_name="encounter_procedures",
+        verbose_name="Procedimento SIGTAP (SUS)",
+    )
     quantity = models.DecimalField(
         "Quantidade",
         max_digits=8,
@@ -1874,7 +2110,11 @@ class NoShowRisk(models.Model):
 
 
 from .addendum_models import *  # noqa: E402,F401,F403
+from .adt_models import *  # noqa: E402,F401,F403
+from .emergency_models import *  # noqa: E402,F401,F403
 from .forms_models import *  # noqa: E402,F401,F403
 from .problem_models import *  # noqa: E402,F401,F403
 from .reconciliation_models import *  # noqa: E402,F401,F403
+from .sae_models import *  # noqa: E402,F401,F403
 from .scheduling_models import *  # noqa: E402,F401,F403
+from .surgery_models import *  # noqa: E402,F401,F403

@@ -123,7 +123,8 @@ def protect_tuss_code_deletion(sender, instance, **kwargs):
     """Block deletion of a TUSSCode that is referenced by tenant data in any tenant.
 
     Covers billing references (TISSGuideItem, PriceTableItem) and clinical capture
-    (emr.EncounterProcedure) — a TUSS code used by any of them cannot be hard-deleted.
+    (emr.EncounterProcedure, emr.SurgicalProcedure) — a TUSS code used by any of
+    them cannot be hard-deleted.
     """
     from django_tenants.utils import get_tenant_model, schema_context
 
@@ -131,7 +132,7 @@ def protect_tuss_code_deletion(sender, instance, **kwargs):
     for tenant in TenantModel.objects.exclude(schema_name="public"):
         with schema_context(tenant.schema_name):
             from apps.billing.models import PriceTableItem, TISSGuideItem
-            from apps.emr.models import EncounterProcedure
+            from apps.emr.models import EncounterProcedure, SurgicalProcedure
 
             if TISSGuideItem.objects.filter(tuss_code=instance).exists():
                 raise ProtectedError(
@@ -148,6 +149,12 @@ def protect_tuss_code_deletion(sender, instance, **kwargs):
             if EncounterProcedure.objects.filter(tuss_code=instance).exists():
                 raise ProtectedError(
                     f"TUSSCode {instance.code} is referenced by EncounterProcedure in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+            if SurgicalProcedure.objects.filter(tuss_code=instance).exists():
+                raise ProtectedError(
+                    f"TUSSCode {instance.code} is referenced by SurgicalProcedure in "
                     f"schema '{tenant.schema_name}' and cannot be deleted.",
                     {instance},
                 )
@@ -211,6 +218,294 @@ def protect_anvisa_product_deletion(sender, instance, **kwargs):
                 raise ProtectedError(
                     f"AnvisaProduct {instance.code} is referenced by Drug in "
                     f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+
+
+# ─── CBOCode cross-schema PROTECT (M2-S1-T3) ─────────────────────────────────
+@receiver(pre_delete, sender="core.CBOCode")
+def protect_cbo_code_deletion(sender, instance, **kwargs):
+    """Block deletion of a CBOCode referenced by tenant data in any tenant.
+
+    Covers ``emr.Professional.cbo`` (M2-S1) and the SUS production lines
+    ``billing.BpaConsolidado.cbo`` / ``billing.BpaIndividualizado.cbo`` (S2).
+    """
+    from django_tenants.utils import get_tenant_model, schema_context
+
+    TenantModel = get_tenant_model()
+    for tenant in TenantModel.objects.exclude(schema_name="public"):
+        with schema_context(tenant.schema_name):
+            from apps.billing.sus_models import BpaConsolidado, BpaIndividualizado
+            from apps.emr.models import Professional
+
+            if Professional.objects.filter(cbo=instance).exists():
+                raise ProtectedError(
+                    f"CBOCode {instance.code} is referenced by Professional in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+            if BpaConsolidado.objects.filter(cbo=instance).exists():
+                raise ProtectedError(
+                    f"CBOCode {instance.code} is referenced by BpaConsolidado in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+            if BpaIndividualizado.objects.filter(cbo=instance).exists():
+                raise ProtectedError(
+                    f"CBOCode {instance.code} is referenced by BpaIndividualizado in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+
+
+# ─── SIGTAPProcedure cross-schema PROTECT (Faturamento SUS S2) ────────────────
+# Same rationale as protect_tuss_code_deletion: PostgreSQL does not enforce FK
+# integrity across schemas (tenant → public), so an application-layer PROTECT
+# blocks deleting a SIGTAP procedure referenced by tenant SUS production / clinical
+# capture in any tenant.
+
+
+@receiver(pre_delete, sender="core.SIGTAPProcedure")
+def protect_sigtap_procedure_deletion(sender, instance, **kwargs):
+    """Block deletion of a SIGTAPProcedure referenced by tenant SUS data in any tenant.
+
+    Covers the SUS production lines ``billing.BpaConsolidado.sigtap`` /
+    ``billing.BpaIndividualizado.sigtap``, the APAC authorizations
+    ``billing.ApacAutorizacao.procedimento_principal`` /
+    ``billing.ApacProcedimentoSecundario.sigtap`` (S3), and the SUS coding of a
+    captured procedure ``emr.EncounterProcedure.sigtap``. Mirrors the
+    EncounterProcedure→TUSSCode guard.
+    """
+    from django_tenants.utils import get_tenant_model, schema_context
+
+    TenantModel = get_tenant_model()
+    for tenant in TenantModel.objects.exclude(schema_name="public"):
+        with schema_context(tenant.schema_name):
+            from apps.billing.sus_models import (
+                ApacAutorizacao,
+                ApacProcedimentoSecundario,
+                BpaConsolidado,
+                BpaIndividualizado,
+            )
+            from apps.emr.models import EncounterProcedure
+
+            if BpaConsolidado.objects.filter(sigtap=instance).exists():
+                raise ProtectedError(
+                    f"SIGTAPProcedure {instance.code} is referenced by BpaConsolidado in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+            if BpaIndividualizado.objects.filter(sigtap=instance).exists():
+                raise ProtectedError(
+                    f"SIGTAPProcedure {instance.code} is referenced by BpaIndividualizado in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+            if ApacAutorizacao.objects.filter(procedimento_principal=instance).exists():
+                raise ProtectedError(
+                    f"SIGTAPProcedure {instance.code} is referenced by ApacAutorizacao in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+            if ApacProcedimentoSecundario.objects.filter(sigtap=instance).exists():
+                raise ProtectedError(
+                    f"SIGTAPProcedure {instance.code} is referenced by ApacProcedimentoSecundario "
+                    f"in schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+            if EncounterProcedure.objects.filter(sigtap=instance).exists():
+                raise ProtectedError(
+                    f"SIGTAPProcedure {instance.code} is referenced by EncounterProcedure in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+
+
+# ─── CNESEstablishment cross-schema PROTECT (M2-S1-T3) ───────────────────────
+@receiver(pre_delete, sender="core.CNESEstablishment")
+def protect_cnes_establishment_deletion(sender, instance, **kwargs):
+    """Block deletion of a CNESEstablishment referenced by Professional.cnes or Facility.cnes."""
+    from django_tenants.utils import get_tenant_model, schema_context
+
+    TenantModel = get_tenant_model()
+    for tenant in TenantModel.objects.exclude(schema_name="public"):
+        with schema_context(tenant.schema_name):
+            from apps.emr.models import Professional
+            from apps.organization.models import Facility
+
+            if Professional.objects.filter(cnes=instance).exists():
+                raise ProtectedError(
+                    f"CNESEstablishment {instance.code} is referenced by Professional in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+            if Facility.objects.filter(cnes=instance).exists():
+                raise ProtectedError(
+                    f"CNESEstablishment {instance.code} is referenced by Facility in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+
+
+# ─── LoincCode cross-schema PROTECT (M2-S3-T2) ───────────────────────────────
+@receiver(pre_delete, sender="core.LoincCode")
+def protect_loinc_code_deletion(sender, instance, **kwargs):
+    """Block deletion of a LoincCode referenced by ``emr.LabTest.loinc`` in any tenant."""
+    from django_tenants.utils import get_tenant_model, schema_context
+
+    TenantModel = get_tenant_model()
+    for tenant in TenantModel.objects.exclude(schema_name="public"):
+        with schema_context(tenant.schema_name):
+            from apps.emr.models import LabTest
+
+            if LabTest.objects.filter(loinc=instance).exists():
+                raise ProtectedError(
+                    f"LoincCode {instance.code} is referenced by LabTest in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+
+
+# ─── Nursing taxonomies cross-schema PROTECT (N2 — SAE domain wired) ──────────
+# N2 wires the tenant-side SAE domain (apps.emr.sae_models): NursingDiagnosis.nanda
+# → core.NandaDiagnosis, NursingCareplan.noc → core.NocOutcome, and
+# NursingCareplanIntervention.nic → core.NicIntervention. PostgreSQL does not
+# enforce FK integrity across schemas (tenant → public), so — exactly like
+# protect_cbo_code_deletion — these application-layer guards block hard-deleting a
+# catalog row any tenant references.
+
+
+@receiver(pre_delete, sender="core.NandaDiagnosis")
+def protect_nanda_diagnosis_deletion(sender, instance, **kwargs):
+    """Block deletion of a NandaDiagnosis referenced by ``emr.NursingDiagnosis.nanda`` in any tenant."""
+    from django_tenants.utils import get_tenant_model, schema_context
+
+    TenantModel = get_tenant_model()
+    for tenant in TenantModel.objects.exclude(schema_name="public"):
+        with schema_context(tenant.schema_name):
+            from apps.emr.models import NursingDiagnosis
+
+            if NursingDiagnosis.objects.filter(nanda=instance).exists():
+                raise ProtectedError(
+                    f"NandaDiagnosis {instance.code} is referenced by NursingDiagnosis in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+
+
+@receiver(pre_delete, sender="core.NicIntervention")
+def protect_nic_intervention_deletion(sender, instance, **kwargs):
+    """Block deletion of a NicIntervention referenced by ``emr.NursingCareplanIntervention.nic``."""
+    from django_tenants.utils import get_tenant_model, schema_context
+
+    TenantModel = get_tenant_model()
+    for tenant in TenantModel.objects.exclude(schema_name="public"):
+        with schema_context(tenant.schema_name):
+            from apps.emr.models import NursingCareplanIntervention
+
+            if NursingCareplanIntervention.objects.filter(nic=instance).exists():
+                raise ProtectedError(
+                    f"NicIntervention {instance.code} is referenced by NursingCareplanIntervention "
+                    f"in schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+
+
+@receiver(pre_delete, sender="core.NocOutcome")
+def protect_noc_outcome_deletion(sender, instance, **kwargs):
+    """Block deletion of a NocOutcome referenced by ``emr.NursingCareplan.noc`` in any tenant."""
+    from django_tenants.utils import get_tenant_model, schema_context
+
+    TenantModel = get_tenant_model()
+    for tenant in TenantModel.objects.exclude(schema_name="public"):
+        with schema_context(tenant.schema_name):
+            from apps.emr.models import NursingCareplan
+
+            if NursingCareplan.objects.filter(noc=instance).exists():
+                raise ProtectedError(
+                    f"NocOutcome {instance.code} is referenced by NursingCareplan in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+
+
+# ─── BedType cross-schema PROTECT (L1 — ADT/Leitos structure wired) ───────────
+# L1 wires the tenant-side bed hierarchy (apps.emr.adt_models): Bed.bed_type and
+# InpatientUnit.default_bed_type → core.BedType. PostgreSQL does not enforce FK
+# integrity across schemas (tenant → public), so — exactly like
+# protect_nanda_diagnosis_deletion — this application-layer guard blocks
+# hard-deleting a bed type any tenant references.
+
+
+@receiver(pre_delete, sender="core.BedType")
+def protect_bed_type_deletion(sender, instance, **kwargs):
+    """Block deletion of a BedType referenced by tenant bed structure in any tenant.
+
+    Covers ``emr.Bed.bed_type`` (FK) and ``emr.InpatientUnit.default_bed_type``
+    (FK). Mirrors the NursingDiagnosis→NandaDiagnosis guard.
+    """
+    from django_tenants.utils import get_tenant_model, schema_context
+
+    TenantModel = get_tenant_model()
+    for tenant in TenantModel.objects.exclude(schema_name="public"):
+        with schema_context(tenant.schema_name):
+            from apps.emr.models import Bed, InpatientUnit
+
+            if Bed.objects.filter(bed_type=instance).exists():
+                raise ProtectedError(
+                    f"BedType {instance.code} is referenced by Bed in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+            if InpatientUnit.objects.filter(default_bed_type=instance).exists():
+                raise ProtectedError(
+                    f"BedType {instance.code} is referenced by InpatientUnit in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+
+
+# ─── Manchester catalog cross-schema PROTECT (E2 — PS/Emergência wired) ───────
+# E2 wires the tenant-side PS/Emergência domain (apps.emr.emergency_models):
+# RiskClassification.flowchart → core.ManchesterFlowchart and
+# RiskClassification.discriminator → core.ManchesterDiscriminator. PostgreSQL does
+# not enforce FK integrity across schemas (tenant → public), so — exactly like
+# protect_bed_type_deletion — these application-layer guards block hard-deleting a
+# governed catalog row any tenant references from a risk classification.
+
+
+@receiver(pre_delete, sender="core.ManchesterFlowchart")
+def protect_manchester_flowchart_deletion(sender, instance, **kwargs):
+    """Block deletion of a ManchesterFlowchart referenced by ``emr.RiskClassification`` in any tenant."""
+    from django_tenants.utils import get_tenant_model, schema_context
+
+    TenantModel = get_tenant_model()
+    for tenant in TenantModel.objects.exclude(schema_name="public"):
+        with schema_context(tenant.schema_name):
+            from apps.emr.models import RiskClassification
+
+            if RiskClassification.objects.filter(flowchart=instance).exists():
+                raise ProtectedError(
+                    f"ManchesterFlowchart {instance.code} is referenced by RiskClassification "
+                    f"in schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+
+
+@receiver(pre_delete, sender="core.ManchesterDiscriminator")
+def protect_manchester_discriminator_deletion(sender, instance, **kwargs):
+    """Block deletion of a ManchesterDiscriminator referenced by ``emr.RiskClassification`` in any tenant."""
+    from django_tenants.utils import get_tenant_model, schema_context
+
+    TenantModel = get_tenant_model()
+    for tenant in TenantModel.objects.exclude(schema_name="public"):
+        with schema_context(tenant.schema_name):
+            from apps.emr.models import RiskClassification
+
+            if RiskClassification.objects.filter(discriminator=instance).exists():
+                raise ProtectedError(
+                    f"ManchesterDiscriminator {instance.code} is referenced by RiskClassification "
+                    f"in schema '{tenant.schema_name}' and cannot be deleted.",
                     {instance},
                 )
 

@@ -530,3 +530,156 @@ class EmployeeDeactivationService:
                 )
             except Exception:
                 pass
+
+
+class AssignmentService:
+    """Creates employee assignments (lotação), enforcing the single-active invariant.
+
+    ``assign`` closes any currently-active assignment for the employee (setting
+    ``active=False`` and stamping ``end_date``) before opening the new one, so the
+    partial ``UniqueConstraint`` (one active row per employee) is never violated.
+    """
+
+    @staticmethod
+    @transaction.atomic
+    def assign(
+        *,
+        employee,
+        unit,
+        start_date,
+        cost_center=None,
+        position=None,
+        role: str = "",
+        actor=None,
+    ):
+        from apps.hr.models import EmployeeAssignment
+
+        previous = (
+            EmployeeAssignment.objects.select_for_update()
+            .filter(employee=employee, active=True)
+            .order_by("-start_date")
+        )
+        end = start_date
+        for prior in previous:
+            # Close the day before the new posting starts when possible, else same day.
+            prior.active = False
+            if prior.end_date is None:
+                prior.end_date = min(prior.start_date, end) if end < prior.start_date else end
+            prior.save(update_fields=["active", "end_date", "updated_at"])
+
+        assignment = EmployeeAssignment.objects.create(
+            employee=employee,
+            unit=unit,
+            cost_center=cost_center,
+            position=position,
+            role=role,
+            start_date=start_date,
+            active=True,
+        )
+        AuditLog.objects.create(
+            user=actor,
+            action="employee_assigned",
+            resource_type="employee_assignment",
+            resource_id=str(assignment.id),
+            new_data={
+                "employee_id": str(employee.id),
+                "unit_id": str(unit.id),
+                "cost_center_id": str(cost_center.id) if cost_center else None,
+                "start_date": start_date.isoformat(),
+            },
+        )
+        return assignment
+
+
+# RBAC permission (alçada) required to approve/reject an HR leave request.
+LEAVE_APPROVE_PERMISSION = "hr.leave.approve"
+
+
+class LeaveService:
+    """Requests and decides leaves through the governance maker-checker.
+
+    ``request_leave`` opens a ``governance.ApprovalRequest`` (requester must hold
+    ``workflow.request``); ``decide`` delegates to ``ApprovalService.decide`` which
+    already blocks self-approval (requester ≠ approver) and enforces the
+    :data:`LEAVE_APPROVE_PERMISSION` alçada. On approval the leave becomes active
+    for its period; on rejection it is marked rejected.
+    """
+
+    @staticmethod
+    @transaction.atomic
+    def request_leave(*, employee, requested_by, leave_type, start_date, end_date, reason=""):
+        # Django-core ValidationError (not DRF): consistent with the governance
+        # maker-checker layer this reuses, and with the service-level test suite.
+        from django.core.exceptions import ValidationError as CoreValidationError
+
+        from apps.governance.services import ApprovalService
+        from apps.hr.models import LeaveRequest
+
+        if end_date < start_date:
+            raise CoreValidationError("A data final não pode ser anterior à inicial.")
+
+        overlapping = LeaveRequest.objects.filter(
+            employee=employee,
+            status__in=LeaveRequest.BLOCKING_STATUSES,
+            start_date__lte=end_date,
+            end_date__gte=start_date,
+        )
+        if overlapping.exists():
+            raise CoreValidationError(
+                "Já existe um afastamento pendente ou aprovado nesse período."
+            )
+
+        leave = LeaveRequest.objects.create(
+            employee=employee,
+            leave_type=leave_type,
+            start_date=start_date,
+            end_date=end_date,
+            reason=reason,
+            requested_by=requested_by,
+            status=LeaveRequest.Status.PENDING,
+        )
+        approval = ApprovalService.create(
+            requested_by=requested_by,
+            workflow_key="hr.leave_request",
+            reference_type="leave_request",
+            reference_id=str(leave.id),
+            title=f"Afastamento — {employee} ({start_date}→{end_date})",
+            step_permissions=[LEAVE_APPROVE_PERMISSION],
+            context={
+                "leave_type": leave_type,
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+            },
+        )
+        leave.approval = approval
+        leave.save(update_fields=["approval", "updated_at"])
+        AuditLog.objects.create(
+            user=requested_by,
+            action="leave_requested",
+            resource_type="leave_request",
+            resource_id=str(leave.id),
+            new_data={"employee_id": str(employee.id), "approval_id": str(approval.id)},
+        )
+        return leave
+
+    @staticmethod
+    @transaction.atomic
+    def decide(*, leave, actor, approve=True, note=""):
+        from django.core.exceptions import ValidationError as CoreValidationError
+
+        from apps.governance.models import ApprovalRequest
+        from apps.governance.services import ApprovalService
+        from apps.hr.models import LeaveRequest
+
+        if leave.approval_id is None:
+            raise CoreValidationError("Solicitação sem fluxo de aprovação associado.")
+
+        approval = ApprovalService.decide(
+            approval_id=leave.approval_id, actor=actor, approve=approve, note=note
+        )
+        if approval.status == ApprovalRequest.Status.APPROVED:
+            leave.status = LeaveRequest.Status.APPROVED
+        elif approval.status == ApprovalRequest.Status.REJECTED:
+            leave.status = LeaveRequest.Status.REJECTED
+        leave.save(update_fields=["status", "updated_at"])
+        return leave

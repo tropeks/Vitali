@@ -7,6 +7,7 @@ Every viewset is gated ``[IsAuthenticated, ConcessionModule]`` (tier flag
 from __future__ import annotations
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError as DRFValidationError
@@ -18,6 +19,7 @@ from apps.core.models import AuditLog
 from . import services_logistics as svc
 from .logistics_models import (
     Dispatch,
+    DispatchDiscrepancy,
     PickList,
     ProofOfDelivery,
     SupplyRequisition,
@@ -25,6 +27,7 @@ from .logistics_models import (
 from .permissions import ConcessionModule
 from .serializers_logistics import (
     DeliveryInputSerializer,
+    DispatchDiscrepancySerializer,
     DispatchSerializer,
     PickListSerializer,
     ProofOfDeliverySerializer,
@@ -75,6 +78,15 @@ class SupplyRequisitionViewSet(viewsets.ModelViewSet):
         requisition = self.get_object()
         _run(svc.approve_requisition, requisition)
         log_audit(request, "approve", "SupplyRequisition", requisition.id)
+        return Response(self.get_serializer(requisition).data)
+
+    @extend_schema(request=None, responses=SupplyRequisitionSerializer)
+    @action(detail=True, methods=["post"])
+    def cancel(self, request, pk=None):
+        """B0-T5 — cancel a not-yet-fulfilled requisition (→ CANCELLED)."""
+        requisition = self.get_object()
+        _run(svc.cancel_requisition, requisition)
+        log_audit(request, "cancel", "SupplyRequisition", requisition.id)
         return Response(self.get_serializer(requisition).data)
 
 
@@ -172,3 +184,30 @@ class ProofOfDeliveryViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_permissions(self):
         return [IsAuthenticated(), ConcessionModule()]
+
+
+@extend_schema_view(
+    list=extend_schema(responses=DispatchDiscrepancySerializer(many=True)),
+    retrieve=extend_schema(responses=DispatchDiscrepancySerializer),
+)
+class DispatchDiscrepancyViewSet(viewsets.ReadOnlyModelViewSet):
+    """B0-T5 — read the delivery discrepancies (created inline on deliver).
+
+    Filter by ``?dispatch=<id>`` or ``?type=<missing|damaged|extra>``.
+    """
+
+    serializer_class = DispatchDiscrepancySerializer
+    queryset = DispatchDiscrepancy.objects.select_related("dispatch", "material").all()
+
+    def get_permissions(self):
+        return [IsAuthenticated(), ConcessionModule()]
+
+    def get_queryset(self):
+        qs = DispatchDiscrepancy.objects.select_related("dispatch", "material").all()
+        dispatch_id = self.request.query_params.get("dispatch")
+        if dispatch_id:
+            qs = qs.filter(dispatch_id=dispatch_id)
+        disc_type = self.request.query_params.get("type")
+        if disc_type:
+            qs = qs.filter(type=disc_type)
+        return qs

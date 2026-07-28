@@ -150,3 +150,7 @@ cache/
 
 # Local staging secrets (real values live only on the host)
 .env.staging
+
+# User uploads (potential PHI) must never enter VCS — CSO #1
+uploads/*
+!uploads/.gitkeep

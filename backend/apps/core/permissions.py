@@ -254,7 +254,34 @@ ADMIN_PERMISSIONS = [
     "emar.administer",
     "sae.read",
     "sae.write",
+    # ADT/Leitos (L1): estrutura de leitos — leitura + gestão (NIR/Gestão de Leitos).
+    "beds.read",
+    "beds.manage",
+    # ADT/Leitos (L2): ciclo de admissão/internação — internar + dar alta.
+    "adt.admit",
+    "adt.discharge",
+    # ADT/Leitos (L3): transferência de leito (beira-leito/NIR).
+    "adt.transfer",
+    # Centro Cirúrgico (C1): estrutura + caso cirúrgico — leitura + gestão.
+    "surgery.read",
+    "surgery.manage",
+    # Centro Cirúrgico (C2): agendamento/lifecycle do caso (schedule/reschedule/confirm/cancel).
+    "surgery.schedule",
+    # PS/Emergência (E1): catálogo Manchester + acuidade — ler / gerir / classificar.
+    # Namespace SEPARADO do triage.* (symptom-checker WhatsApp), que fica intocado.
+    "emergency.read",
+    "emergency.manage",
+    "emergency.classify",
     "pharmacy.clinical_validate",
+    # Escala/plantão de setor (S-IA2). Admin carries it so tenant admins keep
+    # full roster access; sector supervisors get it standalone via RosterAccessPermission.
+    "roster.manage",
+    # Faturamento SUS (S1): catálogo SIGTAP + identidade SUS — ler / gerir.
+    # Namespace SEPARADO do billing.* (TISS/convênios), que fica intocado.
+    "sus.read",
+    "sus.write",
+    # Faturamento SUS (S3): exportar a remessa DATASUS (BPA-Magnético / APAC).
+    "sus.export",
 ]
 
 CLINICAL_PRESCRIBER_PERMISSIONS = [
@@ -279,6 +306,19 @@ CLINICAL_PRESCRIBER_PERMISSIONS = [
     "triage.read",
     "emar.read",
     "sae.read",
+    "beds.read",
+    # ADT L2: o médico interna e dá alta.
+    "adt.admit",
+    "adt.discharge",
+    # ADT L3: o médico transfere de leito (beira-leito).
+    "adt.transfer",
+    # Centro Cirúrgico (C1): o cirurgião gere (e lê) casos cirúrgicos.
+    "surgery.read",
+    "surgery.manage",
+    # Centro Cirúrgico (C2): o cirurgião agenda/confirma/cancela seus casos.
+    "surgery.schedule",
+    # PS/Emergência (E1): o prescritor lê o catálogo Manchester/acuidade.
+    "emergency.read",
 ]
 
 NURSING_PERMISSIONS = [
@@ -291,6 +331,14 @@ NURSING_PERMISSIONS = [
     "emar.administer",
     "sae.read",
     "sae.write",
+    "beds.read",
+    # ADT L3: o enfermeiro transfere de leito (beira-leito/NIR).
+    "adt.transfer",
+    # Centro Cirúrgico (C1): a enfermagem de CC lê os casos cirúrgicos.
+    "surgery.read",
+    # PS/Emergência (E1): o enfermeiro classificador lê o catálogo e classifica.
+    "emergency.read",
+    "emergency.classify",
 ]
 
 RECEPTION_PERMISSIONS = [
@@ -301,6 +349,12 @@ RECEPTION_PERMISSIONS = [
     "billing.read",
     "triage.read",
     "triage.respond",
+    "beds.read",
+    # ADT L2: a recepção interna (admite); a alta é exclusiva do médico.
+    "adt.admit",
+    # PS/Emergência (E1): a recepção do PS abre boletim (manage) e lê o catálogo.
+    "emergency.read",
+    "emergency.manage",
 ]
 
 PHARMACY_PERMISSIONS = [
@@ -330,6 +384,11 @@ BILLING_PERMISSIONS = [
     "patients.limited_read",
     "emr.read",
     "ai.use",
+    # Faturamento SUS (S1): o faturista lê e gere o catálogo SIGTAP + identidade SUS.
+    "sus.read",
+    "sus.write",
+    # Faturamento SUS (S3): o faturista exporta a remessa DATASUS (BPA/APAC).
+    "sus.export",
 ]
 
 DEFAULT_ROLES = {

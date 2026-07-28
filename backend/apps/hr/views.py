@@ -6,21 +6,42 @@ create() is an explicit method that delegates to EmployeeOnboardingService
 destroy() delegates to EmployeeDeactivationService (F-15 soft-delete cascade).
 """
 
+from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import mixins, viewsets
+from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError as DRFValidationError
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 
-from .models import Employee, OccupationalHealthExam, TimeEntry, WorkSchedule
+from .models import (
+    Dependent,
+    DutyRoster,
+    Employee,
+    EmployeeAssignment,
+    LeaveRequest,
+    OccupationalHealthExam,
+    Position,
+    RosterSlot,
+    TimeEntry,
+    WorkSchedule,
+)
 from .serializers import (
+    DependentSerializer,
+    DutyRosterSerializer,
+    EmployeeAssignmentSerializer,
     EmployeeOnboardingSerializer,
     EmployeeSerializer,
+    LeaveRequestSerializer,
     OccupationalHealthExamSerializer,
+    PositionSerializer,
+    RosterSlotSerializer,
     TimeEntrySerializer,
     WorkScheduleSerializer,
 )
-from .services import AttendanceService, EmployeeOnboardingService
+from .services import AssignmentService, AttendanceService, EmployeeOnboardingService, LeaveService
 
 
 class HRAccessPermission:
@@ -46,6 +67,111 @@ class HRAccessPermission:
 
     def has_object_permission(self, request, view, obj):
         return self.has_permission(request, view)
+
+
+class RosterAccessPermission(BasePermission):
+    """Gate for escala/plantão (DutyRoster / RosterSlot) — S-IA2.
+
+    Escala is a SECTOR-SUPERVISOR function (docs/UI_NAVIGATION_IA.md §3,
+    CANONICAL_FEATURE_MAP.md §E), not central RH. Authorizes off a non-forgeable
+    capability — NEVER the user-settable ``role.name`` (A01 escalation vector):
+
+    - platform / tenant admin capability (``role_has_admin_capability``), OR
+    - central ``hr.manage`` — kept for the transition period, OR
+    - sector ``roster.manage`` — the new per-area permission.
+
+    Object-level unit scope (which rosters a supervisor may see) is enforced by
+    the queryset in :class:`RosterScopedQuerysetMixin`, not here.
+    """
+
+    def has_permission(self, request, view):
+        from apps.core.permissions import is_platform_admin, role_has_admin_capability
+
+        if not request.user or not request.user.is_authenticated:
+            return False
+        if is_platform_admin(request.user):
+            return True
+        role = request.user.effective_role()
+        if not role:
+            return False
+        perms = role.permissions or []
+        return bool(
+            role_has_admin_capability(role) or "hr.manage" in perms or "roster.manage" in perms
+        )
+
+    def __call__(self):
+        return self
+
+    def has_object_permission(self, request, view, obj):
+        return self.has_permission(request, view)
+
+
+def _roster_sees_all(user) -> bool:
+    """True when ``user`` is unscoped for rosters (admin or central hr.manage).
+
+    A standalone ``roster.manage`` supervisor is NOT unscoped — they are limited
+    to their unit(s) by :class:`RosterScopedQuerysetMixin`.
+    """
+    from apps.core.permissions import is_platform_admin, role_has_admin_capability
+
+    if is_platform_admin(user):
+        return True
+    role = user.effective_role()
+    if not role:
+        return False
+    return role_has_admin_capability(role) or "hr.manage" in (role.permissions or [])
+
+
+def _roster_user_unit_ids(user):
+    """OrganizationalUnit ids the ``user`` supervises via their active lotação.
+
+    The cleanest existing user↔unit link is
+    ``User → Employee → EmployeeAssignment(active) → OrganizationalUnit``
+    (apps/hr/rh_models.py). Returns a (possibly empty) list of unit ids.
+    """
+    return list(
+        EmployeeAssignment.objects.filter(employee__user=user, active=True).values_list(
+            "unit_id", flat=True
+        )
+    )
+
+
+class RosterScopedQuerysetMixin:
+    """Object-level unit scope for non-admin ``roster.manage`` users (S-IA2 Task B).
+
+    Admins and central ``hr.manage`` users see every roster in the tenant. A
+    sector supervisor holding only ``roster.manage`` is narrowed to the
+    OrganizationalUnit(s) of their active EmployeeAssignment:
+
+    - ``RosterSlot`` (``roster_scope`` = "slot") filters by ``unit`` directly,
+      also surfacing unit-less slots on rosters at the supervisor's facility;
+    - ``DutyRoster`` (``roster_scope`` = "roster") has no unit column, so it is
+      scoped by the facilities of those units.
+
+    A supervisor with no active assignment sees nothing (fail-closed) — the
+    correct restrictive default until a richer coordinator↔unit link exists.
+    """
+
+    roster_scope = ""  # "roster" | "slot"
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if _roster_sees_all(user):
+            return qs
+        from apps.organization.models import OrganizationalUnit
+
+        unit_ids = _roster_user_unit_ids(user)
+        if not unit_ids:
+            return qs.none()
+        facility_ids = list(
+            OrganizationalUnit.objects.filter(id__in=unit_ids).values_list("facility_id", flat=True)
+        )
+        if self.roster_scope == "slot":
+            from django.db.models import Q
+
+            return qs.filter(Q(unit_id__in=unit_ids) | Q(roster__facility_id__in=facility_ids))
+        return qs.filter(facility_id__in=facility_ids)
 
 
 # Actions that mutate the Employee row and must therefore run inside a
@@ -297,3 +423,147 @@ class TimeEntryViewSet(viewsets.ReadOnlyModelViewSet):
             external_id=serializer.validated_data.get("external_id"),
         )
         return Response(TimeEntrySerializer(entry).data, status=201 if created else 200)
+
+
+# ── Sprint M2-S2 — RH operacional (gated + audited) ──────────────────────────
+
+
+class _AuditedCreateMixin:
+    """perform_create that writes an AuditLog row attributing the actor."""
+
+    audit_action = ""
+    audit_resource_type = ""
+
+    def perform_create(self, serializer):
+        from apps.core.models import AuditLog
+
+        obj = serializer.save()
+        AuditLog.objects.create(
+            user=self.request.user,
+            action=self.audit_action,
+            resource_type=self.audit_resource_type,
+            resource_id=str(obj.pk),
+            new_data={"created": True},
+        )
+
+
+class PositionViewSet(HRManagePermissionMixin, _AuditedCreateMixin, viewsets.ModelViewSet):  # type: ignore[misc]
+    queryset = Position.objects.all()
+    serializer_class = PositionSerializer
+    audit_action = "position_created"
+    audit_resource_type = "position"
+
+
+class DependentViewSet(HRManagePermissionMixin, _AuditedCreateMixin, viewsets.ModelViewSet):  # type: ignore[misc]
+    queryset = Dependent.objects.select_related("employee__user").all()
+    serializer_class = DependentSerializer
+    audit_action = "dependent_created"
+    audit_resource_type = "dependent"
+
+
+class EmployeeAssignmentViewSet(HRManagePermissionMixin, viewsets.ModelViewSet):  # type: ignore[misc]
+    queryset = EmployeeAssignment.objects.select_related("employee__user", "unit").all()
+    serializer_class = EmployeeAssignmentSerializer
+
+    def create(self, request, *args, **kwargs):
+        # Delegate to AssignmentService for the single-active invariant + audit.
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        assignment = AssignmentService.assign(
+            employee=data["employee"],
+            unit=data["unit"],
+            start_date=data["start_date"],
+            cost_center=data.get("cost_center"),
+            position=data.get("position"),
+            role=data.get("role", ""),
+            actor=request.user,
+        )
+        return Response(self.get_serializer(assignment).data, status=201)
+
+
+@extend_schema_view(
+    list=extend_schema(
+        summary="Escalas do setor",
+        description=(
+            "Lista escalas (DutyRoster). Requer capacidade admin, `hr.manage` "
+            "(transição) ou `roster.manage`. Supervisores com apenas "
+            "`roster.manage` veem só as escalas da(s) sua(s) unidade(s)/unidade."
+        ),
+    )
+)
+class DutyRosterViewSet(RosterScopedQuerysetMixin, _AuditedCreateMixin, viewsets.ModelViewSet):
+    queryset = DutyRoster.objects.select_related("facility").all()
+    serializer_class = DutyRosterSerializer
+    permission_classes = [IsAuthenticated, RosterAccessPermission]
+    roster_scope = "roster"
+    audit_action = "duty_roster_created"
+    audit_resource_type = "duty_roster"
+
+    def get_permissions(self):
+        return [IsAuthenticated(), RosterAccessPermission()]
+
+
+@extend_schema_view(
+    list=extend_schema(
+        summary="Plantões do setor",
+        description=(
+            "Lista plantões (RosterSlot), incluindo plantões que cruzam a "
+            "meia-noite (ex.: 19h→07h). Mesmo gating de `roster.manage`; "
+            "supervisores são escopados por unidade."
+        ),
+    )
+)
+class RosterSlotViewSet(RosterScopedQuerysetMixin, _AuditedCreateMixin, viewsets.ModelViewSet):
+    queryset = RosterSlot.objects.select_related("roster", "unit", "professional", "employee").all()
+    serializer_class = RosterSlotSerializer
+    permission_classes = [IsAuthenticated, RosterAccessPermission]
+    roster_scope = "slot"
+    audit_action = "roster_slot_created"
+    audit_resource_type = "roster_slot"
+
+    def get_permissions(self):
+        return [IsAuthenticated(), RosterAccessPermission()]
+
+
+class LeaveRequestViewSet(HRManagePermissionMixin, viewsets.ModelViewSet):  # type: ignore[misc]
+    queryset = LeaveRequest.objects.select_related("employee__user", "approval").all()
+    serializer_class = LeaveRequestSerializer
+    http_method_names = ["get", "post", "head", "options"]
+
+    def create(self, request, *args, **kwargs):
+        from rest_framework.exceptions import PermissionDenied as DRFPermissionDenied
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        try:
+            leave = LeaveService.request_leave(
+                employee=data["employee"],
+                requested_by=request.user,
+                leave_type=data["leave_type"],
+                start_date=data["start_date"],
+                end_date=data["end_date"],
+                reason=data.get("reason", ""),
+            )
+        except DjangoPermissionDenied as exc:
+            raise DRFPermissionDenied(str(exc)) from exc
+        except DjangoValidationError as exc:
+            raise DRFValidationError(exc.messages) from exc
+        return Response(self.get_serializer(leave).data, status=201)
+
+    @action(detail=True, methods=["post"])
+    def decide(self, request, pk=None):
+        """POST /hr/leave-requests/{id}/decide/ {approve: bool, note: str}."""
+        from rest_framework.exceptions import PermissionDenied as DRFPermissionDenied
+
+        leave = self.get_object()
+        approve = bool(request.data.get("approve", True))
+        note = request.data.get("note", "")
+        try:
+            leave = LeaveService.decide(leave=leave, actor=request.user, approve=approve, note=note)
+        except DjangoPermissionDenied as exc:
+            raise DRFPermissionDenied(str(exc)) from exc
+        except DjangoValidationError as exc:
+            raise DRFValidationError(exc.messages) from exc
+        return Response(self.get_serializer(leave).data, status=200)

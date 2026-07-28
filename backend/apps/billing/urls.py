@@ -25,6 +25,13 @@ from .views import (
     TISSGuideViewSet,
     TUSSCodeViewSet,
 )
+from .views_sus import (
+    ApacAutorizacaoViewSet,
+    ApacProcedimentoSecundarioViewSet,
+    BpaConsolidadoViewSet,
+    BpaIndividualizadoViewSet,
+    SusCompetenciaViewSet,
+)
 
 router = DefaultRouter()
 router.register(r"tuss", TUSSCodeViewSet, basename="tuss")
@@ -40,6 +47,13 @@ router.register(r"bank-transactions", BankTransactionViewSet, basename="bank-tra
 router.register(r"settlements", ProfessionalSettlementViewSet, basename="settlement")
 router.register(r"payables", PayableViewSet, basename="payable")
 router.register(r"cash-flow", CashFlowEntryViewSet, basename="cash-flow")
+# Faturamento SUS (S2): produção ambulatorial BPA + competência.
+router.register(r"sus-competencias", SusCompetenciaViewSet, basename="sus-competencia")
+router.register(r"bpa-consolidado", BpaConsolidadoViewSet, basename="bpa-consolidado")
+router.register(r"bpa-individualizado", BpaIndividualizadoViewSet, basename="bpa-individualizado")
+# Faturamento SUS (S3): APAC (alta complexidade) + procedimentos secundários.
+router.register(r"apac-autorizacoes", ApacAutorizacaoViewSet, basename="apac-autorizacao")
+router.register(r"apac-secundarios", ApacProcedimentoSecundarioViewSet, basename="apac-secundario")
 
 urlpatterns = [
     path("billing/", include(router.urls)),

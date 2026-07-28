@@ -39,6 +39,29 @@ describe('RemoteCombobox', () => {
     vi.useRealTimers()
   })
 
+  it('uses a custom queryParam name when provided', async () => {
+    vi.useFakeTimers()
+    mockApiFetch.mockResolvedValue({ results: [{ id: '1', code: '2231-05', display: 'Médico clínico' }], next: null })
+    render(
+      <RemoteCombobox<{ id: string; code: string; display: string }>
+        label="CBO"
+        endpoint="/api/v1/terminology/cbo/"
+        queryParam="q"
+        value={null}
+        getKey={item => item.id}
+        getLabel={item => item.display}
+        onChange={vi.fn()}
+      />
+    )
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'CBO' }), { target: { value: 'medico' } })
+    await vi.advanceTimersByTimeAsync(300)
+    await vi.runAllTimersAsync()
+
+    expect(mockApiFetch).toHaveBeenCalledWith('/api/v1/terminology/cbo/?q=medico&page_size=20')
+    vi.useRealTimers()
+  })
+
   it('loads the next server page on demand', async () => {
     mockApiFetch
       .mockResolvedValueOnce({ results: [{ id: '1', name: 'A' }], next: '/api/v1/pharmacy/suppliers/?page=2' })

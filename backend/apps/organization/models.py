@@ -46,9 +46,62 @@ class Facility(OrganizationalRecord):
         LegalEntity, on_delete=models.PROTECT, related_name="facilities"
     )
 
+    # ── M2-S1-T3: governed FK to the SHARED CNES catalog ──────────────────────
+    # PostgreSQL does not enforce FK integrity across schemas (tenant → public),
+    # so — like emr.Professional.cnes — we use DO_NOTHING and rely on the
+    # protect_cnes_establishment_deletion pre_delete signal (apps/core/signals.py)
+    # to block deleting a CNES establishment that any tenant references. The
+    # legacy free-text column preserves any raw/unmatched CNES number (never lose
+    # data), exposed via the ``cnes_code`` accessor for symmetry with Professional.
+    cnes = models.ForeignKey(
+        "core.CNESEstablishment",
+        on_delete=models.DO_NOTHING,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="Estabelecimento CNES",
+    )
+    legacy_cnes_text = models.CharField(
+        max_length=10,
+        blank=True,
+        default="",
+        help_text="Código CNES bruto não reconciliado com core.CNESEstablishment.",
+    )
+    cnes_unmatched = models.BooleanField(
+        default=False,
+        help_text="True quando legacy_cnes_text não corresponde a nenhum CNESEstablishment governado.",
+    )
+
     class Meta(OrganizationalRecord.Meta):
         verbose_name = "Estabelecimento"
         verbose_name_plural = "Estabelecimentos"
+
+    @property
+    def cnes_code(self) -> str:
+        """CNES code string: the governed FK's code when linked, else raw legacy text."""
+        if self.cnes_id:
+            return self.cnes.code  # type: ignore[union-attr]
+        return self.legacy_cnes_text
+
+    @cnes_code.setter
+    def cnes_code(self, value: str) -> None:
+        code = (value or "").strip()
+        if not code:
+            self.cnes = None
+            self.legacy_cnes_text = ""
+            self.cnes_unmatched = False
+            return
+        from apps.core.models import CNESEstablishment
+
+        match = CNESEstablishment.objects.filter(code=code).first()
+        if match is not None:
+            self.cnes = match
+            self.legacy_cnes_text = ""
+            self.cnes_unmatched = False
+        else:
+            self.cnes = None
+            self.legacy_cnes_text = code
+            self.cnes_unmatched = True
 
 
 class OrganizationalUnit(OrganizationalRecord):

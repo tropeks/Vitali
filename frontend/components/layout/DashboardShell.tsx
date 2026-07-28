@@ -1,113 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  LayoutDashboard,
-  Users,
-  Calendar,
-  ClipboardList,
-  Stethoscope,
-  Activity,
-  ScanLine,
-  FlaskConical,
-  CalendarX,
-  Pill,
-  Receipt,
-  BarChart2,
-  Settings,
-  Building2,
-  MessageCircle,
   LogOut,
   Bell,
   ChevronDown,
   ChevronRight,
   Menu,
   X,
+  Search,
 } from "lucide-react";
 import type { UserDTO } from "@/lib/auth";
 import { apiFetch } from "@/lib/api";
 import { useActiveModules } from "@/hooks/useHasModule";
 import { LanguageSwitcher } from "@/components/shared/LanguageSwitcher";
-
-interface NavItem {
-  label: string;
-  href: string;
-  icon: React.ElementType;
-  /** If set, only shown when useHasModule(module) is true */
-  module?: string;
-  /** Admin-only item */
-  adminOnly?: boolean;
-  permissions?: string[];
-  /** Sub-items rendered as an indented group beneath this item */
-  children?: { label: string; href: string }[];
-}
-
-const NAV_ITEMS: NavItem[] = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Pacientes", href: "/patients", icon: Users, module: "emr" },
-  { label: "Agenda", href: "/appointments", icon: Calendar, module: "emr" },
-  { label: "Sala de Espera", href: "/waiting-room", icon: ClipboardList, module: "emr" },
-  { label: "Consultas", href: "/encounters", icon: Stethoscope, module: "emr" },
-  { label: "Laboratório", href: "/laboratorio", icon: FlaskConical, module: "emr" },
-  { label: "Vitali Imagem", href: "/imagens", icon: ScanLine, module: "imaging" },
-  { label: "Deterioração", href: "/deterioracao", icon: Activity, module: "emr" },
-  { label: "Faltas", href: "/faltas", icon: CalendarX, module: "emr" },
-  {
-    label: "Farmácia",
-    href: "/farmacia",
-    icon: Pill,
-    module: "pharmacy",
-    children: [
-      { label: "Cockpit", href: "/farmacia" },
-      { label: "Dispensar", href: "/farmacia/dispense" },
-      { label: "Estoque", href: "/farmacia/stock" },
-      { label: "Catálogo", href: "/farmacia/catalog" },
-      { label: "Compras", href: "/farmacia/compras" },
-      { label: "Controlados", href: "/farmacia/controlados" },
-    ],
-  },
-  {
-    label: "RH",
-    href: "/rh/funcionarios",
-    icon: Users,
-    module: "rh",
-    adminOnly: true,
-    children: [
-      { label: "Funcionários", href: "/rh/funcionarios" },
-    ],
-  },
-  { label: "Faturamento", href: "/billing", icon: Receipt, module: "billing" },
-  { label: "Análise", href: "/billing/analytics", icon: BarChart2, module: "billing" },
-  {
-    label: "Administração",
-    href: "/administracao/organizacao",
-    icon: Building2,
-    permissions: ["organization.read", "mpi.read", "workflow.read"],
-    children: [
-      { label: "Estrutura organizacional", href: "/administracao/organizacao" },
-      { label: "Identidade de pacientes", href: "/administracao/mpi" },
-      { label: "Aprovações", href: "/administracao/aprovacoes" },
-    ],
-  },
-  {
-    label: "Configurações",
-    href: "/configuracoes/assinatura",
-    icon: Settings,
-    adminOnly: true,
-    children: [
-      { label: "Assinatura", href: "/configuracoes/assinatura" },
-      { label: "WhatsApp", href: "/configuracoes/whatsapp" },
-      { label: "Inteligência Artificial", href: "/configuracoes/ai" },
-      { label: "Profissionais", href: "/configuracoes/profissionais" },
-      { label: "Formulário (doses)", href: "/configuracoes/farmacia/formulario" },
-      { label: "Interações", href: "/configuracoes/farmacia/interacoes" },
-      { label: "Suprimentos", href: "/configuracoes/farmacia/suprimentos" },
-      { label: "Privacidade (LGPD)", href: "/configuracoes/privacidade" },
-    ],
-  },
-];
+import { PERMISSIONS, canSee } from "@/lib/permissions";
+import { NAV_GROUPS, HOME_ITEM, type NavItem } from "./nav";
+import CommandPalette from "./CommandPalette";
+import {
+  PERSONAS,
+  applyPersona,
+  loadPersona,
+  savePersona,
+  type PersonaId,
+} from "@/lib/personas";
 
 interface Props {
   user: UserDTO;
@@ -119,22 +37,117 @@ export default function DashboardShell({ user, children }: Props) {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  // Persona preset (soft UX layer over RBAC — never widens visibility).
+  const [persona, setPersona] = useState<PersonaId>("todos");
+  // User's manual header toggles, as `collapsed` booleans. Overrides the
+  // persona default for a group; reset whenever the persona changes.
+  const [collapsedOverrides, setCollapsedOverrides] = useState<Record<string, boolean>>({});
   const clinicalWorkspace = /^\/encounters\/[^/]+$/.test(pathname ?? "");
 
   const activeModules = useActiveModules();
-  // null = still loading; treat as all-visible (fail-open, no layout shift)
-  const moduleVisible = (item: NavItem) =>
-    !item.module || activeModules === null || activeModules.includes(item.module);
 
-  const isAdmin = user.role_name?.toLowerCase() === "admin" ||
-    user.role_name?.toLowerCase() === "administrador";
+  // Restore the persisted persona (keyed per user) once mounted.
+  useEffect(() => {
+    setPersona(loadPersona(user.id));
+    setCollapsedOverrides({});
+  }, [user.id]);
 
-  const visibleItems = NAV_ITEMS.filter((item) => {
-    if (!moduleVisible(item)) return false;
-    if (item.adminOnly && !isAdmin) return false;
-    if (item.permissions && !item.permissions.some((permission) => user.permissions?.includes(permission))) return false;
-    return true;
-  });
+  // Three ordered gates (UI_NAVIGATION_IA.md §6), all UX-only. Module fails OPEN
+  // while loading; superuser + permission never fail open.
+  const itemVisible = (item: NavItem) => canSee(user, item, activeModules);
+
+  // Groups (and their gated items) resolved for the current session. A group with
+  // no visible items is dropped entirely. This is the HARD RBAC filter — the
+  // persona layer below only reorders/collapses within this already-visible set.
+  const visibleGroups = NAV_GROUPS.map((group) => ({
+    label: group.label,
+    items: group.items.filter(itemVisible),
+  })).filter((group) => group.items.length > 0);
+
+  // Persona layout: reorder + default expansion over the visible labels only.
+  const layout = applyPersona(
+    persona,
+    visibleGroups.map((group) => group.label),
+  );
+  const orderedGroups = layout.order
+    .map((label) => visibleGroups.find((group) => group.label === label))
+    .filter((group): group is (typeof visibleGroups)[number] => group !== undefined);
+
+  // A group is open when the user hasn't overridden it and the persona expands
+  // it; a manual toggle wins.
+  const groupOpen = (label: string) =>
+    label in collapsedOverrides ? !collapsedOverrides[label] : layout.expanded.has(label);
+
+  const toggleGroup = (label: string) =>
+    setCollapsedOverrides((prev) => ({ ...prev, [label]: groupOpen(label) }));
+
+  const changePersona = (next: PersonaId) => {
+    setPersona(next);
+    setCollapsedOverrides({});
+    savePersona(user.id, next);
+  };
+
+  // Admin capability for the topbar dropdown — keyed off the non-forgeable
+  // `admin` permission (not the user-settable role_name).
+  const isAdmin = user.permissions?.includes(PERMISSIONS.ADMIN) ?? false;
+
+  const renderNavItem = (item: NavItem) => {
+    const Icon = item.icon;
+    const active = pathname === item.href || pathname.startsWith(item.href + "/");
+    const hasChildren = item.children && item.children.length > 0;
+
+    const linkEl = (
+      <Link
+        href={item.href}
+        onClick={() => setSidebarOpen(false)}
+        className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm border transition-colors ${
+          active
+            ? "bg-neu-panel text-neu-brand font-medium border-white shadow-neu-panel"
+            : "border-transparent text-neu-inkSoft hover:text-neu-ink hover:bg-neu-panel/60"
+        }`}
+      >
+        <Icon size={18} />
+        <span className="flex-1">{item.label}</span>
+        {hasChildren && (
+          <ChevronRight
+            size={14}
+            className={`transition-transform ${active ? "rotate-90" : ""}`}
+          />
+        )}
+      </Link>
+    );
+
+    if (!hasChildren) return <div key={item.href}>{linkEl}</div>;
+
+    return (
+      <div key={item.href}>
+        {linkEl}
+        {active && (
+          <div className="ml-7 mt-0.5 space-y-0.5">
+            {item.children!.map((child) => {
+              const childActive =
+                pathname === child.href || pathname.startsWith(child.href + "/");
+              return (
+                <Link
+                  key={child.href}
+                  href={child.href}
+                  onClick={() => setSidebarOpen(false)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors ${
+                    childActive
+                      ? "bg-neu-input text-neu-brand font-medium shadow-neu-inset"
+                      : "text-neu-inkSoft hover:text-neu-ink hover:bg-neu-panel/60"
+                  }`}
+                >
+                  {child.label}
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const handleLogout = async () => {
     // apiFetch injects the JWT header and handles PASSWORD_CHANGE_REQUIRED (T12)
@@ -182,61 +195,27 @@ export default function DashboardShell({ user, children }: Props) {
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-            {visibleItems.map((item) => {
-              const Icon = item.icon;
-              const active =
-                pathname === item.href || pathname.startsWith(item.href + "/");
-              const hasChildren = item.children && item.children.length > 0;
+          <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+            {renderNavItem(HOME_ITEM)}
 
-              const linkEl = (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setSidebarOpen(false)}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm border transition-colors ${
-                    active
-                      ? "bg-neu-panel text-neu-brand font-medium border-white shadow-neu-panel"
-                      : "border-transparent text-neu-inkSoft hover:text-neu-ink hover:bg-neu-panel/60"
-                  }`}
-                >
-                  <Icon size={18} />
-                  <span className="flex-1">{item.label}</span>
-                  {hasChildren && (
-                    <ChevronRight
-                      size={14}
-                      className={`transition-transform ${active ? "rotate-90" : ""}`}
-                    />
-                  )}
-                </Link>
-              );
-
-              if (!hasChildren) return linkEl;
-
+            {orderedGroups.map((group) => {
+              const open = groupOpen(group.label);
               return (
-                <div key={item.href}>
-                  {linkEl}
-                  {active && (
-                    <div className="ml-7 mt-0.5 space-y-0.5">
-                      {item.children!.map((child) => {
-                        const childActive =
-                          pathname === child.href ||
-                          pathname.startsWith(child.href + "/");
-                        return (
-                          <Link
-                            key={child.href}
-                            href={child.href}
-                            onClick={() => setSidebarOpen(false)}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors ${
-                              childActive
-                                ? "bg-neu-input text-neu-brand font-medium shadow-neu-inset"
-                                : "text-neu-inkSoft hover:text-neu-ink hover:bg-neu-panel/60"
-                            }`}
-                          >
-                            {child.label}
-                          </Link>
-                        );
-                      })}
+                <div key={group.label} className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group.label)}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-neu-inkMuted hover:text-neu-ink transition-colors"
+                  >
+                    <span className="flex-1 text-left">{group.label}</span>
+                    <ChevronDown
+                      size={13}
+                      className={`transition-transform ${open ? "" : "-rotate-90"}`}
+                    />
+                  </button>
+                  {open && (
+                    <div className="mt-0.5 space-y-0.5">
+                      {group.items.map((item) => renderNavItem(item))}
                     </div>
                   )}
                 </div>
@@ -280,7 +259,7 @@ export default function DashboardShell({ user, children }: Props) {
           )}
 
           {/* Tenant name placeholder */}
-          <div className="flex flex-1 items-center gap-3 min-w-0">
+          <div className="flex items-center gap-3 min-w-0">
             <span className="text-sm font-medium text-neu-ink">
               Vitali Health
             </span>
@@ -290,6 +269,40 @@ export default function DashboardShell({ user, children }: Props) {
               </span>
             )}
           </div>
+
+          {/* "Ir para…" — opens the ⌘K command palette */}
+          <button
+            type="button"
+            onClick={() => setPaletteOpen(true)}
+            aria-label="Ir para… (busca global)"
+            aria-keyshortcuts="Meta+K Control+K"
+            className="flex flex-1 max-w-sm items-center gap-2 rounded-lg border border-neu-app bg-neu-input px-3 py-1.5 text-sm text-neu-inkMuted shadow-neu-inset transition-colors hover:text-neu-ink"
+          >
+            <Search size={15} className="shrink-0" aria-hidden />
+            <span className="flex-1 text-left">Ir para…</span>
+            <kbd className="hidden rounded border border-neu-app px-1.5 py-0.5 text-[10px] font-medium sm:block">
+              ⌘K
+            </kbd>
+          </button>
+
+          {/* Persona preset switcher (soft UX layer over RBAC) */}
+          {!clinicalWorkspace && (
+            <label className="hidden items-center gap-1.5 md:flex">
+              <span className="sr-only">Perfil de navegação</span>
+              <select
+                aria-label="Perfil de navegação"
+                value={persona}
+                onChange={(event) => changePersona(event.target.value as PersonaId)}
+                className="rounded-lg border border-neu-app bg-neu-input px-2 py-1.5 text-sm text-neu-ink shadow-neu-inset focus:outline-none focus:ring-2 focus:ring-neu-brand"
+              >
+                {PERSONAS.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
 
           {/* Language */}
           <LanguageSwitcher />
@@ -365,6 +378,14 @@ export default function DashboardShell({ user, children }: Props) {
         {/* Page content */}
         <main className={`flex-1 overflow-y-auto ${clinicalWorkspace ? "p-0" : "p-6"}`}>{children}</main>
       </div>
+
+      {/* Global "Ir para…" command palette (⌘K) — RBAC-scoped like the sidebar. */}
+      <CommandPalette
+        user={user}
+        activeModules={activeModules}
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+      />
     </div>
   );
 }

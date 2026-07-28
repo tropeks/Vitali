@@ -1,10 +1,15 @@
 """Core URLs — tenant schema routes."""
 
-from django.urls import path
+from django.urls import include, path
+from rest_framework.routers import DefaultRouter
 
 from . import views
 from .views_clinic import ClinicProfileView
 from .views_dpa import DPASignView, DPAStatusView
+from .views_manchester import (
+    ManchesterDiscriminatorViewSet,
+    ManchesterFlowchartViewSet,
+)
 from .views_mfa import (
     MFADisableView,
     MFALoginView,
@@ -15,11 +20,25 @@ from .views_mfa import (
 from .views_onboarding import OnboardingView
 from .views_platform import TenantSubscriptionView
 from .views_privacy import PrivacySettingsView
+from .views_sigtap import SIGTAPProcedureViewSet
 from .views_telemetry import WedgeTelemetryView
 from .views_terminology import TerminologySearchView
 from .views_test_helpers import IssueInvitationTokenView
 
 app_name = "core"
+
+# E1: Manchester triage catalog CRUD (read=emergency.read / write=emergency.manage).
+router = DefaultRouter()
+router.register(
+    "manchester-flowcharts", ManchesterFlowchartViewSet, basename="manchester-flowchart"
+)
+router.register(
+    "manchester-discriminators",
+    ManchesterDiscriminatorViewSet,
+    basename="manchester-discriminator",
+)
+# S1: SIGTAP catalog CRUD (read=sus.read / write=sus.write).
+router.register("sigtap", SIGTAPProcedureViewSet, basename="sigtap")
 
 urlpatterns = [
     # Auth
@@ -76,4 +95,6 @@ urlpatterns = [
         IssueInvitationTokenView.as_view(),
         name="test-issue-invitation-token",
     ),
+    # E1: Manchester triage catalog CRUD.
+    path("", include(router.urls)),
 ]

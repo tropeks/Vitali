@@ -1,6 +1,7 @@
 import re
 
 from django.db import transaction
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import (
@@ -13,6 +14,7 @@ from .models import (
     Encounter,
     EncounterAddendum,
     EncounterProcedure,
+    LabDeltaAlert,
     LabOrder,
     LabOrderItem,
     LabTest,
@@ -300,6 +302,12 @@ class ProfessionalSerializer(serializers.ModelSerializer):
     user_name = serializers.CharField(source="user.full_name", read_only=True)
     user_email = serializers.CharField(source="user.email", read_only=True)
     council_type_display = serializers.CharField(source="get_council_type_display", read_only=True)
+    # M2-S1-T3: cbo_code/cnes_code are now backward-compatible model *properties*
+    # backed by the governed cbo/cnes FKs. Declared explicitly so they stay
+    # writable through the property setters (a ModelSerializer would otherwise
+    # infer a property as read-only).
+    cbo_code = serializers.CharField(required=False, allow_blank=True)
+    cnes_code = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:
         model = Professional
@@ -315,10 +323,16 @@ class ProfessionalSerializer(serializers.ModelSerializer):
             "specialty",
             "cbo_code",
             "cnes_code",
+            # A1-T4: read-only reconciliation flags — True when the raw
+            # cbo_code/cnes_code did NOT match a governed catalog entry, so the
+            # UI can surface an "unreconciled code" badge. Set by the model's
+            # cbo_code/cnes_code setters, never writable directly.
+            "cbo_unmatched",
+            "cnes_unmatched",
             "is_active",
             "created_at",
         ]
-        read_only_fields = ["id", "created_at"]
+        read_only_fields = ["id", "created_at", "cbo_unmatched", "cnes_unmatched"]
 
 
 class ScheduleConfigSerializer(serializers.ModelSerializer):
@@ -578,6 +592,7 @@ class LabTestSerializer(serializers.ModelSerializer):
             "reference_range",
             "components",
             "reference_ranges",
+            "delta_threshold_pct",
             "active",
             "created_at",
             "updated_at",
@@ -617,6 +632,26 @@ class LabTestSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class LabDeltaAlertSerializer(serializers.ModelSerializer):
+    """A3-T3 — read-only view of a persisted laboratory delta-check alert."""
+
+    class Meta:
+        model = LabDeltaAlert
+        fields = [
+            "id",
+            "order_item",
+            "previous_item",
+            "test",
+            "previous_value",
+            "current_value",
+            "delta_absolute",
+            "delta_pct",
+            "threshold_pct",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
 class LabOrderItemSerializer(serializers.ModelSerializer):
     abnormal_flag_display = serializers.CharField(
         source="get_abnormal_flag_display", read_only=True
@@ -625,6 +660,20 @@ class LabOrderItemSerializer(serializers.ModelSerializer):
     validated_by_name = serializers.CharField(
         source="validated_by.full_name", read_only=True, default=None
     )
+    delta_alert = serializers.SerializerMethodField()
+
+    @extend_schema_field(LabDeltaAlertSerializer)
+    def get_delta_alert(self, obj):
+        """The delta-check alert on this result, or None (A3-T3 nested field).
+
+        ``delta_alert`` is a reverse OneToOne that only exists when the result
+        breached the test threshold, so guard the RelatedObjectDoesNotExist.
+        """
+        try:
+            alert = obj.delta_alert
+        except LabDeltaAlert.DoesNotExist:
+            return None
+        return LabDeltaAlertSerializer(alert, context=self.context).data
 
     class Meta:
         model = LabOrderItem
@@ -652,6 +701,7 @@ class LabOrderItemSerializer(serializers.ModelSerializer):
             "validated_by",
             "validated_by_name",
             "is_validated",
+            "delta_alert",
         ]
         read_only_fields = [
             "id",
@@ -1053,6 +1103,22 @@ class MedicationAdministrationSerializer(serializers.ModelSerializer):
         model = MedicationAdministration
         fields = "__all__"
         read_only_fields = ("id", "encounter", "patient", "administered_by", "created_at")
+
+
+class BCMACheckSerializer(serializers.Serializer):
+    """Request body for the BCMA beira-leito checagem (POST .../emar/check/).
+
+    Runs the "5 certos" verifier for a bedside scan against the signed order.
+    ``override_reason`` is optional: supplied only to proceed past a failed
+    right (records the append-only event with ``bcma_verified=False``).
+    """
+
+    prescription_item = serializers.PrimaryKeyRelatedField(queryset=PrescriptionItem.objects.all())
+    patient_barcode = serializers.CharField(max_length=64)
+    medication_barcode = serializers.CharField(max_length=64)
+    override_reason = serializers.CharField(
+        required=False, allow_blank=True, default="", max_length=2000
+    )
 
 
 class NursingAssessmentSerializer(serializers.ModelSerializer):

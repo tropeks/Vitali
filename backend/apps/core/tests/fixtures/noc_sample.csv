@@ -1,0 +1,5 @@
+# Tiny synthetic NOC fixture (N1-T2) — NOT real NOC licensed content.
+CODIGO;TITULO;DEFINICAO;INDICADORES
+2102;FAKE-Nível de dor;FAKE-Gravidade da dor observada ou relatada;FAKE-Dor relatada, duração dos episódios de dor
+1101;FAKE-Integridade tissular: pele e mucosas;FAKE-Integridade estrutural e função da pele e mucosas;FAKE-Temperatura da pele, hidratação
+0703;FAKE-Gravidade da infecção;FAKE-Gravidade da infecção e sintomas associados;FAKE-Febre, drenagem purulenta

@@ -1,0 +1,4 @@
+# Malformed CNES bed-type fixture (L1) — a blank code row and a blank title row.
+CODIGO;TITULO;CATEGORIA
+;FAKE-Sem código;FAKE-Clínico
+02;;FAKE-Clínico

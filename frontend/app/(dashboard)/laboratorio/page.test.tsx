@@ -6,6 +6,11 @@ import { apiFetch } from "@/lib/api";
 
 vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }));
 
+const push = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push }),
+}));
+
 const mockApiFetch = vi.mocked(apiFetch);
 
 const testCatalog = {
@@ -269,5 +274,105 @@ describe("LaboratorioPage", () => {
         }),
       ),
     );
+  });
+
+  it("mostra o alerta de delta-check quando o item traz delta_alert", async () => {
+    const completedOrders = {
+      results: [
+        {
+          ...testOrders.results[0],
+          status: "completed",
+          status_display: "Concluído",
+          items: [
+            {
+              ...testOrders.results[0].items[0],
+              result_value: "18.5",
+              abnormal_flag: "high",
+              abnormal_flag_display: "Alto",
+              is_validated: true,
+              delta_alert: {
+                id: "alert-1",
+                order_item: "item-1",
+                previous_item: "item-0",
+                test: "test-1",
+                previous_value: "12.0",
+                current_value: "18.5",
+                delta_absolute: "6.5",
+                delta_pct: "54.17",
+                threshold_pct: "20.00",
+                created_at: "2026-07-24T10:00:00Z",
+              },
+            },
+          ],
+        },
+      ],
+    };
+    mockApiFetch.mockImplementation(async (path) => {
+      if (path.startsWith("/api/v1/lab-tests/")) return testCatalog;
+      if (path === "/api/v1/lab-orders/") return completedOrders;
+      return {};
+    });
+    render(<LaboratorioPage />);
+    await screen.findByRole("heading", { name: "Maria Souza" });
+
+    expect(
+      screen.getByText(/Variação 54\.17% \(limite 20\.00%\)/),
+    ).toBeInTheDocument();
+  });
+
+  it("fatura um pedido concluído em guia TISS e redireciona", async () => {
+    const completedOrders = {
+      results: [
+        {
+          ...testOrders.results[0],
+          status: "completed",
+          status_display: "Concluído",
+          items: [
+            {
+              ...testOrders.results[0].items[0],
+              is_validated: true,
+            },
+          ],
+        },
+      ],
+    };
+    mockApiFetch.mockImplementation(async (path, options) => {
+      if (path.startsWith("/api/v1/lab-tests/")) return testCatalog;
+      if (path === "/api/v1/lab-orders/") return completedOrders;
+      if (path === "/api/v1/billing/guides/from-lab-order/" &&
+        options?.method === "POST")
+        return { id: "guide-7" };
+      return {};
+    });
+    render(<LaboratorioPage />);
+    await screen.findByRole("heading", { name: "Maria Souza" });
+
+    fireEvent.click(screen.getByRole("button", { name: /Faturar/ }));
+
+    await waitFor(() =>
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        "/api/v1/billing/guides/from-lab-order/",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ lab_order: "order-1" }),
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(push).toHaveBeenCalledWith("/billing/guides/guide-7"),
+    );
+  });
+
+  it("abre o catálogo e edita um exame com LOINC e delta", async () => {
+    render(<LaboratorioPage />);
+    await screen.findByRole("heading", { name: "Maria Souza" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Catálogo" }));
+    fireEvent.click(screen.getByRole("button", { name: "Editar" }));
+
+    expect(
+      screen.getByRole("heading", { name: "Editar exame" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/Limiar de delta-check/)).toBeInTheDocument();
   });
 });

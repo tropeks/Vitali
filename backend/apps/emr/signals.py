@@ -78,6 +78,38 @@ def trigger_safety_check(sender, instance, created, **kwargs):
     )
 
 
+@receiver(post_save, sender="emr.LabOrderItem")
+def trigger_lab_delta_check(sender, instance, **kwargs):
+    """Run the laboratory delta check (A3-T1) after a LabOrderItem is saved.
+
+    Fires the delta check whenever the item is in a *resulted* state
+    (``resulted_at`` set) — i.e. once a result is recorded through the
+    ``LabOrder.result`` action, a LIS import, or any other save path. Runs
+    SYNCHRONOUSLY (not via ``on_commit``) — unlike the prescription/vitals
+    signals it dispatches no Celery task; it only reads prior results and
+    ``update_or_create``s the alert, so it belongs in the same transaction as
+    the result write and the alert is visible to the immediate API response.
+
+    Idempotent: ``run_delta_check`` is keyed on the OneToOne ``order_item`` and
+    writes to ``LabDeltaAlert`` (never back to ``LabOrderItem``), so re-saves
+    (e.g. validation) never duplicate and never recurse. Fails safe: a delta
+    check error is logged and swallowed so it can never block or roll back the
+    result recording.
+    """
+    if instance.resulted_at is None:  # not yet resulted → nothing to compare
+        return
+
+    from apps.emr.services.delta_check import run_delta_check
+
+    try:
+        run_delta_check(instance)
+    except Exception:  # pragma: no cover - defensive: never block the result save
+        logger.exception(
+            "Delta check failed for LabOrderItem %s (result save preserved)",
+            instance.pk,
+        )
+
+
 @receiver(post_save, sender="emr.VitalSigns")
 def trigger_deterioration_check(sender, instance, created, **kwargs):
     """Run the NEWS2 deterioration check after a VitalSigns row is committed.

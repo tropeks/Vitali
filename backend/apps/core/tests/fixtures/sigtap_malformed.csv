@@ -1,0 +1,4 @@
+# Malformed SIGTAP fixture (S1) — blank code and blank procedimento abort the run (fail-loud).
+CODIGO;PROCEDIMENTO;VALOR_SA;VALOR_SH;VALOR_SP;COMPETENCIA;INSTRUMENTO;COMPLEXIDADE;FINANCIAMENTO;SEXO;IDADE_MIN_DIAS;IDADE_MAX_DIAS
+;FAKE-Sem código;10,00;0,00;0,00;2024-01;bpa_c;media;MAC;ambos;;
+0301010010;;10,00;0,00;0,00;2024-01;bpa_c;media;MAC;ambos;;

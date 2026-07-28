@@ -22,6 +22,7 @@ import {
   WalletCards,
 } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
+import { hasPermission } from '@/lib/auth'
 import {
   ALLERGY_SEVERITY_BLOCK,
   ALLERGY_SEVERITY_META,
@@ -34,8 +35,27 @@ import {
   type BadgeMeta,
 } from '@/lib/operational-ui'
 import { PageShell, SectionState, StatusBadge } from '@/components/shared'
+import ProblemList from '@/components/patients/ProblemList'
+import ImmunizationList from '@/components/patients/ImmunizationList'
+import ReconciliationList from '@/components/patients/ReconciliationList'
+import SaeDiagnosisList from '@/components/nursing/SaeDiagnosisList'
+import SaeEvolution from '@/components/nursing/SaeEvolution'
+import AdmissionPanel from '@/components/inpatient/AdmissionPanel'
+import SurgeryCasePanel from '@/components/surgery/SurgeryCasePanel'
+import EmergencyChartPanel from '@/components/emergency/EmergencyChartPanel'
+import { PERMISSIONS } from '@/lib/permissions'
 
-type TabId = 'resumo' | 'timeline' | 'clinico' | 'convenios' | 'dados'
+type TabId =
+  | 'resumo'
+  | 'timeline'
+  | 'clinico'
+  | 'reconciliacao'
+  | 'sae'
+  | 'internacao'
+  | 'cirurgia'
+  | 'emergencia'
+  | 'convenios'
+  | 'dados'
 
 interface Patient {
   id: string
@@ -607,6 +627,16 @@ export default function PatientDetailPage() {
     .filter((appointment) => appointment.start_time)
     .sort((a, b) => new Date(a.start_time ?? 0).getTime() - new Date(b.start_time ?? 0).getTime())[0]
   const openEncounters = related.encounters.filter((encounter) => encounter.status === 'open')
+  const saeEncounterId = openEncounters[0]?.id ?? null
+  const canWriteSae = useMemo(() => hasPermission('sae.write'), [])
+  const canReadBeds = useMemo(() => hasPermission(PERMISSIONS.BEDS_READ), [])
+  const canAdmit = useMemo(() => hasPermission(PERMISSIONS.ADT_ADMIT), [])
+  const canDischarge = useMemo(() => hasPermission(PERMISSIONS.ADT_DISCHARGE), [])
+  const canReadSurgery = useMemo(() => hasPermission(PERMISSIONS.SURGERY_READ), [])
+  const canManageSurgery = useMemo(() => hasPermission(PERMISSIONS.SURGERY_MANAGE), [])
+  const canReadEmergency = useMemo(() => hasPermission(PERMISSIONS.EMERGENCY_READ), [])
+  const canClassifyEmergency = useMemo(() => hasPermission(PERMISSIONS.EMERGENCY_CLASSIFY), [])
+  const canManageEmergency = useMemo(() => hasPermission(PERMISSIONS.EMERGENCY_MANAGE), [])
   const pendingGuides = related.guides.filter((guide) => guide.status && !['paid'].includes(guide.status))
   const glosaGuides = related.guides.filter((guide) => guide.status === 'denied' || guide.status === 'appeal')
   const activePrescriptions = related.prescriptions.filter((rx) =>
@@ -623,6 +653,11 @@ export default function PatientDetailPage() {
     { id: 'resumo', label: 'Resumo operacional' },
     { id: 'timeline', label: `Timeline${related.timeline.length ? ` (${related.timeline.length})` : ''}` },
     { id: 'clinico', label: `Clínico${activeAllergies.length ? ` (${activeAllergies.length})` : ''}` },
+    { id: 'reconciliacao', label: 'Reconciliação' },
+    { id: 'sae', label: 'SAE' },
+    { id: 'internacao', label: 'Internação' },
+    { id: 'cirurgia', label: 'Cirurgia' },
+    { id: 'emergencia', label: 'Emergência' },
     { id: 'convenios', label: `Convênios${activeCards.length ? ` (${activeCards.length})` : ''}` },
     { id: 'dados', label: 'Dados cadastrais' },
   ]
@@ -1007,31 +1042,60 @@ export default function PatientDetailPage() {
               )}
 
               {activeTab === 'clinico' && (
-                <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-                  <div>
-                    <h2 className="text-base font-semibold text-slate-900">Alergias e reações</h2>
-                    <div className="mt-3 space-y-2">
-                      {(patient.allergies ?? []).length === 0 ? (
-                        <SectionState title="Sem alergia registrada" detail="Registrar alergias melhora segurança da prescrição e dispensação." tone="success" />
-                      ) : patient.allergies?.map((allergy) => (
-                        <div key={allergy.id} className={`rounded-lg border px-4 py-3 ${ALLERGY_SEVERITY_BLOCK[allergy.severity] ?? 'border-slate-200 bg-slate-50 text-slate-700'}`}>
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="text-sm font-semibold">{allergy.substance}</p>
-                              {allergy.reaction && <p className="mt-1 text-xs opacity-80">{allergy.reaction}</p>}
-                            </div>
-                            <span className="text-xs font-semibold">{resolveBadgeMeta(ALLERGY_SEVERITY_META, allergy.severity, allergy.severity_display).label}</span>
-                          </div>
-                          <p className="mt-2 text-xs opacity-80">Status: {allergy.status_display ?? allergy.status}</p>
-                        </div>
-                      ))}
+                <div className="space-y-6">
+                  <section>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <h2 className="text-base font-semibold text-slate-900">Lista de problemas (CID-10)</h2>
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Governado</span>
                     </div>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Problemas ativos e resolvidos codificados em CID-10 (registro governado do prontuário).
+                    </p>
+                    <div className="mt-3">
+                      <ProblemList patientId={id} />
+                    </div>
+                  </section>
+
+                  <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                    <section>
+                      <h2 className="text-base font-semibold text-slate-900">Alergias e reações</h2>
+                      <div className="mt-3 space-y-2">
+                        {(patient.allergies ?? []).length === 0 ? (
+                          <SectionState title="Sem alergia registrada" detail="Registrar alergias melhora segurança da prescrição e dispensação." tone="success" />
+                        ) : patient.allergies?.map((allergy) => (
+                          <div key={allergy.id} className={`rounded-lg border px-4 py-3 ${ALLERGY_SEVERITY_BLOCK[allergy.severity] ?? 'border-slate-200 bg-slate-50 text-slate-700'}`}>
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-semibold">{allergy.substance}</p>
+                                {allergy.reaction && <p className="mt-1 text-xs opacity-80">{allergy.reaction}</p>}
+                              </div>
+                              <span className="text-xs font-semibold">{resolveBadgeMeta(ALLERGY_SEVERITY_META, allergy.severity, allergy.severity_display).label}</span>
+                            </div>
+                            <p className="mt-2 text-xs opacity-80">Status: {allergy.status_display ?? allergy.status}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                    <section>
+                      <h2 className="text-base font-semibold text-slate-900">Imunizações</h2>
+                      <p className="mt-1 text-sm text-slate-500">Registro vacinal governado (calendário PNI).</p>
+                      <div className="mt-3">
+                        <ImmunizationList patientId={id} />
+                      </div>
+                    </section>
                   </div>
-                  <div>
-                    <h2 className="text-base font-semibold text-slate-900">Histórico e condições</h2>
+
+                  <section>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <h2 className="text-base font-semibold text-slate-900">Histórico legado</h2>
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Legado</span>
+                    </div>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Condições do campo antigo <code className="text-xs">medical_history</code>. Preferir a lista de problemas governada acima.
+                    </p>
                     <div className="mt-3 space-y-2">
                       {(patient.medical_history ?? []).length === 0 ? (
-                        <SectionState title="Sem histórico registrado" detail="Condições ativas aparecerão como contexto clínico permanente." />
+                        <SectionState title="Sem histórico legado" detail="Nenhuma condição no campo legado; use a lista de problemas governada." />
                       ) : patient.medical_history?.map((history) => (
                         <div key={history.id} className="rounded-lg border border-slate-200 bg-white px-4 py-3">
                           <div className="flex items-start justify-between gap-3">
@@ -1054,7 +1118,133 @@ export default function PatientDetailPage() {
                         </div>
                       ))}
                     </div>
+                  </section>
+                </div>
+              )}
+
+              {activeTab === 'reconciliacao' && (
+                <div className="space-y-3">
+                  <div>
+                    <h2 className="text-base font-semibold text-slate-900">Reconciliação medicamentosa</h2>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Decisões por medicamento em cada transição (admissão, transferência, alta). Registro governado, congelado após a conclusão.
+                    </p>
                   </div>
+                  <ReconciliationList patientId={id} />
+                </div>
+              )}
+
+              {activeTab === 'sae' && (
+                <div className="space-y-6">
+                  <section>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <h2 className="text-base font-semibold text-slate-900">
+                        Diagnósticos de enfermagem (SAE)
+                      </h2>
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Processo de enfermagem
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Diagnóstico (NANDA) → plano de cuidados (resultado NOC + intervenções NIC) →
+                      prescrição de enfermagem executável. Registro governado do prontuário.
+                    </p>
+                    <div className="mt-3">
+                      <SaeDiagnosisList
+                        patientId={id}
+                        encounterId={saeEncounterId}
+                        canWrite={canWriteSae}
+                      />
+                    </div>
+                  </section>
+
+                  <section>
+                    <h2 className="text-base font-semibold text-slate-900">Evolução de enfermagem</h2>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Evoluções de enfermagem do paciente em ordem cronológica.
+                    </p>
+                    <div className="mt-3">
+                      <SaeEvolution
+                        patientId={id}
+                        encounterId={saeEncounterId}
+                        canWrite={canWriteSae}
+                      />
+                    </div>
+                  </section>
+                </div>
+              )}
+
+              {activeTab === 'internacao' && (
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <h2 className="text-base font-semibold text-slate-900">
+                        Internação (ADT / leitos)
+                      </h2>
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Admissão / alta
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Admissão na recepção, leito atual, histórico ADT e alta. Registro governado
+                      do prontuário.
+                    </p>
+                  </div>
+                  <AdmissionPanel
+                    patientId={id}
+                    canRead={canReadBeds}
+                    canAdmit={canAdmit}
+                    canDischarge={canDischarge}
+                  />
+                </div>
+              )}
+
+              {activeTab === 'cirurgia' && (
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <h2 className="text-base font-semibold text-slate-900">
+                        Cirurgia (centro cirúrgico)
+                      </h2>
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Prontuário cirúrgico
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Casos cirúrgicos do paciente, tempos intra-op, checklist de cirurgia
+                      segura (OMS) e equipe. Registro governado do prontuário.
+                    </p>
+                  </div>
+                  <SurgeryCasePanel
+                    patientId={id}
+                    canRead={canReadSurgery}
+                    canManage={canManageSurgery}
+                  />
+                </div>
+              )}
+
+              {activeTab === 'emergencia' && (
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <h2 className="text-base font-semibold text-slate-900">
+                        Emergência (PS / triagem Manchester)
+                      </h2>
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Atendimento de emergência
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Boletins de atendimento de emergência do paciente, classificação de risco
+                      Manchester (histórico append-only) e desfecho. Registro governado do prontuário.
+                    </p>
+                  </div>
+                  <EmergencyChartPanel
+                    patientId={id}
+                    canRead={canReadEmergency}
+                    canClassify={canClassifyEmergency}
+                    canManage={canManageEmergency}
+                  />
                 </div>
               )}
 

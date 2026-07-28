@@ -10,6 +10,7 @@ from .views import (
     DuplicatePatientCandidateViewSet,
     EncounterAddendumViewSet,
     EncounterViewSet,
+    LabDeltaAlertViewSet,
     LabOrderViewSet,
     LabTestViewSet,
     MedicationAdministrationViewSet,
@@ -24,13 +25,28 @@ from .views import (
     VitalSignsViewSet,
     WaitingRoomView,
 )
+from .views_adt import (
+    AdmissionEventViewSet,
+    AdmissionViewSet,
+    BedViewSet,
+    InpatientUnitViewSet,
+    RoomViewSet,
+)
 from .views_cid10 import CID10AcceptView, CID10SuggestView
 from .views_diagnostics import CriticalLabResultViewSet, LabInstrumentViewSet, LabSpecimenViewSet
+from .views_emergency import EmergencyEncounterViewSet, RiskClassificationViewSet
 from .views_lab_report import LabReportPDFView, LabReportSignView
 from .views_lis import LabIntegrationMessageViewSet, LabOrderORMView, LISInboundView
 from .views_pdf import PrescriptionPDFView
 from .views_problems import AllergyViewSet, ImmunizationViewSet, ProblemListItemViewSet
 from .views_reconciliation import MedicationReconciliationViewSet, OrderSetViewSet
+from .views_sae import (
+    NursingCareplanInterventionViewSet,
+    NursingCareplanViewSet,
+    NursingDiagnosisViewSet,
+    NursingEvolutionViewSet,
+    NursingPrescriptionItemViewSet,
+)
 from .views_safety import (
     AcknowledgeDeteriorationAlertView,
     AcknowledgeNoShowRiskView,
@@ -41,6 +57,15 @@ from .views_safety import (
 )
 from .views_scribe import ScribeStartView, ScribeStatusView, ScribeTranscribeView
 from .views_setup import WizardProfessionalSetupView, WizardStatusView
+from .views_surgery import (
+    OperatingRoomViewSet,
+    SurgicalCaseViewSet,
+    SurgicalChecklistViewSet,
+    SurgicalMaterialViewSet,
+    SurgicalProcedureViewSet,
+    SurgicalTeamMemberViewSet,
+    SurgicalTimeViewSet,
+)
 from .views_waitlist import WaitlistDetailView, WaitlistViewSet
 
 router = DefaultRouter()
@@ -65,6 +90,7 @@ router.register(
 router.register("encounter-addenda", EncounterAddendumViewSet, basename="encounter-addendum")
 router.register("lab-tests", LabTestViewSet, basename="lab-test")
 router.register("lab-orders", LabOrderViewSet, basename="lab-order")
+router.register("lab-delta-alerts", LabDeltaAlertViewSet, basename="lab-delta-alert")
 router.register("lab-integrations", LabIntegrationMessageViewSet, basename="lab-integration")
 router.register("lab-instruments", LabInstrumentViewSet, basename="lab-instrument")
 router.register("lab-specimens", LabSpecimenViewSet, basename="lab-specimen")
@@ -73,6 +99,20 @@ router.register("prescriptions", PrescriptionViewSet, basename="prescription")
 router.register("prescription-items", PrescriptionItemViewSet, basename="prescription-item")
 router.register("emar", MedicationAdministrationViewSet, basename="emar")
 router.register("nursing-assessments", NursingAssessmentViewSet, basename="nursing-assessment")
+# ── N2: executable SAE domain (diagnóstico → planejamento → intervenção → prescrição → evolução)
+router.register("nursing-diagnoses", NursingDiagnosisViewSet, basename="nursing-diagnosis")
+router.register("nursing-careplans", NursingCareplanViewSet, basename="nursing-careplan")
+router.register(
+    "nursing-care-interventions",
+    NursingCareplanInterventionViewSet,
+    basename="nursing-care-intervention",
+)
+router.register(
+    "nursing-prescription-items",
+    NursingPrescriptionItemViewSet,
+    basename="nursing-prescription-item",
+)
+router.register("nursing-evolutions", NursingEvolutionViewSet, basename="nursing-evolution")
 router.register("problems", ProblemListItemViewSet, basename="problem")
 router.register("allergies", AllergyViewSet, basename="allergy")
 router.register("immunizations", ImmunizationViewSet, basename="immunization")
@@ -82,6 +122,26 @@ router.register(
     basename="medication-reconciliation",
 )
 router.register("order-sets", OrderSetViewSet, basename="order-set")
+# ── L1: ADT/Leitos — estrutura física (unidade → quarto → leito)
+router.register("inpatient-units", InpatientUnitViewSet, basename="inpatient-unit")
+router.register("rooms", RoomViewSet, basename="room")
+router.register("beds", BedViewSet, basename="bed")
+# ── L2: ADT/Leitos — admissão/internação + log de eventos ADT (append-only)
+router.register("admissions", AdmissionViewSet, basename="admission")
+router.register("admission-events", AdmissionEventViewSet, basename="admission-event")
+# ── C1: Centro Cirúrgico — sala → caso cirúrgico → procedimento (TUSS)
+router.register("operating-rooms", OperatingRoomViewSet, basename="operating-room")
+router.register("surgical-cases", SurgicalCaseViewSet, basename="surgical-case")
+router.register("surgical-procedures", SurgicalProcedureViewSet, basename="surgical-procedure")
+# ── C3: Centro Cirúrgico — equipe (CRUD) + tempos + checklist OMS (append-only)
+router.register("surgical-team", SurgicalTeamMemberViewSet, basename="surgical-team")
+router.register("surgical-times", SurgicalTimeViewSet, basename="surgical-time")
+router.register("surgical-checklists", SurgicalChecklistViewSet, basename="surgical-checklist")
+# ── C6: Centro Cirúrgico — materiais / OPME + consumo de sala (rastreabilidade)
+router.register("surgical-materials", SurgicalMaterialViewSet, basename="surgical-material")
+# ── E2: PS/Emergência — boletim de atendimento + classificação de risco (Manchester)
+router.register("emergency-encounters", EmergencyEncounterViewSet, basename="emergency-encounter")
+router.register("risk-classifications", RiskClassificationViewSet, basename="risk-classification")
 
 urlpatterns = (
     [

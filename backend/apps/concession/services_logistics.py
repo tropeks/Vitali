@@ -61,6 +61,26 @@ def approve_requisition(requisition: SupplyRequisition) -> SupplyRequisition:
     return requisition
 
 
+def cancel_requisition(requisition: SupplyRequisition) -> SupplyRequisition:
+    """DRAFT / SUBMITTED / APPROVED → CANCELLED.
+
+    A requisition that has already been FULFILLED (goods delivered) or CANCELLED
+    cannot be cancelled — cancelling would contradict the delivered stock ledger.
+    """
+    cancellable = {
+        SupplyRequisition.Status.DRAFT,
+        SupplyRequisition.Status.SUBMITTED,
+        SupplyRequisition.Status.APPROVED,
+    }
+    if requisition.status not in cancellable:
+        raise ValidationError(
+            f"A requisition in status '{requisition.status}' cannot be cancelled."
+        )
+    requisition.status = SupplyRequisition.Status.CANCELLED
+    requisition.save(update_fields=["status", "updated_at"])
+    return requisition
+
+
 # ─── Pick ─────────────────────────────────────────────────────────────────────
 
 
@@ -274,6 +294,7 @@ def deliver_dispatch(
 __all__ = [
     "submit_requisition",
     "approve_requisition",
+    "cancel_requisition",
     "create_pick_list",
     "pick_item",
     "create_dispatch",

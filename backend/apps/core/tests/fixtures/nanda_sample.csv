@@ -1,0 +1,5 @@
+# Tiny synthetic NANDA-I fixture (N1-T2) — NOT real NANDA-I licensed content.
+CODIGO;TITULO;DOMINIO;CLASSE;DEFINICAO;CARACTERISTICAS;FATORES
+00132;FAKE-Dor aguda;12 Conforto;1 Conforto físico;FAKE-Experiência sensorial desagradável;FAKE-Expressão facial de dor, postura antálgica;FAKE-Agente lesivo biológico
+00046;FAKE-Integridade da pele prejudicada;11 Segurança/proteção;2 Lesão física;FAKE-Epiderme e/ou derme alteradas;FAKE-Ruptura da superfície da pele;FAKE-Umidade, imobilização física
+00004;FAKE-Risco de infecção;11 Segurança/proteção;1 Infecção;FAKE-Suscetível a invasão de organismos patogênicos;;FAKE-Defesas primárias inadequadas

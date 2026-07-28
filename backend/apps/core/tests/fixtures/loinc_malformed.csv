@@ -1,0 +1,4 @@
+# Malformed LOINC fixture (M2-S3-T1): one row missing LOINC_NUM, one missing name.
+LOINC_NUM;LONG_COMMON_NAME;COMPONENT;PROPERTY;SYSTEM
+;FAKE-No code here;Hemoglobin;MCnc;Bld
+2345-7;;Glucose;MCnc;Ser/Plas

@@ -4,6 +4,12 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    OpenApiResponse,
+    extend_schema,
+    extend_schema_view,
+)
 from rest_framework import filters, mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -24,6 +30,7 @@ from .models import (
     Encounter,
     EncounterAddendum,
     EncounterProcedure,
+    LabDeltaAlert,
     LabOrder,
     LabOrderItem,
     LabTest,
@@ -48,6 +55,7 @@ from .serializers import (
     EncounterListSerializer,
     EncounterProcedureSerializer,
     EncounterSerializer,
+    LabDeltaAlertSerializer,
     LabOrderItemSerializer,
     LabOrderSerializer,
     LabTestSerializer,
@@ -82,14 +90,22 @@ class MedicationAdministrationViewSet(viewsets.ModelViewSet):
         return qs.filter(encounter_id=encounter) if encounter else qs
 
     def get_permissions(self):
-        permission = "emar.administer" if self.action == "create" else "emar.read"
+        writes = {"create", "check"}
+        permission = "emar.administer" if self.action in writes else "emar.read"
         return [IsAuthenticated(), HasPermission(permission)]
+
+    def get_serializer_class(self):
+        if self.action == "check":
+            from .serializers import BCMACheckSerializer
+
+            return BCMACheckSerializer
+        return MedicationAdministrationSerializer
 
     def create(self, request, *args, **kwargs):
         from .models import PrescriptionItem
         from .services.clinical_operations import MedicationAdministrationService
 
-        serializer = self.get_serializer(data=request.data)
+        serializer = MedicationAdministrationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         item = PrescriptionItem.objects.get(
             pk=serializer.validated_data.pop("prescription_item").pk
@@ -104,7 +120,85 @@ class MedicationAdministrationViewSet(viewsets.ModelViewSet):
             event.id,
             new_data={"status": event.status},
         )
-        return Response(self.get_serializer(event).data, status=status.HTTP_201_CREATED)
+        return Response(
+            MedicationAdministrationSerializer(event).data, status=status.HTTP_201_CREATED
+        )
+
+    @extend_schema(
+        request=None,
+        responses={
+            201: MedicationAdministrationSerializer,
+            422: OpenApiResponse(description="Um dos '5 certos' falhou; informe override_reason."),
+        },
+        summary="BCMA beira-leito: checagem dos 5 certos e registro da administração",
+        description=(
+            "Escaneia paciente + medicamento à beira-leito, verifica os 5 certos "
+            "(paciente/medicamento/dose/via/hora) contra a ordem assinada e, em caso "
+            "de sucesso, registra a administração (append-only, bcma_verified=True). "
+            "Se um certo falhar, retorna o mismatch estruturado (422); o enfermeiro só "
+            "prossegue enviando override_reason (registro com bcma_verified=False)."
+        ),
+    )
+    @action(detail=False, methods=["post"], url_path="check")
+    def check(self, request, *args, **kwargs):
+        from .serializers import BCMACheckSerializer
+        from .services.bcma import nearest_scheduled_slot, verify_five_rights
+        from .services.clinical_operations import MedicationAdministrationService
+
+        serializer = BCMACheckSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        item = data["prescription_item"]
+        patient = item.prescription.patient
+        patient_barcode = data["patient_barcode"]
+        medication_barcode = data["medication_barcode"]
+        override_reason = data.get("override_reason", "").strip()
+
+        at_time = timezone.now()
+        result = verify_five_rights(
+            item,
+            patient,
+            patient_barcode=patient_barcode,
+            medication_barcode=medication_barcode,
+            at_time=at_time,
+        )
+
+        if not result.ok and not override_reason:
+            # A "certo" failed and the nurse gave no justification → block.
+            return Response(
+                {
+                    "detail": "Falha na checagem dos 5 certos. Informe override_reason para prosseguir.",
+                    "bcma": result.as_dict(),
+                },
+                status=422,
+            )
+
+        scheduled_at = nearest_scheduled_slot(item, at_time)
+        event = MedicationAdministrationService.record(
+            prescription_item=item,
+            scheduled_at=scheduled_at,
+            status="given",
+            user=request.user,
+            administered_at=at_time,
+            patient_barcode_scanned=patient_barcode,
+            medication_barcode_scanned=medication_barcode,
+            bcma_verified=result.ok,
+            bcma_override_reason="" if result.ok else override_reason,
+        )
+        log_audit(
+            request,
+            "emar_bcma_check",
+            "MedicationAdministration",
+            event.id,
+            new_data={
+                "status": event.status,
+                "bcma_verified": event.bcma_verified,
+                "mismatches": result.mismatches,
+            },
+        )
+        return Response(
+            MedicationAdministrationSerializer(event).data, status=status.HTTP_201_CREATED
+        )
 
 
 class NursingAssessmentViewSet(viewsets.ModelViewSet):
@@ -1270,6 +1364,48 @@ class LabOrderViewSet(viewsets.ModelViewSet):
             order.completed_at = timezone.now()
             order.save(update_fields=["status", "completed_at"])
         return Response(self.get_serializer(order).data)
+
+
+@extend_schema_view(
+    list=extend_schema(
+        summary="Lista alertas de delta-check laboratorial",
+        parameters=[
+            OpenApiParameter(
+                "patient", str, description="Filtra por paciente do resultado que disparou."
+            ),
+            OpenApiParameter(
+                "order_item", str, description="Filtra pelo item de resultado que disparou."
+            ),
+        ],
+        responses=LabDeltaAlertSerializer(many=True),
+    ),
+    retrieve=extend_schema(
+        summary="Detalha um alerta de delta-check", responses=LabDeltaAlertSerializer
+    ),
+)
+class LabDeltaAlertViewSet(viewsets.ReadOnlyModelViewSet):
+    """A3-T3 — read-only feed of laboratory delta-check alerts (emr.read).
+
+    Alerts are raised by ``run_delta_check`` when a numeric result varies from
+    the patient's most recent prior result for the same test beyond the test's
+    configured ``delta_threshold_pct``. Tenant-scoped by schema; optional
+    ``?patient=`` / ``?order_item=`` filters.
+    """
+
+    serializer_class = LabDeltaAlertSerializer
+    permission_classes = [IsAuthenticated, HasPermission("emr.read")]  # type: ignore[list-item]
+
+    def get_queryset(self):
+        qs = LabDeltaAlert.objects.select_related("test", "order_item", "previous_item").order_by(
+            "-created_at"
+        )
+        patient = self.request.query_params.get("patient")
+        if patient:
+            qs = qs.filter(order_item__order__patient_id=patient)
+        order_item = self.request.query_params.get("order_item")
+        if order_item:
+            qs = qs.filter(order_item_id=order_item)
+        return qs
 
 
 # ─── Sprint 7 (S-015): Prescription ───────────────────────────────────────────

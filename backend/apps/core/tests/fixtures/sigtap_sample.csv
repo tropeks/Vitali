@@ -1,0 +1,11 @@
+# Tiny synthetic SIGTAP fixture (S1) — SIGTAP é domínio público DATASUS; amostra representativa.
+# Valores/códigos são ilustrativos (FAKE-), não a tabela oficial.
+CODIGO;PROCEDIMENTO;VALOR_SA;VALOR_SH;VALOR_SP;COMPETENCIA;INSTRUMENTO;COMPLEXIDADE;FINANCIAMENTO;SEXO;IDADE_MIN_DIAS;IDADE_MAX_DIAS
+0301010010;FAKE-Consulta médica atenção básica;10,00;0,00;0,00;2024-01;bpa_c;atencao_basica;PAB;ambos;;
+0301060029;FAKE-Consulta de puericultura;7,55;0,00;0,00;2024-01;bpa_i;atencao_basica;PAB;ambos;0;4380
+0202010473;FAKE-Hemograma completo;4,11;0,00;0,00;2024-01;bpa_i;media;MAC;ambos;;
+0303010045;FAKE-Tratamento de pneumonia;0,00;220,50;180,30;2024-01;aih;media;MAC;ambos;;
+0304010030;FAKE-Quimioterapia de neoplasia;0,00;0,00;1200,00;2024-01;apac;alta;FAEC;ambos;;
+0409060186;FAKE-Ressonância magnética de crânio;0,00;0,00;268,75;2024-01;apac;alta;MAC;ambos;;
+0211040053;FAKE-Ultrassonografia obstétrica;24,20;0,00;0,00;2024-01;bpa_i;media;MAC;F;3650;
+0201010534;FAKE-Coleta de material citopatológico;6,35;0,00;0,00;2024-01;bpa_c;atencao_basica;PAB;F;;

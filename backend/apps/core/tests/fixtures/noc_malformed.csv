@@ -1,0 +1,5 @@
+# One good row, one missing CODIGO, one missing TITULO (N1-T2 parse-error test).
+CODIGO;TITULO;DEFINICAO;INDICADORES
+2102;FAKE-Nível de dor;FAKE-Definição;FAKE-Indicadores
+;FAKE-Sem Codigo;FAKE-Definição;FAKE-Indicadores
+0703;;FAKE-Definição;FAKE-Indicadores
