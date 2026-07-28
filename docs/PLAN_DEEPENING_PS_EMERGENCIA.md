@@ -23,7 +23,7 @@
 ### E1 · Catálogo Manchester + acuidade (backend) · **Opus** · ✅ FEITO (commit 84c63f9)
 Catálogo governado SHARED (apps/core): `ManchesterFlowchart` (fluxograma, ~52 no MTS — infra + amostra, conteúdo licenciado GBCR) e `ManchesterDiscriminator` (discriminador por fluxograma → nível de acuidade). Níveis de acuidade como enum: **vermelho(0)/laranja(10)/amarelo(60)/verde(120)/azul(240 min)** com tempo-alvo. Importer CLI + registro no search de terminologia + `protect_*_deletion`. RBAC `emergency.read`/`emergency.manage`/`emergency.classify`. CRUD DRF + seed amostra. Migração. pytest TDD + `@extend_schema`.
 
-### E2 · Boletim + classificação de risco (backend) · **Opus** (dep E1)
+### E2 · Boletim + classificação de risco (backend) · **Opus** (dep E1) · ✅ FEITO (commit dde7e64)
 `EmergencyEncounter`/Boletim (apps/emr: arrival_at, mode_of_arrival [ambulante/maca/ambulância/PM], chief_complaint, FK Encounter[emergencia], FK Patient, status). `RiskClassification` (FK boletim, FK flowchart, FK discriminator, acuity_level, target_time, snapshot de vitais, classified_by, classified_at) — **reclassificação = novo registro** (histórico). Serviço `classify(boletim, flowchart, discriminator, vitals)` → seta acuidade+alvo (atômico). Vincula ao VitalSigns/NEWS2. RBAC `emergency.classify`. pytest TDD.
 
 ### E3 · Fila por gravidade + desfecho (backend) · **Opus** (dep E2)
