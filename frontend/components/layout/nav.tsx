@@ -18,6 +18,7 @@ import {
   ScanBarcode,
   BedDouble,
   Scissors,
+  Siren,
   FlaskConical,
   CalendarX,
   CalendarClock,
@@ -135,6 +136,16 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Scissors,
         module: "emr",
         permissions: [PERMISSIONS.SURGERY_READ],
+      },
+      {
+        // Painel PS / Pronto-Socorro (E4): fila por gravidade (Manchester). Gated
+        // emergency.read; abrir/classificar/chamar/desfecho gated emergency.manage/
+        // classify no painel. Desfecho "internação" cria Admission (ponte ADT).
+        label: "Pronto-Socorro",
+        href: "/pronto-socorro",
+        icon: Siren,
+        module: "emr",
+        permissions: [PERMISSIONS.EMERGENCY_READ],
       },
       {
         label: "Faltas",

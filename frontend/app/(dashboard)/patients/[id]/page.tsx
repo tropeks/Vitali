@@ -42,6 +42,7 @@ import SaeDiagnosisList from '@/components/nursing/SaeDiagnosisList'
 import SaeEvolution from '@/components/nursing/SaeEvolution'
 import AdmissionPanel from '@/components/inpatient/AdmissionPanel'
 import SurgeryCasePanel from '@/components/surgery/SurgeryCasePanel'
+import EmergencyChartPanel from '@/components/emergency/EmergencyChartPanel'
 import { PERMISSIONS } from '@/lib/permissions'
 
 type TabId =
@@ -52,6 +53,7 @@ type TabId =
   | 'sae'
   | 'internacao'
   | 'cirurgia'
+  | 'emergencia'
   | 'convenios'
   | 'dados'
 
@@ -632,6 +634,9 @@ export default function PatientDetailPage() {
   const canDischarge = useMemo(() => hasPermission(PERMISSIONS.ADT_DISCHARGE), [])
   const canReadSurgery = useMemo(() => hasPermission(PERMISSIONS.SURGERY_READ), [])
   const canManageSurgery = useMemo(() => hasPermission(PERMISSIONS.SURGERY_MANAGE), [])
+  const canReadEmergency = useMemo(() => hasPermission(PERMISSIONS.EMERGENCY_READ), [])
+  const canClassifyEmergency = useMemo(() => hasPermission(PERMISSIONS.EMERGENCY_CLASSIFY), [])
+  const canManageEmergency = useMemo(() => hasPermission(PERMISSIONS.EMERGENCY_MANAGE), [])
   const pendingGuides = related.guides.filter((guide) => guide.status && !['paid'].includes(guide.status))
   const glosaGuides = related.guides.filter((guide) => guide.status === 'denied' || guide.status === 'appeal')
   const activePrescriptions = related.prescriptions.filter((rx) =>
@@ -652,6 +657,7 @@ export default function PatientDetailPage() {
     { id: 'sae', label: 'SAE' },
     { id: 'internacao', label: 'Internação' },
     { id: 'cirurgia', label: 'Cirurgia' },
+    { id: 'emergencia', label: 'Emergência' },
     { id: 'convenios', label: `Convênios${activeCards.length ? ` (${activeCards.length})` : ''}` },
     { id: 'dados', label: 'Dados cadastrais' },
   ]
@@ -1213,6 +1219,31 @@ export default function PatientDetailPage() {
                     patientId={id}
                     canRead={canReadSurgery}
                     canManage={canManageSurgery}
+                  />
+                </div>
+              )}
+
+              {activeTab === 'emergencia' && (
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <h2 className="text-base font-semibold text-slate-900">
+                        Emergência (PS / triagem Manchester)
+                      </h2>
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Atendimento de emergência
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Boletins de atendimento de emergência do paciente, classificação de risco
+                      Manchester (histórico append-only) e desfecho. Registro governado do prontuário.
+                    </p>
+                  </div>
+                  <EmergencyChartPanel
+                    patientId={id}
+                    canRead={canReadEmergency}
+                    canClassify={canClassifyEmergency}
+                    canManage={canManageEmergency}
                   />
                 </div>
               )}

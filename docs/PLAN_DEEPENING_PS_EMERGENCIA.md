@@ -26,13 +26,17 @@ Catálogo governado SHARED (apps/core): `ManchesterFlowchart` (fluxograma, ~52 n
 ### E2 · Boletim + classificação de risco (backend) · **Opus** (dep E1) · ✅ FEITO (commit dde7e64)
 `EmergencyEncounter`/Boletim (apps/emr: arrival_at, mode_of_arrival [ambulante/maca/ambulância/PM], chief_complaint, FK Encounter[emergencia], FK Patient, status). `RiskClassification` (FK boletim, FK flowchart, FK discriminator, acuity_level, target_time, snapshot de vitais, classified_by, classified_at) — **reclassificação = novo registro** (histórico). Serviço `classify(boletim, flowchart, discriminator, vitals)` → seta acuidade+alvo (atômico). Vincula ao VitalSigns/NEWS2. RBAC `emergency.classify`. pytest TDD.
 
-### E3 · Fila por gravidade + desfecho (backend) · **Opus** (dep E2)
+### E3 · Fila por gravidade + desfecho (backend) · **Opus** (dep E2) · ✅ FEITO (commit 1c57a60)
 Fila de acuidade: ordena por (nível, tempo de espera/chegada); "próximo a chamar"; **escalonamento por tempo-alvo estourado** (re-triagem sugerida). Desfecho/disposition (alta / **internação → ADT admit** / óbito / evasão / transferência / observação). Endpoint painel PS `/emergency/board/` + fila. RBAC `emergency.manage`. pytest TDD.
 
-### E4 · Painel PS + classificação (frontend) · **Opus** (dep E3)
+### E4 · Painel PS + classificação (frontend) · **Opus** (dep E3) · ✅ FEITO
 Rota `/pronto-socorro`: painel da fila por gravidade (cores Manchester + tempo-alvo/estouro), classificar (fluxograma→discriminador→acuidade + vitais), chamar próximo, desfecho. Nav "Pronto-Socorro" gated `emergency.read`. Vitest TDD.
 
-### E5 · Boletim + atendimento no prontuário (frontend) · **Opus** (dep E2/E4)
+### E5 · Boletim + atendimento no prontuário (frontend) · **Opus** (dep E2/E4) · ✅ FEITO
+
+> **Épico PS/Emergência E1..E5 concluído** (2026-07-28): catálogo Manchester+acuidade → boletim+classificação de risco →
+> fila por gravidade+desfecho (internação→ADT) → painel PS UI → atendimento no prontuário. Fecha o trio de cuidado agudo
+> do M3 (internação + centro cirúrgico + emergência).
 Fluxo de atendimento de emergência: boletim, histórico de classificações, vitais, desfecho (internar → ADT). Aba/entrada no prontuário `patients/[id]`. Vitest TDD. RBAC `emergency.manage`.
 
 ## Ordem
