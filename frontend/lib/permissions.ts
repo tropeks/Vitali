@@ -80,6 +80,11 @@ export const PERMISSIONS = {
   SURGERY_MANAGE: "surgery.manage",
   SURGERY_SCHEDULE: "surgery.schedule",
 
+  // PS / Emergência — Manchester (backend apps/emr emergency_models + views_emergency)
+  EMERGENCY_READ: "emergency.read",
+  EMERGENCY_MANAGE: "emergency.manage",
+  EMERGENCY_CLASSIFY: "emergency.classify",
+
   // Imaging / diagnostics
   IMAGING_READ: "imaging.read",
   IMAGING_WRITE: "imaging.write",
