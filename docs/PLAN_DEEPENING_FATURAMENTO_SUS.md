@@ -31,7 +31,7 @@ instrumento de registro, complexidade, financiamento, compat CBO/CID/sexo/faixa 
 (SIGTAP é domínio público DATASUS — infra + amostra representativa). Registro no search. `Professional.cns` (novo campo,
 migração). RBAC `sus.read`/`sus.write`. CRUD DRF. Migrações (core SIGTAP + emr Professional.cns). pytest TDD.
 
-### S2 · Produção ambulatorial BPA + competência (backend) · **Opus** (dep S1)
+### S2 · Produção ambulatorial BPA + competência (backend) · **Opus** (dep S1) · ✅ FEITO (commit c1ee7ff)
 `SusCompetencia` (por CNES + `AAAA-MM`, status aberta→fechada→exportada). **BPA-C** (consolidado: procedimento SIGTAP + CBO +
 idade + quantidade, sem paciente) e **BPA-I** (individualizado: paciente CNS + CID + procedimento + CBO + quantidade +
 serviço/classificação). Serviço-ponte `gerar_producao_ambulatorial(competencia)` a partir de `EncounterProcedure`
