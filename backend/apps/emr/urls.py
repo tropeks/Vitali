@@ -32,6 +32,7 @@ from .views_adt import (
     InpatientUnitViewSet,
     RoomViewSet,
 )
+from .views_bloodbank import BloodBagViewSet, BloodComponentViewSet
 from .views_cid10 import CID10AcceptView, CID10SuggestView
 from .views_diagnostics import CriticalLabResultViewSet, LabInstrumentViewSet, LabSpecimenViewSet
 from .views_emergency import EmergencyEncounterViewSet, RiskClassificationViewSet
@@ -142,6 +143,9 @@ router.register("surgical-materials", SurgicalMaterialViewSet, basename="surgica
 # ── E2: PS/Emergência — boletim de atendimento + classificação de risco (Manchester)
 router.register("emergency-encounters", EmergencyEncounterViewSet, basename="emergency-encounter")
 router.register("risk-classifications", RiskClassificationViewSet, basename="risk-classification")
+# ── H1: Banco de Sangue/Hemoterapia — catálogo de hemocomponentes + estoque de bolsas
+router.register("blood-components", BloodComponentViewSet, basename="blood-component")
+router.register("blood-bags", BloodBagViewSet, basename="blood-bag")
 
 urlpatterns = (
     [

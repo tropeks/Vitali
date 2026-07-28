@@ -5,16 +5,22 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('core', '0033_sigtapprocedure'),
-        ('emr', '0051_professional_cns'),
+        ("core", "0033_sigtapprocedure"),
+        ("emr", "0051_professional_cns"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='encounterprocedure',
-            name='sigtap',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.DO_NOTHING, related_name='encounter_procedures', to='core.sigtapprocedure', verbose_name='Procedimento SIGTAP (SUS)'),
+            model_name="encounterprocedure",
+            name="sigtap",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.DO_NOTHING,
+                related_name="encounter_procedures",
+                to="core.sigtapprocedure",
+                verbose_name="Procedimento SIGTAP (SUS)",
+            ),
         ),
     ]

@@ -25,9 +25,9 @@ to days when it wants a coarser view.
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import Any
 
-from django.db.models import Count
 from django.utils import timezone
 
 from apps.emr.models import Admission, Bed, InpatientUnit
@@ -49,11 +49,12 @@ def unit_occupancy(unit: InpatientUnit) -> dict[str, Any]:
     Returns total beds, per-status counts, operational-bed count, occupied count
     and the occupancy_rate (see module docstring for the denominator definition).
     """
-    counts: dict[str, int] = {value: 0 for value, _ in Bed.Status.choices}
-    total = 0
-    for entry in Bed.objects.filter(unit=unit).values("status").annotate(n=Count("id")):
-        counts[entry["status"]] = entry["n"]
-        total += entry["n"]
+    # Count per status Python-side via Counter over a flat values_list. The DB
+    # ``.annotate(Count())`` form crashes mypy 1.15.0 (django-stubs typing bug),
+    # so we avoid QuerySet.annotate() here; a unit's bed set is small.
+    tallies = Counter(Bed.objects.filter(unit=unit).values_list("status", flat=True))
+    counts: dict[str, int] = {value: tallies.get(value, 0) for value, _ in Bed.Status.choices}
+    total = sum(counts.values())
 
     non_operational = sum(counts[s] for s in _NON_OPERATIONAL_STATUSES)
     operational = total - non_operational
@@ -97,6 +98,7 @@ def census(*, unit: Any | None = None, now: Any | None = None) -> list[dict[str,
     rows: list[dict[str, Any]] = []
     for adm in qs:
         bed = adm.current_bed
+        assert bed is not None  # queryset filters current_bed__isnull=False
         rows.append(
             {
                 # Stringify ids so the client-facing contract matches every other

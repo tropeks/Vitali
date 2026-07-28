@@ -5,16 +5,21 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('emr', '0048_surgicalmaterial'),
-        ('pharmacy', '0031_controlledsubstanceledger_controlledledgerclosing_and_more'),
+        ("emr", "0048_surgicalmaterial"),
+        ("pharmacy", "0031_controlledsubstanceledger_controlledledgerclosing_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='stockmovement',
-            name='surgical_case',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='surgical_movements', to='emr.surgicalcase'),
+            model_name="stockmovement",
+            name="surgical_case",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="surgical_movements",
+                to="emr.surgicalcase",
+            ),
         ),
     ]

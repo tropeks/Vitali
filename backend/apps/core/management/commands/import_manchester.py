@@ -215,9 +215,9 @@ class Command(BaseCommand):
                 transaction.set_rollback(True)
 
         duration_ms = int(time.time() * 1000) - start_ms
-        created = fc_created + disc_created
-        updated = fc_updated + disc_updated
-        if errors and (created or updated):
+        total_added = fc_created + disc_created
+        total_updated = fc_updated + disc_updated
+        if errors and (total_added or total_updated):
             status = TerminologyImportLog.Status.PARTIAL
         elif errors:
             status = TerminologyImportLog.Status.ERROR
@@ -233,8 +233,8 @@ class Command(BaseCommand):
                 source=TerminologyImportLog.Source.MANAGEMENT_COMMAND,
                 provenance="GBCR",
                 row_count_total=len(rows),
-                row_count_added=created,
-                row_count_updated=updated,
+                row_count_added=total_added,
+                row_count_updated=total_updated,
                 row_count_errors=len(errors),
                 status=status,
                 dry_run=dry_run,

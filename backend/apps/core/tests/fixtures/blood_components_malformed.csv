@@ -1,0 +1,4 @@
+# Malformed hemocomponente fixture (H1) — a blank code row and a blank title row.
+CODIGO;TITULO;VALIDADE_DIAS;CONTEXTO
+;FAKE-Sem código;42;FAKE-Hemácias
+CP;;5;FAKE-Plaquetas

@@ -465,6 +465,35 @@ def protect_bed_type_deletion(sender, instance, **kwargs):
                 )
 
 
+# ─── BloodComponentCatalog cross-schema PROTECT (H1 — Banco de Sangue wired) ──
+# H1 wires the tenant-side blood stock (apps.emr.bloodbank_models): BloodBag.component
+# → core.BloodComponentCatalog. PostgreSQL does not enforce FK integrity across
+# schemas (tenant → public), so — exactly like protect_bed_type_deletion — this
+# application-layer guard blocks hard-deleting a hemocomponente any tenant references.
+
+
+@receiver(pre_delete, sender="core.BloodComponentCatalog")
+def protect_blood_component_deletion(sender, instance, **kwargs):
+    """Block deletion of a BloodComponentCatalog referenced by tenant blood stock.
+
+    Covers ``emr.BloodBag.component`` (FK) in every tenant. Mirrors the
+    Bed→BedType guard.
+    """
+    from django_tenants.utils import get_tenant_model, schema_context
+
+    TenantModel = get_tenant_model()
+    for tenant in TenantModel.objects.exclude(schema_name="public"):
+        with schema_context(tenant.schema_name):
+            from apps.emr.models import BloodBag
+
+            if BloodBag.objects.filter(component=instance).exists():
+                raise ProtectedError(
+                    f"BloodComponentCatalog {instance.code} is referenced by BloodBag in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+
+
 # ─── Manchester catalog cross-schema PROTECT (E2 — PS/Emergência wired) ───────
 # E2 wires the tenant-side PS/Emergência domain (apps.emr.emergency_models):
 # RiskClassification.flowchart → core.ManchesterFlowchart and

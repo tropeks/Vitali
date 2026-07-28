@@ -144,6 +144,7 @@ def setup_observability(service_role: str) -> None:
     from opentelemetry.sdk.trace.export import (  # noqa: PLC0415
         BatchSpanProcessor,
         ConsoleSpanExporter,
+        SpanExporter,
     )
     from opentelemetry.trace.propagation.tracecontext import (  # noqa: PLC0415
         TraceContextTextMapPropagator,
@@ -159,7 +160,7 @@ def setup_observability(service_role: str) -> None:
             OTLPSpanExporter,
         )
 
-        exporter = OTLPSpanExporter(endpoint=endpoint)
+        exporter: SpanExporter = OTLPSpanExporter(endpoint=endpoint)
     else:
         # ── P2 Hardening: ConsoleExporter blocked in production ───────────────
         # If no OTLP endpoint is set and we are NOT in debug/dev mode, fail
