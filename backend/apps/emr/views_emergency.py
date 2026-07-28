@@ -14,6 +14,8 @@ Permission split (per-action, mirroring ``_BedsPermissionMixin`` /
 
 from __future__ import annotations
 
+from django.core.exceptions import ValidationError as DjangoValidationError
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import status as http_status
 from rest_framework import viewsets
@@ -25,11 +27,36 @@ from apps.core.permissions import HasPermission
 
 from .serializers_emergency import (
     ClassifyInputSerializer,
+    CloseInputSerializer,
     EmergencyEncounterSerializer,
     RiskClassificationSerializer,
+    StartAttendanceInputSerializer,
 )
 from .services import emergency_classify as classify_service
+from .services import emergency_lifecycle as lifecycle_service
+from .services import emergency_queue as queue_service
 from .views import log_audit
+
+_FACILITY_PARAM = OpenApiParameter(
+    "facility", str, description="Filtra por estabelecimento (UUID) — reservado (E4)."
+)
+
+
+def _serialize_queue_row(row: dict) -> dict:
+    """Stringify ids for a queue row (service keeps UUIDs; endpoint emits str)."""
+    return {
+        "boletim_id": str(row["boletim_id"]),
+        "patient": {"id": str(row["patient_id"]), "name": row["patient_name"]},
+        "status": row["status"],
+        "mode_of_arrival": row["mode_of_arrival"],
+        "chief_complaint": row["chief_complaint"],
+        "arrival_at": row["arrival_at"],
+        "waited_minutes": row["waited_minutes"],
+        "acuity_level": row["acuity_level"],
+        "target_minutes": row["target_minutes"],
+        "overdue": row["overdue"],
+    }
+
 
 _PATIENT_PARAM = OpenApiParameter("patient", str, description="Filtra por paciente (UUID).")
 _STATUS_PARAM = OpenApiParameter("status", str, description="Filtra boletins por situação.")
@@ -48,12 +75,13 @@ class EmergencyEncounterViewSet(viewsets.ModelViewSet):
     serializer_class = EmergencyEncounterSerializer
 
     def get_permissions(self):
-        read_actions = {"list", "retrieve"}
+        read_actions = {"list", "retrieve", "board"}
         if self.action in read_actions:
             permission = "emergency.read"
         elif self.action == "classify":
             permission = "emergency.classify"
         else:
+            # writes + lifecycle actions (start_attendance / close)
             permission = "emergency.manage"
         return [IsAuthenticated(), HasPermission(permission)]
 
@@ -96,6 +124,67 @@ class EmergencyEncounterViewSet(viewsets.ModelViewSet):
         log_audit(request, "emergency_classify", "RiskClassification", classification.id)
         boletim.refresh_from_db()
         return Response(self.get_serializer(boletim).data, status=http_status.HTTP_201_CREATED)
+
+    @extend_schema(
+        parameters=[_FACILITY_PARAM],
+        responses=OpenApiTypes.OBJECT,
+        description="Painel do PS: fila por gravidade (não classificados primeiro, "
+        "depois vermelho→azul, depois chegada) + contagens por acuidade + overdue. "
+        "Gated emergency.read.",
+    )
+    @action(detail=False, methods=["get"])
+    def board(self, request):
+        """PS board: acuity-ordered queue + counts by acuity level + overdue count."""
+        facility = request.query_params.get("facility")
+        data = queue_service.board(facility=facility)
+        data["queue"] = [_serialize_queue_row(row) for row in data["queue"]]
+        return Response(data)
+
+    @extend_schema(request=StartAttendanceInputSerializer, responses=EmergencyEncounterSerializer)
+    @action(detail=True, methods=["post"], url_path="start-attendance")
+    def start_attendance(self, request, pk=None):
+        """Chamar/iniciar atendimento: classificado → em_atendimento. Transição
+        ilegal (status ≠ classificado) → 409. Gated emergency.manage."""
+        boletim = self.get_object()
+        payload = StartAttendanceInputSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            boletim = lifecycle_service.start_attendance(
+                boletim,
+                professional=payload.validated_data.get("professional"),
+                actor=request.user,
+            )
+        except DjangoValidationError as exc:
+            return Response({"detail": exc.messages[0]}, status=http_status.HTTP_409_CONFLICT)
+        log_audit(request, "emergency_start_attendance", "EmergencyEncounter", boletim.id)
+        return Response(self.get_serializer(boletim).data)
+
+    @extend_schema(request=CloseInputSerializer, responses=EmergencyEncounterSerializer)
+    @action(detail=True, methods=["post"])
+    def close(self, request, pk=None):
+        """Encerrar o boletim (+ desfecho). Com desfecho=internacao + leito livre,
+        aciona a ponte de internação (adt.admit) na mesma transação. Transição
+        ilegal / leito ocupado → 409. Gated emergency.manage."""
+        boletim = self.get_object()
+        payload = CloseInputSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        data = payload.validated_data
+        try:
+            boletim = lifecycle_service.close(
+                boletim,
+                disposition=data["disposition"],
+                actor=request.user,
+                bed=data.get("bed"),
+                admitting_professional=data.get("admitting_professional"),
+                attending_professional=data.get("attending_professional"),
+                admission_source=data.get("admission_source") or None,
+                admission_datetime=data.get("admission_datetime"),
+                reason=data.get("reason", ""),
+            )
+        except DjangoValidationError as exc:
+            return Response({"detail": exc.messages[0]}, status=http_status.HTTP_409_CONFLICT)
+        log_audit(request, "emergency_close", "EmergencyEncounter", boletim.id)
+        return Response(self.get_serializer(boletim).data)
 
 
 @extend_schema_view(

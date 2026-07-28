@@ -77,6 +77,16 @@ class EmergencyEncounter(models.Model):
         EM_ATENDIMENTO = "em_atendimento", "Em atendimento"
         ENCERRADO = "encerrado", "Encerrado"
 
+    class Disposition(models.TextChoices):
+        """Desfecho do atendimento de PS (set at encerramento — E3)."""
+
+        ALTA = "alta", "Alta"
+        INTERNACAO = "internacao", "Internação"
+        TRANSFERENCIA_EXTERNA = "transferencia_externa", "Transferência externa"
+        OBITO = "obito", "Óbito"
+        EVASAO = "evasao", "Evasão"
+        OBSERVACAO = "observacao", "Observação"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     patient = models.ForeignKey(
         "emr.Patient",
@@ -108,6 +118,27 @@ class EmergencyEncounter(models.Model):
         choices=Status.choices,
         default=Status.AGUARDANDO_CLASSIFICACAO,
         db_index=True,
+    )
+    # Desfecho (E3): set at encerramento. NULL = boletim ainda ativo (sem desfecho)
+    # — distinto de "" (DJ001 suprimido, convenção do repo, igual Admission.disposition).
+    disposition = models.CharField(  # noqa: DJ001
+        "Desfecho",
+        max_length=32,
+        choices=Disposition.choices,
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+    # Internação bridge (E3): quando o desfecho é `internacao` e um leito é
+    # informado, o serviço de encerramento chama apps.emr.services.adt.admit e
+    # grava aqui a Admission resultante. NULL quando interna-se depois (sem leito).
+    admission = models.ForeignKey(
+        "emr.Admission",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="emergency_encounters",
+        verbose_name="Internação",
     )
     created_by = models.ForeignKey(
         "core.User",

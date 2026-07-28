@@ -80,6 +80,26 @@ def acuity_target_minutes(level: str) -> int:
     return ACUITY_TARGET_MINUTES[AcuityLevel(level)]
 
 
+# Manchester priority → urgency rank (1 = most urgent). Vermelho first, azul last —
+# the ordering key E3's PS queue sorts classified boletins by (lower rank wins).
+ACUITY_RANK: dict[str, int] = {
+    AcuityLevel.VERMELHO: 1,
+    AcuityLevel.LARANJA: 2,
+    AcuityLevel.AMARELO: 3,
+    AcuityLevel.VERDE: 4,
+    AcuityLevel.AZUL: 5,
+}
+
+
+def acuity_rank(level: str) -> int:
+    """Return the urgency rank (1 = most urgent) for ``level``.
+
+    Raises :class:`KeyError` for an unknown level so callers fail loud rather than
+    silently mis-ordering the PS queue.
+    """
+    return ACUITY_RANK[AcuityLevel(level)]
+
+
 # ─── E1: fluxograma de apresentação (governed catalog) ───────────────────────
 
 

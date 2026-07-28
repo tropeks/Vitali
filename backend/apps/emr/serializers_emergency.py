@@ -16,8 +16,9 @@ from rest_framework import serializers
 
 from apps.core.manchester_catalog_models import ManchesterDiscriminator
 
+from .adt_models import Bed
 from .emergency_models import EmergencyEncounter, RiskClassification
-from .models import VitalSigns
+from .models import Professional, VitalSigns
 
 
 class RiskClassificationSerializer(serializers.ModelSerializer):
@@ -62,6 +63,8 @@ class EmergencyEncounterSerializer(serializers.ModelSerializer):
             "mode_of_arrival",
             "chief_complaint",
             "status",
+            "disposition",
+            "admission",
             "current_classification",
             "created_by",
             "created_at",
@@ -70,6 +73,8 @@ class EmergencyEncounterSerializer(serializers.ModelSerializer):
         read_only_fields = (
             "id",
             "status",
+            "disposition",
+            "admission",
             "current_classification",
             "created_by",
             "created_at",
@@ -88,3 +93,48 @@ class ClassifyInputSerializer(serializers.Serializer):
         queryset=VitalSigns.objects.all(), required=False, allow_null=True
     )
     notes = serializers.CharField(required=False, allow_blank=True)
+
+
+class StartAttendanceInputSerializer(serializers.Serializer):
+    """Payload for ``start-attendance``: the (optional) profissional que assume."""
+
+    professional = serializers.PrimaryKeyRelatedField(
+        queryset=Professional.objects.all(), required=False, allow_null=True
+    )
+
+
+class CloseInputSerializer(serializers.Serializer):
+    """Payload for ``close``: the ``disposition`` (+ internação bridge fields).
+
+    When ``disposition == internacao`` and a ``bed`` is supplied, admitting +
+    attending professional are required (adt.admit needs both) — the service then
+    calls adt.admit inside the close transaction. Without a bed, the boletim closes
+    as internação with a null admission (admite depois)."""
+
+    disposition = serializers.ChoiceField(choices=EmergencyEncounter.Disposition.choices)
+    bed = serializers.PrimaryKeyRelatedField(
+        queryset=Bed.objects.all(), required=False, allow_null=True
+    )
+    admitting_professional = serializers.PrimaryKeyRelatedField(
+        queryset=Professional.objects.all(), required=False, allow_null=True
+    )
+    attending_professional = serializers.PrimaryKeyRelatedField(
+        queryset=Professional.objects.all(), required=False, allow_null=True
+    )
+    admission_source = serializers.CharField(required=False, allow_blank=True)
+    admission_datetime = serializers.DateTimeField(required=False, allow_null=True)
+    reason = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        internacao = attrs.get("disposition") == EmergencyEncounter.Disposition.INTERNACAO
+        if internacao and attrs.get("bed") is not None:
+            missing = [
+                field
+                for field in ("admitting_professional", "attending_professional")
+                if attrs.get(field) is None
+            ]
+            if missing:
+                raise serializers.ValidationError(
+                    {field: "Obrigatório ao internar com leito informado." for field in missing}
+                )
+        return attrs
