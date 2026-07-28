@@ -85,6 +85,11 @@ export const PERMISSIONS = {
   EMERGENCY_MANAGE: "emergency.manage",
   EMERGENCY_CLASSIFY: "emergency.classify",
 
+  // Faturamento SUS — SIGTAP/BPA/APAC (backend apps/billing sus_models + views_sus)
+  SUS_READ: "sus.read",
+  SUS_WRITE: "sus.write",
+  SUS_EXPORT: "sus.export",
+
   // Imaging / diagnostics
   IMAGING_READ: "imaging.read",
   IMAGING_WRITE: "imaging.write",

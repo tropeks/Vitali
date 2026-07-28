@@ -38,7 +38,7 @@ serviço/classificação). Serviço-ponte `gerar_producao_ambulatorial(competenc
 (ambulatorial) → linhas BPA (valoradas via SIGTAP `valor_sa`+`valor_sp`). Idempotente por competência. RBAC `sus.write`.
 Endpoints. pytest TDD.
 
-### S3 · APAC + remessa DATASUS (backend) · **Opus** (dep S2)
+### S3 · APAC + remessa DATASUS (backend) · **Opus** (dep S2) · ✅ FEITO (commit 733da75)
 `ApacAutorizacao` (número APAC, validade, procedimento principal + secundários, CID, paciente CNS, valor). **Remessa
 posicional**: exportador BPA-Magnético (`.txt` fixed-width, header/linhas por competência) + layout APAC — molde do
 `xml_engine`/batch export, mas texto posicional DATASUS. Fechar competência → gerar remessa. RBAC `sus.export` (consequente).
