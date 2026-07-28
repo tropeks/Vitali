@@ -26,6 +26,8 @@ from .views import (
     TUSSCodeViewSet,
 )
 from .views_sus import (
+    ApacAutorizacaoViewSet,
+    ApacProcedimentoSecundarioViewSet,
     BpaConsolidadoViewSet,
     BpaIndividualizadoViewSet,
     SusCompetenciaViewSet,
@@ -49,6 +51,9 @@ router.register(r"cash-flow", CashFlowEntryViewSet, basename="cash-flow")
 router.register(r"sus-competencias", SusCompetenciaViewSet, basename="sus-competencia")
 router.register(r"bpa-consolidado", BpaConsolidadoViewSet, basename="bpa-consolidado")
 router.register(r"bpa-individualizado", BpaIndividualizadoViewSet, basename="bpa-individualizado")
+# Faturamento SUS (S3): APAC (alta complexidade) + procedimentos secundários.
+router.register(r"apac-autorizacoes", ApacAutorizacaoViewSet, basename="apac-autorizacao")
+router.register(r"apac-secundarios", ApacProcedimentoSecundarioViewSet, basename="apac-secundario")
 
 urlpatterns = [
     path("billing/", include(router.urls)),

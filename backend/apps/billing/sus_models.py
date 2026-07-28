@@ -78,6 +78,29 @@ class SusCompetencia(models.Model):
         blank=True,
         related_name="sus_competencias_criadas",
     )
+    # S3 — Remessa DATASUS (BPA-Magnético / APAC posicional). On export the
+    # generated fixed-width remessa text is STORED here (not regenerated on
+    # download) so the exact exported bytes are an immutable, auditable record of
+    # what was transmitted to the SUS — even if BPA/APAC rows later change. See
+    # apps/billing/services/sus_remessa.py.
+    remessa_bpa = models.TextField(
+        "Remessa BPA-Magnético (texto posicional)",
+        blank=True,
+        default="",
+        help_text="Conteúdo .txt da remessa BPA gerado no momento da exportação (imutável).",
+    )
+    remessa_apac = models.TextField(
+        "Remessa APAC (texto posicional)",
+        blank=True,
+        default="",
+        help_text="Conteúdo .txt da remessa APAC gerado no momento da exportação (imutável).",
+    )
+    exportada_at = models.DateTimeField(
+        "Exportada em",
+        null=True,
+        blank=True,
+        help_text="Timestamp da exportação da remessa (transição fechada → exportada).",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -223,3 +246,128 @@ class BpaIndividualizado(models.Model):
 
     def __str__(self):
         return f"BPA-I {self.sigtap_id} — {self.patient_id} (comp {self.competencia_id})"
+
+
+class ApacAutorizacao(models.Model):
+    """APAC — Autorização de Procedimento de Alta Complexidade (S3). Per-tenant.
+
+    Unlike a BPA line (a raw production record), an APAC is an *autorização*: a
+    numbered, date-bounded authorization for one high-complexity main procedure
+    (``procedimento_principal``) plus zero or more secondary procedures
+    (:class:`ApacProcedimentoSecundario`), tied to a patient/CNS and the
+    requesting/executing professionals. Its ``valor`` is the authorized value
+    carried by the authorization itself (not a pure SIGTAP × qtd derivation), so
+    it is set explicitly rather than computed.
+
+    The ``procedimento_principal`` FK is cross-schema (tenant → public
+    ``core.SIGTAPProcedure``): PostgreSQL does not enforce FK integrity across
+    schemas, so — exactly like the BPA lines — it uses ``on_delete=DO_NOTHING``
+    and relies on the ``protect_sigtap_procedure_deletion`` pre_delete signal
+    (apps/core/signals.py, extended in S3 to cover APAC) to block deleting a
+    catalog row any APAC references.
+
+    ``cns`` is a plain snapshot of the patient's CNS at authorization time (same
+    rationale as ``BpaIndividualizado.cns`` — ``Patient.cns`` is an encrypted,
+    non-queryable field and the authorization must be a stable point-in-time
+    record). ``patient`` is kept as an FK for traceability.
+    """
+
+    competencia = models.ForeignKey(SusCompetencia, on_delete=models.CASCADE, related_name="apacs")
+    numero_apac = models.CharField(
+        "Número da APAC",
+        max_length=13,
+        unique=True,
+        help_text="Número único da autorização APAC (emitido pelo gestor SUS).",
+    )
+    validade_inicio = models.DateField("Início da validade")
+    validade_fim = models.DateField("Fim da validade")
+    # Cross-schema (public) — DO_NOTHING + pre_delete PROTECT signal.
+    procedimento_principal = models.ForeignKey(
+        "core.SIGTAPProcedure",
+        on_delete=models.DO_NOTHING,
+        related_name="+",
+        verbose_name="Procedimento principal (SIGTAP)",
+    )
+    cid_principal = models.CharField("CID-10 principal", max_length=10, blank=True, default="")
+    patient = models.ForeignKey(
+        "emr.Patient",
+        on_delete=models.PROTECT,
+        related_name="apac_autorizacoes",
+        verbose_name="Paciente",
+    )
+    cns = models.CharField("CNS do paciente (snapshot)", max_length=15, blank=True, default="")
+    professional_solicitante = models.ForeignKey(
+        "emr.Professional",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="apac_solicitadas",
+        verbose_name="Profissional solicitante",
+    )
+    professional_executante = models.ForeignKey(
+        "emr.Professional",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="apac_executadas",
+        verbose_name="Profissional executante",
+    )
+    valor = models.DecimalField(
+        "Valor autorizado (R$)",
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0"),
+        help_text="Valor autorizado da APAC (procedimento principal + secundários).",
+    )
+    created_by = models.ForeignKey(
+        "core.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="apac_autorizacoes_criadas",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Autorização APAC"
+        verbose_name_plural = "Autorizações APAC"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"APAC {self.numero_apac} — {self.procedimento_principal_id} (comp {self.competencia_id})"
+
+
+class ApacProcedimentoSecundario(models.Model):
+    """Procedimento secundário de uma APAC (S3). Per-tenant.
+
+    ``sigtap`` FK is cross-schema (DO_NOTHING + protect signal, same as the APAC
+    main procedure). ``valor`` mirrors the BPA-C convention: computed from
+    ``(sigtap.valor_sa + sigtap.valor_sp) × quantidade`` at creation.
+    """
+
+    apac = models.ForeignKey(
+        ApacAutorizacao, on_delete=models.CASCADE, related_name="procedimentos_secundarios"
+    )
+    sigtap = models.ForeignKey(
+        "core.SIGTAPProcedure",
+        on_delete=models.DO_NOTHING,
+        related_name="+",
+        verbose_name="Procedimento secundário (SIGTAP)",
+    )
+    quantidade = models.PositiveIntegerField("Quantidade", default=1)
+    valor = models.DecimalField(
+        "Valor (R$)",
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0"),
+        help_text="(sigtap.valor_sa + sigtap.valor_sp) × quantidade, no momento do registro.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Procedimento secundário APAC"
+        verbose_name_plural = "Procedimentos secundários APAC"
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"APAC-sec {self.sigtap_id} × {self.quantidade} (apac {self.apac_id})"

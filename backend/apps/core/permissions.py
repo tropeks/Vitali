@@ -280,6 +280,8 @@ ADMIN_PERMISSIONS = [
     # Namespace SEPARADO do billing.* (TISS/convênios), que fica intocado.
     "sus.read",
     "sus.write",
+    # Faturamento SUS (S3): exportar a remessa DATASUS (BPA-Magnético / APAC).
+    "sus.export",
 ]
 
 CLINICAL_PRESCRIBER_PERMISSIONS = [
@@ -385,6 +387,8 @@ BILLING_PERMISSIONS = [
     # Faturamento SUS (S1): o faturista lê e gere o catálogo SIGTAP + identidade SUS.
     "sus.read",
     "sus.write",
+    # Faturamento SUS (S3): o faturista exporta a remessa DATASUS (BPA/APAC).
+    "sus.export",
 ]
 
 DEFAULT_ROLES = {

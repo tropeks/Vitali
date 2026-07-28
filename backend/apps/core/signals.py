@@ -270,8 +270,10 @@ def protect_sigtap_procedure_deletion(sender, instance, **kwargs):
     """Block deletion of a SIGTAPProcedure referenced by tenant SUS data in any tenant.
 
     Covers the SUS production lines ``billing.BpaConsolidado.sigtap`` /
-    ``billing.BpaIndividualizado.sigtap`` and the SUS coding of a captured
-    procedure ``emr.EncounterProcedure.sigtap``. Mirrors the
+    ``billing.BpaIndividualizado.sigtap``, the APAC authorizations
+    ``billing.ApacAutorizacao.procedimento_principal`` /
+    ``billing.ApacProcedimentoSecundario.sigtap`` (S3), and the SUS coding of a
+    captured procedure ``emr.EncounterProcedure.sigtap``. Mirrors the
     EncounterProcedure→TUSSCode guard.
     """
     from django_tenants.utils import get_tenant_model, schema_context
@@ -279,7 +281,12 @@ def protect_sigtap_procedure_deletion(sender, instance, **kwargs):
     TenantModel = get_tenant_model()
     for tenant in TenantModel.objects.exclude(schema_name="public"):
         with schema_context(tenant.schema_name):
-            from apps.billing.sus_models import BpaConsolidado, BpaIndividualizado
+            from apps.billing.sus_models import (
+                ApacAutorizacao,
+                ApacProcedimentoSecundario,
+                BpaConsolidado,
+                BpaIndividualizado,
+            )
             from apps.emr.models import EncounterProcedure
 
             if BpaConsolidado.objects.filter(sigtap=instance).exists():
@@ -292,6 +299,18 @@ def protect_sigtap_procedure_deletion(sender, instance, **kwargs):
                 raise ProtectedError(
                     f"SIGTAPProcedure {instance.code} is referenced by BpaIndividualizado in "
                     f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+            if ApacAutorizacao.objects.filter(procedimento_principal=instance).exists():
+                raise ProtectedError(
+                    f"SIGTAPProcedure {instance.code} is referenced by ApacAutorizacao in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+            if ApacProcedimentoSecundario.objects.filter(sigtap=instance).exists():
+                raise ProtectedError(
+                    f"SIGTAPProcedure {instance.code} is referenced by ApacProcedimentoSecundario "
+                    f"in schema '{tenant.schema_name}' and cannot be deleted.",
                     {instance},
                 )
             if EncounterProcedure.objects.filter(sigtap=instance).exists():

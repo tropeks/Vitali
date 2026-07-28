@@ -25,12 +25,21 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.billing.serializers_sus import (
+    ApacAutorizacaoSerializer,
+    ApacProcedimentoSecundarioSerializer,
     BpaConsolidadoSerializer,
     BpaIndividualizadoSerializer,
     SusCompetenciaSerializer,
 )
 from apps.billing.services.sus_production import gerar_producao_ambulatorial
-from apps.billing.sus_models import BpaConsolidado, BpaIndividualizado, SusCompetencia
+from apps.billing.services.sus_remessa import exportar_competencia
+from apps.billing.sus_models import (
+    ApacAutorizacao,
+    ApacProcedimentoSecundario,
+    BpaConsolidado,
+    BpaIndividualizado,
+    SusCompetencia,
+)
 from apps.core.permissions import HasPermission
 
 _ESTABLISHMENT_PARAM = OpenApiParameter(
@@ -41,6 +50,9 @@ _STATUS_PARAM = OpenApiParameter(
 )
 _COMPETENCIA_PARAM = OpenApiParameter(
     "competencia", OpenApiTypes.INT, description="Filtra por competência (SusCompetencia id)."
+)
+_APAC_PARAM = OpenApiParameter(
+    "apac", OpenApiTypes.INT, description="Filtra por APAC (ApacAutorizacao id)."
 )
 
 
@@ -64,6 +76,13 @@ class SusCompetenciaViewSet(_SusPermissionMixin, viewsets.ModelViewSet):
     """Competências SUS (janela mensal de faturamento). Read=sus.read / write=sus.write."""
 
     serializer_class = SusCompetenciaSerializer
+
+    def get_permissions(self):
+        # ``exportar`` is gated by the dedicated ``sus.export`` capability — a
+        # faturista with only sus.read/sus.write cannot emit the DATASUS remessa.
+        if self.action == "exportar":
+            return [IsAuthenticated(), HasPermission("sus.export")]
+        return super().get_permissions()
 
     def get_queryset(self):
         qs = SusCompetencia.objects.all().order_by("-competencia")
@@ -116,6 +135,28 @@ class SusCompetenciaViewSet(_SusPermissionMixin, viewsets.ModelViewSet):
             return Response({"detail": exc.messages[0]}, status=http_status.HTTP_409_CONFLICT)
         return Response(self.get_serializer(competencia).data, status=http_status.HTTP_200_OK)
 
+    @extend_schema(
+        tags=["sus"],
+        summary="Exporta a remessa DATASUS (BPA-Magnético + APAC) da competência",
+        request=None,
+        responses={200: OpenApiTypes.OBJECT},
+    )
+    @action(detail=True, methods=["post"], url_path="exportar")
+    def exportar(self, request, pk=None):
+        """Gera a remessa posicional BPA/APAC, marca ``exportada`` e devolve o texto.
+
+        Exige competência ``fechada`` (aberta → 409 "feche a competência antes de
+        exportar"). O conteúdo é armazenado na competência (imutável) e devolvido
+        como JSON ``{remessa_bpa, remessa_apac, filename_bpa, filename_apac}``.
+        Gated ``sus.export``.
+        """
+        competencia = self.get_object()
+        try:
+            result = exportar_competencia(competencia, actor=request.user)
+        except DjangoValidationError as exc:
+            return Response({"detail": exc.messages[0]}, status=http_status.HTTP_409_CONFLICT)
+        return Response(result, status=http_status.HTTP_200_OK)
+
 
 @extend_schema_view(
     list=extend_schema(tags=["sus"], summary="Lista BPA-C", parameters=[_COMPETENCIA_PARAM]),
@@ -147,4 +188,45 @@ class BpaIndividualizadoViewSet(_SusPermissionMixin, viewsets.ReadOnlyModelViewS
         competencia = self.request.query_params.get("competencia")
         if competencia:
             qs = qs.filter(competencia_id=competencia)
+        return qs
+
+
+@extend_schema_view(
+    list=extend_schema(
+        tags=["sus"], summary="Lista autorizações APAC", parameters=[_COMPETENCIA_PARAM]
+    ),
+    create=extend_schema(tags=["sus"], summary="Cria autorização APAC"),
+)
+class ApacAutorizacaoViewSet(_SusPermissionMixin, viewsets.ModelViewSet):
+    """APAC (autorização de alta complexidade, S3). Read=sus.read / write=sus.write."""
+
+    serializer_class = ApacAutorizacaoSerializer
+
+    def get_queryset(self):
+        qs = ApacAutorizacao.objects.all().order_by("-created_at")
+        competencia = self.request.query_params.get("competencia")
+        if competencia:
+            qs = qs.filter(competencia_id=competencia)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+
+@extend_schema_view(
+    list=extend_schema(
+        tags=["sus"], summary="Lista procedimentos secundários APAC", parameters=[_APAC_PARAM]
+    ),
+    create=extend_schema(tags=["sus"], summary="Cria procedimento secundário APAC"),
+)
+class ApacProcedimentoSecundarioViewSet(_SusPermissionMixin, viewsets.ModelViewSet):
+    """Procedimentos secundários de uma APAC (S3). Read=sus.read / write=sus.write."""
+
+    serializer_class = ApacProcedimentoSecundarioSerializer
+
+    def get_queryset(self):
+        qs = ApacProcedimentoSecundario.objects.all().order_by("created_at")
+        apac = self.request.query_params.get("apac")
+        if apac:
+            qs = qs.filter(apac_id=apac)
         return qs
