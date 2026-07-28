@@ -4,30 +4,70 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('core', '0030_nandadiagnosis_nicintervention_nocoutcome'),
+        ("core", "0030_nandadiagnosis_nicintervention_nocoutcome"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='BedType',
+            name="BedType",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('code', models.CharField(db_index=True, max_length=32, verbose_name='Código')),
-                ('display', models.CharField(max_length=500, verbose_name='Descrição')),
-                ('version', models.CharField(blank=True, default='', max_length=32, verbose_name='Versão')),
-                ('active', models.BooleanField(db_index=True, default=True, verbose_name='Ativo')),
-                ('normalized_display', models.CharField(blank=True, db_index=True, default='', help_text='display sem acentos e em minúsculas — mantido em sincronia no save().', max_length=500, verbose_name='Descrição normalizada')),
-                ('system', models.CharField(db_index=True, default='bed_type', help_text="Identificador do sistema de terminologia (sempre 'bed_type' aqui).", max_length=32, verbose_name='Sistema/terminologia')),
-                ('category', models.CharField(blank=True, db_index=True, default='', help_text="Grupo do leito na classificação CNES (ex.: 'Complementar', 'Clínico').", max_length=120, verbose_name='Categoria (CNES)')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                ("code", models.CharField(db_index=True, max_length=32, verbose_name="Código")),
+                ("display", models.CharField(max_length=500, verbose_name="Descrição")),
+                (
+                    "version",
+                    models.CharField(blank=True, default="", max_length=32, verbose_name="Versão"),
+                ),
+                ("active", models.BooleanField(db_index=True, default=True, verbose_name="Ativo")),
+                (
+                    "normalized_display",
+                    models.CharField(
+                        blank=True,
+                        db_index=True,
+                        default="",
+                        help_text="display sem acentos e em minúsculas — mantido em sincronia no save().",
+                        max_length=500,
+                        verbose_name="Descrição normalizada",
+                    ),
+                ),
+                (
+                    "system",
+                    models.CharField(
+                        db_index=True,
+                        default="bed_type",
+                        help_text="Identificador do sistema de terminologia (sempre 'bed_type' aqui).",
+                        max_length=32,
+                        verbose_name="Sistema/terminologia",
+                    ),
+                ),
+                (
+                    "category",
+                    models.CharField(
+                        blank=True,
+                        db_index=True,
+                        default="",
+                        help_text="Grupo do leito na classificação CNES (ex.: 'Complementar', 'Clínico').",
+                        max_length=120,
+                        verbose_name="Categoria (CNES)",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Tipo de Leito (CNES)',
-                'verbose_name_plural': 'Tipos de Leito (CNES)',
-                'ordering': ['code'],
-                'indexes': [models.Index(fields=['category'], name='bed_type_category_idx')],
-                'constraints': [models.UniqueConstraint(fields=('system', 'code', 'version'), name='uniq_bed_type_natural_key')],
+                "verbose_name": "Tipo de Leito (CNES)",
+                "verbose_name_plural": "Tipos de Leito (CNES)",
+                "ordering": ["code"],
+                "indexes": [models.Index(fields=["category"], name="bed_type_category_idx")],
+                "constraints": [
+                    models.UniqueConstraint(
+                        fields=("system", "code", "version"), name="uniq_bed_type_natural_key"
+                    )
+                ],
             },
         ),
     ]

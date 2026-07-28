@@ -5,15 +5,14 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('emr', '0050_emergencyencounter_admission_and_more'),
+        ("emr", "0050_emergencyencounter_admission_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='professional',
-            name='cns',
-            field=encrypted_model_fields.fields.EncryptedCharField(blank=True, default=''),
+            model_name="professional",
+            name="cns",
+            field=encrypted_model_fields.fields.EncryptedCharField(blank=True, default=""),
         ),
     ]

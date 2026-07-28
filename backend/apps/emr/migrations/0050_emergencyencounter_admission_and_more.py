@@ -5,20 +5,40 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('emr', '0049_emergencyencounter_riskclassification_and_more'),
+        ("emr", "0049_emergencyencounter_riskclassification_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='emergencyencounter',
-            name='admission',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='emergency_encounters', to='emr.admission', verbose_name='Internação'),
+            model_name="emergencyencounter",
+            name="admission",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="emergency_encounters",
+                to="emr.admission",
+                verbose_name="Internação",
+            ),
         ),
         migrations.AddField(
-            model_name='emergencyencounter',
-            name='disposition',
-            field=models.CharField(blank=True, choices=[('alta', 'Alta'), ('internacao', 'Internação'), ('transferencia_externa', 'Transferência externa'), ('obito', 'Óbito'), ('evasao', 'Evasão'), ('observacao', 'Observação')], db_index=True, max_length=32, null=True, verbose_name='Desfecho'),
+            model_name="emergencyencounter",
+            name="disposition",
+            field=models.CharField(
+                blank=True,
+                choices=[
+                    ("alta", "Alta"),
+                    ("internacao", "Internação"),
+                    ("transferencia_externa", "Transferência externa"),
+                    ("obito", "Óbito"),
+                    ("evasao", "Evasão"),
+                    ("observacao", "Observação"),
+                ],
+                db_index=True,
+                max_length=32,
+                null=True,
+                verbose_name="Desfecho",
+            ),
         ),
     ]

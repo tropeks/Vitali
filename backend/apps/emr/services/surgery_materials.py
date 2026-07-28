@@ -59,12 +59,14 @@ def record_consumption(
     locked.quantity_consumed = (locked.quantity_consumed or 0) + quantity
     locked.save(update_fields=["quantity_consumed", "updated_at"])
 
-    if locked.stock_item_id:
+    stock_item = locked.stock_item
+    if stock_item is not None:
         # StockMovement.save() does the F()-based atomic decrement + non-negative
         # guard; a shortfall raises ValueError (surfaced as a 500 — the caller is
         # expected to consume within stock, like the dispense flow).
+        # (Bind to a local so mypy narrows StockItem|None → StockItem.)
         StockMovement.objects.create(
-            stock_item=locked.stock_item,
+            stock_item=stock_item,
             movement_type=_CONSUMPTION_MOVEMENT_TYPE,
             quantity=-Decimal(quantity),
             reference=f"Consumo cirúrgico {locked.case_id}",
