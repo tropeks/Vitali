@@ -276,6 +276,10 @@ ADMIN_PERMISSIONS = [
     # Escala/plantão de setor (S-IA2). Admin carries it so tenant admins keep
     # full roster access; sector supervisors get it standalone via RosterAccessPermission.
     "roster.manage",
+    # Faturamento SUS (S1): catálogo SIGTAP + identidade SUS — ler / gerir.
+    # Namespace SEPARADO do billing.* (TISS/convênios), que fica intocado.
+    "sus.read",
+    "sus.write",
 ]
 
 CLINICAL_PRESCRIBER_PERMISSIONS = [
@@ -378,6 +382,9 @@ BILLING_PERMISSIONS = [
     "patients.limited_read",
     "emr.read",
     "ai.use",
+    # Faturamento SUS (S1): o faturista lê e gere o catálogo SIGTAP + identidade SUS.
+    "sus.read",
+    "sus.write",
 ]
 
 DEFAULT_ROLES = {

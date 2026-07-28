@@ -30,6 +30,7 @@ from apps.core.loinc_models import LoincCode, UcumUnit
 from apps.core.manchester_catalog_models import ManchesterFlowchart
 from apps.core.models import CID10Code
 from apps.core.nursing_catalog_models import NandaDiagnosis, NicIntervention, NocOutcome
+from apps.core.sigtap_catalog_models import SIGTAPProcedure
 from apps.core.terminology_base import normalize_text
 
 # Registry: terminology system id → catalog model.
@@ -47,6 +48,8 @@ _SYSTEMS: dict[str, type] = {
     "bed_type": BedType,
     # E1: governed Manchester fluxograma catalog (PS/Emergência).
     "manchester_flowchart": ManchesterFlowchart,
+    # S1: governed SIGTAP procedure catalog (Faturamento SUS).
+    "sigtap": SIGTAPProcedure,
 }
 
 # CID-10 keeps the legacy ``description`` vocabulary + a ``parent`` hierarchy; the
@@ -155,6 +158,12 @@ def _context(system: str, row) -> dict:
         return {"definition": row.definition}
     if system == "bed_type":
         return {"category": row.category}
+    if system == "sigtap":
+        return {
+            "instrumento_registro": row.instrumento_registro,
+            "complexidade": row.complexidade,
+            "valor_total": str(row.valor_total()),
+        }
     # ucum (and any future flat catalog) carries no extra context columns.
     return {}
 

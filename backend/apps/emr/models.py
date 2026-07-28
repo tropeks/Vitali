@@ -489,6 +489,10 @@ class Professional(models.Model):
         default=False,
         help_text="True quando legacy_cnes_text não corresponde a nenhum CNESEstablishment governado.",
     )
+    # ── S1: cartão SUS (CNS) do executor — para BPA-I / APAC (Faturamento SUS) ──
+    # Encrypted-at-rest, exactly like Patient.cns. Blank until preenchido; nunca
+    # fabricado. S2 (produção BPA/APAC) consome este campo + cbo/cnes governados.
+    cns = EncryptedCharField(max_length=15, blank=True, default="")
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

@@ -20,6 +20,7 @@ from .views_mfa import (
 from .views_onboarding import OnboardingView
 from .views_platform import TenantSubscriptionView
 from .views_privacy import PrivacySettingsView
+from .views_sigtap import SIGTAPProcedureViewSet
 from .views_telemetry import WedgeTelemetryView
 from .views_terminology import TerminologySearchView
 from .views_test_helpers import IssueInvitationTokenView
@@ -36,6 +37,8 @@ router.register(
     ManchesterDiscriminatorViewSet,
     basename="manchester-discriminator",
 )
+# S1: SIGTAP catalog CRUD (read=sus.read / write=sus.write).
+router.register("sigtap", SIGTAPProcedureViewSet, basename="sigtap")
 
 urlpatterns = [
     # Auth
