@@ -385,6 +385,51 @@ def protect_bed_type_deletion(sender, instance, **kwargs):
                 )
 
 
+# ─── Manchester catalog cross-schema PROTECT (E2 — PS/Emergência wired) ───────
+# E2 wires the tenant-side PS/Emergência domain (apps.emr.emergency_models):
+# RiskClassification.flowchart → core.ManchesterFlowchart and
+# RiskClassification.discriminator → core.ManchesterDiscriminator. PostgreSQL does
+# not enforce FK integrity across schemas (tenant → public), so — exactly like
+# protect_bed_type_deletion — these application-layer guards block hard-deleting a
+# governed catalog row any tenant references from a risk classification.
+
+
+@receiver(pre_delete, sender="core.ManchesterFlowchart")
+def protect_manchester_flowchart_deletion(sender, instance, **kwargs):
+    """Block deletion of a ManchesterFlowchart referenced by ``emr.RiskClassification`` in any tenant."""
+    from django_tenants.utils import get_tenant_model, schema_context
+
+    TenantModel = get_tenant_model()
+    for tenant in TenantModel.objects.exclude(schema_name="public"):
+        with schema_context(tenant.schema_name):
+            from apps.emr.models import RiskClassification
+
+            if RiskClassification.objects.filter(flowchart=instance).exists():
+                raise ProtectedError(
+                    f"ManchesterFlowchart {instance.code} is referenced by RiskClassification "
+                    f"in schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+
+
+@receiver(pre_delete, sender="core.ManchesterDiscriminator")
+def protect_manchester_discriminator_deletion(sender, instance, **kwargs):
+    """Block deletion of a ManchesterDiscriminator referenced by ``emr.RiskClassification`` in any tenant."""
+    from django_tenants.utils import get_tenant_model, schema_context
+
+    TenantModel = get_tenant_model()
+    for tenant in TenantModel.objects.exclude(schema_name="public"):
+        with schema_context(tenant.schema_name):
+            from apps.emr.models import RiskClassification
+
+            if RiskClassification.objects.filter(discriminator=instance).exists():
+                raise ProtectedError(
+                    f"ManchesterDiscriminator {instance.code} is referenced by RiskClassification "
+                    f"in schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+
+
 # ─── Tenant → TenantAIConfig + emr FeatureFlag ───────────────────────────────
 
 

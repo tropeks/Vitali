@@ -34,6 +34,7 @@ from .views_adt import (
 )
 from .views_cid10 import CID10AcceptView, CID10SuggestView
 from .views_diagnostics import CriticalLabResultViewSet, LabInstrumentViewSet, LabSpecimenViewSet
+from .views_emergency import EmergencyEncounterViewSet, RiskClassificationViewSet
 from .views_lab_report import LabReportPDFView, LabReportSignView
 from .views_lis import LabIntegrationMessageViewSet, LabOrderORMView, LISInboundView
 from .views_pdf import PrescriptionPDFView
@@ -138,6 +139,9 @@ router.register("surgical-times", SurgicalTimeViewSet, basename="surgical-time")
 router.register("surgical-checklists", SurgicalChecklistViewSet, basename="surgical-checklist")
 # ── C6: Centro Cirúrgico — materiais / OPME + consumo de sala (rastreabilidade)
 router.register("surgical-materials", SurgicalMaterialViewSet, basename="surgical-material")
+# ── E2: PS/Emergência — boletim de atendimento + classificação de risco (Manchester)
+router.register("emergency-encounters", EmergencyEncounterViewSet, basename="emergency-encounter")
+router.register("risk-classifications", RiskClassificationViewSet, basename="risk-classification")
 
 urlpatterns = (
     [
