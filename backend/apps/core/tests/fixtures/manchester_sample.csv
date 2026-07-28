@@ -1,0 +1,9 @@
+# Tiny synthetic Manchester fixture (E1) — NOT real GBCR licensed content.
+FLUXOGRAMA_CODIGO;FLUXOGRAMA_NOME;DISCRIMINADOR_CODIGO;DISCRIMINADOR_NOME;ACUIDADE;GERAL;DESCRICAO
+FL01;FAKE-Dor torácica;D001;FAKE-Dor pré-cordial;laranja;nao;FAKE-Dor retroesternal em aperto
+FL01;FAKE-Dor torácica;D002;FAKE-Dor pleurítica;amarelo;nao;FAKE-Dor que piora à inspiração
+FL01;FAKE-Dor torácica;GEN01;FAKE-Comprometimento de via aérea;vermelho;sim;FAKE-Discriminador geral
+FL02;FAKE-Dispneia;D003;FAKE-SatO2 < 95%;laranja;nao;FAKE-Saturação abaixo do alvo
+FL02;FAKE-Dispneia;D004;FAKE-Dispneia leve;verde;nao;
+FL03;FAKE-Mal-estar no adulto;D005;FAKE-Sem sinais de gravidade;azul;nao;FAKE-Quadro estável
+FL03;FAKE-Mal-estar no adulto;GEN01;FAKE-Comprometimento de via aérea;vermelho;sim;FAKE-Discriminador geral

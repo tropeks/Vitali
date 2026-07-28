@@ -1002,4 +1002,5 @@ from .catalog_models import *  # noqa: E402,F401,F403
 from .cbhpm_models import *  # noqa: E402,F401,F403
 from .cbo_cnes_models import *  # noqa: E402,F401,F403
 from .loinc_models import *  # noqa: E402,F401,F403
+from .manchester_catalog_models import *  # noqa: E402,F401,F403
 from .nursing_catalog_models import *  # noqa: E402,F401,F403

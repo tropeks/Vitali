@@ -267,6 +267,11 @@ ADMIN_PERMISSIONS = [
     "surgery.manage",
     # Centro Cirúrgico (C2): agendamento/lifecycle do caso (schedule/reschedule/confirm/cancel).
     "surgery.schedule",
+    # PS/Emergência (E1): catálogo Manchester + acuidade — ler / gerir / classificar.
+    # Namespace SEPARADO do triage.* (symptom-checker WhatsApp), que fica intocado.
+    "emergency.read",
+    "emergency.manage",
+    "emergency.classify",
     "pharmacy.clinical_validate",
     # Escala/plantão de setor (S-IA2). Admin carries it so tenant admins keep
     # full roster access; sector supervisors get it standalone via RosterAccessPermission.
@@ -306,6 +311,8 @@ CLINICAL_PRESCRIBER_PERMISSIONS = [
     "surgery.manage",
     # Centro Cirúrgico (C2): o cirurgião agenda/confirma/cancela seus casos.
     "surgery.schedule",
+    # PS/Emergência (E1): o prescritor lê o catálogo Manchester/acuidade.
+    "emergency.read",
 ]
 
 NURSING_PERMISSIONS = [
@@ -323,6 +330,9 @@ NURSING_PERMISSIONS = [
     "adt.transfer",
     # Centro Cirúrgico (C1): a enfermagem de CC lê os casos cirúrgicos.
     "surgery.read",
+    # PS/Emergência (E1): o enfermeiro classificador lê o catálogo e classifica.
+    "emergency.read",
+    "emergency.classify",
 ]
 
 RECEPTION_PERMISSIONS = [
@@ -336,6 +346,9 @@ RECEPTION_PERMISSIONS = [
     "beds.read",
     # ADT L2: a recepção interna (admite); a alta é exclusiva do médico.
     "adt.admit",
+    # PS/Emergência (E1): a recepção do PS abre boletim (manage) e lê o catálogo.
+    "emergency.read",
+    "emergency.manage",
 ]
 
 PHARMACY_PERMISSIONS = [

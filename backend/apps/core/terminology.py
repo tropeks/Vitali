@@ -27,6 +27,7 @@ from django.db.models import Case, IntegerField, Q, Value, When
 from apps.core.adt_catalog_models import BedType
 from apps.core.cbo_cnes_models import CBOCode, CNESEstablishment
 from apps.core.loinc_models import LoincCode, UcumUnit
+from apps.core.manchester_catalog_models import ManchesterFlowchart
 from apps.core.models import CID10Code
 from apps.core.nursing_catalog_models import NandaDiagnosis, NicIntervention, NocOutcome
 from apps.core.terminology_base import normalize_text
@@ -44,6 +45,8 @@ _SYSTEMS: dict[str, type] = {
     "noc": NocOutcome,
     # L1: governed CNES bed-type catalog (ADT/Leitos).
     "bed_type": BedType,
+    # E1: governed Manchester fluxograma catalog (PS/Emergência).
+    "manchester_flowchart": ManchesterFlowchart,
 }
 
 # CID-10 keeps the legacy ``description`` vocabulary + a ``parent`` hierarchy; the

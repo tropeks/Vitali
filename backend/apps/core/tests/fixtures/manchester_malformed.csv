@@ -1,0 +1,5 @@
+# Malformed Manchester fixture (E1) — blank code, blank name, invalid acuity.
+FLUXOGRAMA_CODIGO;FLUXOGRAMA_NOME;DISCRIMINADOR_CODIGO;DISCRIMINADOR_NOME;ACUIDADE;GERAL;DESCRICAO
+FL01;FAKE-Dor torácica;;FAKE-Sem código;laranja;nao;FAKE
+FL01;FAKE-Dor torácica;D002;;amarelo;nao;FAKE
+FL02;FAKE-Dispneia;D003;FAKE-Acuidade inválida;roxo;nao;FAKE
