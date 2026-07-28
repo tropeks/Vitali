@@ -349,6 +349,32 @@ class TestRemessaBpa(SusRemessaTestBase):
         self.assertEqual(len(lines), 1)
         self.assertEqual(len(lines[0]), HEADER_WIDTH)
 
+    def test_control_chars_in_cns_cid_cannot_inject_a_line(self):
+        # CSO 2026-07-28 finding #1: a staff-entered CNS/CID with a CR/LF must not
+        # inject a forged line into the fixed-width DATASUS remessa.
+        from apps.billing.sus_models import BpaIndividualizado
+
+        comp = self._competencia()
+        BpaIndividualizado.objects.create(
+            competencia=comp,
+            sigtap=self.sigtap,
+            cbo=self.cbo,
+            patient=self.patient,
+            cns="7000\r\n03999",
+            cid="J4\n9",
+            professional=self.prof,
+            quantidade=1,
+            valor=Decimal("10.00"),
+        )
+        content = gerar_remessa_bpa(comp)
+        lines = self._lines(content)
+        # Still exactly header + 1 detail line (no injected line), and the detail
+        # line is exactly BPA_I_WIDTH with the control chars scrubbed.
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(len(lines[1]), BPA_I_WIDTH)
+        self.assertNotIn("\n", lines[1])
+        self.assertNotIn("\r", lines[1])
+
 
 # ─── Remessa APAC (positional) ────────────────────────────────────────────────
 

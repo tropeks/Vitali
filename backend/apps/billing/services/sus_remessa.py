@@ -140,6 +140,14 @@ APAC_SEC_WIDTH = 47
 
 
 # ─── Padding helpers ─────────────────────────────────────────────────────────
+def _scrub(value) -> str:
+    """Strip control chars (CR/LF/tab + other C0/C1 controls) from a field value
+    BEFORE it enters a fixed-width positional record. Without this a staff-entered
+    CNS/CID containing a newline would inject a line break — and thus a forged
+    production line — into the DATASUS remessa (CSO 2026-07-28, finding #1)."""
+    return "".join(ch for ch in str(value or "") if ch >= " " and ch != "\x7f")
+
+
 def _num(value, width: int) -> str:
     """Integer value → right-justified, zero-padded, left-truncated to ``width``."""
     s = str(int(value))
@@ -148,13 +156,13 @@ def _num(value, width: int) -> str:
 
 def _code(value, width: int) -> str:
     """Catalog code (str) → right-justified, zero-padded, left-truncated to ``width``."""
-    s = str(value or "")
+    s = _scrub(value)
     return s[-width:].rjust(width, "0")
 
 
 def _txt(value, width: int) -> str:
     """Free text → left-justified, space-padded, right-truncated to ``width``."""
-    s = str(value or "")
+    s = _scrub(value)
     return s[:width].ljust(width, " ")
 
 
