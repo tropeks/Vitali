@@ -225,17 +225,78 @@ def protect_anvisa_product_deletion(sender, instance, **kwargs):
 # ─── CBOCode cross-schema PROTECT (M2-S1-T3) ─────────────────────────────────
 @receiver(pre_delete, sender="core.CBOCode")
 def protect_cbo_code_deletion(sender, instance, **kwargs):
-    """Block deletion of a CBOCode referenced by ``emr.Professional.cbo`` in any tenant."""
+    """Block deletion of a CBOCode referenced by tenant data in any tenant.
+
+    Covers ``emr.Professional.cbo`` (M2-S1) and the SUS production lines
+    ``billing.BpaConsolidado.cbo`` / ``billing.BpaIndividualizado.cbo`` (S2).
+    """
     from django_tenants.utils import get_tenant_model, schema_context
 
     TenantModel = get_tenant_model()
     for tenant in TenantModel.objects.exclude(schema_name="public"):
         with schema_context(tenant.schema_name):
+            from apps.billing.sus_models import BpaConsolidado, BpaIndividualizado
             from apps.emr.models import Professional
 
             if Professional.objects.filter(cbo=instance).exists():
                 raise ProtectedError(
                     f"CBOCode {instance.code} is referenced by Professional in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+            if BpaConsolidado.objects.filter(cbo=instance).exists():
+                raise ProtectedError(
+                    f"CBOCode {instance.code} is referenced by BpaConsolidado in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+            if BpaIndividualizado.objects.filter(cbo=instance).exists():
+                raise ProtectedError(
+                    f"CBOCode {instance.code} is referenced by BpaIndividualizado in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+
+
+# ─── SIGTAPProcedure cross-schema PROTECT (Faturamento SUS S2) ────────────────
+# Same rationale as protect_tuss_code_deletion: PostgreSQL does not enforce FK
+# integrity across schemas (tenant → public), so an application-layer PROTECT
+# blocks deleting a SIGTAP procedure referenced by tenant SUS production / clinical
+# capture in any tenant.
+
+
+@receiver(pre_delete, sender="core.SIGTAPProcedure")
+def protect_sigtap_procedure_deletion(sender, instance, **kwargs):
+    """Block deletion of a SIGTAPProcedure referenced by tenant SUS data in any tenant.
+
+    Covers the SUS production lines ``billing.BpaConsolidado.sigtap`` /
+    ``billing.BpaIndividualizado.sigtap`` and the SUS coding of a captured
+    procedure ``emr.EncounterProcedure.sigtap``. Mirrors the
+    EncounterProcedure→TUSSCode guard.
+    """
+    from django_tenants.utils import get_tenant_model, schema_context
+
+    TenantModel = get_tenant_model()
+    for tenant in TenantModel.objects.exclude(schema_name="public"):
+        with schema_context(tenant.schema_name):
+            from apps.billing.sus_models import BpaConsolidado, BpaIndividualizado
+            from apps.emr.models import EncounterProcedure
+
+            if BpaConsolidado.objects.filter(sigtap=instance).exists():
+                raise ProtectedError(
+                    f"SIGTAPProcedure {instance.code} is referenced by BpaConsolidado in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+            if BpaIndividualizado.objects.filter(sigtap=instance).exists():
+                raise ProtectedError(
+                    f"SIGTAPProcedure {instance.code} is referenced by BpaIndividualizado in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+            if EncounterProcedure.objects.filter(sigtap=instance).exists():
+                raise ProtectedError(
+                    f"SIGTAPProcedure {instance.code} is referenced by EncounterProcedure in "
                     f"schema '{tenant.schema_name}' and cannot be deleted.",
                     {instance},
                 )

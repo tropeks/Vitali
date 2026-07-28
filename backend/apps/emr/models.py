@@ -1916,6 +1916,19 @@ class EncounterProcedure(models.Model):
     tuss_code = models.ForeignKey(
         "core.TUSSCode", on_delete=models.DO_NOTHING, related_name="encounter_procedures"
     )
+    # SUS coding (Faturamento SUS S2): the SIGTAP code of this clinically-captured
+    # procedure, analogous to tuss_code. Nullable so nothing breaks — a procedure
+    # is SUS-billable only once faturamento assigns its SIGTAP. Cross-schema
+    # (public) FK: DO_NOTHING + the protect_sigtap_procedure_deletion pre_delete
+    # signal (apps/core/signals.py), exactly like tuss_code above.
+    sigtap = models.ForeignKey(
+        "core.SIGTAPProcedure",
+        on_delete=models.DO_NOTHING,
+        null=True,
+        blank=True,
+        related_name="encounter_procedures",
+        verbose_name="Procedimento SIGTAP (SUS)",
+    )
     quantity = models.DecimalField(
         "Quantidade",
         max_digits=8,

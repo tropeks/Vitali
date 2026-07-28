@@ -1210,3 +1210,4 @@ class BankStatementImport(models.Model):
 
 
 from .revenue_models import *  # noqa: E402,F401,F403
+from .sus_models import *  # noqa: E402,F401,F403
