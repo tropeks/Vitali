@@ -25,7 +25,7 @@
 
 ## Sprints
 
-### S1 · Catálogo SIGTAP + identidade SUS (backend) · **Opus**
+### S1 · Catálogo SIGTAP + identidade SUS (backend) · **Opus** · ✅ FEITO (commit d90ce2b)
 `SIGTAPProcedure` (catálogo governado SHARED: código, nome, competência/vigência, `valor_sa`/`valor_sh`/`valor_sp`,
 instrumento de registro, complexidade, financiamento, compat CBO/CID/sexo/faixa etária). Importer `import_sigtap` + amostra
 (SIGTAP é domínio público DATASUS — infra + amostra representativa). Registro no search. `Professional.cns` (novo campo,
