@@ -476,20 +476,26 @@ def protect_bed_type_deletion(sender, instance, **kwargs):
 def protect_blood_component_deletion(sender, instance, **kwargs):
     """Block deletion of a BloodComponentCatalog referenced by tenant blood stock.
 
-    Covers ``emr.BloodBag.component`` (FK) in every tenant. Mirrors the
-    Bed→BedType guard.
+    Covers ``emr.BloodBag.component`` (H1) and ``emr.TransfusionRequest.component``
+    (H3), both as FKs in every tenant. Mirrors the Bed→BedType guard.
     """
     from django_tenants.utils import get_tenant_model, schema_context
 
     TenantModel = get_tenant_model()
     for tenant in TenantModel.objects.exclude(schema_name="public"):
         with schema_context(tenant.schema_name):
-            from apps.emr.models import BloodBag
+            from apps.emr.models import BloodBag, TransfusionRequest
 
             if BloodBag.objects.filter(component=instance).exists():
                 raise ProtectedError(
                     f"BloodComponentCatalog {instance.code} is referenced by BloodBag in "
                     f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+            if TransfusionRequest.objects.filter(component=instance).exists():
+                raise ProtectedError(
+                    f"BloodComponentCatalog {instance.code} is referenced by "
+                    f"TransfusionRequest in schema '{tenant.schema_name}' and cannot be deleted.",
                     {instance},
                 )
 

@@ -287,6 +287,9 @@ ADMIN_PERMISSIONS = [
     # transfusional dedicado; manage fica só no admin.
     "hemoterapia.read",
     "hemoterapia.manage",
+    # Banco de Sangue/Hemoterapia (H3): solicitar requisição transfusional
+    # (o médico solicita; reservar/liberar/crossmatch ficam em hemoterapia.manage).
+    "hemoterapia.request",
 ]
 
 CLINICAL_PRESCRIBER_PERMISSIONS = [
@@ -326,6 +329,8 @@ CLINICAL_PRESCRIBER_PERMISSIONS = [
     "emergency.read",
     # Banco de Sangue/Hemoterapia (H1): o prescritor lê o estoque/catálogo.
     "hemoterapia.read",
+    # Banco de Sangue/Hemoterapia (H3): o médico solicita a requisição transfusional.
+    "hemoterapia.request",
 ]
 
 NURSING_PERMISSIONS = [

@@ -32,6 +32,7 @@ from .views_adt import (
     InpatientUnitViewSet,
     RoomViewSet,
 )
+from .views_blood_donor import BloodBagSerologyViewSet, BloodDonorViewSet
 from .views_bloodbank import BloodBagViewSet, BloodComponentViewSet
 from .views_cid10 import CID10AcceptView, CID10SuggestView
 from .views_diagnostics import CriticalLabResultViewSet, LabInstrumentViewSet, LabSpecimenViewSet
@@ -67,6 +68,7 @@ from .views_surgery import (
     SurgicalTeamMemberViewSet,
     SurgicalTimeViewSet,
 )
+from .views_transfusion import CrossMatchViewSet, TransfusionRequestViewSet
 from .views_waitlist import WaitlistDetailView, WaitlistViewSet
 
 router = DefaultRouter()
@@ -146,6 +148,12 @@ router.register("risk-classifications", RiskClassificationViewSet, basename="ris
 # ── H1: Banco de Sangue/Hemoterapia — catálogo de hemocomponentes + estoque de bolsas
 router.register("blood-components", BloodComponentViewSet, basename="blood-component")
 router.register("blood-bags", BloodBagViewSet, basename="blood-bag")
+# H2 — doador + triagem sorológica (RDC 34)
+router.register("blood-donors", BloodDonorViewSet, basename="blood-donor")
+router.register("blood-bag-serologies", BloodBagSerologyViewSet, basename="blood-bag-serology")
+# H3 — requisição transfusional + prova de compatibilidade
+router.register("transfusion-requests", TransfusionRequestViewSet, basename="transfusion-request")
+router.register("crossmatches", CrossMatchViewSet, basename="crossmatch")
 
 urlpatterns = (
     [

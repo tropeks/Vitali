@@ -2135,6 +2135,7 @@ class NoShowRisk(models.Model):
 
 from .addendum_models import *  # noqa: E402,F401,F403
 from .adt_models import *  # noqa: E402,F401,F403
+from .blood_donor_models import *  # noqa: E402,F401,F403
 from .bloodbank_models import *  # noqa: E402,F401,F403
 from .emergency_models import *  # noqa: E402,F401,F403
 from .forms_models import *  # noqa: E402,F401,F403
@@ -2143,3 +2144,4 @@ from .reconciliation_models import *  # noqa: E402,F401,F403
 from .sae_models import *  # noqa: E402,F401,F403
 from .scheduling_models import *  # noqa: E402,F401,F403
 from .surgery_models import *  # noqa: E402,F401,F403
+from .transfusion_models import *  # noqa: E402,F401,F403
