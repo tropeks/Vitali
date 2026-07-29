@@ -20,15 +20,21 @@ class TestPrescriptionPDF(TenantTestCase):
     def setUp(self):
         from django.contrib.auth import get_user_model
 
+        from apps.core.models import Role
+        from apps.core.permissions import DEFAULT_ROLES
         from apps.emr.models import Encounter, Patient, Prescription, Professional
         from apps.pharmacy.models import Drug
 
         User = get_user_model()
 
+        medico_role = Role.objects.create(
+            name="medico_pdf_test", permissions=DEFAULT_ROLES["medico"]
+        )
         self.user = User.objects.create_user(
             email="pdf_test@clinic.test",
             password="TestPass123!",
             full_name="Dr PDF",
+            role=medico_role,
         )
 
         self.drug_normal = Drug.objects.create(

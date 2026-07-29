@@ -1448,7 +1448,7 @@ class PIXChargeView(APIView):
     GET  /api/v1/billing/pix/charges/:id/ — get charge status
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
 
     def post(self, request):
         ser = PIXChargeCreateSerializer(data=request.data)

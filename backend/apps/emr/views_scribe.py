@@ -15,6 +15,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.permissions import HasPermission
+
 from .models import Encounter
 from .services.whisper import WhisperError, WhisperGateway
 
@@ -46,7 +48,7 @@ class ScribeStartView(APIView):
     Returns: { "session_id": "...", "status": "processing" }
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasPermission("emr.write")]  # type: ignore[list-item]
 
     def post(self, request, encounter_id):
         if not getattr(settings, "FEATURE_AI_SCRIBE", False):
@@ -111,7 +113,7 @@ class ScribeStatusView(APIView):
     Returns the latest AIScribeSession for the encounter.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasPermission("emr.read")]  # type: ignore[list-item]
 
     def get(self, request, encounter_id):
         try:
@@ -149,7 +151,7 @@ class ScribeTranscribeView(APIView):
     Used as a fallback for browsers that do not support the Web Speech API.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasPermission("emr.write")]  # type: ignore[list-item]
     parser_classes = [MultiPartParser]
 
     def post(self, request, encounter_id):

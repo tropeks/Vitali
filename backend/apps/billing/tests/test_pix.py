@@ -36,12 +36,21 @@ class PIXChargeViewTest(TenantTestCase):
     """PIXChargeView — create and fetch charges."""
 
     def setUp(self):
+        from apps.core.models import FeatureFlag, Role
+
         self.client = APIClient()
         self.client.defaults["SERVER_NAME"] = self.__class__.domain.domain
 
+        FeatureFlag.objects.update_or_create(
+            tenant=self.__class__.tenant, module_key="billing", defaults={"is_enabled": True}
+        )
+        faturista_role = Role.objects.create(
+            name="faturista_pix", permissions=["billing.read", "billing.write"]
+        )
         self.user = User.objects.create_user(
             email="doc@test.com",
             password="pass123",
+            role=faturista_role,
         )
         self.client.force_authenticate(self.user)
 

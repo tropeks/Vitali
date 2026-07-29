@@ -38,13 +38,19 @@ class TestScribeTranscribeView(TenantTestCase):
         from django.contrib.auth import get_user_model
         from django.utils import timezone
 
+        from apps.core.models import Role
+        from apps.core.permissions import DEFAULT_ROLES
         from apps.emr.models import Encounter, Patient, Professional
 
         User = get_user_model()
+        medico_role = Role.objects.create(
+            name="medico_whisper_test", permissions=DEFAULT_ROLES["medico"]
+        )
         self.user = User.objects.create_user(
             email="whisper_test@clinic.test",
             password="TestPass123!",
             full_name="Whisper Doctor",
+            role=medico_role,
         )
         self.patient = Patient.objects.create(
             full_name="Whisper Patient",

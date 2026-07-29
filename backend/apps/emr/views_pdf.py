@@ -13,6 +13,7 @@ from django.http import HttpResponse
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
+from apps.core.permissions import HasPermission
 from apps.emr.models import Prescription
 from apps.emr.services.prescription_pdf import PrescriptionPDFGenerator
 
@@ -27,7 +28,7 @@ class PrescriptionPDFView(APIView):
     403 if not signed, 404 if not found.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasPermission("emr.read")]  # type: ignore[list-item]
 
     def get(self, request, prescription_id):
         try:
