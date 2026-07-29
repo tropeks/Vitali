@@ -95,6 +95,12 @@ class SusCompetencia(models.Model):
         default="",
         help_text="Conteúdo .txt da remessa APAC gerado no momento da exportação (imutável).",
     )
+    remessa_aih = models.TextField(
+        "Remessa AIH (SISAIH, texto posicional)",
+        blank=True,
+        default="",
+        help_text="Conteúdo .txt da remessa AIH (SISAIH) gerado no momento da exportação (imutável).",
+    )
     exportada_at = models.DateTimeField(
         "Exportada em",
         null=True,

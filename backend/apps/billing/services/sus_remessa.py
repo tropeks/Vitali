@@ -64,6 +64,22 @@ APAC line (tipo ``11``) — total :data:`APAC_WIDTH` = 83
 APAC secondary line (tipo ``12``) — total :data:`APAC_SEC_WIDTH` = 47
     ``12`` (2) | competência (6) | número APAC (13) | SIGTAP (10) | quantidade
     (6) | valor centavos (10)
+
+AIH line (tipo ``21``) — total :data:`AIH_WIDTH` = 87 (SISAIH-style; AI3)
+    ``21`` (2) | competência (6) | CNES (7) | número AIH (13) | SIGTAP principal
+    (10) | CID (4) | CNS (15) | data internação AAAAMMDD (8) | data saída
+    AAAAMMDD (8) | caráter (2) | motivo saída/permanência (2, código) | valor
+    centavos (10)
+
+AIH secondary line (tipo ``22``) — total :data:`AIH_SEC_WIDTH` = 47
+    ``22`` (2) | competência (6) | número AIH (13) | SIGTAP (10) | quantidade
+    (6) | valor centavos (10)
+
+The AIH remessa is the SISAIH analogue of the APAC remessa above and follows the
+SAME house convention: **coherent, documented, structurally-faithful — NOT the
+byte-exact official DATASUS/SISAIH field map**. See :func:`gerar_remessa_aih` for
+the two known real-DATASUS conformance gaps (official 13-digit AIH number vs. the
+AI2 provisional number; the abbreviated ``motivo_saida`` code table).
 """
 
 from __future__ import annotations
@@ -84,6 +100,8 @@ TIPO_BPA_C = "02"
 TIPO_BPA_I = "03"
 TIPO_APAC = "11"
 TIPO_APAC_SEC = "12"
+TIPO_AIH = "21"
+TIPO_AIH_SEC = "22"
 
 # ─── Header (tipo 01) field offsets/widths ───────────────────────────────────
 HEADER_TIPO = (0, 2)
@@ -137,6 +155,46 @@ APAC_SEC_SIGTAP = (21, 10)
 APAC_SEC_QUANTIDADE = (31, 6)
 APAC_SEC_VALOR = (37, 10)
 APAC_SEC_WIDTH = 47
+
+# ─── AIH (tipo 21) field offsets/widths — SISAIH-style ───────────────────────
+AIH_TIPO = (0, 2)
+AIH_COMPETENCIA = (2, 6)
+AIH_CNES = (8, 7)
+AIH_NUMERO = (15, 13)
+AIH_SIGTAP = (28, 10)
+AIH_CID = (38, 4)
+AIH_CNS = (42, 15)
+AIH_DATA_INTERNACAO = (57, 8)
+AIH_DATA_SAIDA = (65, 8)
+AIH_CARATER = (73, 2)
+AIH_MOTIVO = (75, 2)
+AIH_VALOR = (77, 10)
+AIH_WIDTH = 87
+
+# ─── AIH secundário (tipo 22) field offsets/widths ───────────────────────────
+AIH_SEC_TIPO = (0, 2)
+AIH_SEC_COMPETENCIA = (2, 6)
+AIH_SEC_NUMERO = (8, 13)
+AIH_SEC_SIGTAP = (21, 10)
+AIH_SEC_QUANTIDADE = (31, 6)
+AIH_SEC_VALOR = (37, 10)
+AIH_SEC_WIDTH = 47
+
+# ─── AIH motivo de saída/permanência → código posicional (2 dígitos) ─────────
+# Conversão dos rótulos internos do modelo (AihAutorizacao.MotivoSaida) para o
+# código posicional de 2 dígitos que entra na linha AIH. Segue a convenção SUS
+# de motivo de saída/permanência (dezena = classe do desfecho: 1x alta, 3x
+# transferência, 4x óbito, 5x permanência) e é **estruturalmente-fiel, NÃO
+# byte-exato oficial** — a tabela byte-exata do SISAIH (com todos os subcódigos
+# de alta/óbito/transferência) é trabalho de conformidade real-DATASUS futuro.
+# Vazio/desconhecido → "00".
+AIH_MOTIVO_CODIGO = {
+    "alta_curado": "11",
+    "alta_melhorado": "12",
+    "transferencia": "31",
+    "obito": "41",
+    "permanencia": "51",
+}
 
 
 # ─── Padding helpers ─────────────────────────────────────────────────────────
@@ -287,6 +345,72 @@ def gerar_remessa_apac(competencia: SusCompetencia) -> str:
     return LINE_TERMINATOR.join([header, *detail])
 
 
+def _motivo_saida_codigo(motivo_saida: str) -> str:
+    """``AihAutorizacao.motivo_saida`` (rótulo) → código posicional de 2 dígitos.
+
+    Estruturalmente-fiel (ver :data:`AIH_MOTIVO_CODIGO`). Vazio/desconhecido → ``00``.
+    """
+    return AIH_MOTIVO_CODIGO.get(motivo_saida or "", "00")
+
+
+def gerar_remessa_aih(competencia: SusCompetencia) -> str:
+    """Return the AIH (SISAIH) remessa text (header + AIH lines + secundário lines).
+
+    Pure: reads ``competencia.aihs`` and each AIH's ``procedimentos_secundarios``
+    (ordered by id for determinism), emits fixed-width positional lines, no file
+    I/O. Zero AIHs → a lone header with count 0. Mirrors
+    :func:`gerar_remessa_apac`; see the module docstring for the AIH field layout.
+
+    Design note (SISAIH conformance) — this is a **coherent, documented,
+    structurally-faithful** SISAIH-style layout, NOT the byte-exact official
+    DATASUS/SISAIH field map (same convention as the BPA/APAC remessas above).
+    Two known gaps for real-DATASUS conformance, left as future work:
+      * The real SISAIH remessa requires the **official 13-digit AIH number**
+        issued by the gestor SUS. The AI2 bridge may emit an internal
+        *provisional* number (``AAAAMM`` + sequence); provisional numbers do NOT
+        pass real-DATASUS conformance — reconciling the official number is future
+        work. Generation is intentionally NOT blocked (the layout is
+        structurally-faithful, for the frontend/contract).
+      * ``motivo_saida`` is mapped to a 2-digit code by :data:`AIH_MOTIVO_CODIGO`
+        (structurally-faithful, not the full official subcode table).
+    """
+    comp_aaaamm = _competencia_aaaamm(competencia.competencia)
+    cnes = _cnes_of(competencia)
+
+    detail: list[str] = []
+    total_quantidade = 0
+
+    for aih in competencia.aihs.order_by("id"):
+        detail.append(
+            TIPO_AIH
+            + comp_aaaamm
+            + _code(cnes, AIH_CNES[1])
+            + _code(aih.numero_aih, AIH_NUMERO[1])
+            + _code(aih.procedimento_principal.code, AIH_SIGTAP[1])
+            + _txt(aih.cid_principal, AIH_CID[1])
+            + _txt(aih.cns, AIH_CNS[1])
+            + _data_aaaammdd(aih.data_internacao)
+            + _data_aaaammdd(aih.data_saida)
+            + _code(aih.carater_internacao, AIH_CARATER[1])
+            + _motivo_saida_codigo(aih.motivo_saida)
+            + _centavos(aih.valor, AIH_VALOR[1])
+        )
+        for sec in aih.procedimentos_secundarios.order_by("id"):
+            total_quantidade += int(sec.quantidade)
+            detail.append(
+                TIPO_AIH_SEC
+                + comp_aaaamm
+                + _code(aih.numero_aih, AIH_SEC_NUMERO[1])
+                + _code(sec.sigtap.code, AIH_SEC_SIGTAP[1])
+                + _num(sec.quantidade, AIH_SEC_QUANTIDADE[1])
+                + _centavos(sec.valor, AIH_SEC_VALOR[1])
+            )
+
+    controle = total_quantidade + len(detail)
+    header = _header_line(comp_aaaamm, cnes, len(detail), controle)
+    return LINE_TERMINATOR.join([header, *detail])
+
+
 def remessa_filename(competencia: SusCompetencia, *, tipo: str = "BPA") -> str:
     """Downloadable filename, e.g. ``BPA_1234567_202607.txt`` / ``APAC_..._....txt``."""
     cnes = _cnes_of(competencia) or "0000000"
@@ -308,7 +432,8 @@ def exportar_competencia(competencia: SusCompetencia, *, actor=None) -> dict:
     stored string. Atomic + ``select_for_update`` so a concurrent export cannot
     double-transition.
 
-    Returns ``{"remessa_bpa", "remessa_apac", "filename_bpa", "filename_apac"}``.
+    Returns ``{"remessa_bpa", "remessa_apac", "remessa_aih", "filename_bpa",
+    "filename_apac", "filename_aih"}`` (AIH keys ADDED in AI3 — BPA/APAC unchanged).
     """
     with transaction.atomic():
         comp = SusCompetencia.objects.select_for_update().get(pk=competencia.pk)
@@ -324,17 +449,28 @@ def exportar_competencia(competencia: SusCompetencia, *, actor=None) -> dict:
 
         bpa = gerar_remessa_bpa(comp)
         apac = gerar_remessa_apac(comp)
+        aih = gerar_remessa_aih(comp)
         comp.remessa_bpa = bpa
         comp.remessa_apac = apac
+        comp.remessa_aih = aih
         comp.exportada_at = timezone.now()
         comp.status = SusCompetencia.Status.EXPORTADA
         comp.save(
-            update_fields=["remessa_bpa", "remessa_apac", "exportada_at", "status", "updated_at"]
+            update_fields=[
+                "remessa_bpa",
+                "remessa_apac",
+                "remessa_aih",
+                "exportada_at",
+                "status",
+                "updated_at",
+            ]
         )
 
     return {
         "remessa_bpa": bpa,
         "remessa_apac": apac,
+        "remessa_aih": aih,
         "filename_bpa": remessa_filename(comp, tipo="BPA"),
         "filename_apac": remessa_filename(comp, tipo="APAC"),
+        "filename_aih": remessa_filename(comp, tipo="AIH"),
     }

@@ -147,18 +147,18 @@ class SusCompetenciaViewSet(_SusPermissionMixin, viewsets.ModelViewSet):
 
     @extend_schema(
         tags=["sus"],
-        summary="Exporta a remessa DATASUS (BPA-Magnético + APAC) da competência",
+        summary="Exporta a remessa DATASUS (BPA-Magnético + APAC + AIH) da competência",
         request=None,
         responses={200: OpenApiTypes.OBJECT},
     )
     @action(detail=True, methods=["post"], url_path="exportar")
     def exportar(self, request, pk=None):
-        """Gera a remessa posicional BPA/APAC, marca ``exportada`` e devolve o texto.
+        """Gera a remessa posicional BPA/APAC/AIH, marca ``exportada`` e devolve o texto.
 
         Exige competência ``fechada`` (aberta → 409 "feche a competência antes de
         exportar"). O conteúdo é armazenado na competência (imutável) e devolvido
-        como JSON ``{remessa_bpa, remessa_apac, filename_bpa, filename_apac}``.
-        Gated ``sus.export``.
+        como JSON ``{remessa_bpa, remessa_apac, remessa_aih, filename_bpa,
+        filename_apac, filename_aih}``. Gated ``sus.export``.
         """
         competencia = self.get_object()
         try:
