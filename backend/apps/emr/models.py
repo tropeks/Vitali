@@ -1350,6 +1350,96 @@ class AntibiogramEntry(models.Model):
         return f"{self.antibiotic}: {self.get_interpretation_display()}"
 
 
+class PathologyReport(models.Model):
+    """AP1 — structured anatomic pathology report for one ordered test.
+
+    Models the anatomopathological workup of a surgical/biopsy specimen:
+    gross (macroscopy) + microscopic exam → diagnosis coded with ICD-O
+    (topography + morphology). One report per ordered item (OneToOne), the
+    specialized-lab pair of MB1. The origin surgery is an optional link.
+    """
+
+    class Status(models.TextChoices):
+        PENDENTE = "pendente", "Pendente"
+        PRELIMINAR = "preliminar", "Preliminar"
+        FINAL = "final", "Final"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    order_item = models.OneToOneField(
+        LabOrderItem,
+        on_delete=models.CASCADE,
+        related_name="pathology_report",
+    )
+    report_number = models.CharField(max_length=40, blank=True)
+    clinical_history = models.TextField(blank=True)
+    specimen_description = models.TextField(blank=True)
+    macroscopy = models.TextField(blank=True)
+    microscopy = models.TextField(blank=True)
+    immunohistochemistry = models.TextField(blank=True)
+    diagnosis = models.TextField(blank=True)
+    cid_o_topography = models.CharField(max_length=16, blank=True)
+    cid_o_morphology = models.CharField(max_length=16, blank=True)
+    surgical_case = models.ForeignKey(
+        "emr.SurgicalCase",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="pathology_reports",
+    )
+    pathologist = models.ForeignKey(
+        "emr.Professional",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="pathology_reports",
+    )
+    status = models.CharField(
+        max_length=12,
+        choices=Status.choices,
+        default=Status.PENDENTE,
+        db_index=True,
+    )
+    reported_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        "core.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="pathology_reports",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Anatomia Patológica {self.order_item_id} — {self.get_status_display()}"
+
+
+class PathologySpecimen(models.Model):
+    """AP1 — one specimen/container within a pathology report (a report can
+    bundle several labeled specimens, each with its own paraffin blocks)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    report = models.ForeignKey(PathologyReport, on_delete=models.CASCADE, related_name="specimens")
+    label = models.CharField(max_length=60)
+    description = models.TextField(blank=True)
+    site = models.CharField(max_length=160, blank=True)
+    blocks_count = models.PositiveSmallIntegerField(default=0)
+    notes = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["label"]
+        indexes = [
+            models.Index(fields=["report"], name="emr_pathspecimen_report_idx"),
+        ]
+
+    def __str__(self):
+        return self.label
+
+
 class LabInstrument(models.Model):
     """Tenant-local analyzer/LIS endpoint with explicit bidirectional capability."""
 

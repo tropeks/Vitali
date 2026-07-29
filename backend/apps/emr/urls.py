@@ -44,6 +44,10 @@ from .views_microbiology import (
     IsolatedOrganismViewSet,
     MicrobiologyResultViewSet,
 )
+from .views_pathology import (
+    PathologyReportViewSet,
+    PathologySpecimenViewSet,
+)
 from .views_pdf import PrescriptionPDFView
 from .views_problems import AllergyViewSet, ImmunizationViewSet, ProblemListItemViewSet
 from .views_reconciliation import MedicationReconciliationViewSet, OrderSetViewSet
@@ -116,6 +120,8 @@ router.register("critical-lab-results", CriticalLabResultViewSet, basename="crit
 router.register("microbiology-results", MicrobiologyResultViewSet, basename="microbiology-result")
 router.register("isolated-organisms", IsolatedOrganismViewSet, basename="isolated-organism")
 router.register("antibiogram-entries", AntibiogramEntryViewSet, basename="antibiogram-entry")
+router.register("pathology-reports", PathologyReportViewSet, basename="pathology-report")
+router.register("pathology-specimens", PathologySpecimenViewSet, basename="pathology-specimen")
 router.register("prescriptions", PrescriptionViewSet, basename="prescription")
 router.register("prescription-items", PrescriptionItemViewSet, basename="prescription-item")
 router.register("emar", MedicationAdministrationViewSet, basename="emar")
