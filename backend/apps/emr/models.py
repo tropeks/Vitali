@@ -1244,6 +1244,112 @@ class LabIntegrationMessage(models.Model):
         return f"{self.source}:{self.message_id} ({self.status})"
 
 
+class MicrobiologyResult(models.Model):
+    """MB1 — structured microbiology result for one ordered test.
+
+    Supersedes the loose ``LabOrderItem.microbiology`` JSON blob (kept for
+    backward compatibility) with a queryable culture → organism → antibiogram
+    tree. One result per ordered item (OneToOne), enabling resistance
+    surveillance and antimicrobial stewardship.
+    """
+
+    class CultureResult(models.TextChoices):
+        POSITIVA = "positiva", "Positiva"
+        NEGATIVA = "negativa", "Negativa"
+        CONTAMINADA = "contaminada", "Contaminada"
+        PENDENTE = "pendente", "Pendente"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    order_item = models.OneToOneField(
+        LabOrderItem,
+        on_delete=models.CASCADE,
+        related_name="microbiology_result",
+    )
+    culture_result = models.CharField(
+        max_length=12,
+        choices=CultureResult.choices,
+        default=CultureResult.PENDENTE,
+        db_index=True,
+    )
+    specimen = models.CharField(max_length=120, blank=True)
+    collected_at = models.DateTimeField(null=True, blank=True)
+    gram_stain = models.CharField(max_length=255, blank=True)
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        "core.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="microbiology_results",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Microbiologia {self.order_item_id} — {self.get_culture_result_display()}"
+
+
+class IsolatedOrganism(models.Model):
+    """MB1 — a microorganism isolated from a positive/contaminated culture."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    result = models.ForeignKey(
+        MicrobiologyResult, on_delete=models.CASCADE, related_name="organisms"
+    )
+    organism_name = models.CharField(max_length=160)
+    colony_count = models.CharField(max_length=60, blank=True)
+    is_significant = models.BooleanField(default=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["organism_name"]
+
+    def __str__(self):
+        return self.organism_name
+
+
+class AntibiogramEntry(models.Model):
+    """MB1 — antimicrobial susceptibility of one isolate to one antibiotic."""
+
+    class Interpretation(models.TextChoices):
+        SENSIVEL = "S", "Sensível"
+        INTERMEDIARIO = "I", "Intermediário"
+        RESISTENTE = "R", "Resistente"
+        SDD = "SDD", "Sensível dose-dependente"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organism = models.ForeignKey(
+        IsolatedOrganism, on_delete=models.CASCADE, related_name="antibiogram"
+    )
+    antibiotic = models.CharField(max_length=120)
+    method = models.CharField(max_length=60, blank=True)
+    mic_value = models.CharField(max_length=40, blank=True)
+    interpretation = models.CharField(max_length=3, choices=Interpretation.choices)
+    notes = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["antibiotic"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["organism", "antibiotic"], name="emr_antibiogram_org_drug_unique"
+            )
+        ]
+        indexes = [
+            # Resistance surveillance: "which isolates are R to <antibiotic>?".
+            models.Index(
+                fields=["antibiotic", "interpretation"], name="emr_antibiogram_surveil_idx"
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.antibiotic}: {self.get_interpretation_display()}"
+
+
 class LabInstrument(models.Model):
     """Tenant-local analyzer/LIS endpoint with explicit bidirectional capability."""
 

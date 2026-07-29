@@ -39,6 +39,11 @@ from .views_diagnostics import CriticalLabResultViewSet, LabInstrumentViewSet, L
 from .views_emergency import EmergencyEncounterViewSet, RiskClassificationViewSet
 from .views_lab_report import LabReportPDFView, LabReportSignView
 from .views_lis import LabIntegrationMessageViewSet, LabOrderORMView, LISInboundView
+from .views_microbiology import (
+    AntibiogramEntryViewSet,
+    IsolatedOrganismViewSet,
+    MicrobiologyResultViewSet,
+)
 from .views_pdf import PrescriptionPDFView
 from .views_problems import AllergyViewSet, ImmunizationViewSet, ProblemListItemViewSet
 from .views_reconciliation import MedicationReconciliationViewSet, OrderSetViewSet
@@ -108,6 +113,9 @@ router.register("lab-integrations", LabIntegrationMessageViewSet, basename="lab-
 router.register("lab-instruments", LabInstrumentViewSet, basename="lab-instrument")
 router.register("lab-specimens", LabSpecimenViewSet, basename="lab-specimen")
 router.register("critical-lab-results", CriticalLabResultViewSet, basename="critical-lab-result")
+router.register("microbiology-results", MicrobiologyResultViewSet, basename="microbiology-result")
+router.register("isolated-organisms", IsolatedOrganismViewSet, basename="isolated-organism")
+router.register("antibiogram-entries", AntibiogramEntryViewSet, basename="antibiogram-entry")
 router.register("prescriptions", PrescriptionViewSet, basename="prescription")
 router.register("prescription-items", PrescriptionItemViewSet, basename="prescription-item")
 router.register("emar", MedicationAdministrationViewSet, basename="emar")
