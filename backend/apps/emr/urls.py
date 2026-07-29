@@ -65,6 +65,7 @@ from .views_surgery import (
     OperatingRoomViewSet,
     PacuAssessmentViewSet,
     PacuRecordViewSet,
+    RoomTurnoverViewSet,
     SurgicalCaseViewSet,
     SurgicalChecklistViewSet,
     SurgicalMaterialViewSet,
@@ -157,6 +158,8 @@ router.register("anesthetic-events", AnestheticEventViewSet, basename="anestheti
 # ── CS2: Centro Cirúrgico — SRPA / PACU (recuperação pós-anestésica)
 router.register("pacu-records", PacuRecordViewSet, basename="pacu-record")
 router.register("pacu-assessments", PacuAssessmentViewSet, basename="pacu-assessment")
+# ── CS3: Centro Cirúrgico — turnover de sala (higienização/preparo entre cirurgias)
+router.register("room-turnovers", RoomTurnoverViewSet, basename="room-turnover")
 # ── E2: PS/Emergência — boletim de atendimento + classificação de risco (Manchester)
 router.register("emergency-encounters", EmergencyEncounterViewSet, basename="emergency-encounter")
 router.register("risk-classifications", RiskClassificationViewSet, basename="risk-classification")

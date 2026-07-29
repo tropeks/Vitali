@@ -41,6 +41,7 @@ Nothing here touches checklist / times / team (C3) or OPME (C6).
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any
 
 from django.core.exceptions import ValidationError
@@ -92,6 +93,49 @@ def _assert_no_overlap(*, room: OperatingRoom, start: Any, end: Any, exclude_pk:
     if conflict:
         raise ValidationError(
             f"Conflito de agenda: a sala {room.code} já está ocupada nesse horário."
+        )
+
+
+def _assert_turnover_respected(
+    *, room: OperatingRoom, start: Any, end: Any, exclude_pk: Any
+) -> None:
+    """Raise ``ValidationError`` if another blocking case on ``room`` sits closer
+    than ``room.turnover_minutes`` to the new ``[start, end)`` window — i.e. two
+    cases in the same room must be separated by a gap ``>= turnover_minutes`` (the
+    room's cleaning/preparo time). This is ADDITIONAL to :func:`_assert_no_overlap`
+    (true overlaps are already barred there; this catches back-to-back / too-close
+    cases that do NOT overlap). Assumes the room row is locked.
+
+    Predicate: expand the new window by the turnover on both sides to
+    ``[start - T, end + T]`` and reuse the half-open overlap test against each
+    existing case ``[e_start, e_end]``::
+
+        e_start < (end + T)   AND   e_end > (start - T)
+
+    A gap of *exactly* ``T`` passes (strict ``<`` / ``>``): case A 08:00–09:00 with
+    ``T = 30`` allows a next case from 09:30 but not from 09:15. With ``T = 0`` this
+    collapses to the plain overlap test (no extra constraint).
+    """
+    turnover = room.turnover_minutes or 0
+    if turnover <= 0:
+        return
+    margin = timedelta(minutes=turnover)
+    window_start = start - margin
+    window_end = end + margin
+    conflict = (
+        SurgicalCase.objects.filter(
+            operating_room=room,
+            status__in=_BLOCKING_STATUSES,
+            scheduled_start__lt=window_end,
+            scheduled_end__gt=window_start,
+        )
+        .exclude(pk=exclude_pk)
+        .exists()
+    )
+    if conflict:
+        raise ValidationError(
+            f"Conflito de agenda: a sala {room.code} exige um intervalo de "
+            f"{turnover} min de higienização/preparo (turnover) entre cirurgias."
         )
 
 
@@ -177,6 +221,7 @@ def schedule(
         )
 
     _assert_no_overlap(room=operating_room, start=start, end=end, exclude_pk=locked.pk)
+    _assert_turnover_respected(room=operating_room, start=start, end=end, exclude_pk=locked.pk)
     _assert_professionals_available(case=locked, start=start, end=end, exclude_pk=locked.pk)
 
     locked.operating_room = operating_room
@@ -215,6 +260,7 @@ def reschedule(
 
     OperatingRoom.objects.select_for_update().get(pk=target_room.pk)
     _assert_no_overlap(room=target_room, start=start, end=end, exclude_pk=locked.pk)
+    _assert_turnover_respected(room=target_room, start=start, end=end, exclude_pk=locked.pk)
     _assert_professionals_available(case=locked, start=start, end=end, exclude_pk=locked.pk)
 
     locked.operating_room = target_room

@@ -27,6 +27,7 @@ from .serializers_surgery import (
     OperatingRoomSerializer,
     PacuAssessmentSerializer,
     PacuRecordSerializer,
+    RoomTurnoverSerializer,
     SurgicalCaseCancelSerializer,
     SurgicalCaseChecklistSerializer,
     SurgicalCaseRecordTimeSerializer,
@@ -43,6 +44,7 @@ from .serializers_surgery import (
 from .services import surgery_intraop as intraop_service
 from .services import surgery_materials as materials_service
 from .services import surgery_scheduling as scheduling_service
+from .services import surgery_turnover as turnover_service
 from .views import log_audit
 
 _FACILITY_PARAM = OpenApiParameter(
@@ -641,3 +643,51 @@ class PacuAssessmentViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
     def perform_create(self, serializer):
         obj = serializer.save()
         log_audit(self.request, "pacu_assessment_create", "PacuAssessment", obj.id)
+
+
+# ─── CS3: turnover de sala (higienização/preparo entre cirurgias) ──────────────
+
+
+@extend_schema_view(
+    list=extend_schema(parameters=[_OR_PARAM]),
+)
+class RoomTurnoverViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
+    """Turnovers de sala (CRUD + ação ``complete``).
+
+    Read=``surgery.read`` / write=``surgery.manage``. ``created_by`` é definido no
+    servidor. ``complete`` roteia pelo serviço atômico (marca ``ready_at`` +
+    ``status=pronta``). Filtrável por ``?operating_room=``."""
+
+    serializer_class = RoomTurnoverSerializer
+
+    def get_queryset(self):
+        from .models import RoomTurnover
+
+        qs = RoomTurnover.objects.select_related(
+            "operating_room", "case_out", "case_in", "performed_by"
+        )
+        operating_room = self.request.query_params.get("operating_room")
+        if operating_room:
+            qs = qs.filter(operating_room_id=operating_room)
+        return qs
+
+    def perform_create(self, serializer):
+        obj = serializer.save(created_by=self.request.user)
+        log_audit(self.request, "room_turnover_create", "RoomTurnover", obj.id)
+
+    def perform_update(self, serializer):
+        obj = serializer.save()
+        log_audit(self.request, "room_turnover_update", "RoomTurnover", obj.id)
+
+    @extend_schema(
+        request=None,
+        responses=RoomTurnoverSerializer,
+        description="Conclui o turnover: marca ready_at e status=pronta. Gated surgery.manage.",
+    )
+    @action(detail=True, methods=["post"])
+    def complete(self, request, pk=None):
+        """Conclui o turnover da sala (→ pronta; registra ready_at)."""
+        turnover = self.get_object()
+        turnover = turnover_service.complete_turnover(turnover)
+        log_audit(request, "room_turnover_complete", "RoomTurnover", turnover.id)
+        return Response(self.get_serializer(turnover).data)

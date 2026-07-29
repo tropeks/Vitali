@@ -76,9 +76,14 @@ class SchedulingTestBase(TenantTestCase):
         self.patient = Patient.objects.create(
             full_name="Maria Operada", birth_date="1980-01-01", gender="F", cpf="52998224725"
         )
-        self.room = OperatingRoom.objects.create(facility=self.facility, code="SO-1", name="Sala 1")
+        # turnover_minutes=0 on the base fixture rooms so these tests exercise the
+        # pure overlap axis (adjacent/back-to-back slots stay OK). The turnover gap
+        # invariant (CS3) is covered by test_room_turnover.py with explicit values.
+        self.room = OperatingRoom.objects.create(
+            facility=self.facility, code="SO-1", name="Sala 1", turnover_minutes=0
+        )
         self.room2 = OperatingRoom.objects.create(
-            facility=self.facility, code="SO-2", name="Sala 2"
+            facility=self.facility, code="SO-2", name="Sala 2", turnover_minutes=0
         )
 
     def _case(self, **kw):

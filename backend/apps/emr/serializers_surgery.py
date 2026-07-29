@@ -18,6 +18,7 @@ from .models import (
     OperatingRoom,
     PacuAssessment,
     PacuRecord,
+    RoomTurnover,
     SurgicalCase,
     SurgicalChecklist,
     SurgicalMaterial,
@@ -37,6 +38,7 @@ class OperatingRoomSerializer(serializers.ModelSerializer):
             "name",
             "room_type",
             "active",
+            "turnover_minutes",
             "created_at",
             "updated_at",
         ]
@@ -341,3 +343,31 @@ class PacuRecordSerializer(serializers.ModelSerializer):
         # ``case`` is a OneToOneField → DRF auto-adds a UniqueValidator, so a 2nd
         # registro for the same case is rejected with 400.
         read_only_fields = ("id", "assessments", "created_by", "created_at", "updated_at")
+
+
+# ─── CS3: turnover de sala (higienização/preparo entre cirurgias) ──────────────
+
+
+class RoomTurnoverSerializer(serializers.ModelSerializer):
+    """Registro operacional do turnover de uma sala entre dois casos. ``created_by``
+    é definido no servidor; ``ready_at`` / ``status`` avançam pela ação
+    ``complete`` (via o serviço), mas são editáveis via CRUD para uso operacional."""
+
+    class Meta:
+        model = RoomTurnover
+        fields = [
+            "id",
+            "operating_room",
+            "case_out",
+            "case_in",
+            "started_at",
+            "cleaning_done_at",
+            "ready_at",
+            "status",
+            "performed_by",
+            "notes",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ("id", "created_by", "created_at", "updated_at")

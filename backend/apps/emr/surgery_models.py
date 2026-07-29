@@ -50,6 +50,7 @@ __all__ = [
     "AnestheticEvent",
     "PacuRecord",
     "PacuAssessment",
+    "RoomTurnover",
 ]
 
 
@@ -87,6 +88,11 @@ class OperatingRoom(models.Model):
         default="",
     )
     active = models.BooleanField("Ativa", default=True, db_index=True)
+    turnover_minutes = models.PositiveSmallIntegerField(
+        "Turnover (min)",
+        default=30,
+        help_text="Intervalo mínimo de higienização/preparo entre cirurgias, em minutos.",
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -877,3 +883,98 @@ class PacuAssessment(models.Model):
 
     def __str__(self):
         return f"Aldrete {self.aldrete_score} — {self.record_id} @ {self.assessed_at:%d/%m %H:%M}"
+
+
+# ─── CS3: turnover de sala (limpeza/preparo entre duas cirurgias) ──────────────
+
+
+class RoomTurnover(models.Model):
+    """The turnover (higienização/preparo) of an :class:`OperatingRoom` between
+    two surgical cases.
+
+    Records the cleaning/preparation window a room needs between the case that
+    just left (``case_out``) and the next one (``case_in``): when the room was
+    freed (``started_at``), when cleaning finished (``cleaning_done_at``) and when
+    it became ready again (``ready_at``), plus who performed it (``performed_by``).
+    The minimum required gap itself is ``OperatingRoom.turnover_minutes``, enforced
+    by the scheduling service (``_assert_turnover_respected``); this model is the
+    operational *log* of an actual turnover.
+
+    Both case links are ``SET_NULL`` (a turnover survives a case being detached)
+    and optional — a turnover may be opened for a room with only the outgoing case
+    known, the incoming one filled in later.
+    """
+
+    class Status(models.TextChoices):
+        AGUARDANDO = "aguardando", "Aguardando limpeza"
+        EM_LIMPEZA = "em_limpeza", "Em limpeza"
+        PRONTA = "pronta", "Pronta"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    operating_room = models.ForeignKey(
+        OperatingRoom,
+        on_delete=models.PROTECT,
+        related_name="turnovers",
+        verbose_name="Sala cirúrgica",
+    )
+    case_out = models.ForeignKey(
+        SurgicalCase,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="turnover_out",
+        verbose_name="Cirurgia que saiu",
+    )
+    case_in = models.ForeignKey(
+        SurgicalCase,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="turnover_in",
+        verbose_name="Próxima cirurgia",
+    )
+    started_at = models.DateTimeField(
+        "Início do turnover",
+        default=timezone.now,
+        help_text="Momento em que a sala foi liberada / início do turnover.",
+    )
+    cleaning_done_at = models.DateTimeField("Limpeza concluída em", null=True, blank=True)
+    ready_at = models.DateTimeField("Sala pronta em", null=True, blank=True)
+    status = models.CharField(
+        "Situação",
+        max_length=12,
+        choices=Status.choices,
+        default=Status.AGUARDANDO,
+        db_index=True,
+    )
+    performed_by = models.ForeignKey(
+        "emr.Professional",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="room_turnovers",
+        verbose_name="Higienizado por",
+    )
+    notes = models.TextField("Observações", blank=True)
+
+    created_by = models.ForeignKey(
+        "core.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="room_turnovers_created",
+        verbose_name="Criado por",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-started_at", "-created_at"]
+        verbose_name = "Turnover de Sala"
+        verbose_name_plural = "Turnovers de Sala"
+        indexes = [
+            models.Index(fields=["operating_room", "started_at"], name="emr_turnover_or_dt_idx"),
+        ]
+
+    def __str__(self):
+        return f"Turnover {self.operating_room_id} @ {self.started_at:%d/%m %H:%M} ({self.status})"
