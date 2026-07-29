@@ -93,7 +93,11 @@ def generate_guide_xml(guide) -> str:
     Generate the XML fragment for a single TISSGuide.
     Returns the rendered XML string (no envelope, no XSD declaration).
     """
-    template_name = "sadt_guide.xml.j2" if guide.guide_type == "sadt" else "consulta_guide.xml.j2"
+    template_by_type = {
+        "sadt": "sadt_guide.xml.j2",
+        "internacao": "internacao_guide.xml.j2",
+    }
+    template_name = template_by_type.get(guide.guide_type, "consulta_guide.xml.j2")
     template = _env().get_template(template_name)
 
     # Resolve professional from encounter

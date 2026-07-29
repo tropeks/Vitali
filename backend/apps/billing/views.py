@@ -842,6 +842,12 @@ class LabOrderBillingRequestSerializer(serializers.Serializer):
     lab_order = serializers.UUIDField(help_text="UUID of the finalized (COMPLETED) LabOrder.")
 
 
+class AdmissionBillingRequestSerializer(serializers.Serializer):
+    """Request body for POST /guides/from-admission/ — the Admission id (B3)."""
+
+    admission_id = serializers.UUIDField(help_text="UUID da internação (Admission) a faturar.")
+
+
 class TISSGuideViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -932,6 +938,52 @@ class TISSGuideViewSet(viewsets.ModelViewSet):
         already_billed = TISSGuide.objects.filter(lab_order=order).exists()
         # Raises DRF ValidationError (→ 400) when the order is not billable.
         guide = generate_sadt_guide_for_lab_order(order)
+        http_status = status.HTTP_200_OK if already_billed else status.HTTP_201_CREATED
+        return Response(TISSGuideSerializer(guide).data, status=http_status)
+
+    @extend_schema(
+        request=AdmissionBillingRequestSerializer,
+        responses={
+            201: OpenApiResponse(TISSGuideSerializer, description="Guia de internação criada."),
+            200: OpenApiResponse(
+                TISSGuideSerializer, description="Guia já existente (re-faturamento idempotente)."
+            ),
+            400: OpenApiResponse(description="Pré-condição de faturamento não satisfeita."),
+            404: OpenApiResponse(description="Internação (Admission) não encontrada."),
+        },
+        summary="Faturar uma internação em uma guia TISS de Resumo de Internação",
+        description=(
+            "Gera (ou retorna, de forma idempotente) a guia de Resumo de Internação "
+            "que fatura as diárias acumuladas de uma internação, delegando ao serviço "
+            "`generate_internacao_guide_for_admission`. Retorna 400 com mensagem clara "
+            "quando a internação não é faturável (sem atendimento, sem convênio ativo / "
+            "operadora não cadastrada, ou sem diárias faturáveis)."
+        ),
+    )
+    @action(detail=False, methods=["post"], url_path="from-admission")
+    def from_admission(self, request):
+        """Bill an Admission's accumulated diárias into a Resumo de Internação guide.
+
+        The precondition errors raised by ``generate_internacao_guide_for_admission``
+        are DRF ``ValidationError``s, so they surface as HTTP 400 with the service's
+        PT-BR message. Idempotent: a second call returns the existing guide (200 vs
+        201 on first creation)."""
+        from apps.emr.models import Admission
+
+        from .services.inpatient_billing import generate_internacao_guide_for_admission
+
+        payload = AdmissionBillingRequestSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            admission = Admission.objects.get(pk=payload.validated_data["admission_id"])
+        except Admission.DoesNotExist:
+            return Response(
+                {"detail": "Internação não encontrada."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        already_billed = TISSGuide.objects.filter(admission=admission).exists()
+        # Raises DRF ValidationError (→ 400) when the admission is not billable.
+        guide = generate_internacao_guide_for_admission(admission)
         http_status = status.HTTP_200_OK if already_billed else status.HTTP_201_CREATED
         return Response(TISSGuideSerializer(guide).data, status=http_status)
 

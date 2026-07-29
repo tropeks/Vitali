@@ -278,6 +278,7 @@ class TISSGuide(models.Model):
             ("sadt", "SP/SADT"),
             ("consulta", "Consulta"),
             ("honorarios", "Honorários"),
+            ("internacao", "Resumo de Internação"),
         ],
     )
     encounter = models.ForeignKey(
@@ -339,6 +340,21 @@ class TISSGuide(models.Model):
         related_name="tiss_guides",
         help_text="Caso cirúrgico que originou esta guia (ponte Centro Cirúrgico→faturamento).",
     )
+    # ── B3: Admission → Resumo de Internação bridge ──────────────────────────────
+    # Same-schema FK (emr and billing are both tenant apps) linking an internação
+    # guide to the Admission whose accumulated DailyCharges it bills. Nullable — set
+    # only on guides auto-generated from a internação. Its uniqueness (enforced
+    # below) is what makes Admission→guide generation IDEMPOTENT: at most one
+    # internação guide per admission. SET_NULL so an admission delete never
+    # destroys the billing record.
+    admission = models.ForeignKey(
+        "emr.Admission",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tiss_guides",
+        help_text="Internação que originou esta guia (ponte internação→faturamento).",
+    )
     status = models.CharField(
         "Status", max_length=20, choices=GUIDE_STATUS, default="draft", db_index=True
     )
@@ -377,6 +393,12 @@ class TISSGuide(models.Model):
                 fields=["surgical_case"],
                 condition=models.Q(surgical_case__isnull=False),
                 name="uniq_tiss_guide_per_surgical_case",
+            ),
+            # B3: at most ONE internação guide per admission (idempotent generation).
+            models.UniqueConstraint(
+                fields=["admission"],
+                condition=models.Q(admission__isnull=False),
+                name="uniq_tiss_guide_per_admission",
             ),
         ]
 

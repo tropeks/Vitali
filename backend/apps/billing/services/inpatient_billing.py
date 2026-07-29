@@ -67,11 +67,19 @@ from __future__ import annotations
 
 import logging
 from datetime import date, timedelta
+from decimal import Decimal
 
 from django.db import transaction
 from django.utils import timezone
+from rest_framework.exceptions import ValidationError
 
 from apps.billing.inpatient_models import AccommodationTuss, DailyCharge
+from apps.billing.models import InsuranceProvider, TISSGuide, TISSGuideItem
+from apps.billing.services.lab_order_billing import (
+    _active_insurance,
+    _active_price_table,
+    _unit_value,
+)
 from apps.emr.models import Admission
 
 logger = logging.getLogger(__name__)
@@ -165,3 +173,106 @@ def accrue_daily_charges(admission: Admission) -> list[DailyCharge]:
             service_date += timedelta(days=1)
 
         return created
+
+
+def generate_internacao_guide_for_admission(admission: Admission) -> TISSGuide:
+    """B3 — Gera (ou retorna a existente) a guia TISS de Resumo de Internação.
+
+    Monta uma guia ``guide_type='internacao'`` a partir das :class:`DailyCharge`
+    acumuladas na internação, precificando cada TUSS de diária pela ``PriceTable``
+    ativa do convênio — o mesmo caminho dos bridges de laboratório/cirurgia.
+
+    Fluxo (espelha ``generate_sadt_guide_for_surgical_case``):
+
+      * **accrue primeiro**: chama ``accrue_daily_charges(admission)`` para
+        garantir que as diárias estão atualizadas ENQUANTO o leito ainda está
+        atribuído (a alta libera ``Admission.current_bed`` → o acúmulo posterior
+        não teria como resolver o TUSS da diária; ver o GAP no docstring do
+        módulo). O acúmulo é idempotente; as ``DailyCharge`` já criadas
+        snapshotam ``bed_type_code`` e sobrevivem à liberação do leito.
+      * **agrega por TUSS**: cada TUSS de diária distinto vira UM
+        ``TISSGuideItem`` com ``quantity`` = nº de diárias daquele TUSS
+        (transferência entre tipos de leito → múltiplos itens). ``unit_value`` é
+        o valor negociado da ``PriceTable``; ``total_value`` é recalculado no
+        ``TISSGuideItem.save``.
+
+    Pré-condições (``ValidationError`` clara, PT-BR):
+
+      * ``admission.encounter`` obrigatório (``TISSGuide.encounter`` é PROTECT —
+        nunca fabricar um encounter);
+      * paciente com convênio ativo cujo ANS esteja cadastrado em faturamento;
+      * ao menos uma ``DailyCharge`` faturável — senão a guia recém-criada sofre
+        rollback DENTRO do bloco atômico (não deixa guia vazia; mantém a
+        invariante "uma guia por internação" e a idempotência).
+
+    Idempotente: uma segunda chamada devolve a guia criada pela primeira.
+    """
+    with transaction.atomic():
+        admission = (
+            Admission.objects.select_for_update(of=("self",))
+            .select_related("patient")
+            .get(pk=admission.pk)
+        )
+
+        existing = TISSGuide.objects.filter(admission=admission).first()
+        if existing is not None:
+            return existing
+
+        if admission.encounter_id is None:
+            raise ValidationError("Internação sem atendimento (encounter) não pode gerar guia.")
+
+        insurance = _active_insurance(admission.patient_id)
+        if insurance is None:
+            raise ValidationError(
+                "Paciente sem convênio ativo — internação não faturável por TISS."
+            )
+        provider = InsuranceProvider.objects.filter(ans_code=insurance.provider_ans_code).first()
+        if provider is None:
+            raise ValidationError(
+                f"Operadora ANS {insurance.provider_ans_code} não cadastrada em faturamento."
+            )
+
+        # Acumula as diárias enquanto o leito ainda pode estar atribuído (idempotente).
+        accrue_daily_charges(admission)
+
+        charges = list(DailyCharge.objects.filter(admission=admission).select_related("tuss_code"))
+        if not charges:
+            raise ValidationError("Internação sem diárias faturáveis: nenhuma diária acumulada.")
+
+        today = timezone.now().date()
+        price_table = _active_price_table(provider, today)
+        competency = today.strftime("%Y-%m")
+
+        guide = TISSGuide.objects.create(
+            guide_type="internacao",
+            encounter_id=admission.encounter_id,
+            patient_id=admission.patient_id,
+            provider=provider,
+            price_table=price_table,
+            admission=admission,
+            status="draft",
+            insured_card_number=insurance.card_number or "",
+            competency=competency,
+        )
+
+        # Agrega as diárias por TUSS (transferência entre tipos de leito → 1 item
+        # por TUSS distinto, quantidade = nº de diárias). Agregado em Python para
+        # não esbarrar no gotcha do mypy com .values().annotate().
+        aggregated: dict[int, dict] = {}
+        for charge in charges:
+            entry = aggregated.setdefault(
+                charge.tuss_code_id, {"tuss": charge.tuss_code, "quantity": 0}
+            )
+            entry["quantity"] += charge.quantity
+
+        for entry in aggregated.values():
+            tuss = entry["tuss"]
+            TISSGuideItem.objects.create(
+                guide=guide,
+                tuss_code=tuss,
+                description=tuss.description or "",
+                quantity=Decimal(entry["quantity"]),
+                unit_value=_unit_value(price_table, tuss),
+            )
+
+        return guide
