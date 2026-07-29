@@ -33,6 +33,7 @@ from apps.billing.serializers_sus import (
     BpaIndividualizadoSerializer,
     SusCompetenciaSerializer,
 )
+from apps.billing.services.aih_billing import generate_aih_for_admission
 from apps.billing.services.sus_production import gerar_producao_ambulatorial
 from apps.billing.services.sus_remessa import exportar_competencia
 from apps.billing.sus_models import (
@@ -45,6 +46,8 @@ from apps.billing.sus_models import (
     SusCompetencia,
 )
 from apps.core.permissions import HasPermission
+from apps.core.sigtap_catalog_models import SIGTAPProcedure
+from apps.emr.adt_models import Admission
 
 _ESTABLISHMENT_PARAM = OpenApiParameter(
     "establishment", OpenApiTypes.INT, description="Filtra por estabelecimento (Facility id)."
@@ -259,6 +262,65 @@ class AihAutorizacaoViewSet(_SusPermissionMixin, viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
+
+    @extend_schema(
+        tags=["sus"],
+        summary="Gera a AIH a partir de uma internação com alta (bridge AI2)",
+        request=OpenApiTypes.OBJECT,
+        responses={201: AihAutorizacaoSerializer},
+    )
+    @action(detail=False, methods=["post"], url_path="from-admission")
+    def from_admission(self, request):
+        """Bridge Admission → AIH: valora a internação com alta por SIGTAP (SH+SP).
+
+        Body: ``admission_id``, ``competencia_id``, ``procedimento_principal_id``
+        (código SIGTAP do procedimento principal), opcional ``numero_aih``.
+        Idempotente (uma AIH por internação). ValidationError → 400. Gated
+        ``sus.write`` (herda ``_SusPermissionMixin``).
+        """
+        admission_id = request.data.get("admission_id")
+        competencia_id = request.data.get("competencia_id")
+        proc_code = request.data.get("procedimento_principal_id")
+        numero_aih = request.data.get("numero_aih") or None
+
+        if not admission_id or not competencia_id or not proc_code:
+            return Response(
+                {
+                    "detail": "admission_id, competencia_id e procedimento_principal_id "
+                    "são obrigatórios."
+                },
+                status=http_status.HTTP_400_BAD_REQUEST,
+            )
+
+        admission = Admission.objects.filter(pk=admission_id).first()
+        if admission is None:
+            return Response(
+                {"detail": f"Internação {admission_id} não encontrada."},
+                status=http_status.HTTP_404_NOT_FOUND,
+            )
+        competencia = SusCompetencia.objects.filter(pk=competencia_id).first()
+        if competencia is None:
+            return Response(
+                {"detail": f"Competência {competencia_id} não encontrada."},
+                status=http_status.HTTP_404_NOT_FOUND,
+            )
+        procedimento_principal = SIGTAPProcedure.objects.filter(code=proc_code).first()
+        if procedimento_principal is None:
+            return Response(
+                {"detail": f"Procedimento SIGTAP {proc_code} não encontrado no catálogo."},
+                status=http_status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            aih = generate_aih_for_admission(
+                admission,
+                competencia,
+                procedimento_principal=procedimento_principal,
+                numero_aih=numero_aih,
+            )
+        except DjangoValidationError as exc:
+            return Response({"detail": exc.messages[0]}, status=http_status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(aih).data, status=http_status.HTTP_201_CREATED)
 
 
 @extend_schema_view(
