@@ -387,7 +387,7 @@ def gerar_remessa_aih(competencia: SusCompetencia) -> str:
             + _code(cnes, AIH_CNES[1])
             + _code(aih.numero_aih, AIH_NUMERO[1])
             + _code(aih.procedimento_principal.code, AIH_SIGTAP[1])
-            + _txt(aih.cid_principal, AIH_CID[1])
+            + _txt(aih.cid_principal_code, AIH_CID[1])
             + _txt(aih.cns, AIH_CNS[1])
             + _data_aaaammdd(aih.data_internacao)
             + _data_aaaammdd(aih.data_saida)

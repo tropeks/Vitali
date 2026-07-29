@@ -137,6 +137,11 @@ class AihAutorizacaoSerializer(serializers.ModelSerializer):
     must be a stable point-in-time record).
     """
 
+    # CID-10 principal gravável por código (roteado pela property do model, que
+    # reconcilia contra core.CID10Code ou marca não-reconciliado). O ``cid10`` FK e
+    # o ``cid_principal`` (texto bruto) ficam read-only — a reconciliação é a via.
+    cid_principal_code = serializers.CharField(required=False, allow_blank=True)
+
     class Meta:
         model = AihAutorizacao
         fields = [
@@ -149,7 +154,10 @@ class AihAutorizacaoSerializer(serializers.ModelSerializer):
             "motivo_rejeicao",
             "admission",
             "procedimento_principal",
+            "cid10",
             "cid_principal",
+            "cid_principal_code",
+            "cid_unmatched",
             "patient",
             "cns",
             "professional_solicitante",
@@ -163,13 +171,17 @@ class AihAutorizacaoSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         # situacao/numero_provisorio/data_autorizacao/motivo_rejeicao são movidos
-        # pelo serviço de reconciliação (aih_lifecycle), nunca client-set.
+        # pelo serviço de reconciliação (aih_lifecycle); cid10/cid_principal/
+        # cid_unmatched são derivados de cid_principal_code pela property.
         read_only_fields = [
             "id",
             "situacao",
             "numero_provisorio",
             "data_autorizacao",
             "motivo_rejeicao",
+            "cid10",
+            "cid_principal",
+            "cid_unmatched",
             "created_by",
             "created_at",
         ]
@@ -179,7 +191,20 @@ class AihAutorizacaoSerializer(serializers.ModelSerializer):
         if not validated_data.get("cns"):
             patient = validated_data.get("patient")
             validated_data["cns"] = (getattr(patient, "cns", "") or "").strip()
-        return super().create(validated_data)
+        code = validated_data.pop("cid_principal_code", None)
+        instance = super().create(validated_data)
+        if code is not None:
+            instance.cid_principal_code = code  # routes through the reconciling setter
+            instance.save(update_fields=["cid10", "cid_principal", "cid_unmatched"])
+        return instance
+
+    def update(self, instance, validated_data):
+        code = validated_data.pop("cid_principal_code", None)
+        instance = super().update(instance, validated_data)
+        if code is not None:
+            instance.cid_principal_code = code
+            instance.save(update_fields=["cid10", "cid_principal", "cid_unmatched"])
+        return instance
 
 
 class AihReconciliarSerializer(serializers.Serializer):

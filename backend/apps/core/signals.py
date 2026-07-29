@@ -187,14 +187,16 @@ def protect_tuss_code_deletion(sender, instance, **kwargs):
 def protect_cid10_code_deletion(sender, instance, **kwargs):
     """Block deletion of a CID10Code referenced by tenant EMR data in any tenant.
 
-    Covers ``emr.MedicalHistory.cid10`` (FK) and ``emr.SOAPNote.cid10`` (M2M via
-    the ``SOAPNoteCID10`` through). Mirrors the EncounterProcedure→TUSSCode guard.
+    Covers ``emr.MedicalHistory.cid10`` (FK), ``emr.SOAPNote.cid10`` (M2M via the
+    ``SOAPNoteCID10`` through) and ``billing.AihAutorizacao.cid10`` (SUS inpatient
+    billing, AI-R2). Mirrors the EncounterProcedure→TUSSCode guard.
     """
     from django_tenants.utils import get_tenant_model, schema_context
 
     TenantModel = get_tenant_model()
     for tenant in TenantModel.objects.exclude(schema_name="public"):
         with schema_context(tenant.schema_name):
+            from apps.billing.sus_models import AihAutorizacao
             from apps.emr.models import MedicalHistory, SOAPNoteCID10
 
             if MedicalHistory.objects.filter(cid10=instance).exists():
@@ -206,6 +208,12 @@ def protect_cid10_code_deletion(sender, instance, **kwargs):
             if SOAPNoteCID10.objects.filter(cid10=instance).exists():
                 raise ProtectedError(
                     f"CID10Code {instance.code} is referenced by SOAPNote in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+            if AihAutorizacao.objects.filter(cid10=instance).exists():
+                raise ProtectedError(
+                    f"CID10Code {instance.code} is referenced by AihAutorizacao in "
                     f"schema '{tenant.schema_name}' and cannot be deleted.",
                     {instance},
                 )

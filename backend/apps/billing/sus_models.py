@@ -481,7 +481,29 @@ class AihAutorizacao(models.Model):
         related_name="+",
         verbose_name="Procedimento principal (SIGTAP)",
     )
-    cid_principal = models.CharField("CID-10 principal", max_length=10, blank=True, default="")
+    # CID-10 principal: FK governada (core.CID10Code, cross-schema) + texto bruto
+    # preservado + flag de não-reconciliado, mesmo molde de emr.MedicalHistory.
+    # ``cid_principal`` é o texto legado/bruto (compat com AI1/remessa); o código
+    # efetivo sai da property ``cid_principal_code`` (FK.code quando reconciliado).
+    cid10 = models.ForeignKey(
+        "core.CID10Code",
+        on_delete=models.DO_NOTHING,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="CID-10 principal (governado)",
+    )
+    cid_principal = models.CharField(
+        "CID-10 principal (texto)",
+        max_length=10,
+        blank=True,
+        default="",
+        help_text="Código CID-10 bruto quando não reconciliado com core.CID10Code.",
+    )
+    cid_unmatched = models.BooleanField(
+        default=False,
+        help_text="True quando cid_principal não corresponde a nenhum CID10Code governado.",
+    )
     patient = models.ForeignKey(
         "emr.Patient",
         on_delete=models.PROTECT,
@@ -549,6 +571,35 @@ class AihAutorizacao(models.Model):
                 name="uniq_aih_per_admission",
             ),
         ]
+
+    @property
+    def cid_principal_code(self) -> str:
+        """Código CID-10 efetivo: o code da FK governada quando reconciliado, senão
+        o texto bruto legado. Mantém remessa/leitores funcionando após a migração
+        CharField→FK (mesmo padrão de ``emr.MedicalHistory.cid10_code``)."""
+        if self.cid10_id:
+            return self.cid10.code  # type: ignore[union-attr]
+        return self.cid_principal
+
+    @cid_principal_code.setter
+    def cid_principal_code(self, value: str) -> None:
+        code = (value or "").strip()
+        if not code:
+            self.cid10 = None
+            self.cid_principal = ""
+            self.cid_unmatched = False
+            return
+        from apps.core.models import CID10Code
+
+        match = CID10Code.objects.filter(code=code).first()
+        if match is not None:
+            self.cid10 = match
+            self.cid_principal = ""
+            self.cid_unmatched = False
+        else:
+            self.cid10 = None
+            self.cid_principal = code
+            self.cid_unmatched = True
 
     def __str__(self):
         return (
