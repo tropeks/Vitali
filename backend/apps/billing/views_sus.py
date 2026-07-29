@@ -27,6 +27,8 @@ from rest_framework.response import Response
 from apps.billing.serializers_sus import (
     AihAutorizacaoSerializer,
     AihProcedimentoSecundarioSerializer,
+    AihReconciliarSerializer,
+    AihRejeitarSerializer,
     ApacAutorizacaoSerializer,
     ApacProcedimentoSecundarioSerializer,
     BpaConsolidadoSerializer,
@@ -34,6 +36,7 @@ from apps.billing.serializers_sus import (
     SusCompetenciaSerializer,
 )
 from apps.billing.services.aih_billing import generate_aih_for_admission
+from apps.billing.services.aih_lifecycle import reconciliar_numero_oficial, rejeitar_aih
 from apps.billing.services.sus_production import gerar_producao_ambulatorial
 from apps.billing.services.sus_remessa import exportar_competencia
 from apps.billing.sus_models import (
@@ -321,6 +324,51 @@ class AihAutorizacaoViewSet(_SusPermissionMixin, viewsets.ModelViewSet):
         except DjangoValidationError as exc:
             return Response({"detail": exc.messages[0]}, status=http_status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(aih).data, status=http_status.HTTP_201_CREATED)
+
+    @extend_schema(
+        tags=["sus"],
+        summary="Reconcilia a AIH com o número oficial do gestor (solicitada → autorizada)",
+        request=AihReconciliarSerializer,
+        responses={200: AihAutorizacaoSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="reconciliar")
+    def reconciliar(self, request, pk=None):
+        """Reconcilia a AIH: o número oficial de 13 dígitos substitui o provisório,
+        situação → ``autorizada``, opcionalmente popula o solicitante. Número
+        inválido/duplicado ou AIH já autorizada → 409. Gated ``sus.write``."""
+        aih = self.get_object()
+        payload = AihReconciliarSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            aih = reconciliar_numero_oficial(
+                aih=aih,
+                numero_oficial=payload.validated_data["numero_oficial"],
+                professional_solicitante=payload.validated_data.get("professional_solicitante"),
+                data_autorizacao=payload.validated_data.get("data_autorizacao"),
+                actor=request.user,
+            )
+        except DjangoValidationError as exc:
+            return Response({"detail": exc.messages[0]}, status=http_status.HTTP_409_CONFLICT)
+        return Response(self.get_serializer(aih).data, status=http_status.HTTP_200_OK)
+
+    @extend_schema(
+        tags=["sus"],
+        summary="Rejeita/glosa a AIH com um motivo (→ rejeitada)",
+        request=AihRejeitarSerializer,
+        responses={200: AihAutorizacaoSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="rejeitar")
+    def rejeitar(self, request, pk=None):
+        """Marca a AIH como ``rejeitada`` (glosa do gestor) com motivo obrigatório.
+        Motivo vazio → 409. Gated ``sus.write``."""
+        aih = self.get_object()
+        payload = AihRejeitarSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            aih = rejeitar_aih(aih=aih, motivo=payload.validated_data["motivo"], actor=request.user)
+        except DjangoValidationError as exc:
+            return Response({"detail": exc.messages[0]}, status=http_status.HTTP_409_CONFLICT)
+        return Response(self.get_serializer(aih).data, status=http_status.HTTP_200_OK)
 
 
 @extend_schema_view(

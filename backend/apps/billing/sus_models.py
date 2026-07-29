@@ -428,13 +428,42 @@ class AihAutorizacao(models.Model):
         OBITO = "obito", "Óbito"
         PERMANENCIA = "permanencia", "Permanência"
 
+    class Situacao(models.TextChoices):
+        # Ciclo de vida da autorização perante o gestor SUS. Nasce SOLICITADA
+        # (número provisório interno); vira AUTORIZADA quando o gestor devolve o
+        # número oficial de 13 dígitos (reconciliação); REJEITADA quando glosada.
+        SOLICITADA = "solicitada", "Solicitada"
+        AUTORIZADA = "autorizada", "Autorizada"
+        REJEITADA = "rejeitada", "Rejeitada"
+
     competencia = models.ForeignKey(SusCompetencia, on_delete=models.CASCADE, related_name="aihs")
     numero_aih = models.CharField(
         "Número da AIH",
         max_length=13,
         unique=True,
-        help_text="Número único da autorização AIH (emitido pelo gestor SUS).",
+        help_text="Número corrente da AIH: provisório interno até a reconciliação "
+        "substituí-lo pelo número oficial de 13 dígitos emitido pelo gestor SUS.",
     )
+    situacao = models.CharField(
+        "Situação",
+        max_length=12,
+        choices=Situacao.choices,
+        default=Situacao.SOLICITADA,
+        db_index=True,
+        help_text="Ciclo perante o gestor: solicitada → autorizada/rejeitada.",
+    )
+    numero_provisorio = models.CharField(
+        "Número provisório (histórico)",
+        max_length=13,
+        blank=True,
+        default="",
+        help_text="Número provisório interno original, preservado na reconciliação "
+        "para rastreabilidade quando numero_aih passa a ser o oficial.",
+    )
+    data_autorizacao = models.DateField(
+        "Data da autorização", null=True, blank=True, help_text="Data em que o gestor autorizou."
+    )
+    motivo_rejeicao = models.CharField("Motivo da rejeição", max_length=255, blank=True, default="")
     # A internação âncora. SET_NULL: a autorização sobrevive à remoção da
     # internação; a UniqueConstraint parcial garante uma AIH por internação.
     admission = models.ForeignKey(

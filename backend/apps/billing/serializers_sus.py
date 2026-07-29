@@ -21,6 +21,7 @@ from apps.billing.sus_models import (
     BpaIndividualizado,
     SusCompetencia,
 )
+from apps.emr.models import Professional
 
 
 class SusCompetenciaSerializer(serializers.ModelSerializer):
@@ -142,6 +143,10 @@ class AihAutorizacaoSerializer(serializers.ModelSerializer):
             "id",
             "competencia",
             "numero_aih",
+            "situacao",
+            "numero_provisorio",
+            "data_autorizacao",
+            "motivo_rejeicao",
             "admission",
             "procedimento_principal",
             "cid_principal",
@@ -157,7 +162,17 @@ class AihAutorizacaoSerializer(serializers.ModelSerializer):
             "created_by",
             "created_at",
         ]
-        read_only_fields = ["id", "created_by", "created_at"]
+        # situacao/numero_provisorio/data_autorizacao/motivo_rejeicao são movidos
+        # pelo serviço de reconciliação (aih_lifecycle), nunca client-set.
+        read_only_fields = [
+            "id",
+            "situacao",
+            "numero_provisorio",
+            "data_autorizacao",
+            "motivo_rejeicao",
+            "created_by",
+            "created_at",
+        ]
 
     def create(self, validated_data):
         # Snapshot the patient's CNS when the client did not supply one.
@@ -165,6 +180,23 @@ class AihAutorizacaoSerializer(serializers.ModelSerializer):
             patient = validated_data.get("patient")
             validated_data["cns"] = (getattr(patient, "cns", "") or "").strip()
         return super().create(validated_data)
+
+
+class AihReconciliarSerializer(serializers.Serializer):
+    """Payload da ação ``reconciliar``: o número oficial de 13 dígitos do gestor,
+    opcionalmente o solicitante e a data de autorização."""
+
+    numero_oficial = serializers.CharField(max_length=13)
+    professional_solicitante = serializers.PrimaryKeyRelatedField(
+        queryset=Professional.objects.all(), required=False, allow_null=True
+    )
+    data_autorizacao = serializers.DateField(required=False, allow_null=True)
+
+
+class AihRejeitarSerializer(serializers.Serializer):
+    """Payload da ação ``rejeitar``: o motivo da glosa/rejeição do gestor."""
+
+    motivo = serializers.CharField(max_length=255)
 
 
 class AihProcedimentoSecundarioSerializer(serializers.ModelSerializer):
