@@ -90,6 +90,12 @@ export const PERMISSIONS = {
   SUS_WRITE: "sus.write",
   SUS_EXPORT: "sus.export",
 
+  // Banco de Sangue / Hemoterapia (backend apps/emr bloodbank/blood_donor/transfusion)
+  HEMOTERAPIA_READ: "hemoterapia.read",
+  HEMOTERAPIA_MANAGE: "hemoterapia.manage",
+  HEMOTERAPIA_REQUEST: "hemoterapia.request",
+  HEMOTERAPIA_TRANSFUSE: "hemoterapia.transfuse",
+
   // Imaging / diagnostics
   IMAGING_READ: "imaging.read",
   IMAGING_WRITE: "imaging.write",

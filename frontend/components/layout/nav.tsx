@@ -19,6 +19,7 @@ import {
   BedDouble,
   Scissors,
   Siren,
+  Droplet,
   FlaskConical,
   CalendarX,
   CalendarClock,
@@ -146,6 +147,16 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Siren,
         module: "emr",
         permissions: [PERMISSIONS.EMERGENCY_READ],
+      },
+      {
+        // Banco de Sangue / Agência Transfusional (H5): estoque de hemocomponentes,
+        // sorologia (RDC 34), requisições + crossmatch/reserva/liberação. Gated
+        // hemoterapia.read; ações manage/request/transfuse dentro do painel/prontuário.
+        label: "Banco de Sangue",
+        href: "/banco-de-sangue",
+        icon: Droplet,
+        module: "emr",
+        permissions: [PERMISSIONS.HEMOTERAPIA_READ],
       },
       {
         label: "Faltas",

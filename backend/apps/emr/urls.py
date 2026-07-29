@@ -32,6 +32,7 @@ from .views_adt import (
     InpatientUnitViewSet,
     RoomViewSet,
 )
+from .views_blood_donor import BloodBagSerologyViewSet, BloodDonorViewSet
 from .views_bloodbank import BloodBagViewSet, BloodComponentViewSet
 from .views_cid10 import CID10AcceptView, CID10SuggestView
 from .views_diagnostics import CriticalLabResultViewSet, LabInstrumentViewSet, LabSpecimenViewSet
@@ -66,6 +67,12 @@ from .views_surgery import (
     SurgicalProcedureViewSet,
     SurgicalTeamMemberViewSet,
     SurgicalTimeViewSet,
+)
+from .views_transfusion import CrossMatchViewSet, TransfusionRequestViewSet
+from .views_transfusion_admin import (
+    TransfusionAdministrationViewSet,
+    TransfusionChecarView,
+    TransfusionReactionViewSet,
 )
 from .views_waitlist import WaitlistDetailView, WaitlistViewSet
 
@@ -146,10 +153,31 @@ router.register("risk-classifications", RiskClassificationViewSet, basename="ris
 # ── H1: Banco de Sangue/Hemoterapia — catálogo de hemocomponentes + estoque de bolsas
 router.register("blood-components", BloodComponentViewSet, basename="blood-component")
 router.register("blood-bags", BloodBagViewSet, basename="blood-bag")
+# H2 — doador + triagem sorológica (RDC 34)
+router.register("blood-donors", BloodDonorViewSet, basename="blood-donor")
+router.register("blood-bag-serologies", BloodBagSerologyViewSet, basename="blood-bag-serology")
+# H3 — requisição transfusional + prova de compatibilidade
+router.register("transfusion-requests", TransfusionRequestViewSet, basename="transfusion-request")
+router.register("crossmatches", CrossMatchViewSet, basename="crossmatch")
+# H4 — checagem beira-leito + administração + reação transfusional (hemovigilância)
+router.register(
+    "transfusion-administrations",
+    TransfusionAdministrationViewSet,
+    basename="transfusion-administration",
+)
+router.register(
+    "transfusion-reactions", TransfusionReactionViewSet, basename="transfusion-reaction"
+)
 
 urlpatterns = (
     [
         path("lab-integrations/inbound/", LISInboundView.as_view(), name="lis-inbound"),
+        # H4 — checagem beira-leito da requisição transfusional
+        path(
+            "transfusion-requests/<uuid:pk>/checar/",
+            TransfusionChecarView.as_view(),
+            name="transfusion-request-checar",
+        ),
         path("lab-orders/<uuid:order_id>/orm/", LabOrderORMView.as_view(), name="lab-order-orm"),
         path(
             "lab-orders/<uuid:order_id>/report/sign/",

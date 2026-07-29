@@ -43,6 +43,7 @@ import SaeEvolution from '@/components/nursing/SaeEvolution'
 import AdmissionPanel from '@/components/inpatient/AdmissionPanel'
 import SurgeryCasePanel from '@/components/surgery/SurgeryCasePanel'
 import EmergencyChartPanel from '@/components/emergency/EmergencyChartPanel'
+import TransfusaoTab from '@/components/transfusion/TransfusaoTab'
 import { PERMISSIONS } from '@/lib/permissions'
 
 type TabId =
@@ -54,6 +55,7 @@ type TabId =
   | 'internacao'
   | 'cirurgia'
   | 'emergencia'
+  | 'transfusao'
   | 'convenios'
   | 'dados'
 
@@ -637,6 +639,8 @@ export default function PatientDetailPage() {
   const canReadEmergency = useMemo(() => hasPermission(PERMISSIONS.EMERGENCY_READ), [])
   const canClassifyEmergency = useMemo(() => hasPermission(PERMISSIONS.EMERGENCY_CLASSIFY), [])
   const canManageEmergency = useMemo(() => hasPermission(PERMISSIONS.EMERGENCY_MANAGE), [])
+  const canReadHemo = useMemo(() => hasPermission(PERMISSIONS.HEMOTERAPIA_READ), [])
+  const canWriteHemo = useMemo(() => hasPermission(PERMISSIONS.HEMOTERAPIA_MANAGE), [])
   const pendingGuides = related.guides.filter((guide) => guide.status && !['paid'].includes(guide.status))
   const glosaGuides = related.guides.filter((guide) => guide.status === 'denied' || guide.status === 'appeal')
   const activePrescriptions = related.prescriptions.filter((rx) =>
@@ -658,6 +662,7 @@ export default function PatientDetailPage() {
     { id: 'internacao', label: 'Internação' },
     { id: 'cirurgia', label: 'Cirurgia' },
     { id: 'emergencia', label: 'Emergência' },
+    { id: 'transfusao', label: 'Transfusão' },
     { id: 'convenios', label: `Convênios${activeCards.length ? ` (${activeCards.length})` : ''}` },
     { id: 'dados', label: 'Dados cadastrais' },
   ]
@@ -1244,6 +1249,33 @@ export default function PatientDetailPage() {
                     canRead={canReadEmergency}
                     canClassify={canClassifyEmergency}
                     canManage={canManageEmergency}
+                  />
+                </div>
+              )}
+
+              {activeTab === 'transfusao' && (
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <h2 className="text-base font-semibold text-slate-900">
+                        Transfusão (hemoterapia / beira-leito)
+                      </h2>
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Banco de sangue
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Requisições transfusionais do paciente, checagem beira-leito dos 5 certos
+                      contra a bolsa liberada e transfusões administradas com registro de reação
+                      (hemovigilância). Registro governado do prontuário.
+                    </p>
+                  </div>
+                  <TransfusaoTab
+                    patientId={id}
+                    patientBarcode={patient.medical_record_number ?? ''}
+                    encounterId={saeEncounterId}
+                    canRead={canReadHemo}
+                    canWrite={canWriteHemo}
                   />
                 </div>
               )}
