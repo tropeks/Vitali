@@ -257,6 +257,9 @@ ADMIN_PERMISSIONS = [
     # ADT/Leitos (L1): estrutura de leitos — leitura + gestão (NIR/Gestão de Leitos).
     "beds.read",
     "beds.manage",
+    # ADT/Leitos (P2): higienização fecha o ciclo do leito (higienizacao→livre).
+    # Dever de enfermagem/limpeza, separado de beds.manage (estrutura).
+    "beds.housekeeping",
     # ADT/Leitos (L2): ciclo de admissão/internação — internar + dar alta.
     "adt.admit",
     "adt.discharge",
@@ -355,6 +358,8 @@ NURSING_PERMISSIONS = [
     "beds.read",
     # ADT L3: o enfermeiro transfere de leito (beira-leito/NIR).
     "adt.transfer",
+    # ADT P2: a enfermagem/limpeza libera o leito após a higienização.
+    "beds.housekeeping",
     # Centro Cirúrgico (C1): a enfermagem de CC lê os casos cirúrgicos.
     "surgery.read",
     # PS/Emergência (E1): o enfermeiro classificador lê o catálogo e classifica.

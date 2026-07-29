@@ -28,6 +28,7 @@ from .views import (
 from .views_adt import (
     AdmissionEventViewSet,
     AdmissionViewSet,
+    BedStatusEventViewSet,
     BedViewSet,
     InpatientUnitViewSet,
     RoomViewSet,
@@ -156,6 +157,7 @@ router.register("beds", BedViewSet, basename="bed")
 # ── L2: ADT/Leitos — admissão/internação + log de eventos ADT (append-only)
 router.register("admissions", AdmissionViewSet, basename="admission")
 router.register("admission-events", AdmissionEventViewSet, basename="admission-event")
+router.register("bed-status-events", BedStatusEventViewSet, basename="bed-status-event")
 # ── C1: Centro Cirúrgico — sala → caso cirúrgico → procedimento (TUSS)
 router.register("operating-rooms", OperatingRoomViewSet, basename="operating-room")
 router.register("surgical-cases", SurgicalCaseViewSet, basename="surgical-case")

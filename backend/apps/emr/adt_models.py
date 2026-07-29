@@ -44,6 +44,7 @@ __all__ = [
     "Bed",
     "Admission",
     "AdmissionEvent",
+    "BedStatusEvent",
 ]
 
 
@@ -456,4 +457,49 @@ class AdmissionEvent(models.Model):
     def __str__(self):
         return (
             f"{self.get_event_type_display()} — {self.admission_id} @ {self.created_at:%d/%m %H:%M}"
+        )
+
+
+class BedStatusEvent(models.Model):
+    """Append-only log of a Bed's operational ``status`` transitions.
+
+    Complements :class:`AdmissionEvent` (which tracks the *patient's* movement)
+    by tracking the *bed's* housekeeping cycle: a discharge/transfer sends the
+    freed bed to ``higienizacao`` (dirty) and the housekeeping release returns it
+    to ``livre`` (clean). Each transition writes exactly one row inside the
+    service ``transaction.atomic`` so the bed's cycle is fully auditable (who
+    cleaned it, when). Rows are created, never edited/deleted; the DRF surface is
+    read-only, mirroring :class:`AdmissionEvent`.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    bed = models.ForeignKey(
+        Bed, on_delete=models.PROTECT, related_name="status_events", verbose_name="Leito"
+    )
+    from_status = models.CharField("Situação anterior", max_length=16, choices=Bed.Status.choices)
+    to_status = models.CharField(
+        "Nova situação", max_length=16, choices=Bed.Status.choices, db_index=True
+    )
+    actor = models.ForeignKey(
+        "core.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="bed_status_events",
+        verbose_name="Responsável",
+    )
+    reason = models.TextField("Motivo", blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        verbose_name = "Evento de leito"
+        verbose_name_plural = "Eventos de leito"
+        indexes = [
+            models.Index(fields=["bed", "created_at"], name="emr_bedevt_bed_dt_idx"),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.from_status}→{self.to_status} — {self.bed_id} @ {self.created_at:%d/%m %H:%M}"
         )

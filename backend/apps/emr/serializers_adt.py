@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-from .models import Admission, AdmissionEvent, Bed, InpatientUnit, Room
+from .models import Admission, AdmissionEvent, Bed, BedStatusEvent, InpatientUnit, Room
 
 
 class _CatalogCodeWriteMixin(serializers.ModelSerializer):
@@ -114,6 +114,30 @@ class BedSerializer(_CatalogCodeWriteMixin):
             "created_at",
             "updated_at",
         )
+
+
+class BedReleaseSerializer(serializers.Serializer):
+    """Payload for the ``release`` action (higienização concluída → leito livre):
+    an optional reason recorded on the append-only bed-status event."""
+
+    reason = serializers.CharField(required=False, allow_blank=True)
+
+
+class BedStatusEventSerializer(serializers.ModelSerializer):
+    """Read-only append-only bed-status transition event."""
+
+    class Meta:
+        model = BedStatusEvent
+        fields = [
+            "id",
+            "bed",
+            "from_status",
+            "to_status",
+            "actor",
+            "reason",
+            "created_at",
+        ]
+        read_only_fields = fields
 
 
 # ─── L2: admissão/internação ─────────────────────────────────────────────────

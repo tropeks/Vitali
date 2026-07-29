@@ -27,7 +27,9 @@ from .serializers_adt import (
     AdmissionPlanDischargeSerializer,
     AdmissionSerializer,
     AdmissionTransferSerializer,
+    BedReleaseSerializer,
     BedSerializer,
+    BedStatusEventSerializer,
     InpatientUnitSerializer,
     RoomSerializer,
 )
@@ -55,12 +57,21 @@ _UNTIL_PARAM = OpenApiParameter(
 
 
 class _BedsPermissionMixin:
-    """Read=``beds.read`` / write=``beds.manage`` per-action gate."""
+    """Read=``beds.read`` / write=``beds.manage`` per-action gate, with an
+    optional per-action override map for writes that need a distinct permission
+    (e.g. housekeeping release → ``beds.housekeeping``, not general management)."""
+
+    #: subclasses map ``action name → permission`` to override the default.
+    permission_overrides: dict = {}
 
     def get_permissions(self):
         # ``board`` is a read-only bed-map view → beds.read, like list/retrieve.
         read_actions = {"list", "retrieve", "board"}
-        permission = "beds.read" if self.action in read_actions else "beds.manage"
+        override = self.permission_overrides.get(self.action)
+        if override:
+            permission = override
+        else:
+            permission = "beds.read" if self.action in read_actions else "beds.manage"
         return [IsAuthenticated(), HasPermission(permission)]
 
 
@@ -115,6 +126,8 @@ class BedViewSet(_BedsPermissionMixin, viewsets.ModelViewSet):
     """Physical beds (leito). ``unit`` is derived from the room server-side."""
 
     serializer_class = BedSerializer
+    # Housekeeping release is a distinct duty (nursing/limpeza) → its own perm.
+    permission_overrides = {"release": "beds.housekeeping"}
 
     def get_queryset(self):
         from .models import Bed
@@ -204,6 +217,24 @@ class BedViewSet(_BedsPermissionMixin, viewsets.ModelViewSet):
                 }
             )
         return Response({"units": units_out})
+
+    @extend_schema(request=BedReleaseSerializer, responses=BedSerializer)
+    @action(detail=True, methods=["post"])
+    def release(self, request, pk=None):
+        """Housekeeping release: a bed in ``higienizacao`` is cleaned and returned
+        to ``livre`` THROUGH the service (append-only bed-status event). Only
+        higienizacao→livre; anything else → 409. Gated ``beds.housekeeping``."""
+        bed = self.get_object()
+        payload = BedReleaseSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            bed = adt_service.release_from_housekeeping(
+                bed=bed, actor=request.user, reason=payload.validated_data.get("reason", "")
+            )
+        except DjangoValidationError as exc:
+            return Response({"detail": exc.messages[0]}, status=http_status.HTTP_409_CONFLICT)
+        log_audit(request, "beds_release", "Bed", bed.id)
+        return Response(self.get_serializer(bed).data)
 
 
 # ─── L2: admissão/internação ─────────────────────────────────────────────────
@@ -411,4 +442,26 @@ class AdmissionEventViewSet(viewsets.ReadOnlyModelViewSet):
         admission = self.request.query_params.get("admission")
         if admission:
             qs = qs.filter(admission_id=admission)
+        return qs
+
+
+@extend_schema_view(
+    list=extend_schema(parameters=[_BED_PARAM]),
+)
+class BedStatusEventViewSet(viewsets.ReadOnlyModelViewSet):
+    """Read-only append-only bed-status transition log (ciclo de higienização do
+    leito). Gated ``beds.read``."""
+
+    serializer_class = BedStatusEventSerializer
+
+    def get_permissions(self):
+        return [IsAuthenticated(), HasPermission("beds.read")]
+
+    def get_queryset(self):
+        from .models import BedStatusEvent
+
+        qs = BedStatusEvent.objects.select_related("bed", "actor")
+        bed = self.request.query_params.get("bed")
+        if bed:
+            qs = qs.filter(bed_id=bed)
         return qs

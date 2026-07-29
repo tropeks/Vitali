@@ -23,13 +23,27 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
-from apps.emr.models import Admission, AdmissionEvent, Bed
+from apps.emr.models import Admission, AdmissionEvent, Bed, BedStatusEvent
 
 # Bed statuses from which a fresh admission may occupy the bed. ``reservado`` is
 # accepted (bed held for this patient); everything else (ocupado, higienizacao,
 # bloqueado, interditado) is rejected. Transfer reuses the same rule for the
 # destination bed.
 _ADMITTABLE_STATUSES = frozenset({Bed.Status.LIVRE, Bed.Status.RESERVADO})
+
+
+def _log_bed_status(
+    bed: Bed, from_status: str, to_status: str, *, actor: Any | None = None, reason: str = ""
+) -> None:
+    """Append one :class:`BedStatusEvent` for a bed status transition. Callers
+    must already hold the bed row lock and be inside the service transaction."""
+    BedStatusEvent.objects.create(
+        bed=bed,
+        from_status=from_status,
+        to_status=to_status,
+        actor=actor,
+        reason=reason,
+    )
 
 
 @transaction.atomic
@@ -125,8 +139,10 @@ def transfer(
             f"(situação: {to_locked.get_status_display()})."
         )
 
+    from_prev = from_bed.status
     from_bed.status = Bed.Status.HIGIENIZACAO
     from_bed.save(update_fields=["status", "updated_at"])
+    _log_bed_status(from_bed, from_prev, Bed.Status.HIGIENIZACAO, actor=actor, reason=reason)
     to_locked.status = Bed.Status.OCUPADO
     to_locked.save(update_fields=["status", "updated_at"])
 
@@ -166,8 +182,10 @@ def discharge(
     freed_bed = None
     if locked.current_bed_id:
         freed_bed = Bed.objects.select_for_update().get(pk=locked.current_bed_id)
+        prev_status = freed_bed.status
         freed_bed.status = Bed.Status.HIGIENIZACAO
         freed_bed.save(update_fields=["status", "updated_at"])
+        _log_bed_status(freed_bed, prev_status, Bed.Status.HIGIENIZACAO, actor=actor, reason=reason)
 
     locked.status = Admission.Status.DISCHARGED
     locked.disposition = disposition
@@ -258,3 +276,28 @@ def planned_discharges(*, until: Any | None = None, unit: Any | None = None):
         unit_id = getattr(unit, "pk", unit)
         qs = qs.filter(current_bed__unit_id=unit_id)
     return qs
+
+
+@transaction.atomic
+def release_from_housekeeping(*, bed: Bed, actor: Any | None = None, reason: str = "") -> Bed:
+    """Close the bed housekeeping cycle: a bed in ``higienizacao`` (dirty, freed
+    by a discharge/transfer) is cleaned and returned to ``livre`` (available).
+    Appends one :class:`BedStatusEvent` — atomically.
+
+    Only ``higienizacao → livre`` is allowed here; a bed that is
+    livre/ocupado/reservado/bloqueado/interditado is rejected (those transitions
+    belong to admit/transfer or to bed management, not to housekeeping).
+    """
+    locked_bed = Bed.objects.select_for_update().get(pk=bed.pk)
+    if locked_bed.status != Bed.Status.HIGIENIZACAO:
+        raise ValidationError(
+            f"Leito {locked_bed.identifier} não está em higienização "
+            f"(situação: {locked_bed.get_status_display()}); não pode ser liberado."
+        )
+
+    locked_bed.status = Bed.Status.LIVRE
+    locked_bed.save(update_fields=["status", "updated_at"])
+    _log_bed_status(
+        locked_bed, Bed.Status.HIGIENIZACAO, Bed.Status.LIVRE, actor=actor, reason=reason
+    )
+    return locked_bed
