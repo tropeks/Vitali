@@ -428,6 +428,57 @@ class TestChecagemAPI(ChecagemTestBase):
             self._client(self.nobody).get(f"{BASE}/transfusion-administrations/").status_code == 403
         )
 
+    def test_administrations_and_reactions_filter_by_patient(self):
+        """?patient= scopes the append-only feeds to one chart (no global fetch)."""
+        req, bag = self._liberada()
+        adm = admin_service.checar_e_administrar(
+            req, bag, patient_barcode="WB-123", bag_barcode=bag.identifier, actor=self.nurse
+        )
+        admin_service.registrar_reacao(
+            adm,
+            tipo=TransfusionReaction.Tipo.ALERGICA,
+            gravidade=TransfusionReaction.Gravidade.LEVE,
+            descricao="Prurido leve.",
+            actor=self.nurse,
+        )
+        other = Patient.objects.create(
+            full_name="Outro Paciente", birth_date="1990-05-05", gender="M"
+        )
+
+        def _rows(resp):
+            return resp.data["results"] if "results" in resp.data else resp.data
+
+        adms = self._client(self.reader).get(
+            f"{BASE}/transfusion-administrations/?patient={self.patient.pk}"
+        )
+        assert adms.status_code == 200, adms.content
+        assert len(_rows(adms)) == 1
+        assert (
+            len(
+                _rows(
+                    self._client(self.reader).get(
+                        f"{BASE}/transfusion-administrations/?patient={other.pk}"
+                    )
+                )
+            )
+            == 0
+        )
+        reacs = self._client(self.reader).get(
+            f"{BASE}/transfusion-reactions/?patient={self.patient.pk}"
+        )
+        assert reacs.status_code == 200, reacs.content
+        assert len(_rows(reacs)) == 1
+        assert (
+            len(
+                _rows(
+                    self._client(self.reader).get(
+                        f"{BASE}/transfusion-reactions/?patient={other.pk}"
+                    )
+                )
+            )
+            == 0
+        )
+
     def test_reactions_list_filter(self):
         req, bag = self._liberada()
         adm = admin_service.checar_e_administrar(

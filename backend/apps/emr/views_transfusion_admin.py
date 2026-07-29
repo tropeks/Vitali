@@ -42,6 +42,9 @@ _REQUEST_PARAM = OpenApiParameter(
 _ADMINISTRATION_PARAM = OpenApiParameter(
     "administration", OpenApiTypes.STR, description="Filtra reações por administração (pk)."
 )
+_PATIENT_PARAM = OpenApiParameter(
+    "patient", OpenApiTypes.STR, description="Filtra por paciente (pk)."
+)
 
 _CHECAR_REQUEST = {
     "application/json": {
@@ -164,7 +167,7 @@ class TransfusionChecarView(APIView):
     list=extend_schema(
         tags=["hemoterapia"],
         summary="Lista administrações transfusionais",
-        parameters=[_REQUEST_PARAM],
+        parameters=[_REQUEST_PARAM, _PATIENT_PARAM],
     ),
 )
 class TransfusionAdministrationViewSet(viewsets.ReadOnlyModelViewSet):
@@ -189,6 +192,9 @@ class TransfusionAdministrationViewSet(viewsets.ReadOnlyModelViewSet):
         request_id = self.request.query_params.get("request")
         if request_id:
             qs = qs.filter(request_id=request_id)
+        patient_id = self.request.query_params.get("patient")
+        if patient_id:
+            qs = qs.filter(patient_id=patient_id)
         return qs
 
     @extend_schema(
@@ -227,7 +233,7 @@ class TransfusionAdministrationViewSet(viewsets.ReadOnlyModelViewSet):
     list=extend_schema(
         tags=["hemoterapia"],
         summary="Lista reações transfusionais (hemovigilância)",
-        parameters=[_ADMINISTRATION_PARAM],
+        parameters=[_ADMINISTRATION_PARAM, _PATIENT_PARAM],
     ),
 )
 class TransfusionReactionViewSet(viewsets.ReadOnlyModelViewSet):
@@ -246,4 +252,7 @@ class TransfusionReactionViewSet(viewsets.ReadOnlyModelViewSet):
         administration_id = self.request.query_params.get("administration")
         if administration_id:
             qs = qs.filter(administration_id=administration_id)
+        patient_id = self.request.query_params.get("patient")
+        if patient_id:
+            qs = qs.filter(request__patient_id=patient_id)
         return qs
