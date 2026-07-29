@@ -69,6 +69,11 @@ from .views_surgery import (
     SurgicalTimeViewSet,
 )
 from .views_transfusion import CrossMatchViewSet, TransfusionRequestViewSet
+from .views_transfusion_admin import (
+    TransfusionAdministrationViewSet,
+    TransfusionChecarView,
+    TransfusionReactionViewSet,
+)
 from .views_waitlist import WaitlistDetailView, WaitlistViewSet
 
 router = DefaultRouter()
@@ -154,10 +159,25 @@ router.register("blood-bag-serologies", BloodBagSerologyViewSet, basename="blood
 # H3 — requisição transfusional + prova de compatibilidade
 router.register("transfusion-requests", TransfusionRequestViewSet, basename="transfusion-request")
 router.register("crossmatches", CrossMatchViewSet, basename="crossmatch")
+# H4 — checagem beira-leito + administração + reação transfusional (hemovigilância)
+router.register(
+    "transfusion-administrations",
+    TransfusionAdministrationViewSet,
+    basename="transfusion-administration",
+)
+router.register(
+    "transfusion-reactions", TransfusionReactionViewSet, basename="transfusion-reaction"
+)
 
 urlpatterns = (
     [
         path("lab-integrations/inbound/", LISInboundView.as_view(), name="lis-inbound"),
+        # H4 — checagem beira-leito da requisição transfusional
+        path(
+            "transfusion-requests/<uuid:pk>/checar/",
+            TransfusionChecarView.as_view(),
+            name="transfusion-request-checar",
+        ),
         path("lab-orders/<uuid:order_id>/orm/", LabOrderORMView.as_view(), name="lab-order-orm"),
         path(
             "lab-orders/<uuid:order_id>/report/sign/",

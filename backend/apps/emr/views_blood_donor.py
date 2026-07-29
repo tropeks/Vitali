@@ -17,7 +17,7 @@ from __future__ import annotations
 from django.core.exceptions import ValidationError as DjangoValidationError
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
-from rest_framework import status, viewsets
+from rest_framework import mixins, status, viewsets
 from rest_framework.response import Response
 
 from .blood_donor_models import BloodBagSerology, BloodDonor
@@ -64,9 +64,9 @@ class BloodDonorViewSet(_HemoterapiaPermissionMixin, viewsets.ModelViewSet):
 )
 class BloodBagSerologyViewSet(
     _HemoterapiaPermissionMixin,
-    viewsets.mixins.CreateModelMixin,
-    viewsets.mixins.ListModelMixin,
-    viewsets.mixins.RetrieveModelMixin,
+    mixins.CreateModelMixin,
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
     viewsets.GenericViewSet,
 ):
     """Triagem sorológica de bolsas. Create routes through registrar_sorologia."""
