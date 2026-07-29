@@ -131,7 +131,12 @@ def protect_tuss_code_deletion(sender, instance, **kwargs):
     TenantModel = get_tenant_model()
     for tenant in TenantModel.objects.exclude(schema_name="public"):
         with schema_context(tenant.schema_name):
-            from apps.billing.models import PriceTableItem, TISSGuideItem
+            from apps.billing.models import (
+                AccommodationTuss,
+                DailyCharge,
+                PriceTableItem,
+                TISSGuideItem,
+            )
             from apps.emr.models import EncounterProcedure, SurgicalProcedure
 
             if TISSGuideItem.objects.filter(tuss_code=instance).exists():
@@ -155,6 +160,18 @@ def protect_tuss_code_deletion(sender, instance, **kwargs):
             if SurgicalProcedure.objects.filter(tuss_code=instance).exists():
                 raise ProtectedError(
                     f"TUSSCode {instance.code} is referenced by SurgicalProcedure in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+            if AccommodationTuss.objects.filter(tuss_code=instance).exists():
+                raise ProtectedError(
+                    f"TUSSCode {instance.code} is referenced by AccommodationTuss in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+            if DailyCharge.objects.filter(tuss_code=instance).exists():
+                raise ProtectedError(
+                    f"TUSSCode {instance.code} is referenced by DailyCharge in "
                     f"schema '{tenant.schema_name}' and cannot be deleted.",
                     {instance},
                 )

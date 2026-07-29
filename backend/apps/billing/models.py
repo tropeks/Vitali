@@ -1229,5 +1229,6 @@ class BankStatementImport(models.Model):
         return f"{self.filename} ({self.created_at:%Y-%m-%d})"
 
 
+from .inpatient_models import *  # noqa: E402,F401,F403
 from .revenue_models import *  # noqa: E402,F401,F403
 from .sus_models import *  # noqa: E402,F401,F403
