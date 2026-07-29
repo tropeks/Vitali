@@ -169,6 +169,7 @@ class AdmissionSerializer(serializers.ModelSerializer):
             "admission_datetime",
             "expected_discharge_datetime",
             "actual_discharge_datetime",
+            "isolation_precaution",
             "disposition",
             "status",
             "created_at",
@@ -205,6 +206,14 @@ class AdmissionTransferSerializer(serializers.Serializer):
     """Payload for the ``transfer`` action: destination bed + optional reason."""
 
     to_bed = serializers.PrimaryKeyRelatedField(queryset=Bed.objects.all())
+    reason = serializers.CharField(required=False, allow_blank=True)
+
+
+class AdmissionSetPrecautionSerializer(serializers.Serializer):
+    """Payload for the ``set_precaution`` action: the isolation precaution to
+    apply to an active admission, revalidated against the current bed."""
+
+    isolation_precaution = serializers.ChoiceField(choices=Admission.IsolationPrecaution.choices)
     reason = serializers.CharField(required=False, allow_blank=True)
 
 

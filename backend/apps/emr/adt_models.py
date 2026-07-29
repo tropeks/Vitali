@@ -309,6 +309,13 @@ class Admission(models.Model):
         DISCHARGED = "discharged", "Alta"
         CANCELLED = "cancelled", "Cancelada"
 
+    class IsolationPrecaution(models.TextChoices):
+        NENHUMA = "nenhuma", "Nenhuma"
+        CONTATO = "contato", "Contato"
+        GOTICULA = "goticula", "Gotícula"
+        AEROSSOL = "aerossol", "Aerossol"
+        PROTETOR = "protetor", "Protetor (reverso)"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     patient = models.ForeignKey(
         "emr.Patient", on_delete=models.PROTECT, related_name="admissions", verbose_name="Paciente"
@@ -367,6 +374,15 @@ class Admission(models.Model):
         max_length=16,
         choices=Status.choices,
         default=Status.ADMITTED,
+        db_index=True,
+    )
+    # Precaução de isolamento: quando != nenhuma, o leito ocupado DEVE estar num
+    # quarto de isolamento (Room.isolation=True). Gateado no admit/transfer.
+    isolation_precaution = models.CharField(
+        "Precaução de isolamento",
+        max_length=16,
+        choices=IsolationPrecaution.choices,
+        default=IsolationPrecaution.NENHUMA,
         db_index=True,
     )
 

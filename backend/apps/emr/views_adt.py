@@ -26,6 +26,7 @@ from .serializers_adt import (
     AdmissionEventSerializer,
     AdmissionPlanDischargeSerializer,
     AdmissionSerializer,
+    AdmissionSetPrecautionSerializer,
     AdmissionTransferSerializer,
     BedReleaseSerializer,
     BedSerializer,
@@ -263,6 +264,7 @@ class AdmissionViewSet(
             "discharge": "adt.discharge",
             "plan_discharge": "adt.discharge",
             "transfer": "adt.transfer",
+            "set_precaution": "adt.transfer",
             "census": "beds.read",
             "planned": "beds.read",
         }
@@ -301,6 +303,7 @@ class AdmissionViewSet(
                 admission_source=data.get("admission_source", "outro"),
                 admission_datetime=data.get("admission_datetime"),
                 expected_discharge_datetime=data.get("expected_discharge_datetime"),
+                isolation_precaution=data.get("isolation_precaution", "nenhuma"),
                 encounter=data.get("encounter"),
                 actor=request.user,
             )
@@ -347,6 +350,27 @@ class AdmissionViewSet(
         except DjangoValidationError as exc:
             return Response({"detail": exc.messages[0]}, status=http_status.HTTP_409_CONFLICT)
         log_audit(request, "adt_transfer", "Admission", admission.id)
+        return Response(self.get_serializer(admission).data)
+
+    @extend_schema(request=AdmissionSetPrecautionSerializer, responses=AdmissionSerializer)
+    @action(detail=True, methods=["post"], url_path="set-precaution")
+    def set_precaution(self, request, pk=None):
+        """Set/update the isolation precaution THROUGH the service, revalidating
+        the current bed. If the new precaution requires isolation and the patient
+        is not in an isolation room → 409 (transfer first). Gated adt.transfer."""
+        admission = self.get_object()
+        payload = AdmissionSetPrecautionSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            admission = adt_service.set_precaution(
+                admission=admission,
+                isolation_precaution=payload.validated_data["isolation_precaution"],
+                actor=request.user,
+                reason=payload.validated_data.get("reason", ""),
+            )
+        except DjangoValidationError as exc:
+            return Response({"detail": exc.messages[0]}, status=http_status.HTTP_409_CONFLICT)
+        log_audit(request, "adt_set_precaution", "Admission", admission.id)
         return Response(self.get_serializer(admission).data)
 
     @extend_schema(request=AdmissionPlanDischargeSerializer, responses=AdmissionSerializer)

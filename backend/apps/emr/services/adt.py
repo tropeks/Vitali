@@ -32,6 +32,19 @@ from apps.emr.models import Admission, AdmissionEvent, Bed, BedStatusEvent
 _ADMITTABLE_STATUSES = frozenset({Bed.Status.LIVRE, Bed.Status.RESERVADO})
 
 
+def _assert_isolation_compatible(bed: Bed, precaution: str) -> None:
+    """A patient under an isolation precaution (contato/goticula/aerossol/
+    protetor) must occupy a bed in an isolation room (``Room.isolation=True``).
+    ``nenhuma`` imposes no constraint. Raises ``ValidationError`` on a mismatch."""
+    if not precaution or precaution == Admission.IsolationPrecaution.NENHUMA:
+        return
+    if not bed.room.isolation:
+        raise ValidationError(
+            f"Leito {bed.identifier} não está em quarto de isolamento; "
+            f"paciente com precaução de {precaution} exige quarto de isolamento."
+        )
+
+
 def _log_bed_status(
     bed: Bed, from_status: str, to_status: str, *, actor: Any | None = None, reason: str = ""
 ) -> None:
@@ -56,6 +69,7 @@ def admit(
     admission_source: str = Admission.AdmissionSource.OUTRO,
     admission_datetime: Any | None = None,
     expected_discharge_datetime: Any | None = None,
+    isolation_precaution: str = Admission.IsolationPrecaution.NENHUMA,
     encounter: Any | None = None,
     actor: Any | None = None,
     reason: str = "",
@@ -63,7 +77,8 @@ def admit(
     """Admit ``patient`` to ``bed``: create an active Admission, occupy the bed,
     and append an ``admit`` event — atomically.
 
-    Raises ``ValidationError`` if the bed is not ``livre``/``reservado``.
+    Raises ``ValidationError`` if the bed is not ``livre``/``reservado``, or if an
+    isolation precaution is required but the bed is not in an isolation room.
     """
     # Lock the bed row to serialize concurrent admits on the same bed.
     locked_bed = Bed.objects.select_for_update().get(pk=bed.pk)
@@ -72,6 +87,7 @@ def admit(
             f"Leito {locked_bed.identifier} indisponível para internação "
             f"(situação: {locked_bed.get_status_display()})."
         )
+    _assert_isolation_compatible(locked_bed, isolation_precaution)
 
     admission = Admission.objects.create(
         patient=patient,
@@ -82,6 +98,7 @@ def admit(
         admission_source=admission_source,
         admission_datetime=admission_datetime or timezone.now(),
         expected_discharge_datetime=expected_discharge_datetime,
+        isolation_precaution=isolation_precaution,
         status=Admission.Status.ADMITTED,
     )
 
@@ -138,6 +155,7 @@ def transfer(
             f"Leito {to_locked.identifier} indisponível para transferência "
             f"(situação: {to_locked.get_status_display()})."
         )
+    _assert_isolation_compatible(to_locked, locked.isolation_precaution)
 
     from_prev = from_bed.status
     from_bed.status = Bed.Status.HIGIENIZACAO
@@ -301,3 +319,31 @@ def release_from_housekeeping(*, bed: Bed, actor: Any | None = None, reason: str
         locked_bed, Bed.Status.HIGIENIZACAO, Bed.Status.LIVRE, actor=actor, reason=reason
     )
     return locked_bed
+
+
+@transaction.atomic
+def set_precaution(
+    *,
+    admission: Admission,
+    isolation_precaution: str,
+    actor: Any | None = None,
+    reason: str = "",
+) -> Admission:
+    """Set/update the isolation precaution of an active admission, revalidating
+    the CURRENT bed against it — atomically.
+
+    A precaution discovered mid-stay must be compatible with where the patient
+    already is: if the new precaution requires isolation and the current bed is
+    not in an isolation room, this raises ``ValidationError`` (transfer the
+    patient to an isolation bed first). ``nenhuma`` always clears the constraint.
+    """
+    locked = Admission.objects.select_for_update().get(pk=admission.pk)
+    if locked.status != Admission.Status.ADMITTED:
+        raise ValidationError("Internação não está ativa; não pode alterar precaução.")
+    if locked.current_bed_id:
+        current_bed = Bed.objects.select_related("room").get(pk=locked.current_bed_id)
+        _assert_isolation_compatible(current_bed, isolation_precaution)
+
+    locked.isolation_precaution = isolation_precaution
+    locked.save(update_fields=["isolation_precaution", "updated_at"])
+    return locked
