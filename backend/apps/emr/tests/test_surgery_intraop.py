@@ -112,6 +112,13 @@ class TestRecordTimeService(IntraOpTestBase):
 
     def test_incisao_advances_em_sala_to_em_andamento(self):
         case = self._case(status=SurgicalCase.Status.EM_SALA)
+        # OMS gate: incision requires sign_in + time_out confirmed (CC1).
+        SurgicalChecklist.objects.create(
+            case=case, phase=SurgicalChecklist.Phase.SIGN_IN, items={"ok": True}
+        )
+        SurgicalChecklist.objects.create(
+            case=case, phase=SurgicalChecklist.Phase.TIME_OUT, items={"ok": True}
+        )
         out = intraop.record_time(case, SurgicalTime.Event.INCISAO)
         out.refresh_from_db()
         assert out.status == SurgicalCase.Status.EM_ANDAMENTO
@@ -126,6 +133,9 @@ class TestRecordTimeService(IntraOpTestBase):
         case = self._case(status=SurgicalCase.Status.CONFIRMADA)
         intraop.record_time(case, SurgicalTime.Event.SALA_ENTRADA)
         intraop.record_time(case, SurgicalTime.Event.ANESTESIA_INICIO)
+        # OMS gate: confirm sign_in + time_out before the incision (CC1).
+        intraop.confirm_checklist(case, SurgicalChecklist.Phase.SIGN_IN, {"ok": True})
+        intraop.confirm_checklist(case, SurgicalChecklist.Phase.TIME_OUT, {"ok": True})
         intraop.record_time(case, SurgicalTime.Event.INCISAO)
         intraop.record_time(case, SurgicalTime.Event.FECHAMENTO)
         intraop.record_time(case, SurgicalTime.Event.ANESTESIA_FIM)
@@ -167,6 +177,77 @@ class TestRecordTimeService(IntraOpTestBase):
         intraop.record_time(case, SurgicalTime.Event.SALA_ENTRADA)
         with pytest.raises(ValidationError):
             intraop.record_time(case, SurgicalTime.Event.SALA_ENTRADA)
+
+
+# ── CC1: OMS time-out gate on incisao ─────────────────────────────────────────
+
+
+class TestIncisaoTimeoutGate(IntraOpTestBase):
+    """The incision may only be recorded after BOTH sign_in and time_out phases
+    of the safe-surgery (OMS) checklist are confirmed. Other events unaffected."""
+
+    def _confirm(self, case, phase):
+        SurgicalChecklist.objects.create(case=case, phase=phase, items={"ok": True})
+
+    def test_incisao_without_any_checklist_rejected(self):
+        case = self._case(status=SurgicalCase.Status.EM_SALA)
+        with pytest.raises(ValidationError):
+            intraop.record_time(case, SurgicalTime.Event.INCISAO)
+        # gate ran before create: no orphan SurgicalTime, status unchanged
+        case.refresh_from_db()
+        assert case.times.count() == 0
+        assert case.status == SurgicalCase.Status.EM_SALA
+
+    def test_incisao_with_only_sign_in_rejected(self):
+        case = self._case(status=SurgicalCase.Status.EM_SALA)
+        self._confirm(case, SurgicalChecklist.Phase.SIGN_IN)
+        with pytest.raises(ValidationError):
+            intraop.record_time(case, SurgicalTime.Event.INCISAO)
+        case.refresh_from_db()
+        assert case.times.count() == 0
+        assert case.status == SurgicalCase.Status.EM_SALA
+
+    def test_incisao_with_only_time_out_rejected(self):
+        case = self._case(status=SurgicalCase.Status.EM_SALA)
+        self._confirm(case, SurgicalChecklist.Phase.TIME_OUT)
+        with pytest.raises(ValidationError):
+            intraop.record_time(case, SurgicalTime.Event.INCISAO)
+        case.refresh_from_db()
+        assert case.times.count() == 0
+
+    def test_incisao_with_sign_in_and_time_out_allowed(self):
+        case = self._case(status=SurgicalCase.Status.EM_SALA)
+        self._confirm(case, SurgicalChecklist.Phase.SIGN_IN)
+        self._confirm(case, SurgicalChecklist.Phase.TIME_OUT)
+        out = intraop.record_time(case, SurgicalTime.Event.INCISAO)
+        out.refresh_from_db()
+        assert out.status == SurgicalCase.Status.EM_ANDAMENTO
+        assert case.times.count() == 1
+        assert case.times.first().event == SurgicalTime.Event.INCISAO
+
+    def test_sign_out_not_required_for_incisao(self):
+        # sign_out absent must NOT block the incision (it comes later).
+        case = self._case(status=SurgicalCase.Status.EM_SALA)
+        self._confirm(case, SurgicalChecklist.Phase.SIGN_IN)
+        self._confirm(case, SurgicalChecklist.Phase.TIME_OUT)
+        out = intraop.record_time(case, SurgicalTime.Event.INCISAO)
+        out.refresh_from_db()
+        assert out.status == SurgicalCase.Status.EM_ANDAMENTO
+
+    def test_sala_saida_not_affected_by_gate(self):
+        # A non-incisao event on em_andamento advances without any checklist.
+        case = self._case(status=SurgicalCase.Status.EM_ANDAMENTO)
+        out = intraop.record_time(case, SurgicalTime.Event.SALA_SAIDA)
+        out.refresh_from_db()
+        assert out.status == SurgicalCase.Status.FINALIZADA
+        assert case.times.count() == 1
+
+    def test_sala_entrada_not_affected_by_gate(self):
+        case = self._case(status=SurgicalCase.Status.CONFIRMADA)
+        out = intraop.record_time(case, SurgicalTime.Event.SALA_ENTRADA)
+        out.refresh_from_db()
+        assert out.status == SurgicalCase.Status.EM_SALA
+        assert case.times.count() == 1
 
 
 # ── confirm_checklist service ─────────────────────────────────────────────────

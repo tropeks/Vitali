@@ -35,12 +35,16 @@ Consequences of these gates (no extra bookkeeping needed):
 Safe-surgery checklist (OMS)
 ----------------------------
 ``confirm_checklist`` records the WHO checklist for one phase (sign_in / time_out
-/ sign_out) exactly once — a ``(case, phase)`` is append-only (unique). We do NOT
-hard-gate the time transitions on the checklist (e.g. we do not *require* sign_in
-before ``anestesia_inicio``): the checklist is recorded as an independent safety
-artifact, keeping the state machine simple and the two concerns decoupled. The
-DB unique constraint + the explicit pre-check here reject a re-confirm as a
+/ sign_out) exactly once — a ``(case, phase)`` is append-only (unique). The DB
+unique constraint + the explicit pre-check there reject a re-confirm as a
 ``ValidationError`` (→ 409) rather than a raw IntegrityError.
+
+The one hard gate (CC1 — patient-safety P1): the ``incisao`` time event requires
+BOTH the ``sign_in`` and ``time_out`` checklist phases to be confirmed first
+(``record_time`` raises ``ValidationError`` → 409 otherwise). ``sign_out`` is NOT
+required for the incision (it happens later, before leaving the room). Every
+other time event stays decoupled from the checklist, keeping the state machine
+simple where patient safety does not demand a block.
 """
 
 from __future__ import annotations
@@ -94,6 +98,25 @@ def record_time(
             f"Não é possível registrar '{SurgicalTime.Event(event).label}' com o caso em "
             f"situação '{locked.get_status_display()}'."
         )
+
+    # Safe-surgery (OMS) time-out gate: the incision may only be recorded after
+    # BOTH the sign-in and the time-out phases of the checklist are confirmed.
+    # Enforced here, inside the same lock/atomic, before any SurgicalTime row is
+    # created, so a failed gate leaves no orphan time behind.
+    if event == Event.INCISAO:
+        _required_phases = frozenset(
+            {SurgicalChecklist.Phase.SIGN_IN, SurgicalChecklist.Phase.TIME_OUT}
+        )
+        confirmed_phases = set(
+            SurgicalChecklist.objects.filter(case=locked, phase__in=_required_phases).values_list(
+                "phase", flat=True
+            )
+        )
+        if not _required_phases.issubset(confirmed_phases):
+            raise ValidationError(
+                "Time-out obrigatório: confirme o Sign-in e o Time-out do checklist "
+                "de cirurgia segura (OMS) antes de registrar a incisão."
+            )
 
     SurgicalTime.objects.create(
         case=locked,
