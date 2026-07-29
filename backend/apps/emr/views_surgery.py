@@ -22,6 +22,8 @@ from rest_framework.response import Response
 from apps.core.permissions import HasPermission
 
 from .serializers_surgery import (
+    AnestheticEventSerializer,
+    AnestheticRecordSerializer,
     OperatingRoomSerializer,
     SurgicalCaseCancelSerializer,
     SurgicalCaseChecklistSerializer,
@@ -49,6 +51,7 @@ _STATUS_PARAM = OpenApiParameter("status", str, description="Filtra casos por si
 _OR_PARAM = OpenApiParameter("operating_room", str, description="Filtra por sala cirúrgica (UUID).")
 _SURGEON_PARAM = OpenApiParameter("surgeon", str, description="Filtra por cirurgião (UUID).")
 _CASE_PARAM = OpenApiParameter("case", str, description="Filtra por caso cirúrgico (UUID).")
+_RECORD_PARAM = OpenApiParameter("record", str, description="Filtra por ficha anestésica (UUID).")
 _DATE_PARAM = OpenApiParameter("date", str, description="Data do mapa cirúrgico (YYYY-MM-DD).")
 
 
@@ -518,3 +521,61 @@ class SurgicalMaterialViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
             return Response({"detail": exc.messages[0]}, status=http_status.HTTP_400_BAD_REQUEST)
         log_audit(request, "surgery_material_consume", "SurgicalMaterial", material.id)
         return Response(self.get_serializer(material).data)
+
+
+# ─── CC2: ficha anestésica + timeline do ato anestésico ───────────────────────
+
+
+@extend_schema_view(
+    list=extend_schema(parameters=[_CASE_PARAM]),
+)
+class AnestheticRecordViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
+    """Ficha anestésica de um caso (OneToOne). Read=``surgery.read`` /
+    write=``surgery.manage``. ``created_by`` é definido no servidor; ``events`` são
+    aninhados read-only. Uma 2ª ficha para o mesmo caso → 400."""
+
+    serializer_class = AnestheticRecordSerializer
+
+    def get_queryset(self):
+        from .models import AnestheticRecord
+
+        qs = AnestheticRecord.objects.select_related(
+            "case", "anesthesiologist", "anesthesiologist__user"
+        ).prefetch_related("events")
+        case = self.request.query_params.get("case")
+        if case:
+            qs = qs.filter(case_id=case)
+        return qs
+
+    def perform_create(self, serializer):
+        obj = serializer.save(created_by=self.request.user)
+        log_audit(self.request, "anesthetic_record_create", "AnestheticRecord", obj.id)
+
+    def perform_update(self, serializer):
+        obj = serializer.save()
+        log_audit(self.request, "anesthetic_record_update", "AnestheticRecord", obj.id)
+
+
+@extend_schema_view(
+    list=extend_schema(parameters=[_RECORD_PARAM]),
+)
+class AnestheticEventViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
+    """Eventos da timeline anestésica (droga / vital / evento / ventilação).
+
+    Read=``surgery.read`` / write=``surgery.manage``. ``recorded_by`` é definido no
+    servidor. Filtrável por ``?record=``; ordenados por ``timestamp``."""
+
+    serializer_class = AnestheticEventSerializer
+
+    def get_queryset(self):
+        from .models import AnestheticEvent
+
+        qs = AnestheticEvent.objects.select_related("record", "recorded_by")
+        record = self.request.query_params.get("record")
+        if record:
+            qs = qs.filter(record_id=record)
+        return qs
+
+    def perform_create(self, serializer):
+        obj = serializer.save(recorded_by=self.request.user)
+        log_audit(self.request, "anesthetic_event_create", "AnestheticEvent", obj.id)

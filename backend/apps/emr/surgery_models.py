@@ -46,6 +46,8 @@ __all__ = [
     "SurgicalTime",
     "SurgicalChecklist",
     "SurgicalMaterial",
+    "AnestheticRecord",
+    "AnestheticEvent",
 ]
 
 
@@ -566,3 +568,147 @@ class SurgicalMaterial(models.Model):
     def __str__(self):
         label = self.description or self.get_kind_display()
         return f"{label} — {self.case_id} ({self.quantity_consumed}/{self.quantity_planned})"
+
+
+# ─── CC2: ficha anestésica (registro do ato anestésico intraoperatório) ───────
+
+
+class AnestheticRecord(models.Model):
+    """The anesthetic record (ficha anestésica) of a :class:`SurgicalCase`.
+
+    One per case (``OneToOneField``): the clinical documentation of the
+    *anesthetic act* itself, distinct from ``SurgicalCase.anesthesia_type`` (which
+    is only the planned *type*) and from ``SurgicalCase.porte_anestesico`` (the
+    billing/catalog code). It holds the responsible anesthesiologist, the applied
+    ``technique``, the ASA physical-status classification (anesthetic risk),
+    the anesthesia start/end window and free-text notes. The intra-op timeline
+    (drugs, vitals, events) lives in the append-only :class:`AnestheticEvent`.
+
+    ``technique`` reuses ``SurgicalCase.AnesthesiaType.choices`` on purpose — the
+    ficha's applied technique is the same vocabulary as the case's planned type,
+    keeping a single source of truth (they can legitimately differ, e.g. a planned
+    ``geral`` converted to ``sedacao`` intra-op, so it is a separate field).
+    """
+
+    class ASAClassification(models.TextChoices):
+        # ASA physical status (American Society of Anesthesiologists). The ``_E``
+        # suffix marks an emergency procedure (per the ASA spec), so each class
+        # has a plain and an emergency variant.
+        ASA_I = "I", "ASA I — paciente saudável"
+        ASA_II = "II", "ASA II — doença sistêmica leve"
+        ASA_III = "III", "ASA III — doença sistêmica grave"
+        ASA_IV = "IV", "ASA IV — doença sistêmica grave, ameaça constante à vida"
+        ASA_V = "V", "ASA V — moribundo, não sobrevive sem cirurgia"
+        ASA_VI = "VI", "ASA VI — morte encefálica (doador de órgãos)"
+        ASA_I_E = "IE", "ASA I-E — emergência"
+        ASA_II_E = "IIE", "ASA II-E — emergência"
+        ASA_III_E = "IIIE", "ASA III-E — emergência"
+        ASA_IV_E = "IVE", "ASA IV-E — emergência"
+        ASA_V_E = "VE", "ASA V-E — emergência"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    case = models.OneToOneField(
+        SurgicalCase,
+        on_delete=models.CASCADE,
+        related_name="anesthetic_record",
+        verbose_name="Caso cirúrgico",
+    )
+    anesthesiologist = models.ForeignKey(
+        "emr.Professional",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="anesthetic_records",
+        verbose_name="Anestesista responsável",
+    )
+    # Applied anesthetic technique — reuses SurgicalCase.AnesthesiaType vocabulary.
+    technique = models.CharField(
+        "Técnica anestésica",
+        max_length=16,
+        choices=SurgicalCase.AnesthesiaType.choices,
+        blank=True,
+        default="",
+    )
+    asa_classification = models.CharField(
+        "Classificação ASA",
+        max_length=8,
+        choices=ASAClassification.choices,
+        blank=True,
+        default="",
+    )
+    anesthesia_start = models.DateTimeField("Início da anestesia", null=True, blank=True)
+    anesthesia_end = models.DateTimeField("Fim da anestesia", null=True, blank=True)
+    notes = models.TextField("Observações", blank=True)
+
+    created_by = models.ForeignKey(
+        "core.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="anesthetic_records_created",
+        verbose_name="Criado por",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Ficha Anestésica"
+        verbose_name_plural = "Fichas Anestésicas"
+        indexes = [
+            models.Index(fields=["case"], name="emr_anestrec_case_idx"),
+        ]
+
+    def __str__(self):
+        return f"Ficha anestésica — {self.case_id}"
+
+
+class AnestheticEvent(models.Model):
+    """An append-only entry on an :class:`AnestheticRecord`'s intra-op timeline.
+
+    Mirrors the append-only shape of ``SurgicalTime`` — rows are created, never
+    edited/deleted. A ``kind`` classifies the entry (drug administered, vital
+    sign noted, intercorrência/marco, ventilation change); ``dose`` (e.g.
+    ``"2mg/kg"``) and ``value`` (e.g. ``"PA 120/80, FC 72"``) are free-text
+    qualifiers whose meaning depends on the ``kind``.
+    """
+
+    class Kind(models.TextChoices):
+        DROGA = "droga", "Droga / medicamento"
+        VITAL = "vital", "Sinal vital"
+        EVENTO = "evento", "Evento / intercorrência"
+        VENTILACAO = "ventilacao", "Ventilação"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    record = models.ForeignKey(
+        AnestheticRecord,
+        on_delete=models.CASCADE,
+        related_name="events",
+        verbose_name="Ficha anestésica",
+    )
+    timestamp = models.DateTimeField("Horário", default=timezone.now)
+    kind = models.CharField("Tipo", max_length=16, choices=Kind.choices, db_index=True)
+    description = models.CharField("Descrição", max_length=300)
+    dose = models.CharField("Dose", max_length=100, blank=True)
+    value = models.CharField("Valor", max_length=200, blank=True)
+    recorded_by = models.ForeignKey(
+        "core.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="anesthetic_events",
+        verbose_name="Registrado por",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["timestamp", "created_at"]
+        verbose_name = "Evento Anestésico"
+        verbose_name_plural = "Eventos Anestésicos"
+        indexes = [
+            models.Index(fields=["record", "timestamp"], name="emr_anestevt_rec_dt_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.get_kind_display()} — {self.record_id} @ {self.timestamp:%d/%m %H:%M}"

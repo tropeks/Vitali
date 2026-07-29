@@ -60,6 +60,8 @@ from .views_safety import (
 from .views_scribe import ScribeStartView, ScribeStatusView, ScribeTranscribeView
 from .views_setup import WizardProfessionalSetupView, WizardStatusView
 from .views_surgery import (
+    AnestheticEventViewSet,
+    AnestheticRecordViewSet,
     OperatingRoomViewSet,
     SurgicalCaseViewSet,
     SurgicalChecklistViewSet,
@@ -147,6 +149,9 @@ router.register("surgical-times", SurgicalTimeViewSet, basename="surgical-time")
 router.register("surgical-checklists", SurgicalChecklistViewSet, basename="surgical-checklist")
 # ── C6: Centro Cirúrgico — materiais / OPME + consumo de sala (rastreabilidade)
 router.register("surgical-materials", SurgicalMaterialViewSet, basename="surgical-material")
+# ── CC2: Centro Cirúrgico — ficha anestésica + timeline do ato anestésico
+router.register("anesthetic-records", AnestheticRecordViewSet, basename="anesthetic-record")
+router.register("anesthetic-events", AnestheticEventViewSet, basename="anesthetic-event")
 # ── E2: PS/Emergência — boletim de atendimento + classificação de risco (Manchester)
 router.register("emergency-encounters", EmergencyEncounterViewSet, basename="emergency-encounter")
 router.register("risk-classifications", RiskClassificationViewSet, basename="risk-classification")

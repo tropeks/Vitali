@@ -13,6 +13,8 @@ from rest_framework import serializers
 from rest_framework.validators import UniqueTogetherValidator
 
 from .models import (
+    AnestheticEvent,
+    AnestheticRecord,
     OperatingRoom,
     SurgicalCase,
     SurgicalChecklist,
@@ -229,3 +231,54 @@ class SurgicalMaterialConsumeSerializer(serializers.Serializer):
     """Input for ``POST /surgical-materials/{id}/consume/``: units consumed."""
 
     quantity = serializers.IntegerField(min_value=1)
+
+
+# ─── CC2: ficha anestésica + timeline do ato anestésico ───────────────────────
+
+
+class AnestheticEventSerializer(serializers.ModelSerializer):
+    """An entry on the anesthetic timeline (droga / vital / evento / ventilação).
+    ``recorded_by`` is server-set from ``request.user`` in the viewset."""
+
+    class Meta:
+        model = AnestheticEvent
+        fields = [
+            "id",
+            "record",
+            "timestamp",
+            "kind",
+            "description",
+            "dose",
+            "value",
+            "recorded_by",
+            "created_at",
+        ]
+        read_only_fields = ("id", "recorded_by", "created_at")
+
+
+class AnestheticRecordSerializer(serializers.ModelSerializer):
+    """Ficha anestésica de um caso (OneToOne). ``events`` são read-only aninhados
+    (adicionados via o ``AnestheticEventViewSet``); ``created_by`` é definido no
+    servidor. Uma 2ª ficha para o mesmo caso é rejeitada com 400."""
+
+    events = AnestheticEventSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = AnestheticRecord
+        fields = [
+            "id",
+            "case",
+            "anesthesiologist",
+            "technique",
+            "asa_classification",
+            "anesthesia_start",
+            "anesthesia_end",
+            "notes",
+            "events",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+        # ``case`` is a OneToOneField → DRF auto-adds a UniqueValidator, so a 2nd
+        # ficha for the same case is rejected with 400.
+        read_only_fields = ("id", "events", "created_by", "created_at", "updated_at")
