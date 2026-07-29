@@ -13,6 +13,8 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from apps.billing.sus_models import (
+    AihAutorizacao,
+    AihProcedimentoSecundario,
     ApacAutorizacao,
     ApacProcedimentoSecundario,
     BpaConsolidado,
@@ -123,6 +125,56 @@ class ApacProcedimentoSecundarioSerializer(serializers.ModelSerializer):
         sp = sigtap.valor_sp if sigtap.valor_sp is not None else Decimal("0")
         validated_data["valor"] = (sa + sp) * quantidade
         return super().create(validated_data)
+
+
+class AihAutorizacaoSerializer(serializers.ModelSerializer):
+    """AIH — autorização de internação hospitalar (AI1). Gated sus.read/write.
+
+    Mirrors :class:`ApacAutorizacaoSerializer`. ``valor`` is client-set (the
+    authorized SH+SP value, not a pure SIGTAP derivation). ``cns`` snapshots the
+    patient's CNS when omitted (``Patient.cns`` is encrypted; the authorization
+    must be a stable point-in-time record).
+    """
+
+    class Meta:
+        model = AihAutorizacao
+        fields = [
+            "id",
+            "competencia",
+            "numero_aih",
+            "admission",
+            "procedimento_principal",
+            "cid_principal",
+            "patient",
+            "cns",
+            "professional_solicitante",
+            "professional_responsavel",
+            "data_internacao",
+            "data_saida",
+            "carater_internacao",
+            "motivo_saida",
+            "valor",
+            "created_by",
+            "created_at",
+        ]
+        read_only_fields = ["id", "created_by", "created_at"]
+
+    def create(self, validated_data):
+        # Snapshot the patient's CNS when the client did not supply one.
+        if not validated_data.get("cns"):
+            patient = validated_data.get("patient")
+            validated_data["cns"] = (getattr(patient, "cns", "") or "").strip()
+        return super().create(validated_data)
+
+
+class AihProcedimentoSecundarioSerializer(serializers.ModelSerializer):
+    """Procedimento secundário de uma AIH. ``valor`` computed on model save (SH+SP × qtd)."""
+
+    class Meta:
+        model = AihProcedimentoSecundario
+        fields = ["id", "aih", "sigtap", "quantidade", "valor", "created_at"]
+        # valor is computed from SIGTAP (SH+SP) × quantidade on save — never client-set.
+        read_only_fields = ["id", "valor", "created_at"]
 
 
 class BpaIndividualizadoSerializer(serializers.ModelSerializer):

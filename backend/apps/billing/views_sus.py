@@ -25,6 +25,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.billing.serializers_sus import (
+    AihAutorizacaoSerializer,
+    AihProcedimentoSecundarioSerializer,
     ApacAutorizacaoSerializer,
     ApacProcedimentoSecundarioSerializer,
     BpaConsolidadoSerializer,
@@ -34,6 +36,8 @@ from apps.billing.serializers_sus import (
 from apps.billing.services.sus_production import gerar_producao_ambulatorial
 from apps.billing.services.sus_remessa import exportar_competencia
 from apps.billing.sus_models import (
+    AihAutorizacao,
+    AihProcedimentoSecundario,
     ApacAutorizacao,
     ApacProcedimentoSecundario,
     BpaConsolidado,
@@ -53,6 +57,9 @@ _COMPETENCIA_PARAM = OpenApiParameter(
 )
 _APAC_PARAM = OpenApiParameter(
     "apac", OpenApiTypes.INT, description="Filtra por APAC (ApacAutorizacao id)."
+)
+_AIH_PARAM = OpenApiParameter(
+    "aih", OpenApiTypes.INT, description="Filtra por AIH (AihAutorizacao id)."
 )
 
 
@@ -229,4 +236,45 @@ class ApacProcedimentoSecundarioViewSet(_SusPermissionMixin, viewsets.ModelViewS
         apac = self.request.query_params.get("apac")
         if apac:
             qs = qs.filter(apac_id=apac)
+        return qs
+
+
+@extend_schema_view(
+    list=extend_schema(
+        tags=["sus"], summary="Lista autorizações AIH", parameters=[_COMPETENCIA_PARAM]
+    ),
+    create=extend_schema(tags=["sus"], summary="Cria autorização AIH"),
+)
+class AihAutorizacaoViewSet(_SusPermissionMixin, viewsets.ModelViewSet):
+    """AIH (autorização de internação hospitalar, AI1). Read=sus.read / write=sus.write."""
+
+    serializer_class = AihAutorizacaoSerializer
+
+    def get_queryset(self):
+        qs = AihAutorizacao.objects.all().order_by("-created_at")
+        competencia = self.request.query_params.get("competencia")
+        if competencia:
+            qs = qs.filter(competencia_id=competencia)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+
+@extend_schema_view(
+    list=extend_schema(
+        tags=["sus"], summary="Lista procedimentos secundários AIH", parameters=[_AIH_PARAM]
+    ),
+    create=extend_schema(tags=["sus"], summary="Cria procedimento secundário AIH"),
+)
+class AihProcedimentoSecundarioViewSet(_SusPermissionMixin, viewsets.ModelViewSet):
+    """Procedimentos secundários de uma AIH (AI1). Read=sus.read / write=sus.write."""
+
+    serializer_class = AihProcedimentoSecundarioSerializer
+
+    def get_queryset(self):
+        qs = AihProcedimentoSecundario.objects.all().order_by("created_at")
+        aih = self.request.query_params.get("aih")
+        if aih:
+            qs = qs.filter(aih_id=aih)
         return qs

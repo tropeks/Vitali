@@ -289,7 +289,9 @@ def protect_sigtap_procedure_deletion(sender, instance, **kwargs):
     Covers the SUS production lines ``billing.BpaConsolidado.sigtap`` /
     ``billing.BpaIndividualizado.sigtap``, the APAC authorizations
     ``billing.ApacAutorizacao.procedimento_principal`` /
-    ``billing.ApacProcedimentoSecundario.sigtap`` (S3), and the SUS coding of a
+    ``billing.ApacProcedimentoSecundario.sigtap`` (S3), the AIH inpatient
+    authorizations ``billing.AihAutorizacao.procedimento_principal`` /
+    ``billing.AihProcedimentoSecundario.sigtap`` (AI1), and the SUS coding of a
     captured procedure ``emr.EncounterProcedure.sigtap``. Mirrors the
     EncounterProcedure→TUSSCode guard.
     """
@@ -299,6 +301,8 @@ def protect_sigtap_procedure_deletion(sender, instance, **kwargs):
     for tenant in TenantModel.objects.exclude(schema_name="public"):
         with schema_context(tenant.schema_name):
             from apps.billing.sus_models import (
+                AihAutorizacao,
+                AihProcedimentoSecundario,
                 ApacAutorizacao,
                 ApacProcedimentoSecundario,
                 BpaConsolidado,
@@ -327,6 +331,18 @@ def protect_sigtap_procedure_deletion(sender, instance, **kwargs):
             if ApacProcedimentoSecundario.objects.filter(sigtap=instance).exists():
                 raise ProtectedError(
                     f"SIGTAPProcedure {instance.code} is referenced by ApacProcedimentoSecundario "
+                    f"in schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+            if AihAutorizacao.objects.filter(procedimento_principal=instance).exists():
+                raise ProtectedError(
+                    f"SIGTAPProcedure {instance.code} is referenced by AihAutorizacao in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+            if AihProcedimentoSecundario.objects.filter(sigtap=instance).exists():
+                raise ProtectedError(
+                    f"SIGTAPProcedure {instance.code} is referenced by AihProcedimentoSecundario "
                     f"in schema '{tenant.schema_name}' and cannot be deleted.",
                     {instance},
                 )

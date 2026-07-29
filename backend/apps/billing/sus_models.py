@@ -371,3 +371,199 @@ class ApacProcedimentoSecundario(models.Model):
 
     def __str__(self):
         return f"APAC-sec {self.sigtap_id} × {self.quantidade} (apac {self.apac_id})"
+
+
+class AihAutorizacao(models.Model):
+    """AIH — Autorização de Internação Hospitalar (SISAIH). Per-tenant.
+
+    Structurally mirrors :class:`ApacAutorizacao`, adapted to an *internação*
+    (inpatient stay) instead of an ambulatorial high-complexity authorization: a
+    numbered authorization (``numero_aih``) for one main hospital procedure
+    (``procedimento_principal``) plus zero or more secondary procedures
+    (:class:`AihProcedimentoSecundario`), tied to a patient/CNS and the
+    requesting/responsible professionals, over an internação window
+    (``data_internacao`` → ``data_saida``).
+
+    Anchored to the clinical :class:`~apps.emr.adt_models.Admission` via the
+    ``admission`` FK (``on_delete=SET_NULL`` — the authorization survives an
+    admission being purged). A partial ``UniqueConstraint`` enforces at most one
+    AIH per admission (idempotency backstop for the AI2 Admission→AIH bridge,
+    same pattern as ``BpaIndividualizado``'s per-encounter-procedure guard).
+
+    Like APAC, ``valor`` is the authorized value carried by the authorization
+    itself (SH+SP, not a pure SIGTAP × qtd derivation), so it is set explicitly
+    rather than computed in the header.
+
+    The ``procedimento_principal`` FK is cross-schema (tenant → public
+    ``core.SIGTAPProcedure``): PostgreSQL does not enforce FK integrity across
+    schemas, so — exactly like the BPA/APAC lines — it uses
+    ``on_delete=DO_NOTHING`` and relies on the
+    ``protect_sigtap_procedure_deletion`` pre_delete signal (apps/core/signals.py,
+    extended for AIH) to block deleting a catalog row any AIH references.
+
+    ``cns`` is a plain snapshot of the patient's CNS at authorization time (same
+    rationale as ``ApacAutorizacao.cns`` — ``Patient.cns`` is an encrypted,
+    non-queryable field and the authorization must be a stable point-in-time
+    record). ``patient`` is kept as an FK for traceability.
+    """
+
+    class CaraterInternacao(models.TextChoices):
+        # Códigos SUS oficiais do caráter de internação (SISAIH).
+        ELETIVO = "01", "Eletivo"
+        URGENCIA = "02", "Urgência"
+
+    class MotivoSaida(models.TextChoices):
+        # Motivos de saída/permanência principais da AIH. Os códigos SUS oficiais
+        # posicionais entram na remessa SISAIH (AI3); aqui usamos rótulos claros
+        # para o header, mantendo a semântica do desfecho da internação.
+        ALTA_MELHORADO = "alta_melhorado", "Alta por melhora"
+        ALTA_CURADO = "alta_curado", "Alta por cura"
+        TRANSFERENCIA = "transferencia", "Transferência"
+        OBITO = "obito", "Óbito"
+        PERMANENCIA = "permanencia", "Permanência"
+
+    competencia = models.ForeignKey(SusCompetencia, on_delete=models.CASCADE, related_name="aihs")
+    numero_aih = models.CharField(
+        "Número da AIH",
+        max_length=13,
+        unique=True,
+        help_text="Número único da autorização AIH (emitido pelo gestor SUS).",
+    )
+    # A internação âncora. SET_NULL: a autorização sobrevive à remoção da
+    # internação; a UniqueConstraint parcial garante uma AIH por internação.
+    admission = models.ForeignKey(
+        "emr.Admission",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="aihs",
+        verbose_name="Internação",
+    )
+    # Cross-schema (public) — DO_NOTHING + pre_delete PROTECT signal.
+    procedimento_principal = models.ForeignKey(
+        "core.SIGTAPProcedure",
+        on_delete=models.DO_NOTHING,
+        related_name="+",
+        verbose_name="Procedimento principal (SIGTAP)",
+    )
+    cid_principal = models.CharField("CID-10 principal", max_length=10, blank=True, default="")
+    patient = models.ForeignKey(
+        "emr.Patient",
+        on_delete=models.PROTECT,
+        related_name="aih_autorizacoes",
+        verbose_name="Paciente",
+    )
+    cns = models.CharField("CNS do paciente (snapshot)", max_length=15, blank=True, default="")
+    professional_solicitante = models.ForeignKey(
+        "emr.Professional",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="aih_solicitadas",
+        verbose_name="Profissional solicitante",
+    )
+    professional_responsavel = models.ForeignKey(
+        "emr.Professional",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="aih_responsaveis",
+        verbose_name="Profissional responsável",
+    )
+    data_internacao = models.DateField("Data da internação")
+    data_saida = models.DateField("Data da saída", null=True, blank=True)
+    carater_internacao = models.CharField(
+        "Caráter da internação",
+        max_length=2,
+        choices=CaraterInternacao.choices,
+        default=CaraterInternacao.ELETIVO,
+    )
+    motivo_saida = models.CharField(
+        "Motivo de saída/permanência",
+        max_length=20,
+        choices=MotivoSaida.choices,
+        blank=True,
+        default="",
+    )
+    valor = models.DecimalField(
+        "Valor autorizado (R$)",
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0"),
+        help_text="Valor autorizado da AIH (SH+SP: serviços hospitalares + profissionais).",
+    )
+    created_by = models.ForeignKey(
+        "core.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="aih_autorizacoes_criadas",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Autorização AIH"
+        verbose_name_plural = "Autorizações AIH"
+        ordering = ["-created_at"]
+        constraints = [
+            # Idempotency: at most one AIH per internação. NULL admission rows are
+            # exempt (an AIH may be created before/without an admission link).
+            models.UniqueConstraint(
+                fields=["admission"],
+                condition=models.Q(admission__isnull=False),
+                name="uniq_aih_per_admission",
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"AIH {self.numero_aih} — {self.procedimento_principal_id} (comp {self.competencia_id})"
+        )
+
+
+class AihProcedimentoSecundario(models.Model):
+    """Procedimento secundário de uma AIH (SISAIH). Per-tenant.
+
+    ``sigtap`` FK is cross-schema (DO_NOTHING + protect signal, same as the AIH
+    main procedure). ``valor`` is computed on ``save`` from
+    ``(sigtap.valor_sh + sigtap.valor_sp) × quantidade`` — note AIH uses **SH+SP**
+    (serviços hospitalares + serviços profissionais), differing from the APAC/BPA
+    convention of SA+SP (serviço ambulatorial + profissionais), because inpatient
+    procedures are valued on the hospital-services axis.
+    """
+
+    aih = models.ForeignKey(
+        AihAutorizacao, on_delete=models.CASCADE, related_name="procedimentos_secundarios"
+    )
+    sigtap = models.ForeignKey(
+        "core.SIGTAPProcedure",
+        on_delete=models.DO_NOTHING,
+        related_name="+",
+        verbose_name="Procedimento secundário (SIGTAP)",
+    )
+    quantidade = models.PositiveIntegerField("Quantidade", default=1)
+    valor = models.DecimalField(
+        "Valor (R$)",
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0"),
+        help_text="(sigtap.valor_sh + sigtap.valor_sp) × quantidade, computado no save.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Procedimento secundário AIH"
+        verbose_name_plural = "Procedimentos secundários AIH"
+        ordering = ["created_at"]
+
+    def save(self, *args, **kwargs):
+        # AIH usa SH+SP (serviços hospitalares + profissionais), diferente do
+        # SA+SP da APAC/BPA. Computado aqui para ser a fonte da verdade do valor.
+        sigtap = self.sigtap
+        sh = sigtap.valor_sh if sigtap.valor_sh is not None else Decimal("0")
+        sp = sigtap.valor_sp if sigtap.valor_sp is not None else Decimal("0")
+        self.valor = (sh + sp) * self.quantidade
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"AIH-sec {self.sigtap_id} × {self.quantidade} (aih {self.aih_id})"
