@@ -509,6 +509,24 @@ class SurgicalMaterial(models.Model):
         related_name="surgical_materials",
         verbose_name="Lote de estoque",
     )
+    # Optional link to the Simpro price catalog (SHARED/public schema, B4a). It is
+    # the material's national price reference, off which the billing bridge (B4b,
+    # apps.billing.services.material_billing.bill_surgical_materials_for_case)
+    # resolves the negotiated value per convênio. PostgreSQL does not enforce FK
+    # integrity across schemas (tenant → public), so — exactly like
+    # ``SurgicalProcedure.tuss_code`` → ``core.TUSSCode`` — it uses
+    # ``on_delete=DO_NOTHING`` and relies on the ``protect_simpro_material_deletion``
+    # pre_delete signal (apps/core/signals.py), extended in B4b to cover this FK, to
+    # block deleting a Simpro item any tenant references. A null ``simpro`` is an
+    # uncatalogued OPME/material — not billable, flagged as glosa risk by the bridge.
+    simpro = models.ForeignKey(
+        "core.SimproMaterial",
+        on_delete=models.DO_NOTHING,
+        null=True,
+        blank=True,
+        related_name="surgical_materials",
+        verbose_name="Material Simpro (catálogo)",
+    )
     description = models.CharField("Descrição", max_length=300, blank=True)
     quantity_planned = models.PositiveIntegerField("Quantidade planejada", default=1)
     quantity_consumed = models.PositiveIntegerField("Quantidade consumida", default=0)

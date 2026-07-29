@@ -835,6 +835,20 @@ class TISSGuideItem(models.Model):
     quantity = models.DecimalField("Quantidade", max_digits=8, decimal_places=2, default=1)
     unit_value = models.DecimalField("Valor unitário (R$)", max_digits=10, decimal_places=2)
     total_value = models.DecimalField("Valor total (R$)", max_digits=12, decimal_places=2)
+    # Optional back-link to the SurgicalMaterial that produced this line (B4b OPME/
+    # material bridge). Same-schema (TENANT) FK, so a normal FK — SET_NULL so a
+    # deleted material does not cascade-remove a billed line. It is the idempotency
+    # key the bridge (bill_surgical_materials_for_case) looks up on to avoid
+    # duplicating a material line on re-run. NULL for every non-material line
+    # (procedures, lab, diárias).
+    surgical_material = models.ForeignKey(
+        "emr.SurgicalMaterial",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="guide_items",
+        verbose_name="Material cirúrgico de origem",
+    )
 
     class Meta:
         verbose_name = "Item de Guia"

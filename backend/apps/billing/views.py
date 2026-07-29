@@ -848,6 +848,14 @@ class AdmissionBillingRequestSerializer(serializers.Serializer):
     admission_id = serializers.UUIDField(help_text="UUID da internação (Admission) a faturar.")
 
 
+class SurgicalMaterialBillingRequestSerializer(serializers.Serializer):
+    """Request body for POST /guides/bill-surgical-materials/ — the SurgicalCase id (B4b)."""
+
+    surgical_case_id = serializers.UUIDField(
+        help_text="UUID do caso cirúrgico (SurgicalCase) finalizado cujos materiais faturar."
+    )
+
+
 class TISSGuideViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -986,6 +994,52 @@ class TISSGuideViewSet(viewsets.ModelViewSet):
         guide = generate_internacao_guide_for_admission(admission)
         http_status = status.HTTP_200_OK if already_billed else status.HTTP_201_CREATED
         return Response(TISSGuideSerializer(guide).data, status=http_status)
+
+    @extend_schema(
+        request=SurgicalMaterialBillingRequestSerializer,
+        responses={
+            200: OpenApiResponse(
+                description=(
+                    "Resumo do faturamento de materiais: itens criados/existentes e "
+                    "alertas de glosa emitidos."
+                )
+            ),
+            400: OpenApiResponse(description="Pré-condição de faturamento não satisfeita."),
+            404: OpenApiResponse(description="Caso cirúrgico (SurgicalCase) não encontrado."),
+        },
+        summary="Faturar os materiais/OPME consumidos de uma cirurgia finalizada",
+        description=(
+            "Materializa cada ``SurgicalMaterial`` consumido de um caso cirúrgico "
+            "FINALIZADO na guia SP/SADT da cirurgia (idempotente, delegando a "
+            "`bill_surgical_materials_for_case`). Material com Simpro tabelado + TUSS "
+            "+ preço negociado vira item de guia precificado; material sem Simpro/TUSS "
+            "ou sem preço vira um alerta de glosa NOT_IN_TABLE (não faturável). Retorna "
+            "400 quando a cirurgia não está finalizada."
+        ),
+    )
+    @action(detail=False, methods=["post"], url_path="bill-surgical-materials")
+    def bill_surgical_materials(self, request):
+        """Bill a finalized SurgicalCase's consumed materials into its SP/SADT guide (B4b).
+
+        Precondition errors raised by ``bill_surgical_materials_for_case`` are DRF
+        ``ValidationError``s → HTTP 400 with the PT-BR message. Idempotent: a second
+        call neither duplicates material lines nor glosa alerts."""
+        from apps.emr.models import SurgicalCase
+
+        from .services.material_billing import bill_surgical_materials_for_case
+
+        payload = SurgicalMaterialBillingRequestSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            case = SurgicalCase.objects.get(pk=payload.validated_data["surgical_case_id"])
+        except SurgicalCase.DoesNotExist:
+            return Response(
+                {"detail": "Caso cirúrgico não encontrado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        # Raises DRF ValidationError (→ 400) when the case is not billable.
+        result = bill_surgical_materials_for_case(case)
+        return Response(result.as_dict(), status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"], url_path="generate-xml")
     def generate_xml(self, request, pk=None):

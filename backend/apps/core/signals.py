@@ -529,7 +529,8 @@ def protect_blood_component_deletion(sender, instance, **kwargs):
 def protect_simpro_material_deletion(sender, instance, **kwargs):
     """Block deletion of a SimproMaterial referenced by tenant material pricing.
 
-    Covers ``billing.MaterialPriceItem.simpro`` (B4a) as a FK in every tenant.
+    Covers ``billing.MaterialPriceItem.simpro`` (B4a) and the surgical material
+    consumption link ``emr.SurgicalMaterial.simpro`` (B4b) as FKs in every tenant.
     Mirrors the BloodComponentCatalog→BloodBag guard.
     """
     from django_tenants.utils import get_tenant_model, schema_context
@@ -538,10 +539,17 @@ def protect_simpro_material_deletion(sender, instance, **kwargs):
     for tenant in TenantModel.objects.exclude(schema_name="public"):
         with schema_context(tenant.schema_name):
             from apps.billing.material_models import MaterialPriceItem
+            from apps.emr.models import SurgicalMaterial
 
             if MaterialPriceItem.objects.filter(simpro=instance).exists():
                 raise ProtectedError(
                     f"SimproMaterial {instance.code} is referenced by MaterialPriceItem in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+            if SurgicalMaterial.objects.filter(simpro=instance).exists():
+                raise ProtectedError(
+                    f"SimproMaterial {instance.code} is referenced by SurgicalMaterial in "
                     f"schema '{tenant.schema_name}' and cannot be deleted.",
                     {instance},
                 )
