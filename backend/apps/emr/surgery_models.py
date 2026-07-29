@@ -48,6 +48,8 @@ __all__ = [
     "SurgicalMaterial",
     "AnestheticRecord",
     "AnestheticEvent",
+    "PacuRecord",
+    "PacuAssessment",
 ]
 
 
@@ -712,3 +714,166 @@ class AnestheticEvent(models.Model):
 
     def __str__(self):
         return f"{self.get_kind_display()} — {self.record_id} @ {self.timestamp:%d/%m %H:%M}"
+
+
+# ─── CS2: SRPA / PACU — recuperação pós-anestésica ────────────────────────────
+
+
+class PacuRecord(models.Model):
+    """The post-anesthesia recovery (SRPA / PACU) record of a :class:`SurgicalCase`.
+
+    One per case (``OneToOneField``): after the surgery the patient is admitted to
+    the SRPA (Sala de Recuperação Pós-Anestésica), assessed with the Aldrete score
+    and eventually discharged to the ward / ICU / home. This holds the admission
+    (who received the patient, entry time, admission Aldrete), the discharge
+    (destination, time, discharge Aldrete, criteria-met flag) and free-text notes.
+    The periodic assessments during the stay live in the append-only
+    :class:`PacuAssessment` timeline.
+
+    The classic SRPA discharge criterion is an Aldrete score ≥ 9; this is **not**
+    enforced here — ``aldrete_discharge`` is a free field and the clinical
+    decision is captured by the explicit ``discharge_criteria_met`` boolean, so a
+    site may apply its own protocol (e.g. modified Aldrete, PADSS).
+    """
+
+    class DischargeDestination(models.TextChoices):
+        ENFERMARIA = "enfermaria", "Enfermaria"
+        UTI = "uti", "UTI"
+        ALTA = "alta", "Alta (casa)"
+        OBITO = "obito", "Óbito"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    case = models.OneToOneField(
+        SurgicalCase,
+        on_delete=models.CASCADE,
+        related_name="pacu_record",
+        verbose_name="Caso cirúrgico",
+    )
+    admitted_at = models.DateTimeField("Entrada na SRPA", null=True, blank=True)
+    # Nurse who received the patient in the SRPA. PROTECT so a professional with
+    # SRPA admissions cannot be deleted.
+    admitted_by = models.ForeignKey(
+        "emr.Professional",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="pacu_admissions",
+        verbose_name="Recebido por",
+    )
+    aldrete_admission = models.PositiveSmallIntegerField(
+        "Aldrete na entrada",
+        null=True,
+        blank=True,
+        help_text="Escore de Aldrete na admissão à SRPA (0–10).",
+    )
+    aldrete_discharge = models.PositiveSmallIntegerField(
+        "Aldrete na alta",
+        null=True,
+        blank=True,
+        help_text="Escore de Aldrete na alta da SRPA (0–10; ≥ 9 é o critério clássico de alta).",
+    )
+    discharged_at = models.DateTimeField("Alta da SRPA", null=True, blank=True)
+    discharge_destination = models.CharField(
+        "Destino na alta",
+        max_length=16,
+        choices=DischargeDestination.choices,
+        blank=True,
+        default="",
+    )
+    discharge_criteria_met = models.BooleanField(
+        "Critérios de alta atingidos",
+        default=False,
+        help_text="Critérios de alta da SRPA atingidos (decisão clínica).",
+    )
+    notes = models.TextField("Observações", blank=True)
+
+    created_by = models.ForeignKey(
+        "core.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="pacu_records_created",
+        verbose_name="Criado por",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Registro de SRPA (Recuperação Pós-Anestésica)"
+        verbose_name_plural = "Registros de SRPA (Recuperação Pós-Anestésica)"
+        indexes = [
+            models.Index(fields=["case"], name="emr_pacurec_case_idx"),
+        ]
+
+    def __str__(self):
+        return f"SRPA — {self.case_id}"
+
+
+class PacuAssessment(models.Model):
+    """An append-only periodic assessment on a :class:`PacuRecord`'s SRPA timeline.
+
+    Mirrors the append-only shape of ``AnestheticEvent`` / ``SurgicalTime`` — rows
+    are created, never edited/deleted. Each row is one Aldrete evaluation during
+    the recovery stay. The 5 Aldrete components (``activity`` / ``respiration`` /
+    ``circulation`` / ``consciousness`` / ``oxygen``) are each scored 0–2 (their
+    sum is the Aldrete score, 0–10); they are optional so a site may record only
+    the aggregate ``aldrete_score`` + ``notes`` instead of the breakdown.
+    ``pain_score`` is a 0–10 pain scale captured alongside.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    record = models.ForeignKey(
+        PacuRecord,
+        on_delete=models.CASCADE,
+        related_name="assessments",
+        verbose_name="Registro de SRPA",
+    )
+    assessed_at = models.DateTimeField("Avaliado em", default=timezone.now)
+    aldrete_score = models.PositiveSmallIntegerField(
+        "Escore de Aldrete",
+        null=True,
+        blank=True,
+        help_text="Escore de Aldrete agregado (0–10).",
+    )
+    # The 5 Aldrete components, each 0–2 (optional; their sum = aldrete_score).
+    consciousness = models.PositiveSmallIntegerField(
+        "Consciência", null=True, blank=True, help_text="Componente Aldrete (0–2)."
+    )
+    respiration = models.PositiveSmallIntegerField(
+        "Respiração", null=True, blank=True, help_text="Componente Aldrete (0–2)."
+    )
+    circulation = models.PositiveSmallIntegerField(
+        "Circulação", null=True, blank=True, help_text="Componente Aldrete (0–2)."
+    )
+    activity = models.PositiveSmallIntegerField(
+        "Atividade", null=True, blank=True, help_text="Componente Aldrete (0–2)."
+    )
+    oxygen = models.PositiveSmallIntegerField(
+        "Saturação de O₂", null=True, blank=True, help_text="Componente Aldrete (0–2)."
+    )
+    pain_score = models.PositiveSmallIntegerField(
+        "Escore de dor", null=True, blank=True, help_text="Escala de dor (0–10)."
+    )
+    notes = models.CharField("Observações", max_length=300, blank=True)
+    recorded_by = models.ForeignKey(
+        "emr.Professional",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="pacu_assessments",
+        verbose_name="Registrado por",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["assessed_at", "created_at"]
+        verbose_name = "Avaliação de SRPA"
+        verbose_name_plural = "Avaliações de SRPA"
+        indexes = [
+            models.Index(fields=["record", "assessed_at"], name="emr_pacuassess_rec_dt_idx"),
+        ]
+
+    def __str__(self):
+        return f"Aldrete {self.aldrete_score} — {self.record_id} @ {self.assessed_at:%d/%m %H:%M}"

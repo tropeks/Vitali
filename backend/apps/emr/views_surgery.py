@@ -25,6 +25,8 @@ from .serializers_surgery import (
     AnestheticEventSerializer,
     AnestheticRecordSerializer,
     OperatingRoomSerializer,
+    PacuAssessmentSerializer,
+    PacuRecordSerializer,
     SurgicalCaseCancelSerializer,
     SurgicalCaseChecklistSerializer,
     SurgicalCaseRecordTimeSerializer,
@@ -579,3 +581,63 @@ class AnestheticEventViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
     def perform_create(self, serializer):
         obj = serializer.save(recorded_by=self.request.user)
         log_audit(self.request, "anesthetic_event_create", "AnestheticEvent", obj.id)
+
+
+# ─── CS2: SRPA / PACU — recuperação pós-anestésica ────────────────────────────
+
+
+@extend_schema_view(
+    list=extend_schema(parameters=[_CASE_PARAM]),
+)
+class PacuRecordViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
+    """Registro de SRPA (recuperação pós-anestésica) de um caso (OneToOne).
+
+    Read=``surgery.read`` / write=``surgery.manage``. ``created_by`` é definido no
+    servidor; ``assessments`` são aninhados read-only. Um 2º registro para o mesmo
+    caso → 400. Filtrável por ``?case=``."""
+
+    serializer_class = PacuRecordSerializer
+
+    def get_queryset(self):
+        from .models import PacuRecord
+
+        qs = PacuRecord.objects.select_related(
+            "case", "admitted_by", "admitted_by__user"
+        ).prefetch_related("assessments")
+        case = self.request.query_params.get("case")
+        if case:
+            qs = qs.filter(case_id=case)
+        return qs
+
+    def perform_create(self, serializer):
+        obj = serializer.save(created_by=self.request.user)
+        log_audit(self.request, "pacu_record_create", "PacuRecord", obj.id)
+
+    def perform_update(self, serializer):
+        obj = serializer.save()
+        log_audit(self.request, "pacu_record_update", "PacuRecord", obj.id)
+
+
+@extend_schema_view(
+    list=extend_schema(parameters=[_RECORD_PARAM]),
+)
+class PacuAssessmentViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
+    """Avaliações periódicas (Aldrete) da timeline da SRPA.
+
+    Read=``surgery.read`` / write=``surgery.manage``. Filtrável por ``?record=``;
+    ordenadas por ``assessed_at``."""
+
+    serializer_class = PacuAssessmentSerializer
+
+    def get_queryset(self):
+        from .models import PacuAssessment
+
+        qs = PacuAssessment.objects.select_related("record", "recorded_by")
+        record = self.request.query_params.get("record")
+        if record:
+            qs = qs.filter(record_id=record)
+        return qs
+
+    def perform_create(self, serializer):
+        obj = serializer.save()
+        log_audit(self.request, "pacu_assessment_create", "PacuAssessment", obj.id)

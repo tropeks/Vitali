@@ -16,6 +16,8 @@ from .models import (
     AnestheticEvent,
     AnestheticRecord,
     OperatingRoom,
+    PacuAssessment,
+    PacuRecord,
     SurgicalCase,
     SurgicalChecklist,
     SurgicalMaterial,
@@ -282,3 +284,60 @@ class AnestheticRecordSerializer(serializers.ModelSerializer):
         # ``case`` is a OneToOneField → DRF auto-adds a UniqueValidator, so a 2nd
         # ficha for the same case is rejected with 400.
         read_only_fields = ("id", "events", "created_by", "created_at", "updated_at")
+
+
+# ─── CS2: SRPA / PACU — recuperação pós-anestésica ────────────────────────────
+
+
+class PacuAssessmentSerializer(serializers.ModelSerializer):
+    """Uma avaliação periódica (Aldrete) na timeline da SRPA. ``recorded_by`` é o
+    profissional que avaliou (client-set: enfermeiro/anestesista da SRPA)."""
+
+    class Meta:
+        model = PacuAssessment
+        fields = [
+            "id",
+            "record",
+            "assessed_at",
+            "aldrete_score",
+            "consciousness",
+            "respiration",
+            "circulation",
+            "activity",
+            "oxygen",
+            "pain_score",
+            "notes",
+            "recorded_by",
+            "created_at",
+        ]
+        read_only_fields = ("id", "created_at")
+
+
+class PacuRecordSerializer(serializers.ModelSerializer):
+    """Registro de SRPA de um caso (OneToOne). ``assessments`` são read-only
+    aninhados (adicionados via o ``PacuAssessmentViewSet``); ``created_by`` é
+    definido no servidor. Um 2º registro para o mesmo caso é rejeitado com 400."""
+
+    assessments = PacuAssessmentSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = PacuRecord
+        fields = [
+            "id",
+            "case",
+            "admitted_at",
+            "admitted_by",
+            "aldrete_admission",
+            "aldrete_discharge",
+            "discharged_at",
+            "discharge_destination",
+            "discharge_criteria_met",
+            "notes",
+            "assessments",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+        # ``case`` is a OneToOneField → DRF auto-adds a UniqueValidator, so a 2nd
+        # registro for the same case is rejected with 400.
+        read_only_fields = ("id", "assessments", "created_by", "created_at", "updated_at")
