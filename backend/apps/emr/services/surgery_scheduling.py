@@ -45,6 +45,7 @@ from typing import Any
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Q
 
 from apps.emr.models import OperatingRoom, SurgicalCase
 
@@ -94,6 +95,60 @@ def _assert_no_overlap(*, room: OperatingRoom, start: Any, end: Any, exclude_pk:
         )
 
 
+def _professional_label(prof: Any) -> str:
+    """Human-readable name for a :class:`~apps.emr.models.Professional` for use in
+    error messages: the linked user's full name, falling back to the council id."""
+    user = getattr(prof, "user", None)
+    full_name = (getattr(user, "full_name", "") or "").strip()
+    if full_name:
+        return full_name
+    return f"{prof.council_type} {prof.council_number}"
+
+
+def _assert_professionals_available(
+    *, case: SurgicalCase, start: Any, end: Any, exclude_pk: Any
+) -> None:
+    """Raise ``ValidationError`` if any professional involved in ``case`` (the
+    surgeon ∪ every :class:`~apps.emr.models.SurgicalTeamMember`) is already booked
+    on ANOTHER blocking case overlapping the half-open interval ``[start, end)``.
+
+    A professional "is on" a case when they are its ``surgeon`` OR a team member of
+    it, hence ``Q(surgeon=prof) | Q(team__professional=prof)`` (``team`` is the
+    reverse related_name of ``SurgicalTeamMember.case``) with ``.distinct()`` so a
+    professional who is BOTH surgeon and team member on the same conflicting case is
+    not double-counted.
+
+    This is a read-query run inside the same ``transaction.atomic`` as the room
+    guard; serialization is best-effort via the room-row lock taken in
+    :func:`schedule` plus the surrounding transaction — the same pragmatic
+    guarantee the room-slot guard relies on (there is no per-professional row to
+    lock here).
+    """
+    professionals: dict[Any, Any] = {}
+    if case.surgeon_id:
+        professionals[case.surgeon_id] = case.surgeon
+    for member in case.team.select_related("professional").all():
+        professionals.setdefault(member.professional_id, member.professional)
+
+    for prof in professionals.values():
+        conflict = (
+            SurgicalCase.objects.filter(
+                Q(surgeon=prof) | Q(team__professional=prof),
+                status__in=_BLOCKING_STATUSES,
+                scheduled_start__lt=end,
+                scheduled_end__gt=start,
+            )
+            .exclude(pk=exclude_pk)
+            .distinct()
+            .exists()
+        )
+        if conflict:
+            raise ValidationError(
+                f"Conflito de agenda: o profissional {_professional_label(prof)} "
+                f"já está em outra cirurgia nesse horário."
+            )
+
+
 @transaction.atomic
 def schedule(
     case: SurgicalCase,
@@ -122,6 +177,7 @@ def schedule(
         )
 
     _assert_no_overlap(room=operating_room, start=start, end=end, exclude_pk=locked.pk)
+    _assert_professionals_available(case=locked, start=start, end=end, exclude_pk=locked.pk)
 
     locked.operating_room = operating_room
     locked.scheduled_start = start
@@ -159,6 +215,7 @@ def reschedule(
 
     OperatingRoom.objects.select_for_update().get(pk=target_room.pk)
     _assert_no_overlap(room=target_room, start=start, end=end, exclude_pk=locked.pk)
+    _assert_professionals_available(case=locked, start=start, end=end, exclude_pk=locked.pk)
 
     locked.operating_room = target_room
     locked.scheduled_start = start

@@ -26,6 +26,7 @@ from apps.emr.models import (
     Professional,
     SurgicalCase,
     SurgicalProcedure,
+    SurgicalTeamMember,
 )
 from apps.emr.services import surgery_scheduling as svc
 from apps.organization.models import Facility, LegalEntity
@@ -137,7 +138,17 @@ class TestScheduleService(SchedulingTestBase):
         assert out.scheduled_start == _dt(10)
 
     def test_overlap_on_different_room_ok(self):
+        # Distinct surgeon on the pre-existing case so this isolates the ROOM
+        # dimension (same surgeon overlapping is a separate CS1 conflict).
+        other_role = Role.objects.create(name="cir_outro", permissions=SCHEDULE_PERMS)
+        other_user = User.objects.create_user(
+            email="outrocir@t.com", password="pw", role=other_role, full_name="Outro Cirurgião"
+        )
+        other_surgeon = Professional.objects.create(
+            user=other_user, council_type="CRM", council_number="54321", council_state="SP"
+        )
         self._case(
+            surgeon=other_surgeon,
             operating_room=self.room,
             scheduled_start=_dt(8),
             scheduled_end=_dt(10),
@@ -177,6 +188,93 @@ class TestScheduleService(SchedulingTestBase):
         case = self._case(status=SurgicalCase.Status.FINALIZADA)
         with pytest.raises(ValidationError):
             svc.schedule(case, self.room, _dt(8), _dt(10))
+
+
+class TestProfessionalAvailability(SchedulingTestBase):
+    """CS1 — the same surgeon / team member cannot be booked on two overlapping
+    surgical cases even when they run in different rooms."""
+
+    def _make_surgeon(self, email, council_number):
+        role = Role.objects.create(name=f"role_{council_number}", permissions=SCHEDULE_PERMS)
+        user = User.objects.create_user(email=email, password="pw", role=role, full_name=email)
+        return Professional.objects.create(
+            user=user,
+            council_type="CRM",
+            council_number=council_number,
+            council_state="SP",
+        )
+
+    def test_same_surgeon_overlapping_different_room_rejected(self):
+        # Case A: surgeon busy [8,10) in room1.
+        self._case(
+            operating_room=self.room,
+            scheduled_start=_dt(8),
+            scheduled_end=_dt(10),
+            status=SurgicalCase.Status.AGENDADA,
+        )
+        # Case B: SAME surgeon (default self.surgeon), different room, overlaps.
+        new = self._case()
+        with pytest.raises(ValidationError):
+            svc.schedule(new, self.room2, _dt(9), _dt(11))
+
+    def test_same_team_member_overlapping_different_surgeons_rejected(self):
+        other_surgeon = self._make_surgeon("outro@t.com", "99999")
+        shared = self._make_surgeon("aux@t.com", "88888")
+
+        case_a = self._case(
+            surgeon=other_surgeon,
+            operating_room=self.room,
+            scheduled_start=_dt(8),
+            scheduled_end=_dt(10),
+            status=SurgicalCase.Status.AGENDADA,
+        )
+        SurgicalTeamMember.objects.create(
+            case=case_a, professional=shared, role=SurgicalTeamMember.Role.PRIMEIRO_AUXILIAR
+        )
+
+        # Case B has a different surgeon but the SAME auxiliary on its team.
+        case_b = self._case(surgeon=self.surgeon)
+        SurgicalTeamMember.objects.create(
+            case=case_b, professional=shared, role=SurgicalTeamMember.Role.PRIMEIRO_AUXILIAR
+        )
+        with pytest.raises(ValidationError):
+            svc.schedule(case_b, self.room2, _dt(9), _dt(11))
+
+    def test_distinct_professionals_overlapping_different_room_ok(self):
+        other_surgeon = self._make_surgeon("outro2@t.com", "77777")
+        self._case(
+            surgeon=other_surgeon,
+            operating_room=self.room,
+            scheduled_start=_dt(8),
+            scheduled_end=_dt(10),
+            status=SurgicalCase.Status.AGENDADA,
+        )
+        # Different surgeon, different room, overlapping time → OK.
+        new = self._case(surgeon=self.surgeon)
+        out = svc.schedule(new, self.room2, _dt(9), _dt(11))
+        assert out.operating_room_id == self.room2.id
+
+    def test_same_surgeon_non_overlapping_ok(self):
+        self._case(
+            operating_room=self.room,
+            scheduled_start=_dt(8),
+            scheduled_end=_dt(10),
+            status=SurgicalCase.Status.AGENDADA,
+        )
+        new = self._case()  # same surgeon
+        out = svc.schedule(new, self.room2, _dt(10), _dt(12))  # touches but no overlap
+        assert out.scheduled_start == _dt(10)
+
+    def test_cancelled_case_does_not_block_surgeon(self):
+        self._case(
+            operating_room=self.room,
+            scheduled_start=_dt(8),
+            scheduled_end=_dt(10),
+            status=SurgicalCase.Status.CANCELADA,
+        )
+        new = self._case()  # same surgeon, overlapping, but the other case is cancelled
+        out = svc.schedule(new, self.room2, _dt(9), _dt(11))
+        assert out.scheduled_start == _dt(9)
 
 
 class TestRescheduleService(SchedulingTestBase):
