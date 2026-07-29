@@ -24,7 +24,7 @@ from .logistics_models import (
     ProofOfDelivery,
     SupplyRequisition,
 )
-from .permissions import ConcessionModule
+from .permissions import ConcessionModule, HasConcessionAccess
 from .serializers_logistics import (
     DeliveryInputSerializer,
     DispatchDiscrepancySerializer,
@@ -60,7 +60,7 @@ class SupplyRequisitionViewSet(viewsets.ModelViewSet):
     queryset = SupplyRequisition.objects.all().prefetch_related("items")
 
     def get_permissions(self):
-        return [IsAuthenticated(), ConcessionModule()]
+        return [IsAuthenticated(), ConcessionModule(), HasConcessionAccess()]
 
     def perform_create(self, serializer):
         requisition = serializer.save(requested_by=self.request.user)
@@ -96,7 +96,7 @@ class PickListViewSet(viewsets.ModelViewSet):
     http_method_names = ["get", "post", "head", "options"]
 
     def get_permissions(self):
-        return [IsAuthenticated(), ConcessionModule()]
+        return [IsAuthenticated(), ConcessionModule(), HasConcessionAccess()]
 
     def create(self, request, *args, **kwargs):
         requisition = SupplyRequisition.objects.get(pk=request.data["requisition"])
@@ -130,7 +130,7 @@ class DispatchViewSet(viewsets.ModelViewSet):
     http_method_names = ["get", "post", "head", "options"]
 
     def get_permissions(self):
-        return [IsAuthenticated(), ConcessionModule()]
+        return [IsAuthenticated(), ConcessionModule(), HasConcessionAccess()]
 
     def create(self, request, *args, **kwargs):
         from apps.pharmacy.models import Warehouse
@@ -183,7 +183,7 @@ class ProofOfDeliveryViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = ProofOfDelivery.objects.all()
 
     def get_permissions(self):
-        return [IsAuthenticated(), ConcessionModule()]
+        return [IsAuthenticated(), ConcessionModule(), HasConcessionAccess()]
 
 
 @extend_schema_view(
@@ -200,7 +200,7 @@ class DispatchDiscrepancyViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = DispatchDiscrepancy.objects.select_related("dispatch", "material").all()
 
     def get_permissions(self):
-        return [IsAuthenticated(), ConcessionModule()]
+        return [IsAuthenticated(), ConcessionModule(), HasConcessionAccess()]
 
     def get_queryset(self):
         qs = DispatchDiscrepancy.objects.select_related("dispatch", "material").all()

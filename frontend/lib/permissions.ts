@@ -96,6 +96,9 @@ export const PERMISSIONS = {
   HEMOTERAPIA_REQUEST: "hemoterapia.request",
   HEMOTERAPIA_TRANSFUSE: "hemoterapia.transfuse",
 
+  // Concessão / comodato (administrativo — ativos/contratos/P&L; NÃO clínico)
+  CONCESSION_READ: "concession.read",
+
   // Imaging / diagnostics
   IMAGING_READ: "imaging.read",
   IMAGING_WRITE: "imaging.write",

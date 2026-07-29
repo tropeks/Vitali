@@ -14,7 +14,7 @@ from rest_framework.permissions import IsAuthenticated
 from apps.core.models import AuditLog
 
 from .models import ConcessionService
-from .permissions import ConcessionModule
+from .permissions import ConcessionModule, HasConcessionAccess
 from .serializers_catalog import ConcessionServiceSerializer
 
 
@@ -55,7 +55,7 @@ class ConcessionServiceViewSet(viewsets.ModelViewSet):
 
     queryset = ConcessionService.objects.all()
     serializer_class = ConcessionServiceSerializer
-    permission_classes = [IsAuthenticated, ConcessionModule]
+    permission_classes = [IsAuthenticated, ConcessionModule, HasConcessionAccess]
 
     def get_queryset(self):
         qs = ConcessionService.objects.all()

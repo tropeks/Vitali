@@ -43,6 +43,7 @@ const ADMIN_PERMS = [
   'hr.manage',
   'pharmacy.read',
   'pharmacy.stock_manage',
+  'concession.read',
 ]
 
 const user: UserDTO = {
@@ -137,6 +138,24 @@ describe('DashboardShell', () => {
 
     activeModulesMock.current = ['emr', 'billing', 'pharmacy', 'rh', 'diagnostic_concession']
     rerender(<DashboardShell user={user}><div /></DashboardShell>)
+    expect(screen.getByRole('link', { name: /Concessão/ })).toHaveAttribute('href', '/concessao')
+  })
+
+  it('hides Concessão from a clinical role even when the module is active (RBAC gate)', () => {
+    // Concessão é administrativo (ativos/contratos/P&L), NÃO clínico: um
+    // enfermeiro (sem concession.read) não deve vê-lo mesmo com o módulo ativo.
+    activeModulesMock.current = ['emr', 'billing', 'pharmacy', 'rh', 'diagnostic_concession']
+    const nursePerms = ['emr.read', 'patients.read', 'schedule.read', 'sae.read', 'emar.administer']
+    const nurse: UserDTO = { ...user, role_name: 'enfermeiro', permissions: nursePerms }
+    const { rerender } = render(<DashboardShell user={nurse}><div /></DashboardShell>)
+    expect(screen.queryByRole('link', { name: /Concessão/ })).not.toBeInTheDocument()
+
+    // Concedendo concession.read (papel admin) → o item aparece.
+    rerender(
+      <DashboardShell user={{ ...nurse, permissions: [...nursePerms, 'concession.read'] }}>
+        <div />
+      </DashboardShell>,
+    )
     expect(screen.getByRole('link', { name: /Concessão/ })).toHaveAttribute('href', '/concessao')
   })
 

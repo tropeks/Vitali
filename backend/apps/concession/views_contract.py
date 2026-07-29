@@ -18,7 +18,7 @@ from .contract_models import (
     ContractServicePrice,
     ServiceRecipe,
 )
-from .permissions import ConcessionModule
+from .permissions import ConcessionModule, HasConcessionAccess
 from .serializers_contract import (
     ConcessionContractSerializer,
     ContractServicePriceSerializer,
@@ -53,7 +53,7 @@ def log_audit(request, action, resource_type, resource_id, old_data=None, new_da
 
 
 class ConcessionContractViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated, ConcessionModule]
+    permission_classes = [IsAuthenticated, ConcessionModule, HasConcessionAccess]
     serializer_class = ConcessionContractSerializer
 
     def get_queryset(self):
@@ -77,7 +77,7 @@ class ConcessionContractViewSet(viewsets.ModelViewSet):
 
 
 class ContractServicePriceViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated, ConcessionModule]
+    permission_classes = [IsAuthenticated, ConcessionModule, HasConcessionAccess]
     serializer_class = ContractServicePriceSerializer
 
     def get_queryset(self):
@@ -108,7 +108,7 @@ class ContractServicePriceViewSet(viewsets.ModelViewSet):
 
 
 class ServiceRecipeViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated, ConcessionModule]
+    permission_classes = [IsAuthenticated, ConcessionModule, HasConcessionAccess]
     serializer_class = ServiceRecipeSerializer
 
     def get_queryset(self):

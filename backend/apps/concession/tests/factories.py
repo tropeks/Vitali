@@ -10,9 +10,13 @@ from apps.pharmacy.models import Material, StockItem, StockMovement, Warehouse
 
 
 def make_user(email="ops@test.local", perms=None) -> User:
-    role, _ = Role.objects.get_or_create(
-        name=f"role-{email}", defaults={"permissions": perms or []}
-    )
+    # Default operator carries full concession access (read + manage) so the
+    # functional/API tests exercise an *authorized* user. RBAC denial is covered
+    # explicitly in test_concession_rbac.py. Callers may pass ``perms`` to
+    # override (e.g. an unauthorized clinical role).
+    if perms is None:
+        perms = ["concession.read", "concession.manage"]
+    role, _ = Role.objects.get_or_create(name=f"role-{email}", defaults={"permissions": perms})
     return User.objects.create_user(email=email, role=role, full_name="Ops")
 
 

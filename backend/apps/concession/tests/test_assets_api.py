@@ -7,7 +7,7 @@ Covers: 201 create + list, and the tier gate — when the tenant lacks the
 from rest_framework.test import APIClient
 
 from apps.concession.models import ConcessionService, EquipmentAsset
-from apps.core.models import FeatureFlag, User
+from apps.core.models import FeatureFlag, Role, User
 from apps.organization.models import Facility, LegalEntity
 from apps.test_utils import TenantTestCase
 
@@ -28,8 +28,15 @@ class ConcessionApiTest(TenantTestCase):
         self.client.defaults["SERVER_NAME"] = self.__class__.domain.domain
         _enable_concession(self.__class__.tenant)
 
+        role = Role.objects.create(
+            name="role-concession-ops",
+            permissions=["concession.read", "concession.manage"],
+        )
         self.user = User.objects.create_user(
-            email="concession@test.com", password="Test123!", full_name="Concession User"
+            email="concession@test.com",
+            password="Test123!",
+            full_name="Concession User",
+            role=role,
         )
         self.client.force_authenticate(user=self.user)
 

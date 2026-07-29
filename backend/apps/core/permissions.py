@@ -294,6 +294,11 @@ ADMIN_PERMISSIONS = [
     # transfusional + registro de reação/hemovigilância (a enfermagem faz a 2ª
     # checagem e administra).
     "hemoterapia.transfuse",
+    # Concessão/comodato (administrativo, NÃO clínico): ativos/contratos/P&L.
+    # Só o admin acessa — ler (concession.read) e gerir (concession.manage).
+    # Deliberadamente NÃO concedido a papéis clínicos (enfermeiro/médico).
+    "concession.read",
+    "concession.manage",
 ]
 
 CLINICAL_PRESCRIBER_PERMISSIONS = [

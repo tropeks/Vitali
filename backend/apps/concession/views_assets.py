@@ -20,7 +20,7 @@ from rest_framework.response import Response
 from apps.core.models import AuditLog
 
 from .asset_models import AssetMovement, AssetService, EquipmentAsset, MaintenanceTicket
-from .permissions import ConcessionModule
+from .permissions import ConcessionModule, HasConcessionAccess
 from .serializers_assets import (
     AssetMovementSerializer,
     AssetServiceSerializer,
@@ -51,7 +51,7 @@ def log_audit(request, action, resource_type, resource_id, old_data=None, new_da
 class EquipmentAssetViewSet(viewsets.ModelViewSet):
     queryset = EquipmentAsset.objects.all()
     serializer_class = EquipmentAssetSerializer
-    permission_classes = [IsAuthenticated, ConcessionModule]
+    permission_classes = [IsAuthenticated, ConcessionModule, HasConcessionAccess]
 
     def perform_create(self, serializer):
         asset = serializer.save()
@@ -79,7 +79,7 @@ class AssetMovementViewSet(viewsets.ModelViewSet):
 
     queryset = AssetMovement.objects.all()
     serializer_class = AssetMovementSerializer
-    permission_classes = [IsAuthenticated, ConcessionModule]
+    permission_classes = [IsAuthenticated, ConcessionModule, HasConcessionAccess]
     http_method_names = ["get", "post", "head", "options"]
 
     def perform_create(self, serializer):
@@ -103,7 +103,7 @@ class AssetServiceViewSet(viewsets.ModelViewSet):
 
     queryset = AssetService.objects.select_related("asset", "service").all()
     serializer_class = AssetServiceSerializer
-    permission_classes = [IsAuthenticated, ConcessionModule]
+    permission_classes = [IsAuthenticated, ConcessionModule, HasConcessionAccess]
 
     def get_queryset(self):
         qs = AssetService.objects.select_related("asset", "service").all()
@@ -127,7 +127,7 @@ class AssetServiceViewSet(viewsets.ModelViewSet):
 class MaintenanceTicketViewSet(viewsets.ModelViewSet):
     queryset = MaintenanceTicket.objects.all()
     serializer_class = MaintenanceTicketSerializer
-    permission_classes = [IsAuthenticated, ConcessionModule]
+    permission_classes = [IsAuthenticated, ConcessionModule, HasConcessionAccess]
 
     def perform_create(self, serializer):
         ticket = serializer.save()

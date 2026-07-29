@@ -21,7 +21,7 @@ from apps.core.models import AuditLog
 from apps.organization.models import Facility
 
 from .contract_models import ConcessionContract
-from .permissions import ConcessionModule
+from .permissions import ConcessionModule, HasConcessionAccess
 from .pnl_models import ExamConsumption, MaterialUnitCost
 from .serializers_pnl import (
     ExamConsumptionRecordSerializer,
@@ -73,7 +73,7 @@ class MaterialUnitCostViewSet(viewsets.ModelViewSet):
 
     queryset = MaterialUnitCost.objects.select_related("material").all()
     serializer_class = MaterialUnitCostSerializer
-    permission_classes = [IsAuthenticated, ConcessionModule]
+    permission_classes = [IsAuthenticated, ConcessionModule, HasConcessionAccess]
 
     def perform_create(self, serializer):
         row = serializer.save()
@@ -109,7 +109,7 @@ class ExamConsumptionViewSet(viewsets.ReadOnlyModelViewSet):
 
     queryset = ExamConsumption.objects.select_related("unit", "service").all()
     serializer_class = ExamConsumptionSerializer
-    permission_classes = [IsAuthenticated, ConcessionModule]
+    permission_classes = [IsAuthenticated, ConcessionModule, HasConcessionAccess]
 
     def get_queryset(self):
         qs = ExamConsumption.objects.select_related("unit", "service").all()
@@ -150,7 +150,7 @@ class ExamConsumptionViewSet(viewsets.ReadOnlyModelViewSet):
 class ContractPnlViewSet(viewsets.GenericViewSet):
     """Exposes only the ``pnl`` detail action on a concession contract."""
 
-    permission_classes = [IsAuthenticated, ConcessionModule]
+    permission_classes = [IsAuthenticated, ConcessionModule, HasConcessionAccess]
     queryset = ConcessionContract.objects.all()
 
     @action(detail=True, methods=["get"], url_path="pnl")

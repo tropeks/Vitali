@@ -311,6 +311,7 @@ export const NAV_GROUPS: NavGroup[] = [
         href: "/concessao",
         icon: PackageOpen,
         module: "diagnostic_concession",
+        permissions: [PERMISSIONS.CONCESSION_READ],
         children: [
           { label: "Ativos", href: "/concessao/ativos" },
           { label: "Contratos", href: "/concessao/contratos" },
