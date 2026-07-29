@@ -193,4 +193,17 @@ describe('DashboardShell', () => {
     expect(escalasLinks).toHaveLength(1)
     expect(escalasLinks[0]).toHaveAttribute('href', '/painel-setor/escalas')
   })
+
+  it('keeps Configurações expanded when navigating to a child whose route differs from the parent href', () => {
+    // Configurações' item.href is /configuracoes/assinatura, but we navigate to a
+    // DIFFERENT child (WhatsApp). Before the fix the section collapsed because
+    // "open" was tied to the parent's own href; now any active child keeps it open.
+    pathname = '/configuracoes/whatsapp'
+    render(<DashboardShell user={user}><div /></DashboardShell>)
+    // Parent still shown, and its sibling children stay visible (menu did NOT collapse):
+    expect(screen.getByRole('link', { name: /Configurações/ })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Assinatura' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'WhatsApp' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Privacidade (LGPD)' })).toBeInTheDocument()
+  })
 })

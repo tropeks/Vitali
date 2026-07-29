@@ -96,13 +96,22 @@ export default function DashboardShell({ user, children }: Props) {
     const Icon = item.icon;
     const active = pathname === item.href || pathname.startsWith(item.href + "/");
     const hasChildren = item.children && item.children.length > 0;
+    // The section stays open when ANY child route is active — not only when the
+    // pathname matches the parent's own href. Otherwise navigating to a submenu
+    // whose route differs from item.href (e.g. Configurações → WhatsApp, while
+    // item.href points at /configuracoes/assinatura) would collapse the menu.
+    const childActive =
+      item.children?.some(
+        (c) => pathname === c.href || pathname.startsWith(c.href + "/"),
+      ) ?? false;
+    const sectionOpen = active || childActive;
 
     const linkEl = (
       <Link
         href={item.href}
         onClick={() => setSidebarOpen(false)}
         className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm border transition-colors ${
-          active
+          sectionOpen
             ? "bg-neu-panel text-neu-brand font-medium border-white shadow-neu-panel"
             : "border-transparent text-neu-inkSoft hover:text-neu-ink hover:bg-neu-panel/60"
         }`}
@@ -112,7 +121,7 @@ export default function DashboardShell({ user, children }: Props) {
         {hasChildren && (
           <ChevronRight
             size={14}
-            className={`transition-transform ${active ? "rotate-90" : ""}`}
+            className={`transition-transform ${sectionOpen ? "rotate-90" : ""}`}
           />
         )}
       </Link>
@@ -123,7 +132,7 @@ export default function DashboardShell({ user, children }: Props) {
     return (
       <div key={item.href}>
         {linkEl}
-        {active && (
+        {sectionOpen && (
           <div className="ml-7 mt-0.5 space-y-0.5">
             {item.children!.map((child) => {
               const childActive =
