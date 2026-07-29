@@ -192,3 +192,69 @@ def discharge(
         reason=reason,
     )
     return locked
+
+
+@transaction.atomic
+def plan_discharge(
+    *,
+    admission: Admission,
+    expected_discharge_datetime: Any,
+    actor: Any | None = None,
+    reason: str = "",
+) -> Admission:
+    """Set/update the *planned* discharge datetime (alta prevista) of an active
+    admission and append a ``plan_discharge`` event — atomically.
+
+    This is a clinical planning act (the attending decides when the patient
+    should leave); it does NOT move the patient or touch the bed. The
+    append-only event records each revision so the planned-discharge board and
+    the audit trail agree. ``from_bed``/``to_bed`` stay null (no bed movement).
+
+    Raises ``ValidationError`` if the admission is not active, if no datetime is
+    given, or if it precedes the admission datetime.
+    """
+    if expected_discharge_datetime is None:
+        raise ValidationError("Data/hora de alta prevista é obrigatória.")
+
+    locked = Admission.objects.select_for_update().get(pk=admission.pk)
+    if locked.status != Admission.Status.ADMITTED:
+        raise ValidationError("Internação não está ativa; não pode planejar alta.")
+    if expected_discharge_datetime < locked.admission_datetime:
+        raise ValidationError("Alta prevista não pode ser anterior à internação.")
+
+    locked.expected_discharge_datetime = expected_discharge_datetime
+    locked.save(update_fields=["expected_discharge_datetime", "updated_at"])
+
+    AdmissionEvent.objects.create(
+        admission=locked,
+        event_type=AdmissionEvent.EventType.PLAN,
+        from_bed=None,
+        to_bed=None,
+        actor=actor,
+        reason=reason,
+    )
+    return locked
+
+
+def planned_discharges(*, until: Any | None = None, unit: Any | None = None):
+    """Active admissions with a planned discharge (read-only), soonest first.
+
+    ``until`` caps the planned datetime (e.g. "today"): only admissions whose
+    ``expected_discharge_datetime`` is on/before it. ``unit`` scopes to a single
+    inpatient unit via the current bed. Used by the planned-discharge board so
+    the NIR/team can anticipate bed turnover.
+    """
+    qs = (
+        Admission.objects.filter(
+            status=Admission.Status.ADMITTED,
+            expected_discharge_datetime__isnull=False,
+        )
+        .select_related("patient", "current_bed", "current_bed__unit")
+        .order_by("expected_discharge_datetime")
+    )
+    if until is not None:
+        qs = qs.filter(expected_discharge_datetime__lte=until)
+    if unit is not None:
+        unit_id = getattr(unit, "pk", unit)
+        qs = qs.filter(current_bed__unit_id=unit_id)
+    return qs

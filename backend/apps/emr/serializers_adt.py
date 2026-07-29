@@ -169,6 +169,14 @@ class AdmissionDischargeSerializer(serializers.Serializer):
     reason = serializers.CharField(required=False, allow_blank=True)
 
 
+class AdmissionPlanDischargeSerializer(serializers.Serializer):
+    """Payload for the ``plan_discharge`` action: the planned discharge datetime
+    (alta prevista) plus an optional reason recorded on the append-only event."""
+
+    expected_discharge_datetime = serializers.DateTimeField()
+    reason = serializers.CharField(required=False, allow_blank=True)
+
+
 class AdmissionTransferSerializer(serializers.Serializer):
     """Payload for the ``transfer`` action: destination bed + optional reason."""
 

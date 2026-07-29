@@ -24,6 +24,7 @@ from apps.core.permissions import HasPermission
 from .serializers_adt import (
     AdmissionDischargeSerializer,
     AdmissionEventSerializer,
+    AdmissionPlanDischargeSerializer,
     AdmissionSerializer,
     AdmissionTransferSerializer,
     BedSerializer,
@@ -47,6 +48,9 @@ _ADM_STATUS_PARAM = OpenApiParameter(
 )
 _ADMISSION_PARAM = OpenApiParameter(
     "admission", str, description="Filtra eventos por internação (UUID)."
+)
+_UNTIL_PARAM = OpenApiParameter(
+    "until", str, description="Teto da alta prevista (ISO datetime); traz altas até esse instante."
 )
 
 
@@ -226,8 +230,10 @@ class AdmissionViewSet(
     def get_permissions(self):
         permission_by_action = {
             "discharge": "adt.discharge",
+            "plan_discharge": "adt.discharge",
             "transfer": "adt.transfer",
             "census": "beds.read",
+            "planned": "beds.read",
         }
         permission = permission_by_action.get(self.action, "adt.admit")
         return [IsAuthenticated(), HasPermission(permission)]
@@ -311,6 +317,58 @@ class AdmissionViewSet(
             return Response({"detail": exc.messages[0]}, status=http_status.HTTP_409_CONFLICT)
         log_audit(request, "adt_transfer", "Admission", admission.id)
         return Response(self.get_serializer(admission).data)
+
+    @extend_schema(request=AdmissionPlanDischargeSerializer, responses=AdmissionSerializer)
+    @action(detail=True, methods=["post"], url_path="plan-discharge")
+    def plan_discharge(self, request, pk=None):
+        """Set/update the planned discharge datetime (alta prevista) THROUGH the
+        service (append-only ``plan_discharge`` event). Rejection → 409."""
+        admission = self.get_object()
+        payload = AdmissionPlanDischargeSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            admission = adt_service.plan_discharge(
+                admission=admission,
+                expected_discharge_datetime=payload.validated_data["expected_discharge_datetime"],
+                actor=request.user,
+                reason=payload.validated_data.get("reason", ""),
+            )
+        except DjangoValidationError as exc:
+            return Response({"detail": exc.messages[0]}, status=http_status.HTTP_409_CONFLICT)
+        log_audit(request, "adt_plan_discharge", "Admission", admission.id)
+        return Response(self.get_serializer(admission).data)
+
+    @extend_schema(
+        parameters=[_UNIT_PARAM, _UNTIL_PARAM],
+        responses=OpenApiTypes.OBJECT,
+        description="Altas previstas (internações ativas com alta prevista), da "
+        "mais próxima à mais distante. ``?until=`` teto do horário; ``?unit=`` "
+        "escopa por unidade. Antecipa a rotatividade de leitos. Gated beds.read.",
+    )
+    @action(detail=False, methods=["get"])
+    def planned(self, request):
+        """Planned-discharge board: active admissions with an expected discharge,
+        soonest first. Each row carries patient + current bed for the board."""
+        from django.utils.dateparse import parse_datetime
+
+        until_raw = request.query_params.get("until")
+        until = parse_datetime(until_raw) if until_raw else None
+        unit = request.query_params.get("unit")
+        rows = [
+            {
+                "admission_id": str(adm.id),
+                "patient": {"id": str(adm.patient_id), "name": adm.patient.full_name},
+                "current_bed": (
+                    {"id": str(adm.current_bed_id), "identifier": adm.current_bed.identifier}
+                    if adm.current_bed_id
+                    else None
+                ),
+                "unit_id": str(adm.current_bed.unit_id) if adm.current_bed_id else None,
+                "expected_discharge_datetime": adm.expected_discharge_datetime.isoformat(),
+            }
+            for adm in adt_service.planned_discharges(until=until, unit=unit)
+        ]
+        return Response({"planned": rows})
 
     @extend_schema(
         parameters=[_UNIT_PARAM],
