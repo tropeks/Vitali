@@ -517,6 +517,36 @@ def protect_blood_component_deletion(sender, instance, **kwargs):
                 )
 
 
+# ─── SimproMaterial cross-schema PROTECT (B4a — material/OPME price source) ───
+# B4a wires the tenant-side material pricing (apps.billing.material_models):
+# MaterialPriceItem.simpro → core.SimproMaterial. PostgreSQL does not enforce FK
+# integrity across schemas (tenant → public), so — exactly like
+# protect_blood_component_deletion — this application-layer guard blocks
+# hard-deleting a Simpro material any tenant references from a price item.
+
+
+@receiver(pre_delete, sender="core.SimproMaterial")
+def protect_simpro_material_deletion(sender, instance, **kwargs):
+    """Block deletion of a SimproMaterial referenced by tenant material pricing.
+
+    Covers ``billing.MaterialPriceItem.simpro`` (B4a) as a FK in every tenant.
+    Mirrors the BloodComponentCatalog→BloodBag guard.
+    """
+    from django_tenants.utils import get_tenant_model, schema_context
+
+    TenantModel = get_tenant_model()
+    for tenant in TenantModel.objects.exclude(schema_name="public"):
+        with schema_context(tenant.schema_name):
+            from apps.billing.material_models import MaterialPriceItem
+
+            if MaterialPriceItem.objects.filter(simpro=instance).exists():
+                raise ProtectedError(
+                    f"SimproMaterial {instance.code} is referenced by MaterialPriceItem in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+
+
 # ─── Manchester catalog cross-schema PROTECT (E2 — PS/Emergência wired) ───────
 # E2 wires the tenant-side PS/Emergência domain (apps.emr.emergency_models):
 # RiskClassification.flowchart → core.ManchesterFlowchart and

@@ -1006,3 +1006,4 @@ from .loinc_models import *  # noqa: E402,F401,F403
 from .manchester_catalog_models import *  # noqa: E402,F401,F403
 from .nursing_catalog_models import *  # noqa: E402,F401,F403
 from .sigtap_catalog_models import *  # noqa: E402,F401,F403
+from .simpro_models import *  # noqa: E402,F401,F403
