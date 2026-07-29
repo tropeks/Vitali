@@ -325,6 +325,20 @@ class TISSGuide(models.Model):
         related_name="tiss_guides",
         help_text="Pedido de exames que originou esta guia (ponte LIS→faturamento).",
     )
+    # ── B1: SurgicalCase → SP/SADT bridge ────────────────────────────────────────
+    # Same-schema FK (emr and billing are both tenant apps) linking a SADT guide to
+    # the FINALIZED SurgicalCase that generated it. Nullable — set only on guides
+    # auto-generated from the Centro Cirúrgico. Its uniqueness (enforced below) is
+    # what makes SurgicalCase→guide generation IDEMPOTENT: at most one guide per
+    # case. SET_NULL so a case delete never destroys the billing record.
+    surgical_case = models.ForeignKey(
+        "emr.SurgicalCase",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tiss_guides",
+        help_text="Caso cirúrgico que originou esta guia (ponte Centro Cirúrgico→faturamento).",
+    )
     status = models.CharField(
         "Status", max_length=20, choices=GUIDE_STATUS, default="draft", db_index=True
     )
@@ -357,6 +371,12 @@ class TISSGuide(models.Model):
                 fields=["lab_order"],
                 condition=models.Q(lab_order__isnull=False),
                 name="uniq_tiss_guide_per_lab_order",
+            ),
+            # B1: at most ONE guide per surgical case (idempotent generation).
+            models.UniqueConstraint(
+                fields=["surgical_case"],
+                condition=models.Q(surgical_case__isnull=False),
+                name="uniq_tiss_guide_per_surgical_case",
             ),
         ]
 
