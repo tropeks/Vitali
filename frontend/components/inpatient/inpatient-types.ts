@@ -74,6 +74,21 @@ export interface CensusResponse {
   census: CensusRow[]
 }
 
+// ─── Altas previstas (GET /admissions/planned/) ──────────────────────────────
+
+export interface PlannedRow {
+  admission_id: string
+  patient: { id: string; name: string }
+  current_bed: { id: string; identifier: string } | null
+  unit_id: string | null
+  /** ISO datetime — alta prevista. Format with formatDateTime. */
+  expected_discharge_datetime: string
+}
+
+export interface PlannedResponse {
+  planned: PlannedRow[]
+}
+
 // ─── Bed status → accessible colour/label map ────────────────────────────────
 
 export interface BedStatusMeta {
@@ -172,4 +187,18 @@ export function formatLos(hours: number | null | undefined): string {
 export function formatPercent(rate: number | null | undefined): string {
   if (rate == null || Number.isNaN(rate)) return '—'
   return `${Math.round(rate * 100)}%`
+}
+
+/** ISO datetime → short pt-BR date+time (e.g. "05/07/2026 14:30"), or "—". */
+export function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(d)
 }

@@ -6,6 +6,7 @@ import { PERMISSIONS } from '@/lib/permissions'
 import { PageShell, SectionState } from '@/components/shared'
 import BedBoard from '@/components/inpatient/BedBoard'
 import CensusPanel from '@/components/inpatient/CensusPanel'
+import PlannedDischargesPanel from '@/components/inpatient/PlannedDischargesPanel'
 import { BED_STATUS_META } from '@/components/inpatient/inpatient-types'
 
 /**
@@ -60,6 +61,11 @@ export default function InternacaoPage() {
 
       <section aria-label="Censo e ocupação">
         <CensusPanel reloadToken={reloadToken} />
+      </section>
+
+      <section aria-label="Altas previstas" className="mt-2">
+        <h2 className="mb-3 text-lg font-semibold text-neu-ink">Altas previstas</h2>
+        <PlannedDischargesPanel reloadToken={reloadToken} />
       </section>
 
       <section aria-label="Mapa de leitos" className="mt-2">
