@@ -39,6 +39,22 @@ Atenção: o importer ativo é o do app `core` (hierárquico → `core.CID10Code
 não o legado de `apps.ai`. Confirme com `manage.py import_cid10 --help`
 ("hierarchical DATASUS CID-10 table").
 
+## CBO-2002 (ocupações) — `etl_cbo.py`
+
+Fonte (público): `https://raw.githubusercontent.com/datasets-br/cbo/master/data/lista_canonicos.csv`
+(`codigo,termo`; código formato família-ocupação, ex `8485-05`).
+
+```bash
+curl -sL -o lista_canonicos.csv "https://raw.githubusercontent.com/datasets-br/cbo/master/data/lista_canonicos.csv"
+python3 etl_cbo.py                  # -> cbo_full.csv (CODIGO;TITULO;FAMILIA, código sem hífen, família=4 díg)
+# no container do ambiente-alvo:
+python manage.py import_cbo --source /caminho/cbo_full.csv --cbo-version 2002 --dry-run
+python manage.py import_cbo --source /caminho/cbo_full.csv --cbo-version 2002
+```
+
+Resultado: **2.445 ocupações** (602 famílias). Ex 225125 Médico clínico (fam
+2251), 223505 Enfermeiro (fam 2235). Importado no staging em 2026-07-30.
+
 ## Pendências (fontes)
 
 - **Públicas, importáveis** (mesmo padrão): CBO (MTE/DATASUS), SIGTAP (DATASUS),
