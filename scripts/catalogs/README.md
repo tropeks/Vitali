@@ -55,6 +55,26 @@ python manage.py import_cbo --source /caminho/cbo_full.csv --cbo-version 2002
 Resultado: **2.445 ocupações** (602 famílias). Ex 225125 Médico clínico (fam
 2251), 223505 Enfermeiro (fam 2235). Importado no staging em 2026-07-30.
 
+## SIGTAP (procedimentos SUS) — `etl_sigtap.py`
+
+Fonte (público, FTP DATASUS): `ftp://ftp2.datasus.gov.br/public/sistemas/tup/downloads/TabelaUnificada_AAAAMM_vNNN.zip`
+(liste o diretório p/ pegar a competência mais recente; arquivo `tb_procedimento.txt`,
+posicional ISO-8859-1, layout em `tb_procedimento_layout.txt`).
+
+```bash
+curl -s -o sigtap.zip "ftp://ftp2.datasus.gov.br/public/sistemas/tup/downloads/TabelaUnificada_202607_v2607101010.zip"
+unzip -o sigtap.zip tb_procedimento.txt
+python3 etl_sigtap.py               # -> sigtap_full.csv (valores centavos->reais, complexidade/sexo mapeados)
+# no container do ambiente-alvo:
+python manage.py import_sigtap --source /caminho/sigtap_full.csv --sigtap-version 202607 --dry-run
+python manage.py import_sigtap --source /caminho/sigtap_full.csv --sigtap-version 202607
+```
+
+Resultado: **4.996 procedimentos** (competência 202607). Ex 0303010010 Tratamento
+de dengue clássica SH=R$229,44. Idade/instrumento ficam vazios (unidade de idade e
+tabela de instrumento não estão no tb_procedimento — não fabricar). Importado no
+staging em 2026-07-30.
+
 ## Pendências (fontes)
 
 - **Públicas, importáveis** (mesmo padrão): CBO (MTE/DATASUS), SIGTAP (DATASUS),
