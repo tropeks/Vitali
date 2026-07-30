@@ -71,6 +71,7 @@ export const PERMISSIONS = {
   // ADT / gestão de leitos / internação (backend apps/emr adt_models + views_adt)
   BEDS_READ: "beds.read",
   BEDS_MANAGE: "beds.manage",
+  BEDS_HOUSEKEEPING: "beds.housekeeping",
   ADT_ADMIT: "adt.admit",
   ADT_DISCHARGE: "adt.discharge",
   ADT_TRANSFER: "adt.transfer",

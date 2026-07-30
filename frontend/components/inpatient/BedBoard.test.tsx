@@ -73,7 +73,7 @@ beforeEach(() => {
 describe('BedBoard', () => {
   it('renders beds grouped by unit with status labels and the occupant name', async () => {
     routeApi()
-    render(<BedBoard canTransfer={false} canDischarge={false} canAdmit={false} />)
+    render(<BedBoard canTransfer={false} canDischarge={false} canAdmit={false} canRelease={false} />)
 
     await waitFor(() => expect(screen.getByText('UTI-01')).toBeInTheDocument())
     // Unit grouping
@@ -90,16 +90,17 @@ describe('BedBoard', () => {
 
   it('hides bed actions when the user lacks the permissions', async () => {
     routeApi()
-    render(<BedBoard canTransfer={false} canDischarge={false} canAdmit={false} />)
+    render(<BedBoard canTransfer={false} canDischarge={false} canAdmit={false} canRelease={false} />)
     await waitFor(() => expect(screen.getByText('UTI-01')).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: 'Transferir' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Dar alta' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Admitir' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Liberar' })).not.toBeInTheDocument()
   })
 
   it('shows Transferir on an occupied bed and opens the transfer modal', async () => {
     routeApi()
-    render(<BedBoard canTransfer canDischarge={false} canAdmit={false} />)
+    render(<BedBoard canTransfer canDischarge={false} canAdmit={false} canRelease={false} />)
     await waitFor(() => expect(screen.getByText('UTI-01')).toBeInTheDocument())
 
     const transferBtn = screen.getByRole('button', { name: 'Transferir' })
@@ -110,7 +111,7 @@ describe('BedBoard', () => {
 
   it('shows Dar alta on an occupied bed with adt.discharge and opens the modal', async () => {
     routeApi()
-    render(<BedBoard canTransfer={false} canDischarge canAdmit={false} />)
+    render(<BedBoard canTransfer={false} canDischarge canAdmit={false} canRelease={false} />)
     await waitFor(() => expect(screen.getByText('UTI-01')).toBeInTheDocument())
 
     fireEvent.click(screen.getByRole('button', { name: 'Dar alta' }))
@@ -119,14 +120,25 @@ describe('BedBoard', () => {
 
   it('shows Admitir on a livre bed with adt.admit', async () => {
     routeApi()
-    render(<BedBoard canTransfer={false} canDischarge={false} canAdmit />)
+    render(<BedBoard canTransfer={false} canDischarge={false} canAdmit canRelease={false} />)
     await waitFor(() => expect(screen.getByText('UTI-01')).toBeInTheDocument())
     expect(screen.getByRole('button', { name: 'Admitir' })).toBeInTheDocument()
   })
 
+  it('shows Liberar on a bed em higienização with beds.housekeeping and opens the modal', async () => {
+    routeApi()
+    render(<BedBoard canTransfer={false} canDischarge={false} canAdmit={false} canRelease />)
+    await waitFor(() => expect(screen.getByText('UTI-03')).toBeInTheDocument())
+
+    const releaseBtn = screen.getByRole('button', { name: 'Liberar' })
+    expect(releaseBtn).toBeInTheDocument()
+    fireEvent.click(releaseBtn)
+    expect(screen.getByRole('dialog', { name: 'Liberar leito' })).toBeInTheDocument()
+  })
+
   it('shows an empty state when no beds are cadastrados', async () => {
     routeApi({ units: [] }, { occupancy: [], census: [] })
-    render(<BedBoard canTransfer={false} canDischarge={false} canAdmit={false} />)
+    render(<BedBoard canTransfer={false} canDischarge={false} canAdmit={false} canRelease={false} />)
     await waitFor(() =>
       expect(screen.getByText('Nenhum leito cadastrado')).toBeInTheDocument()
     )
@@ -134,7 +146,7 @@ describe('BedBoard', () => {
 
   it('shows an error state when the board fetch fails', async () => {
     mockApiFetch.mockRejectedValue(new Error('boom'))
-    render(<BedBoard canTransfer={false} canDischarge={false} canAdmit={false} />)
+    render(<BedBoard canTransfer={false} canDischarge={false} canAdmit={false} canRelease={false} />)
     await waitFor(() =>
       expect(screen.getByText('Erro ao carregar o mapa de leitos')).toBeInTheDocument()
     )

@@ -7,6 +7,7 @@ import { SectionState } from '@/components/shared'
 import BedCell from './BedCell'
 import TransferBedModal from './TransferBedModal'
 import DischargeModal from './DischargeModal'
+import ReleaseBedModal from './ReleaseBedModal'
 import {
   isFreeBed,
   type BoardBed,
@@ -20,6 +21,7 @@ interface BedBoardProps {
   canTransfer: boolean
   canDischarge: boolean
   canAdmit: boolean
+  canRelease: boolean
   /** Bumping this (from the page) forces a reload after a census-side action. */
   reloadToken?: number
   /** Notify the page that ADT state changed so the census can refresh too. */
@@ -50,6 +52,7 @@ export default function BedBoard({
   canTransfer,
   canDischarge,
   canAdmit,
+  canRelease,
   reloadToken = 0,
   onChanged,
 }: BedBoardProps) {
@@ -65,6 +68,10 @@ export default function BedBoard({
   const [dischargeFor, setDischargeFor] = useState<{
     admissionId: string
     patientName: string
+  } | null>(null)
+  const [releaseFor, setReleaseFor] = useState<{
+    bedId: string
+    bedIdentifier: string
   } | null>(null)
 
   const load = useCallback(async () => {
@@ -99,6 +106,7 @@ export default function BedBoard({
   const afterAction = useCallback(() => {
     setTransferFor(null)
     setDischargeFor(null)
+    setReleaseFor(null)
     onChanged?.()
     load()
   }, [load, onChanged])
@@ -108,6 +116,9 @@ export default function BedBoard({
   }
   function openDischarge(admissionId: string, bed: BoardBed) {
     setDischargeFor({ admissionId, patientName: bed.patient?.name ?? 'Paciente' })
+  }
+  function openRelease(bed: BoardBed) {
+    setReleaseFor({ bedId: bed.id, bedIdentifier: bed.identifier })
   }
 
   if (loading) {
@@ -174,8 +185,10 @@ export default function BedBoard({
                       canTransfer={canTransfer}
                       canDischarge={canDischarge}
                       canAdmit={canAdmit}
+                      canRelease={canRelease}
                       onTransfer={openTransfer}
                       onDischarge={openDischarge}
+                      onRelease={openRelease}
                     />
                   )
                 })}
@@ -200,6 +213,14 @@ export default function BedBoard({
           patientName={dischargeFor.patientName}
           onClose={() => setDischargeFor(null)}
           onDischarged={afterAction}
+        />
+      )}
+      {releaseFor && (
+        <ReleaseBedModal
+          bedId={releaseFor.bedId}
+          bedIdentifier={releaseFor.bedIdentifier}
+          onClose={() => setReleaseFor(null)}
+          onReleased={afterAction}
         />
       )}
     </div>

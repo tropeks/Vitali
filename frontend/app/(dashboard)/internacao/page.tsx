@@ -19,6 +19,7 @@ export default function InternacaoPage() {
   const canRead = useMemo(() => hasPermission(PERMISSIONS.BEDS_READ), [])
   const canTransfer = useMemo(() => hasPermission(PERMISSIONS.ADT_TRANSFER), [])
   const canDischarge = useMemo(() => hasPermission(PERMISSIONS.ADT_DISCHARGE), [])
+  const canRelease = useMemo(() => hasPermission(PERMISSIONS.BEDS_HOUSEKEEPING), [])
 
   const [reloadToken, setReloadToken] = useState(0)
   const refresh = useCallback(() => setReloadToken((n) => n + 1), [])
@@ -70,6 +71,7 @@ export default function InternacaoPage() {
           // admissão acontece pelo prontuário (aba Internação, L5). Mantemos o
           // botão desligado aqui para não expor uma ação inerte.
           canAdmit={false}
+          canRelease={canRelease}
           reloadToken={reloadToken}
           onChanged={refresh}
         />

@@ -10,9 +10,11 @@ interface BedCellProps {
   canTransfer: boolean
   canDischarge: boolean
   canAdmit: boolean
+  canRelease: boolean
   onTransfer?: (admissionId: string, bed: BoardBed) => void
   onDischarge?: (admissionId: string, bed: BoardBed) => void
   onAdmit?: (bed: BoardBed) => void
+  onRelease?: (bed: BoardBed) => void
 }
 
 /**
@@ -28,13 +30,16 @@ export default function BedCell({
   canTransfer,
   canDischarge,
   canAdmit,
+  canRelease,
   onTransfer,
   onDischarge,
   onAdmit,
+  onRelease,
 }: BedCellProps) {
   const meta = bedStatusMeta(bed.status)
   const occupied = bed.status === 'ocupado'
   const free = bed.status === 'livre'
+  const dirty = bed.status === 'higienizacao'
 
   return (
     <div className={`flex flex-col gap-1 rounded-lg border p-3 ${meta.cellClass}`}>
@@ -82,6 +87,15 @@ export default function BedCell({
             className="rounded-md border border-current/40 bg-white/70 px-2 py-1 text-xs font-semibold hover:bg-white"
           >
             Admitir
+          </button>
+        )}
+        {dirty && canRelease && (
+          <button
+            type="button"
+            onClick={() => onRelease?.(bed)}
+            className="rounded-md border border-current/40 bg-white/70 px-2 py-1 text-xs font-semibold hover:bg-white"
+          >
+            Liberar
           </button>
         )}
       </div>
