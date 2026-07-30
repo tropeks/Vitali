@@ -44,6 +44,7 @@ import AdmissionPanel from '@/components/inpatient/AdmissionPanel'
 import SurgeryCasePanel from '@/components/surgery/SurgeryCasePanel'
 import EmergencyChartPanel from '@/components/emergency/EmergencyChartPanel'
 import TransfusaoTab from '@/components/transfusion/TransfusaoTab'
+import LabEspecializadoTab from '@/components/laboratory/LabEspecializadoTab'
 import { PERMISSIONS } from '@/lib/permissions'
 
 type TabId =
@@ -56,6 +57,7 @@ type TabId =
   | 'cirurgia'
   | 'emergencia'
   | 'transfusao'
+  | 'lab'
   | 'convenios'
   | 'dados'
 
@@ -641,6 +643,7 @@ export default function PatientDetailPage() {
   const canManageEmergency = useMemo(() => hasPermission(PERMISSIONS.EMERGENCY_MANAGE), [])
   const canReadHemo = useMemo(() => hasPermission(PERMISSIONS.HEMOTERAPIA_READ), [])
   const canWriteHemo = useMemo(() => hasPermission(PERMISSIONS.HEMOTERAPIA_MANAGE), [])
+  const canReadEmr = useMemo(() => hasPermission(PERMISSIONS.EMR_READ), [])
   const pendingGuides = related.guides.filter((guide) => guide.status && !['paid'].includes(guide.status))
   const glosaGuides = related.guides.filter((guide) => guide.status === 'denied' || guide.status === 'appeal')
   const activePrescriptions = related.prescriptions.filter((rx) =>
@@ -663,6 +666,7 @@ export default function PatientDetailPage() {
     { id: 'cirurgia', label: 'Cirurgia' },
     { id: 'emergencia', label: 'Emergência' },
     { id: 'transfusao', label: 'Transfusão' },
+    { id: 'lab', label: 'Lab especializado' },
     { id: 'convenios', label: `Convênios${activeCards.length ? ` (${activeCards.length})` : ''}` },
     { id: 'dados', label: 'Dados cadastrais' },
   ]
@@ -1277,6 +1281,26 @@ export default function PatientDetailPage() {
                     canRead={canReadHemo}
                     canWrite={canWriteHemo}
                   />
+                </div>
+              )}
+
+              {activeTab === 'lab' && (
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <h2 className="text-base font-semibold text-slate-900">
+                        Laboratório especializado
+                      </h2>
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Microbiologia / Anatomia patológica
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Culturas com antibiograma (S/I/R) e laudos anatomopatológicos (diagnóstico,
+                      CID-O e espécimes) do paciente. Registro governado do prontuário.
+                    </p>
+                  </div>
+                  <LabEspecializadoTab patientId={id} canRead={canReadEmr} />
                 </div>
               )}
 
