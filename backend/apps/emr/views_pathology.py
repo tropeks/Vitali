@@ -28,6 +28,11 @@ class PathologyReportViewSet(PathologyPermissionsMixin, viewsets.ModelViewSet):
         order_item = self.request.query_params.get("order_item")
         if order_item:
             qs = qs.filter(order_item_id=order_item)
+        # Patient-scoped view (prontuário): all pathology reports of a patient
+        # across their lab orders (order_item → order → patient).
+        patient = self.request.query_params.get("patient")
+        if patient:
+            qs = qs.filter(order_item__order__patient_id=patient)
         status_param = self.request.query_params.get("status")
         if status_param:
             qs = qs.filter(status=status_param)

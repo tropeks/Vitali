@@ -29,6 +29,11 @@ class MicrobiologyResultViewSet(MicrobiologyPermissionsMixin, viewsets.ModelView
         order_item = self.request.query_params.get("order_item")
         if order_item:
             qs = qs.filter(order_item_id=order_item)
+        # Patient-scoped view (prontuário): all micro results of a patient across
+        # their lab orders (order_item → order → patient).
+        patient = self.request.query_params.get("patient")
+        if patient:
+            qs = qs.filter(order_item__order__patient_id=patient)
         culture_result = self.request.query_params.get("culture_result")
         if culture_result:
             qs = qs.filter(culture_result=culture_result)

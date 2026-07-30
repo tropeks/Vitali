@@ -220,3 +220,31 @@ class MicrobiologyTestCase(TenantTestCase):
         MicrobiologyResult.objects.create(order_item=self.item)
         resp = self.client_for(self.reader).get("/api/v1/microbiology-results/")
         self.assertEqual(resp.status_code, 200)
+
+    def test_patient_filter_endpoint(self):
+        # Result for our patient (via self.item → self.order → self.patient).
+        MicrobiologyResult.objects.create(
+            order_item=self.item, culture_result=MicrobiologyResult.CultureResult.POSITIVA
+        )
+        # A second patient with their own order/item/result must NOT leak in.
+        other_patient = Patient.objects.create(
+            full_name="Outro Paciente", birth_date="1985-05-05", gender="M", cpf="52998224725"
+        )
+        other_order = LabOrder.objects.create(
+            patient=other_patient, encounter=self.encounter, requested_by=self.writer
+        )
+        other_item = LabOrderItem.objects.create(
+            order=other_order,
+            test=self.test,
+            test_name=self.test.name,
+            category=LabTest.Category.MICROBIOLOGY,
+            result_type=LabTest.ResultType.MICROBIOLOGY,
+        )
+        MicrobiologyResult.objects.create(order_item=other_item)
+
+        resp = self.client_for(self.reader).get(
+            f"/api/v1/microbiology-results/?patient={self.patient.id}"
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.data["results"]), 1)
+        self.assertEqual(resp.data["results"][0]["culture_result"], "positiva")

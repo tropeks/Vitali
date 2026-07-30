@@ -173,3 +173,26 @@ class PathologyTestCase(TenantTestCase):
         PathologyReport.objects.create(order_item=self.item)
         resp = self.client_for(self.reader).get("/api/v1/pathology-reports/")
         self.assertEqual(resp.status_code, 200)
+
+    def test_patient_filter_endpoint(self):
+        PathologyReport.objects.create(order_item=self.item, status=PathologyReport.Status.FINAL)
+        other_patient = Patient.objects.create(
+            full_name="Outro Paciente AP", birth_date="1970-03-03", gender="M", cpf="52998224725"
+        )
+        other_order = LabOrder.objects.create(
+            patient=other_patient, encounter=self.encounter, requested_by=self.writer
+        )
+        other_item = LabOrderItem.objects.create(
+            order=other_order,
+            test=self.test,
+            test_name=self.test.name,
+            category=LabTest.Category.PATHOLOGY,
+        )
+        PathologyReport.objects.create(order_item=other_item)
+
+        resp = self.client_for(self.reader).get(
+            f"/api/v1/pathology-reports/?patient={self.patient.id}"
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.data["results"]), 1)
+        self.assertEqual(resp.data["results"][0]["status"], "final")
