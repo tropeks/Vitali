@@ -73,10 +73,17 @@ export interface ApacAutorizacaoLine {
   id: number
   competencia: number
   numero_apac: string
+  /** Ciclo perante o gestor (APAC-simetria): solicitada/autorizada/rejeitada. */
+  situacao: string
+  numero_provisorio?: string
+  data_autorizacao?: string | null
+  motivo_rejeicao?: string
   validade_inicio: string
   validade_fim: string
   procedimento_principal: number
+  cid10?: number | null
   cid_principal?: string
+  cid_unmatched?: boolean
   patient: string
   cns?: string
   professional_solicitante?: string | null
@@ -151,6 +158,22 @@ export const SUS_STATUS_META: Record<string, { label: string; badgeClass: string
 export function susStatusMeta(status: string): { label: string; badgeClass: string } {
   return (
     SUS_STATUS_META[status] ?? {
+      label: status,
+      badgeClass: 'border-slate-200 bg-slate-50 text-slate-600',
+    }
+  )
+}
+
+/** Situação da autorização (AIH/APAC): solicitada → autorizada/rejeitada. */
+export const AUTORIZACAO_SITUACAO_META: Record<string, { label: string; badgeClass: string }> = {
+  solicitada: { label: 'Solicitada', badgeClass: 'border-amber-200 bg-amber-50 text-amber-700' },
+  autorizada: { label: 'Autorizada', badgeClass: 'border-green-200 bg-green-50 text-green-700' },
+  rejeitada: { label: 'Rejeitada', badgeClass: 'border-red-200 bg-red-50 text-red-700' },
+}
+
+export function autorizacaoSituacaoMeta(status: string): { label: string; badgeClass: string } {
+  return (
+    AUTORIZACAO_SITUACAO_META[status] ?? {
       label: status,
       badgeClass: 'border-slate-200 bg-slate-50 text-slate-600',
     }

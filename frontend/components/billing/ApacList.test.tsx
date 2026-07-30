@@ -22,6 +22,7 @@ const APACS: ApacAutorizacaoLine[] = [
     id: 1,
     competencia: 7,
     numero_apac: '2826000000001',
+    situacao: 'solicitada',
     validade_inicio: '2026-07-01',
     validade_fim: '2026-09-30',
     procedimento_principal: 99,
@@ -61,13 +62,37 @@ beforeEach(() => {
 })
 
 describe('ApacList', () => {
-  it('renders the APAC list', () => {
+  it('renders the APAC list with its situação badge', () => {
     routeApi()
     render(
       <ApacList competenciaId={7} apacs={APACS} canWrite aberta onChanged={vi.fn()} />,
     )
     expect(screen.getByText('2826000000001')).toBeInTheDocument()
     expect(screen.getByText('APAC (1)')).toBeInTheDocument()
+    expect(screen.getByText('Solicitada')).toBeInTheDocument()
+  })
+
+  it('opens the reconciliar modal from a solicitada APAC (sus.write)', () => {
+    routeApi()
+    render(<ApacList competenciaId={7} apacs={APACS} canWrite aberta onChanged={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Reconciliar' }))
+    expect(screen.getByRole('dialog', { name: 'Reconciliar APAC' })).toBeInTheDocument()
+  })
+
+  it('opens the rejeitar modal from a solicitada APAC (sus.write)', () => {
+    routeApi()
+    render(<ApacList competenciaId={7} apacs={APACS} canWrite aberta onChanged={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Rejeitar' }))
+    expect(screen.getByRole('dialog', { name: 'Rejeitar APAC' })).toBeInTheDocument()
+  })
+
+  it('hides reconciliar/rejeitar actions without sus.write', () => {
+    routeApi()
+    render(
+      <ApacList competenciaId={7} apacs={APACS} canWrite={false} aberta onChanged={vi.fn()} />,
+    )
+    expect(screen.queryByRole('button', { name: 'Reconciliar' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Rejeitar' })).not.toBeInTheDocument()
   })
 
   it('hides "Nova APAC" without sus.write', () => {
