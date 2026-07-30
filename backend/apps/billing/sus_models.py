@@ -276,15 +276,45 @@ class ApacAutorizacao(models.Model):
     rationale as ``BpaIndividualizado.cns`` — ``Patient.cns`` is an encrypted,
     non-queryable field and the authorization must be a stable point-in-time
     record). ``patient`` is kept as an FK for traceability.
+
+    Situação + reconciliação do número oficial e CID-10 governado espelham a AIH
+    (AI-R1/AI-R2): a autorização nasce ``solicitada`` e é reconciliada
+    (``autorizada``) com o número oficial do gestor; o CID passa por FK governada.
     """
+
+    class Situacao(models.TextChoices):
+        # Ciclo perante o gestor SUS, espelhando AihAutorizacao.Situacao.
+        SOLICITADA = "solicitada", "Solicitada"
+        AUTORIZADA = "autorizada", "Autorizada"
+        REJEITADA = "rejeitada", "Rejeitada"
 
     competencia = models.ForeignKey(SusCompetencia, on_delete=models.CASCADE, related_name="apacs")
     numero_apac = models.CharField(
         "Número da APAC",
         max_length=13,
         unique=True,
-        help_text="Número único da autorização APAC (emitido pelo gestor SUS).",
+        help_text="Número corrente da APAC: reconciliado com o número oficial de 13 "
+        "dígitos emitido pelo gestor SUS.",
     )
+    situacao = models.CharField(
+        "Situação",
+        max_length=12,
+        choices=Situacao.choices,
+        default=Situacao.SOLICITADA,
+        db_index=True,
+        help_text="Ciclo perante o gestor: solicitada → autorizada/rejeitada.",
+    )
+    numero_provisorio = models.CharField(
+        "Número provisório (histórico)",
+        max_length=13,
+        blank=True,
+        default="",
+        help_text="Número original preservado na reconciliação para rastreabilidade.",
+    )
+    data_autorizacao = models.DateField(
+        "Data da autorização", null=True, blank=True, help_text="Data em que o gestor autorizou."
+    )
+    motivo_rejeicao = models.CharField("Motivo da rejeição", max_length=255, blank=True, default="")
     validade_inicio = models.DateField("Início da validade")
     validade_fim = models.DateField("Fim da validade")
     # Cross-schema (public) — DO_NOTHING + pre_delete PROTECT signal.
@@ -294,7 +324,27 @@ class ApacAutorizacao(models.Model):
         related_name="+",
         verbose_name="Procedimento principal (SIGTAP)",
     )
-    cid_principal = models.CharField("CID-10 principal", max_length=10, blank=True, default="")
+    # CID-10 governado (FK core.CID10Code) + texto bruto + flag, molde da AIH/
+    # emr.MedicalHistory. Código efetivo via property ``cid_principal_code``.
+    cid10 = models.ForeignKey(
+        "core.CID10Code",
+        on_delete=models.DO_NOTHING,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="CID-10 principal (governado)",
+    )
+    cid_principal = models.CharField(
+        "CID-10 principal (texto)",
+        max_length=10,
+        blank=True,
+        default="",
+        help_text="Código CID-10 bruto quando não reconciliado com core.CID10Code.",
+    )
+    cid_unmatched = models.BooleanField(
+        default=False,
+        help_text="True quando cid_principal não corresponde a nenhum CID10Code governado.",
+    )
     patient = models.ForeignKey(
         "emr.Patient",
         on_delete=models.PROTECT,
@@ -338,6 +388,34 @@ class ApacAutorizacao(models.Model):
         verbose_name = "Autorização APAC"
         verbose_name_plural = "Autorizações APAC"
         ordering = ["-created_at"]
+
+    @property
+    def cid_principal_code(self) -> str:
+        """Código CID-10 efetivo: code da FK governada quando reconciliado, senão o
+        texto bruto legado (mesmo padrão de AihAutorizacao/emr.MedicalHistory)."""
+        if self.cid10_id:
+            return self.cid10.code  # type: ignore[union-attr]
+        return self.cid_principal
+
+    @cid_principal_code.setter
+    def cid_principal_code(self, value: str) -> None:
+        code = (value or "").strip()
+        if not code:
+            self.cid10 = None
+            self.cid_principal = ""
+            self.cid_unmatched = False
+            return
+        from apps.core.models import CID10Code
+
+        match = CID10Code.objects.filter(code=code).first()
+        if match is not None:
+            self.cid10 = match
+            self.cid_principal = ""
+            self.cid_unmatched = False
+        else:
+            self.cid10 = None
+            self.cid_principal = code
+            self.cid_unmatched = True
 
     def __str__(self):
         return f"APAC {self.numero_apac} — {self.procedimento_principal_id} (comp {self.competencia_id})"

@@ -82,16 +82,27 @@ class ApacAutorizacaoSerializer(serializers.ModelSerializer):
     encrypted; the authorization must be a stable point-in-time record).
     """
 
+    # CID-10 gravável por código (roteado pela property do model). cid10/
+    # cid_principal/cid_unmatched read-only; reconciliação é a via.
+    cid_principal_code = serializers.CharField(required=False, allow_blank=True)
+
     class Meta:
         model = ApacAutorizacao
         fields = [
             "id",
             "competencia",
             "numero_apac",
+            "situacao",
+            "numero_provisorio",
+            "data_autorizacao",
+            "motivo_rejeicao",
             "validade_inicio",
             "validade_fim",
             "procedimento_principal",
+            "cid10",
             "cid_principal",
+            "cid_principal_code",
+            "cid_unmatched",
             "patient",
             "cns",
             "professional_solicitante",
@@ -100,14 +111,38 @@ class ApacAutorizacaoSerializer(serializers.ModelSerializer):
             "created_by",
             "created_at",
         ]
-        read_only_fields = ["id", "created_by", "created_at"]
+        read_only_fields = [
+            "id",
+            "situacao",
+            "numero_provisorio",
+            "data_autorizacao",
+            "motivo_rejeicao",
+            "cid10",
+            "cid_principal",
+            "cid_unmatched",
+            "created_by",
+            "created_at",
+        ]
 
     def create(self, validated_data):
         # Snapshot the patient's CNS when the client did not supply one.
         if not validated_data.get("cns"):
             patient = validated_data.get("patient")
             validated_data["cns"] = (getattr(patient, "cns", "") or "").strip()
-        return super().create(validated_data)
+        code = validated_data.pop("cid_principal_code", None)
+        instance = super().create(validated_data)
+        if code is not None:
+            instance.cid_principal_code = code
+            instance.save(update_fields=["cid10", "cid_principal", "cid_unmatched"])
+        return instance
+
+    def update(self, instance, validated_data):
+        code = validated_data.pop("cid_principal_code", None)
+        instance = super().update(instance, validated_data)
+        if code is not None:
+            instance.cid_principal_code = code
+            instance.save(update_fields=["cid10", "cid_principal", "cid_unmatched"])
+        return instance
 
 
 class ApacProcedimentoSecundarioSerializer(serializers.ModelSerializer):

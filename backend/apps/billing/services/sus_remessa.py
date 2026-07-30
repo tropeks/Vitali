@@ -323,7 +323,7 @@ def gerar_remessa_apac(competencia: SusCompetencia) -> str:
             + _code(cnes, APAC_CNES[1])
             + _code(apac.numero_apac, APAC_NUMERO[1])
             + _code(apac.procedimento_principal.code, APAC_SIGTAP[1])
-            + _txt(apac.cid_principal, APAC_CID[1])
+            + _txt(apac.cid_principal_code, APAC_CID[1])
             + _txt(apac.cns, APAC_CNS[1])
             + _data_aaaammdd(apac.validade_inicio)
             + _data_aaaammdd(apac.validade_fim)

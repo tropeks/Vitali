@@ -37,6 +37,10 @@ from apps.billing.serializers_sus import (
 )
 from apps.billing.services.aih_billing import generate_aih_for_admission
 from apps.billing.services.aih_lifecycle import reconciliar_numero_oficial, rejeitar_aih
+from apps.billing.services.apac_lifecycle import (
+    reconciliar_numero_oficial as reconciliar_apac_numero,
+)
+from apps.billing.services.apac_lifecycle import rejeitar_apac
 from apps.billing.services.sus_production import gerar_producao_ambulatorial
 from apps.billing.services.sus_remessa import exportar_competencia
 from apps.billing.sus_models import (
@@ -224,6 +228,53 @@ class ApacAutorizacaoViewSet(_SusPermissionMixin, viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
+
+    @extend_schema(
+        tags=["sus"],
+        summary="Reconcilia a APAC com o número oficial do gestor (solicitada → autorizada)",
+        request=AihReconciliarSerializer,
+        responses={200: ApacAutorizacaoSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="reconciliar")
+    def reconciliar(self, request, pk=None):
+        """Reconcilia a APAC: número oficial de 13 dígitos substitui o anterior,
+        situação → ``autorizada``, opcionalmente popula o solicitante. Número
+        inválido/duplicado ou APAC já autorizada → 409. Gated ``sus.write``."""
+        apac = self.get_object()
+        payload = AihReconciliarSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            apac = reconciliar_apac_numero(
+                apac=apac,
+                numero_oficial=payload.validated_data["numero_oficial"],
+                professional_solicitante=payload.validated_data.get("professional_solicitante"),
+                data_autorizacao=payload.validated_data.get("data_autorizacao"),
+                actor=request.user,
+            )
+        except DjangoValidationError as exc:
+            return Response({"detail": exc.messages[0]}, status=http_status.HTTP_409_CONFLICT)
+        return Response(self.get_serializer(apac).data, status=http_status.HTTP_200_OK)
+
+    @extend_schema(
+        tags=["sus"],
+        summary="Rejeita/glosa a APAC com um motivo (→ rejeitada)",
+        request=AihRejeitarSerializer,
+        responses={200: ApacAutorizacaoSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="rejeitar")
+    def rejeitar(self, request, pk=None):
+        """Marca a APAC como ``rejeitada`` (glosa) com motivo obrigatório. Motivo
+        vazio → 409. Gated ``sus.write``."""
+        apac = self.get_object()
+        payload = AihRejeitarSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            apac = rejeitar_apac(
+                apac=apac, motivo=payload.validated_data["motivo"], actor=request.user
+            )
+        except DjangoValidationError as exc:
+            return Response({"detail": exc.messages[0]}, status=http_status.HTTP_409_CONFLICT)
+        return Response(self.get_serializer(apac).data, status=http_status.HTTP_200_OK)
 
 
 @extend_schema_view(
