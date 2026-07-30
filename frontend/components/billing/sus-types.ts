@@ -93,6 +93,33 @@ export interface ApacAutorizacaoLine {
   created_at?: string | null
 }
 
+export interface AihAutorizacaoLine {
+  id: number
+  competencia: number
+  numero_aih: string
+  /** Ciclo perante o gestor (AI-R1): solicitada/autorizada/rejeitada. */
+  situacao: string
+  numero_provisorio?: string
+  data_autorizacao?: string | null
+  motivo_rejeicao?: string
+  admission?: string | null
+  procedimento_principal: number
+  cid10?: number | null
+  cid_principal?: string
+  cid_unmatched?: boolean
+  patient: string
+  cns?: string
+  professional_solicitante?: string | null
+  professional_responsavel?: string | null
+  data_internacao: string
+  data_saida?: string | null
+  carater_internacao?: string
+  motivo_saida?: string
+  valor: string
+  created_by?: number | null
+  created_at?: string | null
+}
+
 /** Response of `POST sus-competencias/{id}/gerar-producao/`. */
 export interface GerarProducaoResult {
   bpa_i_count: number

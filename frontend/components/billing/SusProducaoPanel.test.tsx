@@ -36,6 +36,7 @@ function renderPanel(comp: SusCompetencia, extra: Partial<Parameters<typeof SusP
       bpaICount={2}
       bpaCCount={1}
       apacCount={3}
+      aihCount={0}
       totalValor={125}
       canWrite
       canExport

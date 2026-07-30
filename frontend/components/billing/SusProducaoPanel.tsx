@@ -17,6 +17,7 @@ interface Props {
   bpaICount: number
   bpaCCount: number
   apacCount: number
+  aihCount: number
   totalValor: number
   /** `sus.write` — gates gerar-produção + fechar. */
   canWrite: boolean
@@ -37,6 +38,7 @@ export default function SusProducaoPanel({
   bpaICount,
   bpaCCount,
   apacCount,
+  aihCount,
   totalValor,
   canWrite,
   canExport,
@@ -123,10 +125,11 @@ export default function SusProducaoPanel({
 
   return (
     <section className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <KpiTile label="BPA-I (gerado)" value={bpaICount} />
         <KpiTile label="BPA-C (manual)" value={bpaCCount} />
         <KpiTile label="APAC" value={apacCount} />
+        <KpiTile label="AIH" value={aihCount} />
         <KpiTile label="Valor total da produção" value={formatBRL(totalValor)} tone="info" />
       </div>
 

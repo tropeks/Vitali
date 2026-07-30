@@ -27,11 +27,25 @@ const APACS = [
     id: 4,
     competencia: 7,
     numero_apac: '2826000000001',
+    situacao: 'solicitada',
     validade_inicio: '2026-07-01',
     validade_fim: '2026-09-30',
     procedimento_principal: 99,
     patient: 'p1',
     valor: '100.00',
+  },
+]
+const AIHS = [
+  {
+    id: 5,
+    competencia: 7,
+    numero_aih: '2026070000001',
+    situacao: 'solicitada',
+    procedimento_principal: 99,
+    patient: 'p1',
+    data_internacao: '2026-07-01',
+    data_saida: '2026-07-05',
+    valor: '50.00',
   },
 ]
 
@@ -41,6 +55,7 @@ function routeApi(comp = COMPETENCIA) {
     if (url.startsWith('/api/v1/billing/bpa-individualizado/')) return Promise.resolve(BPA_I)
     if (url.startsWith('/api/v1/billing/bpa-consolidado/')) return Promise.resolve(BPA_C)
     if (url.startsWith('/api/v1/billing/apac-autorizacoes/')) return Promise.resolve(APACS)
+    if (url.startsWith('/api/v1/billing/aih-autorizacoes/')) return Promise.resolve(AIHS)
     return Promise.resolve([])
   })
 }
@@ -58,13 +73,14 @@ describe('SusCompetenciaDetail', () => {
     await waitFor(() =>
       expect(screen.getByText('Competência 2026-07')).toBeInTheDocument(),
     )
-    // total valor = 10 + 10 + 5 + 100 = 125.00
-    expect(screen.getByText(/125,00/)).toBeInTheDocument()
+    // total valor = 10 + 10 + 5 + 100 (APAC) + 50 (AIH) = 175.00
+    expect(screen.getByText(/175,00/)).toBeInTheDocument()
     expect(screen.getByText('Aberta')).toBeInTheDocument()
     // Section headings reflect the list counts.
     expect(screen.getByText('BPA-I — individualizado (2)')).toBeInTheDocument()
     expect(screen.getByText('BPA-C — consolidado (1)')).toBeInTheDocument()
     expect(screen.getByText('APAC (1)')).toBeInTheDocument()
+    expect(screen.getByText('AIH — internação (1)')).toBeInTheDocument()
   })
 
   it('renders BPA-C manual entry form with sus.write on an aberta competência', async () => {

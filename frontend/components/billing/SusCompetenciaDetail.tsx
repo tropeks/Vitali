@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { ArrowLeft, RefreshCw } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { SectionState, StatusBadge } from '@/components/shared'
+import AihList from './AihList'
 import ApacList from './ApacList'
 import BpaConsolidadoForm from './BpaConsolidadoForm'
 import SusProducaoPanel from './SusProducaoPanel'
@@ -12,6 +13,7 @@ import {
   normalizeList,
   susStatusMeta,
   sumValores,
+  type AihAutorizacaoLine,
   type ApacAutorizacaoLine,
   type BpaConsolidadoLine,
   type BpaIndividualizadoLine,
@@ -42,6 +44,7 @@ export default function SusCompetenciaDetail({
   const [bpaI, setBpaI] = useState<BpaIndividualizadoLine[]>([])
   const [bpaC, setBpaC] = useState<BpaConsolidadoLine[]>([])
   const [apacs, setApacs] = useState<ApacAutorizacaoLine[]>([])
+  const [aihs, setAihs] = useState<AihAutorizacaoLine[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
 
@@ -49,7 +52,7 @@ export default function SusCompetenciaDetail({
     setLoading(true)
     setError(false)
     try {
-      const [competenciaData, bpaIData, bpaCData, apacData] = await Promise.all([
+      const [competenciaData, bpaIData, bpaCData, apacData, aihData] = await Promise.all([
         apiFetch<SusCompetencia>(`/api/v1/billing/sus-competencias/${competenciaId}/`),
         apiFetch<ListResponse<BpaIndividualizadoLine> | BpaIndividualizadoLine[]>(
           `/api/v1/billing/bpa-individualizado/?competencia=${competenciaId}`,
@@ -60,11 +63,15 @@ export default function SusCompetenciaDetail({
         apiFetch<ListResponse<ApacAutorizacaoLine> | ApacAutorizacaoLine[]>(
           `/api/v1/billing/apac-autorizacoes/?competencia=${competenciaId}`,
         ),
+        apiFetch<ListResponse<AihAutorizacaoLine> | AihAutorizacaoLine[]>(
+          `/api/v1/billing/aih-autorizacoes/?competencia=${competenciaId}`,
+        ),
       ])
       setCompetencia(competenciaData)
       setBpaI(normalizeList(bpaIData))
       setBpaC(normalizeList(bpaCData))
       setApacs(normalizeList(apacData))
+      setAihs(normalizeList(aihData))
     } catch {
       setError(true)
     } finally {
@@ -122,7 +129,7 @@ export default function SusCompetenciaDetail({
   }
 
   const isAberta = competencia.status === 'aberta'
-  const totalValor = sumValores(bpaI) + sumValores(bpaC) + sumValores(apacs)
+  const totalValor = sumValores(bpaI) + sumValores(bpaC) + sumValores(apacs) + sumValores(aihs)
 
   return (
     <div className="space-y-6">
@@ -141,6 +148,7 @@ export default function SusCompetenciaDetail({
         bpaICount={bpaI.length}
         bpaCCount={bpaC.length}
         apacCount={apacs.length}
+        aihCount={aihs.length}
         totalValor={totalValor}
         canWrite={canWrite}
         canExport={canExport}
@@ -236,6 +244,9 @@ export default function SusCompetenciaDetail({
         aberta={isAberta}
         onChanged={load}
       />
+
+      {/* AIH — internação (gerada pelo bridge; reconciliação/rejeição aqui) */}
+      <AihList aihs={aihs} canWrite={canWrite} onChanged={load} />
     </div>
   )
 }
