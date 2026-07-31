@@ -18,6 +18,12 @@ interface Props {
   canRead: boolean
 }
 
+/** CID-O display: código efetivo + marca "(não reconciliado)" quando texto livre. */
+function cidoValue(code?: string, unmatched?: boolean): string | undefined {
+  if (!code) return undefined
+  return unmatched ? `${code} (não reconciliado)` : code
+}
+
 function Field({ label, value }: { label: string; value?: string }) {
   if (!value) return null
   return (
@@ -133,12 +139,20 @@ export default function PathologyPanel({ patientId, canRead }: Props) {
               <Field label="Imuno-histoquímica" value={report.immunohistochemistry} />
               <Field label="Diagnóstico" value={report.diagnosis} />
               <div className="flex flex-wrap gap-4">
-                {report.cid_o_topography && (
-                  <Field label="CID-O topografia" value={report.cid_o_topography} />
-                )}
-                {report.cid_o_morphology && (
-                  <Field label="CID-O morfologia" value={report.cid_o_morphology} />
-                )}
+                <Field
+                  label="CID-O topografia"
+                  value={cidoValue(
+                    report.cid_o_topography_code ?? report.cid_o_topography,
+                    report.cid_o_topography_unmatched,
+                  )}
+                />
+                <Field
+                  label="CID-O morfologia"
+                  value={cidoValue(
+                    report.cid_o_morphology_code ?? report.cid_o_morphology,
+                    report.cid_o_morphology_unmatched,
+                  )}
+                />
               </div>
             </div>
 

@@ -82,6 +82,11 @@ export interface PathologyReport {
   diagnosis?: string
   cid_o_topography?: string
   cid_o_morphology?: string
+  /** Código CID-O efetivo (property do backend: FK governada reconciliada ou texto). */
+  cid_o_topography_code?: string
+  cid_o_morphology_code?: string
+  cid_o_topography_unmatched?: boolean
+  cid_o_morphology_unmatched?: boolean
   surgical_case?: string | null
   pathologist?: string | null
   /** pendente / preliminar / final. */

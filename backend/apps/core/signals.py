@@ -198,12 +198,18 @@ def protect_cid10_code_deletion(sender, instance, **kwargs):
     for tenant in TenantModel.objects.exclude(schema_name="public"):
         with schema_context(tenant.schema_name):
             from apps.billing.sus_models import AihAutorizacao, ApacAutorizacao
-            from apps.emr.models import MedicalHistory, SOAPNoteCID10
+            from apps.emr.models import MedicalHistory, PathologyReport, SOAPNoteCID10
 
             if MedicalHistory.objects.filter(cid10=instance).exists():
                 raise ProtectedError(
                     f"CID10Code {instance.code} is referenced by MedicalHistory in "
                     f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+            if PathologyReport.objects.filter(cid_o_topography_cid10=instance).exists():
+                raise ProtectedError(
+                    f"CID10Code {instance.code} is referenced by PathologyReport (CID-O "
+                    f"topography) in schema '{tenant.schema_name}' and cannot be deleted.",
                     {instance},
                 )
             if SOAPNoteCID10.objects.filter(cid10=instance).exists():
@@ -221,6 +227,30 @@ def protect_cid10_code_deletion(sender, instance, **kwargs):
             if ApacAutorizacao.objects.filter(cid10=instance).exists():
                 raise ProtectedError(
                     f"CID10Code {instance.code} is referenced by ApacAutorizacao in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+
+
+# ─── CIDOMorphology cross-schema PROTECT (CIDO-2) ────────────────────────────
+# Same rationale as protect_cid10_code_deletion: an application-layer PROTECT
+# blocks deleting a CID-O morphology referenced by a tenant pathology report.
+
+
+@receiver(pre_delete, sender="core.CIDOMorphology")
+def protect_cido_morphology_deletion(sender, instance, **kwargs):
+    """Block deletion of a CIDOMorphology referenced by tenant pathology data
+    (``emr.PathologyReport.cid_o_morphology_ref``) in any tenant."""
+    from django_tenants.utils import get_tenant_model, schema_context
+
+    TenantModel = get_tenant_model()
+    for tenant in TenantModel.objects.exclude(schema_name="public"):
+        with schema_context(tenant.schema_name):
+            from apps.emr.models import PathologyReport
+
+            if PathologyReport.objects.filter(cid_o_morphology_ref=instance).exists():
+                raise ProtectedError(
+                    f"CIDOMorphology {instance.code} is referenced by PathologyReport in "
                     f"schema '{tenant.schema_name}' and cannot be deleted.",
                     {instance},
                 )

@@ -61,4 +61,24 @@ describe('PathologyPanel', () => {
     expect(screen.getByText('Sem acesso à anatomia patológica')).toBeInTheDocument()
     expect(mockApiFetch).not.toHaveBeenCalled()
   })
+
+  it('prefers the reconciled CID-O code and marks unmatched text', async () => {
+    mockApiFetch.mockResolvedValueOnce({
+      results: [
+        {
+          id: 'r2',
+          order_item: 'oi3',
+          status: 'final',
+          specimens: [],
+          cid_o_topography_code: 'C509',
+          cid_o_topography_unmatched: false,
+          cid_o_morphology_code: 'X999',
+          cid_o_morphology_unmatched: true,
+        },
+      ],
+    })
+    render(<PathologyPanel patientId="p1" canRead />)
+    await waitFor(() => expect(screen.getByText('C509')).toBeInTheDocument())
+    expect(screen.getByText(/X999 \(não reconciliado\)/)).toBeInTheDocument()
+  })
 })

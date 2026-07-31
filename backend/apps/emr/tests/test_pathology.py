@@ -1,10 +1,11 @@
 """AP1 — structured anatomic pathology report invariants and API."""
 
 from django.db import IntegrityError, transaction
+from django.db.models.deletion import ProtectedError
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from apps.core.models import Role, User
+from apps.core.models import CID10Code, CIDOMorphology, Role, User
 from apps.emr.models import (
     Encounter,
     LabOrder,
@@ -173,6 +174,61 @@ class PathologyTestCase(TenantTestCase):
         PathologyReport.objects.create(order_item=self.item)
         resp = self.client_for(self.reader).get("/api/v1/pathology-reports/")
         self.assertEqual(resp.status_code, 200)
+
+    # ── CIDO-2: CID-O governado (topografia→CID10Code, morfologia→CIDOMorphology) ──
+    def test_topography_reconciles_to_cid10(self):
+        CID10Code.objects.create(code="C509", description="Neoplasia maligna da mama SOE")
+        report = PathologyReport.objects.create(order_item=self.item)
+        report.cid_o_topography_code = "C50.9"  # ponto normalizado -> C509
+        report.save()
+        report.refresh_from_db()
+        self.assertIsNotNone(report.cid_o_topography_cid10_id)
+        self.assertEqual(report.cid_o_topography, "")
+        self.assertFalse(report.cid_o_topography_unmatched)
+        self.assertEqual(report.cid_o_topography_code, "C509")
+
+    def test_morphology_reconciles_to_cido(self):
+        CIDOMorphology.objects.create(code="8500/3", display="Carcinoma ductal invasivo")
+        report = PathologyReport.objects.create(order_item=self.item)
+        report.cid_o_morphology_code = "8500/3"
+        report.save()
+        report.refresh_from_db()
+        self.assertIsNotNone(report.cid_o_morphology_ref_id)
+        self.assertFalse(report.cid_o_morphology_unmatched)
+        self.assertEqual(report.cid_o_morphology_code, "8500/3")
+
+    def test_unmatched_topography_keeps_text(self):
+        report = PathologyReport.objects.create(order_item=self.item)
+        report.cid_o_topography_code = "Z99.9"  # não existe
+        report.save()
+        report.refresh_from_db()
+        self.assertIsNone(report.cid_o_topography_cid10_id)
+        self.assertEqual(report.cid_o_topography, "Z99.9")
+        self.assertTrue(report.cid_o_topography_unmatched)
+
+    def test_patch_cido_codes_reconciles(self):
+        CID10Code.objects.create(code="C509", description="Neoplasia mama")
+        CIDOMorphology.objects.create(code="8500/3", display="Carcinoma ductal invasivo")
+        report = PathologyReport.objects.create(order_item=self.item)
+        resp = self.client_for(self.writer).patch(
+            f"/api/v1/pathology-reports/{report.id}/",
+            {"cid_o_topography_code": "C50.9", "cid_o_morphology_code": "8500/3"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        report.refresh_from_db()
+        self.assertIsNotNone(report.cid_o_topography_cid10_id)
+        self.assertIsNotNone(report.cid_o_morphology_ref_id)
+
+    def test_delete_cido_morphology_blocked_when_referenced(self):
+        morph = CIDOMorphology.objects.create(code="8500/3", display="Carcinoma ductal invasivo")
+        report = PathologyReport.objects.create(order_item=self.item)
+        report.cid_o_morphology_code = "8500/3"
+        report.save()
+        with self.assertRaises(ProtectedError) as ctx, transaction.atomic():
+            morph.delete()
+        self.assertIn("PathologyReport", str(ctx.exception))
+        self.assertTrue(CIDOMorphology.objects.filter(pk=morph.pk).exists())
 
     def test_patient_filter_endpoint(self):
         PathologyReport.objects.create(order_item=self.item, status=PathologyReport.Status.FINAL)

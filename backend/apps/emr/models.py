@@ -1377,8 +1377,29 @@ class PathologyReport(models.Model):
     microscopy = models.TextField(blank=True)
     immunohistochemistry = models.TextField(blank=True)
     diagnosis = models.TextField(blank=True)
+    # CID-O topografia = código C do CID-10 (governado por core.CID10Code) +
+    # morfologia = core.CIDOMorphology. Os CharField viram o texto bruto/legado;
+    # a FK é preenchida via reconciliação (properties *_code), molde MedicalHistory.
     cid_o_topography = models.CharField(max_length=16, blank=True)
+    cid_o_topography_cid10 = models.ForeignKey(
+        "core.CID10Code",
+        on_delete=models.DO_NOTHING,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="CID-O topografia (governado)",
+    )
+    cid_o_topography_unmatched = models.BooleanField(default=False)
     cid_o_morphology = models.CharField(max_length=16, blank=True)
+    cid_o_morphology_ref = models.ForeignKey(
+        "core.CIDOMorphology",
+        on_delete=models.DO_NOTHING,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="CID-O morfologia (governado)",
+    )
+    cid_o_morphology_unmatched = models.BooleanField(default=False)
     surgical_case = models.ForeignKey(
         "emr.SurgicalCase",
         on_delete=models.SET_NULL,
@@ -1412,6 +1433,64 @@ class PathologyReport(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
+    @property
+    def cid_o_topography_code(self) -> str:
+        """Código de topografia CID-O (= código C do CID-10): o code da FK
+        governada quando reconciliado, senão o texto bruto."""
+        if self.cid_o_topography_cid10_id:
+            return self.cid_o_topography_cid10.code  # type: ignore[union-attr]
+        return self.cid_o_topography
+
+    @cid_o_topography_code.setter
+    def cid_o_topography_code(self, value: str) -> None:
+        raw = (value or "").strip()
+        if not raw:
+            self.cid_o_topography_cid10 = None
+            self.cid_o_topography = ""
+            self.cid_o_topography_unmatched = False
+            return
+        # Normaliza p/ o formato do CID10Code (sem ponto; categoria genérica "C50.-").
+        norm = raw.replace(".", "").rstrip("-")
+        from apps.core.models import CID10Code
+
+        match = CID10Code.objects.filter(code=norm).first()
+        if match is not None:
+            self.cid_o_topography_cid10 = match
+            self.cid_o_topography = ""
+            self.cid_o_topography_unmatched = False
+        else:
+            self.cid_o_topography_cid10 = None
+            self.cid_o_topography = raw
+            self.cid_o_topography_unmatched = True
+
+    @property
+    def cid_o_morphology_code(self) -> str:
+        """Código de morfologia CID-O: o code da FK governada quando reconciliado,
+        senão o texto bruto."""
+        if self.cid_o_morphology_ref_id:
+            return self.cid_o_morphology_ref.code  # type: ignore[union-attr]
+        return self.cid_o_morphology
+
+    @cid_o_morphology_code.setter
+    def cid_o_morphology_code(self, value: str) -> None:
+        code = (value or "").strip()
+        if not code:
+            self.cid_o_morphology_ref = None
+            self.cid_o_morphology = ""
+            self.cid_o_morphology_unmatched = False
+            return
+        from apps.core.models import CIDOMorphology
+
+        match = CIDOMorphology.objects.filter(code=code).first()
+        if match is not None:
+            self.cid_o_morphology_ref = match
+            self.cid_o_morphology = ""
+            self.cid_o_morphology_unmatched = False
+        else:
+            self.cid_o_morphology_ref = None
+            self.cid_o_morphology = code
+            self.cid_o_morphology_unmatched = True
 
     def __str__(self):
         return f"Anatomia Patológica {self.order_item_id} — {self.get_status_display()}"
