@@ -55,10 +55,11 @@ class CIDOMorphology(TerminologyCatalog):
     )
     cid10_ref = models.CharField(
         "CID-10 correlato",
-        max_length=10,
+        max_length=60,
         blank=True,
         default="",
-        help_text="Código CID-10 de topografia correlato (coluna REFER do DATASUS), quando houver.",
+        help_text="Código(s) CID-10 de topografia correlato(s) — coluna REFER do DATASUS; "
+        "pode listar mais de um separado por vírgula (ex.: 'C40.-,C41.-').",
     )
 
     class Meta:
