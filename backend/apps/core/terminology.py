@@ -27,6 +27,7 @@ from django.db.models import Case, IntegerField, Q, Value, When
 from apps.core.adt_catalog_models import BedType
 from apps.core.blood_catalog_models import BloodComponentCatalog
 from apps.core.cbo_cnes_models import CBOCode, CNESEstablishment
+from apps.core.cido_models import CIDOMorphology
 from apps.core.loinc_models import LoincCode, UcumUnit
 from apps.core.manchester_catalog_models import ManchesterFlowchart
 from apps.core.models import CID10Code
@@ -51,6 +52,8 @@ _SYSTEMS: dict[str, type] = {
     "manchester_flowchart": ManchesterFlowchart,
     # S1: governed SIGTAP procedure catalog (Faturamento SUS).
     "sigtap": SIGTAPProcedure,
+    # CID-O morphology catalog (oncologia — anatomia patológica).
+    "cid_o": CIDOMorphology,
     # H1: governed hemocomponente catalog (Banco de Sangue/Hemoterapia).
     "blood_component": BloodComponentCatalog,
 }
@@ -172,6 +175,8 @@ def _context(system: str, row) -> dict:
             "complexidade": row.complexidade,
             "valor_total": str(row.valor_total()),
         }
+    if system == "cid_o":
+        return {"behaviour": row.behaviour, "cid10_ref": row.cid10_ref}
     # ucum (and any future flat catalog) carries no extra context columns.
     return {}
 

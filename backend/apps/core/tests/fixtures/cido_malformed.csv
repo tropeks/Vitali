@@ -1,0 +1,4 @@
+# Malformed CID-O fixture — a blank code row and a blank title row.
+CODIGO;TITULO;COMPORTAMENTO;CID10_REF
+;FAKE-Sem código;3;
+8010/3;;3;
