@@ -75,6 +75,23 @@ de dengue clássica SH=R$229,44. Idade/instrumento ficam vazios (unidade de idad
 tabela de instrumento não estão no tb_procedimento — não fabricar). Importado no
 staging em 2026-07-30.
 
+## CID-O morfologia (oncologia) — `etl_cido.py`
+
+Fonte: mesmo `CID10CSV.zip` do DATASUS (arquivo `CID-O-CATEGORIAS.CSV`, morfologia;
+a topografia CID-O são os códigos `C` do CID-10, já governados em `core.CID10Code`).
+
+```bash
+# (o CID10CSV.zip já traz CID-O-CATEGORIAS.CSV)
+python3 etl_cido.py                 # -> cido_full.csv (tira prefixo 'M', extrai comportamento, REFER)
+# no container do ambiente-alvo (precisa do model/importer CIDO-1 deployado):
+python manage.py import_cido --source /caminho/cido_full.csv --cido-version 2008 --dry-run
+python manage.py import_cido --source /caminho/cido_full.csv --cido-version 2008
+```
+
+Resultado: **816 morfologias** (448 malignas / comportamento 3). Ex 8500/3
+Carcinoma ductal invasivo (ref C50.-). `cid10_ref` pode listar múltiplos CID-10
+(ex C40.-,C41.-). Importado no staging em 2026-07-31.
+
 ## Pendências (fontes)
 
 - **Públicas, importáveis** (mesmo padrão): CBO (MTE/DATASUS), SIGTAP (DATASUS),
