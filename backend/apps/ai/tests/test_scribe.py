@@ -177,12 +177,17 @@ class TestScribeViews(TenantTestCase):
 
         from django.contrib.auth import get_user_model
 
+        from apps.core.models import Role
         from apps.emr.models import Encounter, Patient, Professional
 
         User = get_user_model()
+        # ScribeStart/Transcribe require emr.write and ScribeStatus emr.read
+        # (added by the CSO IDOR hardening) — the view user needs both.
+        role = Role.objects.create(name="scribe_view_role", permissions=["emr.read", "emr.write"])
         self.user = User.objects.create_user(
             email="scribe_view@clinic.test",
             password="TestPass123!",
+            role=role,
         )
         patient = Patient.objects.create(
             full_name="View Test Patient",
