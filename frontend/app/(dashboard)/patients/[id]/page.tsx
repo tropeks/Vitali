@@ -644,6 +644,7 @@ export default function PatientDetailPage() {
   const canReadHemo = useMemo(() => hasPermission(PERMISSIONS.HEMOTERAPIA_READ), [])
   const canWriteHemo = useMemo(() => hasPermission(PERMISSIONS.HEMOTERAPIA_MANAGE), [])
   const canReadEmr = useMemo(() => hasPermission(PERMISSIONS.EMR_READ), [])
+  const canWriteEmr = useMemo(() => hasPermission(PERMISSIONS.EMR_WRITE), [])
   const pendingGuides = related.guides.filter((guide) => guide.status && !['paid'].includes(guide.status))
   const glosaGuides = related.guides.filter((guide) => guide.status === 'denied' || guide.status === 'appeal')
   const activePrescriptions = related.prescriptions.filter((rx) =>
@@ -1300,7 +1301,11 @@ export default function PatientDetailPage() {
                       CID-O e espécimes) do paciente. Registro governado do prontuário.
                     </p>
                   </div>
-                  <LabEspecializadoTab patientId={id} canRead={canReadEmr} />
+                  <LabEspecializadoTab
+                    patientId={id}
+                    canRead={canReadEmr}
+                    canWrite={canWriteEmr}
+                  />
                 </div>
               )}
 

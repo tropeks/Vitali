@@ -175,6 +175,27 @@ class PathologyTestCase(TenantTestCase):
         resp = self.client_for(self.reader).get("/api/v1/pathology-reports/")
         self.assertEqual(resp.status_code, 200)
 
+    def test_create_report_with_specimens_nested(self):
+        # LAB-3a: post report + specimens[] in one POST.
+        payload = {
+            "order_item": str(self.item.id),
+            "clinical_history": "Nódulo mamário",
+            "diagnosis": "Carcinoma ductal invasivo",
+            "status": "final",
+            "specimens_input": [
+                {"label": "A", "site": "Mama esquerda", "blocks_count": 3},
+                {"label": "B", "site": "Linfonodo axilar", "blocks_count": 2},
+            ],
+        }
+        resp = self.client_for(self.writer).post(
+            "/api/v1/pathology-reports/", payload, format="json"
+        )
+        self.assertEqual(resp.status_code, 201, resp.content)
+        report = PathologyReport.objects.get(pk=resp.data["id"])
+        self.assertEqual(report.specimens.count(), 2)
+        self.assertEqual(set(report.specimens.values_list("label", flat=True)), {"A", "B"})
+        self.assertEqual(len(resp.data["specimens"]), 2)
+
     # ── CIDO-2: CID-O governado (topografia→CID10Code, morfologia→CIDOMorphology) ──
     def test_topography_reconciles_to_cid10(self):
         CID10Code.objects.create(code="C509", description="Neoplasia maligna da mama SOE")

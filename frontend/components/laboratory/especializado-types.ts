@@ -139,6 +139,28 @@ export function pathologyStatusMeta(status: string): BadgeMeta {
   return PATHOLOGY_STATUS_META[status] ?? { label: status, badgeClass: NEUTRAL_BADGE }
 }
 
+// ─── option lists (forms) ─────────────────────────────────────────────────────
+
+export const CULTURE_RESULT_OPTIONS = [
+  { value: 'positiva', label: 'Positiva' },
+  { value: 'negativa', label: 'Negativa' },
+  { value: 'contaminada', label: 'Contaminada' },
+  { value: 'pendente', label: 'Pendente' },
+]
+
+export const ANTIBIOGRAM_OPTIONS = [
+  { value: 'S', label: 'S — Sensível' },
+  { value: 'I', label: 'I — Intermediário' },
+  { value: 'R', label: 'R — Resistente' },
+  { value: 'SDD', label: 'SDD — Sensível dose-dependente' },
+]
+
+export const PATHOLOGY_STATUS_OPTIONS = [
+  { value: 'pendente', label: 'Pendente' },
+  { value: 'preliminar', label: 'Preliminar' },
+  { value: 'final', label: 'Final' },
+]
+
 /** ISO datetime → short pt-BR date (e.g. "05/07/2026"), or "—". */
 export function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—'

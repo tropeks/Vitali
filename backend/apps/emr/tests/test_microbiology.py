@@ -221,6 +221,48 @@ class MicrobiologyTestCase(TenantTestCase):
         resp = self.client_for(self.reader).get("/api/v1/microbiology-results/")
         self.assertEqual(resp.status_code, 200)
 
+    def test_create_result_with_organisms_and_antibiogram_nested(self):
+        # LAB-3a: post the whole tree (culture + organisms + antibiogram) in one POST.
+        payload = {
+            "order_item": str(self.item.id),
+            "culture_result": "positiva",
+            "specimen": "urocultura",
+            "organisms_input": [
+                {
+                    "organism_name": "Escherichia coli",
+                    "colony_count": ">100.000 UFC/mL",
+                    "antibiogram": [
+                        {"antibiotic": "Ciprofloxacino", "interpretation": "S"},
+                        {"antibiotic": "Ampicilina", "interpretation": "R"},
+                    ],
+                }
+            ],
+        }
+        resp = self.client_for(self.writer).post(
+            "/api/v1/microbiology-results/", payload, format="json"
+        )
+        self.assertEqual(resp.status_code, 201, resp.content)
+        result = MicrobiologyResult.objects.get(pk=resp.data["id"])
+        self.assertEqual(result.culture_result, "positiva")
+        self.assertEqual(result.created_by_id, self.writer.id)
+        organism = result.organisms.get()
+        self.assertEqual(organism.organism_name, "Escherichia coli")
+        self.assertEqual(organism.antibiogram.count(), 2)
+        self.assertEqual(
+            set(organism.antibiogram.values_list("interpretation", flat=True)), {"S", "R"}
+        )
+        # nested tree also read back on the result serializer (order-independent)
+        abx_names = {a["antibiotic"] for a in resp.data["organisms"][0]["antibiogram"]}
+        self.assertEqual(abx_names, {"Ciprofloxacino", "Ampicilina"})
+
+    def test_reader_cannot_create_nested(self):
+        resp = self.client_for(self.reader).post(
+            "/api/v1/microbiology-results/",
+            {"order_item": str(self.item.id), "organisms_input": []},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 403)
+
     def test_patient_filter_endpoint(self):
         # Result for our patient (via self.item → self.order → self.patient).
         MicrobiologyResult.objects.create(
