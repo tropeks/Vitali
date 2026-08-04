@@ -194,6 +194,31 @@ class TestImportAnvisaCmed(TenantTestCase):
         with self.assertRaises(CommandError):
             self.run_cmed(source=str(FIXTURES / "nope.csv"))
 
+    def test_all_zero_ean_is_treated_as_absent(self):
+        """EAN só de zeros é "sem código de barras", não um código.
+
+        A CMED publica 0000000000000 como placeholder em algumas apresentações.
+        Gravá-lo como se fosse EAN faz o matcher de NF-e casar QUALQUER linha sem
+        GTIN — que costuma vir zerada — com o produto que calhou de ter o
+        placeholder. No staging isso apontava para o KYMRIAH, uma terapia CAR-T
+        de milhões: exatamente o tipo de falso positivo que não pode existir num
+        catálogo de faturamento.
+        """
+        from apps.core.management.commands.import_anvisa_cmed import _ean
+
+        self.assertEqual(_ean("0000000000000"), "")
+        self.assertEqual(_ean("0000000"), "")
+        self.assertEqual(_ean("7891111111111"), "7891111111111")
+        self.assertEqual(_ean(""), "")
+        # Um EAN legítimo que apenas começa com zero continua válido.
+        self.assertEqual(_ean("0781234567890"), "0781234567890")
+
+    def test_zero_ean_row_does_not_resolve_by_ean(self):
+        AnvisaPresentation.objects.create(
+            product=self.p1, code="1000000019999", ean="0000000000000"
+        )
+        self.assertIsNone(AnvisaProduct.by_ean("0000000000000"))
+
     def test_price_parsing_handles_both_decimal_formats(self):
         """Ponto decimal e vírgula decimal têm de dar o MESMO número.
 

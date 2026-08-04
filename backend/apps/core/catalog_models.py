@@ -155,7 +155,11 @@ class AnvisaProduct(TerminologyCatalog):
         the presentation table keep resolving.
         """
         ean = (ean or "").strip()
-        if not ean:
+        # Só-zeros é ausência de código de barras, não um código: a NF-e traz o
+        # GTIN zerado quando o item não tem um, e a CMED usa o mesmo placeholder.
+        # Sem esta guarda, toda linha sem GTIN casaria com o produto que por
+        # acaso carregasse o placeholder no catálogo.
+        if not ean or set(ean) == {"0"}:
             return None
         found = (
             cls.objects.filter(presentations__ean=ean, presentations__active=True, active=True)

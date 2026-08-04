@@ -60,6 +60,18 @@ def _pick(raw: dict, key: str) -> str:
     return ""
 
 
+def _ean(value: str) -> str:
+    """EAN da fonte -> string. Só-zeros vira vazio.
+
+    A CMED usa ``0000000000000`` como placeholder de "sem código de barras".
+    Guardá-lo como EAN faria ``AnvisaProduct.by_ean`` casar toda linha de NF-e
+    sem GTIN — que costuma vir zerada — com o produto que por acaso carrega o
+    placeholder. Ausência tem de ser representada como ausência.
+    """
+    value = (value or "").strip()
+    return "" if not value or set(value) == {"0"} else value
+
+
 def _price(value: str) -> Decimal | None:
     """Preço -> Decimal. Vazio/ilegível vira None, nunca 0.
 
@@ -141,7 +153,7 @@ class Command(BaseCommand):
                     defaults={
                         "product_id": product_id,
                         "presentation": _pick(raw, "presentation"),
-                        "ean": _pick(raw, "ean"),
+                        "ean": _ean(_pick(raw, "ean")),
                         "price_pf": _price(_pick(raw, "price_pf")),
                         "price_pmc": _price(_pick(raw, "price_pmc")),
                         "version": version,
