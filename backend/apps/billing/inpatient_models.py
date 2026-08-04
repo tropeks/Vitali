@@ -143,3 +143,100 @@ class DailyCharge(models.Model):
 
     def __str__(self):
         return f"Diária {self.service_date} — internação {self.admission_id}"
+
+
+class InpatientFee(models.Model):
+    """Uma taxa ou gás medicinal lançado numa internação (B6).
+
+    A diária de leito era a única coisa que uma estada gerava, mas na conta
+    hospitalar ela é minoria: das 3.595 linhas da tabela TUSS 18, ~1.590 são TAXA
+    (incubadora, almofada, equipamento) e ~890 são gases medicinais. Sem elas a
+    guia de internação sai sistematicamente subfaturada.
+
+    Por que um model separado de :class:`DailyCharge`, e não um campo a mais:
+
+    * a diária é única por dia (``UniqueConstraint(admission, service_date)``);
+      taxa não é — no mesmo dia cabem incubadora, oxigênio e bomba de infusão;
+    * a taxa carrega **unidade temporal própria**, porque o TUSS 18 codifica a
+      unidade no próprio termo ("TAXA DE INCUBADORA, POR DIA" é um código
+      diferente de "…COM OXIGÊNIO, POR HORA"). Guardar ``quantity`` sem ``unit``
+      seria guardar um número sem significado.
+
+    Precificação segue a mesma regra da diária: NÃO se snapshota ``unit_value``.
+    O valor sai da ``PriceTable`` do convênio quando a guia é montada. O que se
+    snapshota é a ``description``, porque o catálogo é reimportável e o texto do
+    termo pode mudar debaixo de um lançamento já feito.
+    """
+
+    class Unit(models.TextChoices):
+        DIA = "dia", "Por dia"
+        HORA = "hora", "Por hora"
+        UNIDADE = "unidade", "Por unidade"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    admission = models.ForeignKey(
+        "emr.Admission",
+        on_delete=models.PROTECT,
+        related_name="inpatient_fees",
+        verbose_name="Internação",
+    )
+    service_date = models.DateField("Data do lançamento", db_index=True)
+    # FK cross-schema para o TUSSCode PUBLIC: DO_NOTHING + protect_tuss_code_deletion,
+    # espelhando DailyCharge (PROTECT quebraria o Collector de deleção cross-schema).
+    tuss_code = models.ForeignKey(
+        "core.TUSSCode",
+        on_delete=models.DO_NOTHING,
+        related_name="inpatient_fees",
+        verbose_name="TUSS da taxa",
+    )
+    description = models.CharField(
+        "Descrição (snapshot)",
+        max_length=500,
+        blank=True,
+        default="",
+        help_text="Texto do termo TUSS no momento do lançamento.",
+    )
+    quantity = models.DecimalField(
+        "Quantidade",
+        max_digits=10,
+        decimal_places=2,
+        help_text="Quantidade na unidade declarada (ex.: 6,5 horas de oxigênio).",
+    )
+    unit = models.CharField(
+        "Unidade",
+        max_length=10,
+        choices=Unit.choices,
+        default=Unit.UNIDADE,
+        help_text="Unidade de cobrança do termo TUSS (por dia / por hora / por unidade).",
+    )
+    notes = models.CharField("Observação", max_length=500, blank=True, default="")
+    created_by = models.ForeignKey(
+        "core.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="Lançado por",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["admission", "service_date"]
+        verbose_name = "Taxa de internação"
+        verbose_name_plural = "Taxas de internação"
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(quantity__gt=0),
+                name="inpatient_fee_quantity_positive",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["admission", "service_date"], name="bill_inpfee_adm_date_idx"),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.description[:40]} ×{self.quantity} {self.unit} — internação {self.admission_id}"
+        )

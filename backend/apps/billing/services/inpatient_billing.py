@@ -73,7 +73,7 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
-from apps.billing.inpatient_models import AccommodationTuss, DailyCharge
+from apps.billing.inpatient_models import AccommodationTuss, DailyCharge, InpatientFee
 from apps.billing.models import InsuranceProvider, TISSGuide, TISSGuideItem
 from apps.billing.services.lab_order_billing import (
     _active_insurance,
@@ -175,6 +175,60 @@ def accrue_daily_charges(admission: Admission) -> list[DailyCharge]:
         return created
 
 
+def record_inpatient_fee(
+    *,
+    admission: Admission,
+    tuss_code,
+    quantity: Decimal,
+    unit: str = InpatientFee.Unit.UNIDADE,
+    service_date: date | None = None,
+    notes: str = "",
+    actor=None,
+) -> InpatientFee:
+    """B6 — Lança uma taxa/gás medicinal numa internação ativa.
+
+    Ao contrário da diária, que é acumulada automaticamente pela estada, a taxa é
+    um lançamento **explícito**: quem sabe que a incubadora ficou ligada 6 horas é
+    a enfermagem, não o relógio.
+
+    Valida o que gera glosa se passar batido:
+
+    * **TUSS tem de ser da tabela 18** (diárias, taxas e gases medicinais). Um
+      código de procedimento (tabela 22) numa conta de diárias é erro de
+      codificação que a operadora devolve. Códigos legados sem ``table_number``
+      preenchido passam — a lacuna é nossa, não do usuário, e recusá-los seria
+      punir o dado antigo.
+    * **quantidade positiva** — 0 hora de oxigênio não é um lançamento.
+    * **internação ativa** — depois da alta a conta está fechada.
+    """
+    if quantity is None or Decimal(quantity) <= 0:
+        raise ValidationError("Quantidade da taxa deve ser maior que zero.")
+
+    if admission.status != Admission.Status.ADMITTED:
+        raise ValidationError(
+            "Internação não está ativa; não aceita lançamento de taxa. "
+            "Corrija pela guia já emitida."
+        )
+
+    table_number = getattr(tuss_code, "table_number", None)
+    if table_number and table_number != "18":
+        raise ValidationError(
+            f"TUSS {tuss_code.code} é da tabela {table_number}; taxa de internação "
+            "exige um código da tabela 18 (diárias, taxas e gases medicinais)."
+        )
+
+    return InpatientFee.objects.create(
+        admission=admission,
+        service_date=service_date or timezone.now().date(),
+        tuss_code=tuss_code,
+        description=(tuss_code.description or "")[:500],
+        quantity=Decimal(quantity),
+        unit=unit,
+        notes=notes,
+        created_by=actor,
+    )
+
+
 def generate_internacao_guide_for_admission(admission: Admission) -> TISSGuide:
     """B3 — Gera (ou retorna a existente) a guia TISS de Resumo de Internação.
 
@@ -236,8 +290,14 @@ def generate_internacao_guide_for_admission(admission: Admission) -> TISSGuide:
         accrue_daily_charges(admission)
 
         charges = list(DailyCharge.objects.filter(admission=admission).select_related("tuss_code"))
-        if not charges:
-            raise ValidationError("Internação sem diárias faturáveis: nenhuma diária acumulada.")
+        fees = list(InpatientFee.objects.filter(admission=admission).select_related("tuss_code"))
+        if not charges and not fees:
+            # Só recusa quando não há NADA a faturar. Uma estada com taxas mas sem
+            # diária é legítima (tipo de leito sem AccommodationTuss configurado) e
+            # jogar as taxas fora junto seria perder receita real.
+            raise ValidationError(
+                "Internação sem itens faturáveis: nenhuma diária acumulada nem taxa lançada."
+            )
 
         today = timezone.now().date()
         price_table = _active_price_table(provider, today)
@@ -261,9 +321,18 @@ def generate_internacao_guide_for_admission(admission: Admission) -> TISSGuide:
         aggregated: dict[int, dict] = {}
         for charge in charges:
             entry = aggregated.setdefault(
-                charge.tuss_code_id, {"tuss": charge.tuss_code, "quantity": 0}
+                charge.tuss_code_id, {"tuss": charge.tuss_code, "quantity": Decimal(0)}
             )
-            entry["quantity"] += charge.quantity
+            entry["quantity"] += Decimal(charge.quantity)
+
+        # B6 — as taxas entram na mesma agregação por TUSS. Dois lançamentos do
+        # mesmo gás em dias diferentes viram UM item com a soma das horas, que é
+        # como a operadora espera receber.
+        for fee in fees:
+            entry = aggregated.setdefault(
+                fee.tuss_code_id, {"tuss": fee.tuss_code, "quantity": Decimal(0)}
+            )
+            entry["quantity"] += Decimal(fee.quantity)
 
         for entry in aggregated.values():
             tuss = entry["tuss"]
@@ -271,7 +340,7 @@ def generate_internacao_guide_for_admission(admission: Admission) -> TISSGuide:
                 guide=guide,
                 tuss_code=tuss,
                 description=tuss.description or "",
-                quantity=Decimal(entry["quantity"]),
+                quantity=entry["quantity"],
                 unit_value=_unit_value(price_table, tuss),
             )
 
