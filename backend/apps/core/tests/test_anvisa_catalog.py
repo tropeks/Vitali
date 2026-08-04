@@ -12,8 +12,9 @@ from pathlib import Path
 
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from django.db import IntegrityError, transaction
 
-from apps.core.catalog_models import AnvisaProduct
+from apps.core.catalog_models import AnvisaPresentation, AnvisaProduct
 from apps.core.management.commands.import_anvisa import Command as ImportAnvisa
 from apps.core.terminology_base import TerminologyImportLog
 from apps.test_utils import TenantTestCase
@@ -21,6 +22,7 @@ from apps.test_utils import TenantTestCase
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 SAMPLE = FIXTURES / "anvisa_sample.csv"
 MALFORMED = FIXTURES / "anvisa_malformed.csv"
+CMED_SAMPLE = FIXTURES / "anvisa_cmed_sample.csv"
 
 
 def run_import(**options):
@@ -58,6 +60,138 @@ class TestAnvisaProductModel(TenantTestCase):
             code="R4", display="Inactive", ean="7891231231231", active=False
         )
         self.assertIsNone(AnvisaProduct.by_ean("7891231231231"))
+
+    def test_dcb_holds_long_multi_substance_composition(self):
+        """A DCB de um fitoterápico/dinamizado lista TODAS as substâncias da
+        associação e passa de 200 caracteres no dado aberto real da ANVISA (o
+        maior hoje tem 380). Truncar apagaria parte da composição — dado
+        clínico —, então a coluna tem de comportar a associação inteira.
+        """
+        composicao = (
+            "arnica montana, arnica montana l., calendula officinalis l., "
+            "hamamelis virginiana l., echinacea angustifolia, echinacea purpurea, "
+            "hypericum perforatum l., symphytum officinale l., achillea millefolium l., "
+            "chamomilla recutita l., matricaria chamomilla, bellis perennis l., "
+            "hedera helix l., ruta graveolens l., aesculus hippocastanum"
+        )
+        self.assertGreater(len(composicao), 200)
+        p = AnvisaProduct.objects.create(code="R5", display="Fitoterápico", dcb=composicao)
+        p.refresh_from_db()
+        self.assertEqual(p.dcb, composicao)
+
+
+class TestAnvisaPresentation(TenantTestCase):
+    """Apresentações de um produto ANVISA (fonte: lista de preços CMED).
+
+    O dado aberto de medicamentos da ANVISA é por PRODUTO (registro de 9
+    dígitos) e não publica EAN. Quem publica EAN é a lista CMED, cujo registro
+    tem 13 dígitos = os 9 do produto + 4 da apresentação. Como a NF-e traz o
+    código de barras da CAIXA, o EAN pertence à apresentação, não ao produto —
+    daí a tabela filha em vez de um EAN único no produto.
+    """
+
+    def setUp(self):
+        self.produto = AnvisaProduct.objects.create(
+            code="100000001", display="Dipirona 500mg", dcb="dipirona sódica"
+        )
+
+    def test_presentation_links_to_product_and_holds_ean(self):
+        ap = AnvisaPresentation.objects.create(
+            product=self.produto,
+            code="1000000010012",
+            presentation="500 MG COM CT BL AL PLAS INC X 10",
+            ean="7891234567890",
+        )
+        ap.refresh_from_db()
+        self.assertEqual(ap.product, self.produto)
+        self.assertEqual(list(self.produto.presentations.all()), [ap])
+        self.assertTrue(ap.active)
+
+    def test_by_ean_resolves_product_through_presentation(self):
+        """by_ean continua devolvendo o PRODUTO — é o que o matcher de NF-e espera."""
+        AnvisaPresentation.objects.create(
+            product=self.produto, code="1000000010012", ean="7891234567890"
+        )
+        self.assertEqual(AnvisaProduct.by_ean("7891234567890"), self.produto)
+        self.assertEqual(AnvisaProduct.by_ean(" 7891234567890 "), self.produto)
+        self.assertIsNone(AnvisaProduct.by_ean("0000000000000"))
+
+    def test_by_ean_ignores_inactive_presentation_and_product(self):
+        AnvisaPresentation.objects.create(
+            product=self.produto, code="1000000010013", ean="7899999999999", active=False
+        )
+        self.assertIsNone(AnvisaProduct.by_ean("7899999999999"))
+
+        outro = AnvisaProduct.objects.create(code="100000002", display="X", active=False)
+        AnvisaPresentation.objects.create(product=outro, code="1000000020011", ean="7898888888888")
+        self.assertIsNone(AnvisaProduct.by_ean("7898888888888"))
+
+    def test_legacy_ean_on_product_still_resolves(self):
+        """O EAN gravado direto no produto (dado antigo) não pode parar de funcionar."""
+        legado = AnvisaProduct.objects.create(
+            code="100000003", display="Legado", ean="7897777777777"
+        )
+        self.assertEqual(AnvisaProduct.by_ean("7897777777777"), legado)
+
+    def test_presentation_code_is_unique(self):
+        AnvisaPresentation.objects.create(product=self.produto, code="1000000010012")
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            AnvisaPresentation.objects.create(product=self.produto, code="1000000010012")
+
+
+class TestImportAnvisaCmed(TenantTestCase):
+    """import_anvisa_cmed: carrega as apresentações (EAN/preço) da lista CMED."""
+
+    def setUp(self):
+        self.p1 = AnvisaProduct.objects.create(code="100000001", display="FAKE-Produto 1")
+        self.p2 = AnvisaProduct.objects.create(code="100000002", display="FAKE-Produto 2")
+
+    def run_cmed(self, **opts):
+        out = StringIO()
+        call_command("import_anvisa_cmed", stdout=out, stderr=out, **opts)
+        return out.getvalue()
+
+    def test_creates_presentations_linked_to_product(self):
+        self.run_cmed(source=str(CMED_SAMPLE), cmed_version="2026-08")
+        self.assertEqual(self.p1.presentations.count(), 2)
+        ap = self.p1.presentations.get(code="1000000010012")
+        self.assertEqual(ap.ean, "7891111111111")
+        self.assertEqual(str(ap.price_pf), "12.3400")
+        self.assertEqual(str(ap.price_pmc), "18.9900")
+        self.assertEqual(ap.version, "2026-08")
+
+    def test_blank_price_becomes_null_not_zero(self):
+        """Preço ausente na CMED é 'não publicado', não R$ 0,00."""
+        self.run_cmed(source=str(CMED_SAMPLE))
+        ap = self.p1.presentations.get(code="1000000010013")
+        self.assertIsNone(ap.price_pmc)
+        semp = self.p2.presentations.get(code="1000000020011")
+        self.assertIsNone(semp.price_pf)
+        self.assertIsNone(semp.price_pmc)
+
+    def test_orphan_presentation_is_skipped_not_invented(self):
+        """Apresentação cujo produto não está no catálogo é pulada — nunca cria produto fantasma."""
+        self.run_cmed(source=str(CMED_SAMPLE))
+        self.assertFalse(AnvisaProduct.objects.filter(code="999999999").exists())
+        self.assertEqual(AnvisaPresentation.objects.filter(code="9999999990001").count(), 0)
+
+    def test_idempotent_rerun(self):
+        self.run_cmed(source=str(CMED_SAMPLE))
+        self.run_cmed(source=str(CMED_SAMPLE))
+        self.assertEqual(AnvisaPresentation.objects.count(), 3)
+
+    def test_dry_run_writes_nothing(self):
+        self.run_cmed(source=str(CMED_SAMPLE), dry_run=True)
+        self.assertEqual(AnvisaPresentation.objects.count(), 0)
+
+    def test_by_ean_works_end_to_end_after_import(self):
+        self.run_cmed(source=str(CMED_SAMPLE))
+        self.assertEqual(AnvisaProduct.by_ean("7891111111111"), self.p1)
+        self.assertEqual(AnvisaProduct.by_ean("7893333333333"), self.p2)
+
+    def test_missing_file_raises(self):
+        with self.assertRaises(CommandError):
+            self.run_cmed(source=str(FIXTURES / "nope.csv"))
 
 
 class TestImportAnvisaValid(TenantTestCase):

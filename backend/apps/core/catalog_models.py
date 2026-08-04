@@ -13,6 +13,13 @@ it is global, not per-tenant.
   the ``import_anvisa`` management command (provenance = ANVISA open data), which
   reuses :class:`~apps.core.terminology_base.CatalogImporter`.
 
+* :class:`AnvisaPresentation` — as apresentações comerciais de um produto, com
+  EAN e preço de referência, carregadas da lista CMED via ``import_anvisa_cmed``.
+  Tabela própria porque as duas fontes públicas têm granularidades diferentes: o
+  dado aberto de medicamentos é por produto e não publica código de barras; a
+  CMED é por apresentação e é quem publica o EAN. Como a NF-e traz o código de
+  barras da caixa, é por aqui que ``AnvisaProduct.by_ean`` resolve.
+
 Tenant clinical/inventory data (``pharmacy.Drug``) references these via a
 cross-schema FK (DO_NOTHING + a pre_delete protection signal), mirroring the
 ``emr`` → ``core.CID10Code`` pattern (E1-T5).
@@ -72,7 +79,11 @@ class AnvisaProduct(TerminologyCatalog):
 
     dcb = models.CharField(
         "DCB",
-        max_length=200,
+        # 500, não 200: no dado aberto real da ANVISA a DCB de fitoterápicos e
+        # dinamizados lista a associação inteira de substâncias e chega a 380
+        # caracteres (mesma classe de estouro do REFER do CID-O, core 0037).
+        # Truncar apagaria parte da composição, que é dado clínico.
+        max_length=500,
         blank=True,
         default="",
         db_index=True,
@@ -136,11 +147,106 @@ class AnvisaProduct(TerminologyCatalog):
         Returns ``None`` for a blank barcode or no match — never raises. This is
         the primitive the NF-e line matcher uses to auto-suggest a catalog
         product from a scanned/imported barcode.
+
+        The barcode is matched against :class:`AnvisaPresentation` first, since
+        an EAN identifies the *pack* (presentation), not the product — that is
+        where the CMED price list publishes it. The legacy ``ean`` column on the
+        product itself is still consulted as a fallback so rows imported before
+        the presentation table keep resolving.
         """
         ean = (ean or "").strip()
         if not ean:
             return None
+        found = (
+            cls.objects.filter(presentations__ean=ean, presentations__active=True, active=True)
+            .order_by("code")
+            .first()
+        )
+        if found is not None:
+            return found
         return cls.objects.filter(ean=ean, active=True).order_by("code").first()
 
     def __str__(self):
         return f"{self.code} — {self.display[:60]}"
+
+
+class AnvisaPresentation(models.Model):
+    """Uma apresentação comercial de um :class:`AnvisaProduct` (schema SHARED).
+
+    Existe porque as duas fontes públicas da ANVISA têm granularidades
+    diferentes: o dado aberto de medicamentos é por **produto** (registro de 9
+    dígitos) e não publica código de barras, enquanto a lista de preços da CMED
+    é por **apresentação** (registro de 13 dígitos = os 9 do produto + 4 da
+    apresentação) e é quem publica o EAN. Como a NF-e traz o código de barras da
+    caixa, o EAN é atributo da apresentação — guardá-lo no produto obrigaria a
+    escolher arbitrariamente uma das apresentações e jogar as outras fora.
+
+    Preços são **referência da competência importada**, não verdade corrente: a
+    CMED republica a lista periodicamente. Só as colunas sem imposto são
+    guardadas; as 25+ variações por alíquota estadual ficam de fora.
+    """
+
+    product = models.ForeignKey(
+        AnvisaProduct,
+        on_delete=models.CASCADE,
+        related_name="presentations",
+        verbose_name="Produto ANVISA",
+    )
+    code = models.CharField(
+        "Registro da apresentação",
+        max_length=20,
+        unique=True,
+        db_index=True,
+        help_text="Registro ANVISA de 13 dígitos (produto + apresentação), como publicado pela CMED.",
+    )
+    presentation = models.CharField(
+        "Apresentação",
+        max_length=500,
+        blank=True,
+        default="",
+        help_text="Apresentação comercial (ex.: '500 MG COM REV CT BL AL PLAS INC X 21').",
+    )
+    ean = models.CharField(
+        "EAN",
+        max_length=14,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="Código de barras GTIN/EAN da caixa — casa a linha da NF-e com o catálogo.",
+    )
+    price_pf = models.DecimalField(
+        "Preço de fábrica (sem impostos)",
+        max_digits=12,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text="PF sem impostos da lista CMED da competência importada. Null = não publicado.",
+    )
+    price_pmc = models.DecimalField(
+        "Preço máximo ao consumidor (sem impostos)",
+        max_digits=12,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text="PMC sem impostos da lista CMED da competência importada. Null = não publicado.",
+    )
+    version = models.CharField(
+        "Versão/competência",
+        max_length=20,
+        blank=True,
+        default="",
+        help_text="Competência da lista CMED de origem (ex.: '2026-08').",
+    )
+    active = models.BooleanField("Ativo", default=True, db_index=True)
+
+    class Meta:
+        app_label = "core"
+        verbose_name = "Apresentação ANVISA"
+        verbose_name_plural = "Apresentações ANVISA"
+        ordering = ["code"]
+        indexes = [
+            models.Index(fields=["ean"], name="anvisa_pres_ean_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.code} — {self.presentation[:60]}"

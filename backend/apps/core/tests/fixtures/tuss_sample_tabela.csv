@@ -1,0 +1,5 @@
+# TEST FIXTURE — fabricated, not clinical truth
+CODIGO;DESCRICAO;GRUPO;SUBGRUPO;TABELA
+10101010;FAKE-Consulta basica;Procedimentos e eventos em saude;;22
+60015071;FAKE-Alimentacao enteral;Diarias, taxas e gases medicinais;;18
+90035593;FAKE-Medicamento injetavel;Medicamentos;;20

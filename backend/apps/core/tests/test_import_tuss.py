@@ -26,6 +26,7 @@ _FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
 
 _SAMPLE_CSV = os.path.join(_FIXTURES_DIR, "tuss_sample.csv")
 _MALFORMED_CSV = os.path.join(_FIXTURES_DIR, "tuss_malformed.csv")
+_TABELA_CSV = os.path.join(_FIXTURES_DIR, "tuss_sample_tabela.csv")
 
 # tuss_sample.csv has 3 fabricated FAKE- data rows (CODIGO: 10101010, 20202020, 30303030).
 _SAMPLE_ROW_COUNT = 3
@@ -70,6 +71,35 @@ class ImportTussDryRunTests(TenantTestCase):
             TUSSSyncLog.objects.filter(status=TUSSSyncLog.Status.SUCCESS).count(),
             log_count_before,
         )
+
+
+class ImportTussTableNumberTests(TenantTestCase):
+    """A coluna TABELA da fonte alimenta TUSSCode.table_number.
+
+    `table_number` existe desde S1-T2 para a valoração CBHPM distinguir um
+    procedimento (tabela 22) de uma diária/taxa (18) ou medicamento (20), mas o
+    importer nunca o preenchia — todo código importado ficava com o campo NULL e
+    a distinção só existia no papel. As tabelas do padrão TISS são publicadas em
+    arquivos separados por número, então o número é fato da fonte, não inferência.
+    """
+
+    def test_tabela_column_populates_table_number(self):
+        call_command("import_tuss", file=_TABELA_CSV, tuss_version="202607")
+        self.assertEqual(TUSSCode.objects.get(code="10101010").table_number, "22")
+        self.assertEqual(TUSSCode.objects.get(code="60015071").table_number, "18")
+        self.assertEqual(TUSSCode.objects.get(code="90035593").table_number, "20")
+
+    def test_absent_tabela_column_leaves_table_number_untouched(self):
+        """Sem a coluna TABELA, o campo NÃO é sobrescrito.
+
+        Mesma regra dos metadados de compatibilidade clínica: um export legado
+        (CODIGO;DESCRICAO;GRUPO;SUBGRUPO) não pode apagar o número de tabela já
+        gravado por um import anterior que o trazia.
+        """
+        call_command("import_tuss", file=_TABELA_CSV, tuss_version="202607")
+        TUSSCode.objects.filter(code="10101010").update(description="antes")
+        call_command("import_tuss", file=_SAMPLE_CSV, tuss_version="2024-01")
+        self.assertEqual(TUSSCode.objects.get(code="10101010").table_number, "22")
 
 
 class ImportTussMalformedTests(TenantTestCase):

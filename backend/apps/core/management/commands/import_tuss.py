@@ -254,6 +254,16 @@ class Command(BaseCommand):
                 # or the inert default with a fabricated value). The age columns
                 # write through even when blank (→ None = unbounded), which is a
                 # legitimate ANS "no limit" value.
+                # Número da tabela TUSS de origem (22 = procedimentos, 18 =
+                # diárias/taxas, 20 = medicamentos). O padrão TISS publica cada
+                # tabela em arquivo próprio, então o número é fato da fonte. Segue
+                # a mesma regra dos metadados clínicos abaixo: só escreve quando a
+                # coluna existe, para um export legado sem TABELA não apagar o que
+                # um import anterior gravou.
+                if any(k in row for k in ("TABELA", "tabela", "Tabela", "table_number")):
+                    defaults["table_number"] = _col(
+                        row, "TABELA", "tabela", "Tabela", "table_number"
+                    )
                 if any(k in row for k in ("IDADE_MIN_DIAS", "idade_min_dias", "age_min_days")):
                     defaults["age_min_days"] = _opt_int(
                         row, "IDADE_MIN_DIAS", "idade_min_dias", "age_min_days"
