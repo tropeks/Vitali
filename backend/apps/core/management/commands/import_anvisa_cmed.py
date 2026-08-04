@@ -61,10 +61,20 @@ def _pick(raw: dict, key: str) -> str:
 
 
 def _price(value: str) -> Decimal | None:
-    """Preço da CMED -> Decimal. Vazio/ilegível vira None, nunca 0."""
-    value = (value or "").strip().replace(".", "").replace(",", ".")
+    """Preço -> Decimal. Vazio/ilegível vira None, nunca 0.
+
+    Aceita os dois formatos que chegam aqui, e a distinção importa: a vírgula é
+    o que marca o formato brasileiro. Com vírgula ("13.274.524,58"), os pontos
+    são separador de milhar e caem; sem vírgula ("13274524.58" — como o ETL já
+    entrega), o ponto **é** o separador decimal e não pode ser tocado. Aplicar a
+    regra brasileira nos dois casos multiplicava o preço por 100 a cada casa
+    decimal.
+    """
+    value = (value or "").strip()
     if not value or value in {"-", "*", "(*)"}:
         return None
+    if "," in value:
+        value = value.replace(".", "").replace(",", ".")
     try:
         return Decimal(value)
     except InvalidOperation:

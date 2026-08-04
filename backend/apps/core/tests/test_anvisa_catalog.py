@@ -7,6 +7,7 @@ build, dry-run safety, per-line error isolation (malformed CSV), provenance
 logging, and EAN lookup. All local — no network.
 """
 
+from decimal import Decimal
 from io import StringIO
 from pathlib import Path
 
@@ -192,6 +193,25 @@ class TestImportAnvisaCmed(TenantTestCase):
     def test_missing_file_raises(self):
         with self.assertRaises(CommandError):
             self.run_cmed(source=str(FIXTURES / "nope.csv"))
+
+    def test_price_parsing_handles_both_decimal_formats(self):
+        """Ponto decimal e vírgula decimal têm de dar o MESMO número.
+
+        Regressão: `_price` aplicava a regra brasileira (tira ponto de milhar,
+        vírgula vira ponto) em tudo. Num valor já normalizado pelo ETL como
+        "13274524.58" isso apagava o ponto e produzia 1327452458 — cem vezes o
+        preço real. Só não passou despercebido porque estourou o campo; um valor
+        menor teria sido gravado errado em silêncio.
+        """
+        from apps.core.management.commands.import_anvisa_cmed import _price
+
+        self.assertEqual(_price("13274524.58"), Decimal("13274524.58"))
+        self.assertEqual(_price("13.274.524,58"), Decimal("13274524.58"))
+        self.assertEqual(_price("15,54"), Decimal("15.54"))
+        self.assertEqual(_price("15.54"), Decimal("15.54"))
+        self.assertEqual(_price("1234"), Decimal("1234"))
+        self.assertIsNone(_price(""))
+        self.assertIsNone(_price("-"))
 
 
 class TestImportAnvisaValid(TenantTestCase):
