@@ -118,3 +118,60 @@ def _send_appointment_reminders_for_schema(schema_name: str) -> dict[str, int]:
         total,
     )
     return {"sent": sent, "total": total}
+
+
+@shared_task(name="billing.accrue_active_admissions")
+def accrue_active_admissions() -> dict[str, int]:
+    """B5 — Acumula as diárias de todas as internações ATIVAS, em todo tenant.
+
+    A rede de segurança do acúmulo. O hook da alta
+    (``billing.services.inpatient_signals``) pega a estada no último instante em
+    que ela é faturável, mas depender só dele deixa a receita de uma internação
+    longa pendurada num único evento: se aquela transação falhar, perde-se a
+    estada inteira. Rodando diariamente, no pior caso perde-se um dia.
+
+    Internação com alta NÃO entra: ou o hook já cuidou dela, ou o leito já foi
+    liberado e não há mais tipo de leito para resolver o TUSS da diária.
+    """
+    results = for_each_tenant_schema(
+        _accrue_daily_charges_for_schema,
+        logger=logger,
+        operation="accrue_active_admissions",
+    )
+    charges = sum(r.get("charges", 0) for r in results if r)
+    admissions = sum(r.get("admissions", 0) for r in results if r)
+    logger.info("accrue_active_admissions.done admissions=%d charges=%d", admissions, charges)
+    return {"admissions": admissions, "charges": charges}
+
+
+def _accrue_daily_charges_for_schema(schema_name: str) -> dict[str, int]:
+    from apps.billing.services.inpatient_billing import accrue_daily_charges
+    from apps.emr.models import Admission
+
+    active = Admission.objects.filter(
+        status=Admission.Status.ADMITTED, current_bed__isnull=False
+    ).select_related("current_bed")
+
+    admissions = 0
+    charges = 0
+    for admission in active.iterator():
+        admissions += 1
+        try:
+            charges += len(accrue_daily_charges(admission))
+        except Exception:
+            # Uma internação problemática não pode abortar a varredura das
+            # outras — seria trocar uma diária perdida por todas elas.
+            logger.exception(
+                "accrue_active_admissions: falha na internação %s (schema=%s)",
+                admission.pk,
+                schema_name,
+            )
+
+    if charges:
+        logger.info(
+            "accrue_active_admissions.schema schema=%s admissions=%d charges=%d",
+            schema_name,
+            admissions,
+            charges,
+        )
+    return {"admissions": admissions, "charges": charges}

@@ -24,6 +24,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.emr.models import Admission, AdmissionEvent, Bed, BedStatusEvent
+from apps.emr.services.adt_signals import admission_pre_bed_release
 
 # Bed statuses from which a fresh admission may occupy the bed. ``reservado`` is
 # accepted (bed held for this patient); everything else (ocupado, higienizacao,
@@ -205,19 +206,31 @@ def discharge(
         freed_bed.save(update_fields=["status", "updated_at"])
         _log_bed_status(freed_bed, prev_status, Bed.Status.HIGIENIZACAO, actor=actor, reason=reason)
 
+    # A alta é gravada em DOIS passos de propósito. Aqui vai o que define a
+    # estada — status, disposition e a data da alta — mas o leito continua
+    # atribuído, porque é essa a única janela em que a estada ainda é
+    # faturável: a regra de pernoites precisa da data de alta, e o TUSS da
+    # diária só é resolvível a partir do tipo do leito atual.
     locked.status = Admission.Status.DISCHARGED
     locked.disposition = disposition
     locked.actual_discharge_datetime = actual_discharge_datetime or timezone.now()
-    locked.current_bed = None
     locked.save(
         update_fields=[
             "status",
             "disposition",
             "actual_discharge_datetime",
-            "current_bed",
             "updated_at",
         ]
     )
+
+    # Ponto de extensão (ver adt_signals): o billing acumula as diárias daqui.
+    # Falha de receiver NÃO derruba a alta — o contrato está no docstring do
+    # sinal, e cada receiver trata as próprias exceções.
+    admission_pre_bed_release.send(sender=Admission, admission=locked, actor=actor)
+
+    # Só agora o leito é solto.
+    locked.current_bed = None
+    locked.save(update_fields=["current_bed", "updated_at"])
 
     AdmissionEvent.objects.create(
         admission=locked,
