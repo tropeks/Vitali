@@ -138,13 +138,22 @@ class PortalPreConsultTest(TenantTestCase):
             format="json",
         )
         response = ClinicalFormResponse.objects.get(patient=self.patient)
-        # The encrypted DB column must not contain the plaintext answer value.
+        # The encrypted DB column must not contain the plaintext answers.
         from django.db import connection
 
         with connection.cursor() as cur:
             cur.execute("SELECT answers FROM emr_clinicalformresponse WHERE id = %s", [response.pk])
-            raw = cur.fetchone()[0]
-        self.assertNotIn("55", str(raw))
+            raw = str(cur.fetchone()[0])
+
+        # Procure pelo JSON em claro, NUNCA pelo valor solto: um Fernet token é
+        # base64 url-safe ([A-Za-z0-9_-]), que não tem aspas nem chaves, então
+        # estas asserções não podem colidir por acaso. Buscar "55" podia — e
+        # colidiu, derrubando o CI com um token que continha "…o55SJkS…".
+        self.assertNotIn('"peso"', raw)
+        self.assertNotIn("{", raw)
+        self.assertTrue(raw.startswith("gAAAAA"), f"não parece um token Fernet: {raw[:16]}")
+        # E o valor continua legível pela aplicação, que é o outro lado do contrato.
+        self.assertEqual(response.answers["peso"], 55)
 
     def test_invalid_answers_rejected(self):
         resp = self.client.post(
