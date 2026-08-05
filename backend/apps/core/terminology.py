@@ -30,7 +30,7 @@ from apps.core.cbo_cnes_models import CBOCode, CNESEstablishment
 from apps.core.cido_models import CIDOMorphology
 from apps.core.loinc_models import LoincCode, UcumUnit
 from apps.core.manchester_catalog_models import ManchesterFlowchart
-from apps.core.models import CID10Code
+from apps.core.models import CID10Code, TUSSCode
 from apps.core.nursing_catalog_models import NandaDiagnosis, NicIntervention, NocOutcome
 from apps.core.sigtap_catalog_models import SIGTAPProcedure
 from apps.core.terminology_base import normalize_text
@@ -193,3 +193,37 @@ def _serialize(system: str, row) -> dict:
         "active": row.active,
         "context": _context(system, row),
     }
+
+
+def tuss_for_anvisa_registro(registro: str | None):
+    """O ``TUSSCode`` de medicamento correspondente a um registro ANVISA.
+
+    A ponte que permite faturar um medicamento dispensado: ``Drug.anvisa_code``
+    (ou o registro da apresentação) chega aqui e sai o código TUSS da tabela 20,
+    que é o que a ``PriceTable`` do convênio sabe precificar. O material já tinha
+    esse caminho por ``SimproMaterial.tuss_code``; o medicamento não tinha nenhum.
+
+    O registro tem 13 dígitos = 9 do produto + 4 da apresentação. Tenta o
+    casamento exato primeiro; não achando, cai para **qualquer apresentação do
+    mesmo produto**, porque uma dispensação frequentemente conhece só o produto e
+    é o mesmo medicamento — não faturar seria pior que faturar pela apresentação
+    irmã.
+
+    Devolve ``None`` para entrada vazia ou sem correspondência. Nunca adivinha.
+    """
+    registro = "".join(ch for ch in (registro or "").strip() if ch.isdigit())
+    if not registro:
+        return None
+
+    exato = TUSSCode.objects.filter(anvisa_registro=registro, active=True).order_by("code").first()
+    if exato is not None:
+        return exato
+
+    produto = registro[:9]
+    if len(produto) < 9:
+        return None
+    return (
+        TUSSCode.objects.filter(anvisa_registro__startswith=produto, active=True)
+        .order_by("code")
+        .first()
+    )

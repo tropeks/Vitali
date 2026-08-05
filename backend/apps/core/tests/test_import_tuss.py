@@ -27,6 +27,7 @@ _FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
 _SAMPLE_CSV = os.path.join(_FIXTURES_DIR, "tuss_sample.csv")
 _MALFORMED_CSV = os.path.join(_FIXTURES_DIR, "tuss_malformed.csv")
 _TABELA_CSV = os.path.join(_FIXTURES_DIR, "tuss_sample_tabela.csv")
+_ANVISA_CSV = os.path.join(_FIXTURES_DIR, "tuss_sample_anvisa.csv")
 
 # tuss_sample.csv has 3 fabricated FAKE- data rows (CODIGO: 10101010, 20202020, 30303030).
 _SAMPLE_ROW_COUNT = 3
@@ -100,6 +101,62 @@ class ImportTussTableNumberTests(TenantTestCase):
         TUSSCode.objects.filter(code="10101010").update(description="antes")
         call_command("import_tuss", file=_SAMPLE_CSV, tuss_version="2024-01")
         self.assertEqual(TUSSCode.objects.get(code="10101010").table_number, "22")
+
+
+class ImportTussAnvisaBridgeTests(TenantTestCase):
+    """A coluna REGISTRO ANVISA da tabela 20 vira ``TUSSCode.anvisa_registro``.
+
+    É a ponte que faltava entre o medicamento faturado e o medicamento
+    registrado. Material já tinha caminho — ``SimproMaterial`` carrega o TUSS,
+    então ``bill_surgical_materials_for_case`` precifica pela PriceTable. Para
+    medicamento não havia nada: ``Drug.anvisa_code`` é texto solto e o catálogo
+    ANVISA não sabia dizer qual TUSS cobrar.
+
+    A ANS publica o registro ANVISA em 100% dos 44.574 termos da tabela 20, então
+    a ligação é **fato da fonte**, não inferência nossa.
+    """
+
+    def test_registro_anvisa_column_populates_the_bridge(self):
+        call_command("import_tuss", file=_ANVISA_CSV, tuss_version="202607")
+        med = TUSSCode.objects.get(code="90035593")
+        self.assertEqual(med.anvisa_registro, "1018003900019")
+        self.assertEqual(med.table_number, "20")
+
+    def test_absent_column_leaves_the_bridge_untouched(self):
+        """Export legado sem a coluna não pode apagar a ponte já gravada."""
+        call_command("import_tuss", file=_ANVISA_CSV, tuss_version="202607")
+        call_command("import_tuss", file=_SAMPLE_CSV, tuss_version="2024-01")
+        self.assertEqual(TUSSCode.objects.get(code="90035593").anvisa_registro, "1018003900019")
+
+    def test_lookup_finds_the_tuss_of_a_registered_drug(self):
+        from apps.core.terminology import tuss_for_anvisa_registro
+
+        call_command("import_tuss", file=_ANVISA_CSV, tuss_version="202607")
+        found = tuss_for_anvisa_registro("1018003900019")
+        self.assertIsNotNone(found)
+        self.assertEqual(found.code, "90035593")
+
+    def test_lookup_falls_back_from_presentation_to_product(self):
+        """O registro de 13 dígitos é produto (9) + apresentação (4).
+
+        Uma dispensação costuma conhecer só o produto. Quando não há TUSS para a
+        apresentação exata, cair para qualquer apresentação do MESMO produto é
+        melhor que não faturar — é o mesmo medicamento.
+        """
+        from apps.core.terminology import tuss_for_anvisa_registro
+
+        call_command("import_tuss", file=_ANVISA_CSV, tuss_version="202607")
+        found = tuss_for_anvisa_registro("101800390")  # só o produto, 9 dígitos
+        self.assertIsNotNone(found)
+        self.assertEqual(found.code, "90035593")
+
+    def test_lookup_is_blank_safe_and_never_guesses(self):
+        from apps.core.terminology import tuss_for_anvisa_registro
+
+        call_command("import_tuss", file=_ANVISA_CSV, tuss_version="202607")
+        self.assertIsNone(tuss_for_anvisa_registro(""))
+        self.assertIsNone(tuss_for_anvisa_registro(None))
+        self.assertIsNone(tuss_for_anvisa_registro("9999999999999"))
 
 
 class ImportTussMalformedTests(TenantTestCase):

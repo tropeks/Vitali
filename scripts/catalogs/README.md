@@ -224,10 +224,17 @@ faturável. Importado no staging em 2026-08-04.
   A altura do cabeçalho e a **posição das colunas mudam entre tabelas** (a T20 tem
   Apresentação/Laboratório no meio), então header e colunas são achados por NOME.
 - **Datas em serial do Excel** (`39857`), não texto.
-- **Não importado**: `Apresentação`, `Laboratório` e `REGISTRO ANVISA` da tabela
-  20 não têm campo em `TUSSCode`. O registro ANVISA em especial seria a ponte
-  TUSS↔`core.AnvisaProduct` para casar medicamento faturado com produto
-  registrado — vale um campo próprio (backlog).
+- ✅ **Ponte TUSS↔ANVISA (2026-08-04)**: o `REGISTRO ANVISA` da tabela 20 vai para
+  `TUSSCode.anvisa_registro` (core 0040). Está preenchido em **44.563 dos 44.574**
+  termos de medicamento, e é o que permite saber qual TUSS cobrar por um
+  medicamento dispensado — o material já tinha esse caminho via
+  `SimproMaterial.tuss_code`, o medicamento não tinha nenhum. Use
+  `apps.core.terminology.tuss_for_anvisa_registro`, que casa pelo registro de 13
+  dígitos e cai para o produto (9 dígitos) quando a apresentação exata não tem
+  TUSS. Cobertura medida: 25.566 registros casam com apresentação CMED importada.
+- **Não importado**: `Apresentação` e `Laboratório` da tabela 20 não têm campo em
+  `TUSSCode` (a apresentação vive em `core.AnvisaPresentation`, alcançável pela
+  ponte acima).
 
 ## Pendências (fontes)
 

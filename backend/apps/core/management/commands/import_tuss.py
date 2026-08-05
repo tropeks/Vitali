@@ -264,6 +264,28 @@ class Command(BaseCommand):
                     defaults["table_number"] = _col(
                         row, "TABELA", "tabela", "Tabela", "table_number"
                     )
+                # Registro ANVISA do medicamento (coluna da tabela TUSS 20). Mesma
+                # regra: só escreve quando a coluna existe, para um export legado
+                # não apagar a ponte já gravada.
+                if any(
+                    k in row
+                    for k in (
+                        "REGISTRO_ANVISA",
+                        "registro_anvisa",
+                        "REGISTRO ANVISA",
+                        "anvisa_registro",
+                    )
+                ):
+                    defaults["anvisa_registro"] = (
+                        _col(
+                            row,
+                            "REGISTRO_ANVISA",
+                            "registro_anvisa",
+                            "REGISTRO ANVISA",
+                            "anvisa_registro",
+                        )
+                        or None
+                    )
                 if any(k in row for k in ("IDADE_MIN_DIAS", "idade_min_dias", "age_min_days")):
                     defaults["age_min_days"] = _opt_int(
                         row, "IDADE_MIN_DIAS", "idade_min_dias", "age_min_days"

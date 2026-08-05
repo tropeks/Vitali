@@ -225,6 +225,23 @@ class TUSSCode(models.Model):
         db_index=True,
         help_text="Número da tabela TUSS de origem (ex.: '22'). Null = não informado.",
     )
+    # Ponte medicamento faturado ↔ medicamento registrado. A ANS publica o
+    # registro ANVISA em 100% dos termos da tabela 20 (medicamentos), então isto
+    # é fato da fonte, nunca inferência. É o que permite saber qual TUSS cobrar
+    # por um medicamento dispensado — o material já tinha esse caminho via
+    # SimproMaterial.tuss_code; o medicamento não tinha nenhum.
+    #
+    # 13 dígitos = 9 do produto + 4 da apresentação, o mesmo esquema de
+    # core.AnvisaPresentation.code. null=True distingue "não informado" de um
+    # registro vazio de verdade — DJ001 suprimido por convenção do repo.
+    anvisa_registro = models.CharField(  # noqa: DJ001
+        "Registro ANVISA",
+        max_length=20,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Registro ANVISA do medicamento (tabela TUSS 20). Null = não informado.",
+    )
     search_vector = SearchVectorField(null=True)  # pg_trgm + tsvector for fuzzy search
 
     # ── Clinical-compatibility metadata (glosa wedge PR G3b) ──────────────────

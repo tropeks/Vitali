@@ -114,7 +114,7 @@ for numero, grupo, prefixo in TABELAS:
         continue
     path = matches[0]
     header = None
-    col_cod = col_desc = col_fim = None
+    col_cod = col_desc = col_fim = col_reg = None
     total = revogados = dup = 0
     for row in _rows(path):
         if header is None:
@@ -123,6 +123,9 @@ for numero, grupo, prefixo in TABELAS:
                 col_cod = _find(header, "código do termo")
                 col_desc = _find(header, "termo")
                 col_fim = _find(header, "fim de vigência")
+                # Só a tabela 20 (medicamentos) traz o registro ANVISA — é a
+                # ponte para core.AnvisaProduct/AnvisaPresentation.
+                col_reg = _find(header, "registro anvisa")
                 # "Termo" casaria com "Código do Termo"; garante colunas distintas.
                 if col_desc == col_cod:
                     col_desc = _find({k: v for k, v in header.items() if k != col_cod}, "termo")
@@ -150,11 +153,15 @@ for numero, grupo, prefixo in TABELAS:
                 "GRUPO": grupo,
                 "SUBGRUPO": "",
                 "TABELA": numero,
+                # Só dígitos: a fonte às vezes traz o registro pontuado.
+                "REGISTRO_ANVISA": (
+                    "".join(ch for ch in row.get(col_reg, "") if ch.isdigit()) if col_reg else ""
+                ),
             }
         )
     resumo.append((numero, grupo, total, revogados, dup))
 
-cols = ["CODIGO", "DESCRICAO", "GRUPO", "SUBGRUPO", "TABELA"]
+cols = ["CODIGO", "DESCRICAO", "GRUPO", "SUBGRUPO", "TABELA", "REGISTRO_ANVISA"]
 with open("tuss_full.csv", "w", encoding="utf-8", newline="") as fh:
     fh.write("# TUSS — padrão TISS/ANS, tabelas 22/18/20 vigentes -> core.TUSSCode\n")
     w = csv.DictWriter(fh, fieldnames=cols, delimiter=";")
@@ -165,6 +172,8 @@ print(f"hoje = serial Excel {HOJE_SERIAL}")
 for numero, grupo, total, revogados, dup in resumo:
     print(f"tabela {numero} ({grupo}): {total} termos | revogados {revogados} | duplicados {dup}")
 print(f"total vigente exportado: {len(out)}")
+com_reg = sum(1 for r in out if r["REGISTRO_ANVISA"])
+print(f"  com registro ANVISA (ponte p/ o catálogo de medicamentos): {com_reg}")
 for r in out[:2]:
     print(" ", r["CODIGO"], "|", r["DESCRICAO"][:44], "| tab", r["TABELA"])
 # spot-check: códigos TUSS de uso corrente
