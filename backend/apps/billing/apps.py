@@ -7,7 +7,10 @@ class BillingConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
 
     def ready(self):
-        # Registra o receiver que acumula as diárias na alta (B5). O import é
-        # que executa o @receiver, e precisa acontecer aqui, depois de os models
-        # estarem carregados. Mesmo padrão do apps.emr.
-        from apps.billing.services import inpatient_signals  # noqa: F401
+        # Registra os receivers do domínio. O import é que executa o @receiver,
+        # e precisa acontecer aqui, depois de os models estarem carregados.
+        # Mesmo padrão do apps.emr.
+        from apps.billing.services import (  # noqa: F401
+            dispensation_billing,
+            inpatient_signals,
+        )

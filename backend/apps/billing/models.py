@@ -849,6 +849,23 @@ class TISSGuideItem(models.Model):
         related_name="guide_items",
         verbose_name="Material cirúrgico de origem",
     )
+    # Idempotência da dispensação de medicamento: UUID solto, NÃO FK.
+    #
+    # O par natural seria uma FK para ``pharmacy.Dispensation``, como
+    # ``surgical_material`` é para ``emr.SurgicalMaterial``. Não dá:
+    # ``apps.billing -> apps.pharmacy`` é proibido pelo import-linter e não está
+    # na lista de exceções. Guardar só o UUID custa a integridade referencial
+    # (apagar a dispensação não limpa nem sinaliza a linha faturada) e preserva a
+    # fronteira entre os domínios — que é o que impede o faturamento de virar
+    # dependência de tudo. O acoplamento acontece por sinal
+    # (``core.dispensation_signals``), com payload primitivo.
+    dispensation_source_id = models.UUIDField(
+        "Dispensação de origem",
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="UUID da pharmacy.Dispensation que gerou esta linha (sem FK: fronteira de domínio).",
+    )
 
     class Meta:
         verbose_name = "Item de Guia"

@@ -17,6 +17,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.dispensation_signals import dispensation_billable
 from apps.core.models import AuditLog
 from apps.core.permissions import HasPermission, ModuleRequiredPermission
 
@@ -1276,6 +1277,24 @@ class DispenseView(APIView):
         else:
             rx_locked.status = "partially_dispensed"
         rx_locked.save(update_fields=["status"])
+
+        # B9 — avisa que há medicamento dispensado a faturar. Sinal, não import:
+        # apps.pharmacy -> apps.billing é proibido pelo import-linter, então o
+        # ponto de encontro é o core e o payload é primitivo (a farmácia não
+        # conhece faturamento; o faturamento não conhece farmácia).
+        #
+        # Quem escuta trata as próprias exceções: uma falha de cobrança não pode
+        # impedir um remédio de chegar ao paciente.
+        drug = getattr(rx_item, "drug", None)
+        dispensation_billable.send(
+            sender=Dispensation,
+            encounter_id=prescription.encounter_id,
+            patient_id=prescription.patient_id,
+            anvisa_registro=getattr(drug, "anvisa_code", "") or "",
+            quantity=requested_qty,
+            description=getattr(drug, "name", "") or "",
+            source_id=dispensation.id,
+        )
 
         return dispensation
 
