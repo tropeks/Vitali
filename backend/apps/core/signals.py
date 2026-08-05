@@ -354,6 +354,7 @@ def protect_sigtap_procedure_deletion(sender, instance, **kwargs):
                 BpaIndividualizado,
             )
             from apps.emr.models import EncounterProcedure
+            from apps.emr.surgery_models import SurgicalProcedure
 
             if BpaConsolidado.objects.filter(sigtap=instance).exists():
                 raise ProtectedError(
@@ -394,6 +395,13 @@ def protect_sigtap_procedure_deletion(sender, instance, **kwargs):
             if EncounterProcedure.objects.filter(sigtap=instance).exists():
                 raise ProtectedError(
                     f"SIGTAPProcedure {instance.code} is referenced by EncounterProcedure in "
+                    f"schema '{tenant.schema_name}' and cannot be deleted.",
+                    {instance},
+                )
+            # B7: a codificação SUS de uma cirurgia (emr.SurgicalProcedure.sigtap).
+            if SurgicalProcedure.objects.filter(sigtap=instance).exists():
+                raise ProtectedError(
+                    f"SIGTAPProcedure {instance.code} is referenced by SurgicalProcedure in "
                     f"schema '{tenant.schema_name}' and cannot be deleted.",
                     {instance},
                 )

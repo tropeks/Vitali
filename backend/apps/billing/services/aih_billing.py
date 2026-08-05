@@ -266,4 +266,15 @@ def _secundarios_do_encounter(admission: Admission, procedimento_principal) -> l
         .exclude(sigtap_id=procedimento_principal.pk)
         .order_by("created_at")
     )
-    return [(ep.sigtap, int(ep.quantity)) for ep in eps]
+    linhas = [(ep.sigtap, int(ep.quantity)) for ep in eps]
+
+    # B7 — as cirurgias executadas da internação também são procedimentos SUS
+    # desta AIH. Antes ficavam de fora e o ato cirúrgico não era faturado.
+    from apps.billing.services.surgery_sus import surgical_sigtap_lines
+
+    linhas += [
+        (sigtap, qtd)
+        for sigtap, qtd in surgical_sigtap_lines(admission)
+        if sigtap.pk != procedimento_principal.pk
+    ]
+    return linhas

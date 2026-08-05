@@ -277,6 +277,22 @@ class SurgicalProcedure(models.Model):
         related_name="surgical_procedures",
         verbose_name="Procedimento (TUSS)",
     )
+    # B7 — eixo SUS. Sem ele, uma cirurgia feita pelo SUS não entrava em AIH/BPA/
+    # APAC: o ato acontecia, consumia sala e equipe, e não virava receita. Mesmo
+    # par de eixos que ``emr.EncounterProcedure`` já carregava (tuss_code +
+    # sigtap), e mesmo tratamento cross-schema: DO_NOTHING + o pre_delete
+    # ``protect_sigtap_procedure_deletion``.
+    #
+    # Opcional de propósito: cirurgia de convênio não tem código SIGTAP, e
+    # exigi-lo obrigaria a inventar codificação SUS onde ela não existe.
+    sigtap = models.ForeignKey(
+        "core.SIGTAPProcedure",
+        on_delete=models.DO_NOTHING,
+        related_name="surgical_procedures",
+        null=True,
+        blank=True,
+        verbose_name="Procedimento (SIGTAP/SUS)",
+    )
     quantity = models.PositiveIntegerField("Quantidade", default=1)
     laterality = models.CharField(
         "Lateralidade",
@@ -304,6 +320,16 @@ class SurgicalProcedure(models.Model):
         if self.tuss_code_id:
             return self.tuss_code.code
         return ""
+
+    @property
+    def sigtap_code_value(self) -> str:
+        """Null-safe read accessor for the linked SIGTAP code string (else '').
+
+        Lê o objeto numa variável local em vez de testar ``sigtap_id``: o campo é
+        nullable e o mypy não deduz de ``sigtap_id`` que ``sigtap`` não é None.
+        """
+        sigtap = self.sigtap
+        return sigtap.code if sigtap is not None else ""
 
     def __str__(self):
         return f"{self.tuss_code_id} × {self.quantity} — {self.case_id}"
