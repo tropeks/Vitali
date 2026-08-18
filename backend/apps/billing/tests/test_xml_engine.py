@@ -326,6 +326,67 @@ class HonorariosGuideXMLTests(XMLEngineTestCase):
             generate_guide_xml(guide)
 
 
+class CnesObrigatorioTests(XMLEngineTestCase):
+    """CNES ausente produz XML XSD-INVÁLIDO — nas três guias e no lote.
+
+    ``st_texto7`` (CNES) e ``st_texto14`` (codigoPrestadorNaOperadora) têm
+    ``minLength="1"``. O padrão ``{{ professional.cnes_code if professional else
+    '' }}``, usado em consulta_guide.xml.j2 e internacao_guide.xml.j2, emite o
+    elemento VAZIO quando o profissional não tem CNES — não é "campo em branco
+    aceitável", é lote rejeitado pela operadora sem dizer por quê.
+
+    Passava despercebido porque toda fixtura do repo sempre teve CNES. Estes
+    testes existem para que a ausência falhe ALTO, com mensagem acionável, em vez
+    de virar rejeição silenciosa lá na frente.
+    """
+
+    def _sem_cnes(self):
+        self.professional.cnes_code = ""
+        self.professional.save()
+
+    def test_consulta_sem_cnes_falha_em_vez_de_emitir_vazio(self):
+        self._sem_cnes()
+        guide = self._make_consulta_guide()
+
+        with pytest.raises(TISSXMLGenerationError, match="CNES"):
+            generate_guide_xml(guide)
+
+    def test_internacao_sem_cnes_falha_em_vez_de_emitir_vazio(self):
+        self._sem_cnes()
+        guide = TISSGuide.objects.create(
+            guide_type="internacao",
+            encounter=self.encounter,
+            patient=self.patient,
+            provider=self.provider,
+            insured_card_number="1234567890123456",
+            authorization_number="AUTH123",
+            competency="2026-08",
+        )
+
+        with pytest.raises(TISSXMLGenerationError, match="CNES"):
+            generate_guide_xml(guide)
+
+    def test_lote_sem_cnes_da_clinica_falha_em_vez_de_gerar_envelope_invalido(self):
+        """O cabeçalho do lote emite codigoPrestadorNaOperadora (st_texto14,
+        minLength=1) a partir do MESMO CNES. Vazio ali invalida o envelope
+        inteiro, não uma guia só — todas as guias do lote vão junto."""
+        self._sem_cnes()
+        guide = self._make_consulta_guide()
+        batch = TISSBatch.objects.create(provider=self.provider)
+        batch.guides.add(guide)
+
+        with pytest.raises(TISSXMLGenerationError, match="CNES"):
+            generate_batch_xml(batch)
+
+    def test_com_cnes_o_caminho_feliz_segue_valido(self):
+        """Não-regressão: o endurecimento não pode quebrar o caso normal."""
+        guide = self._make_consulta_guide()
+        batch = TISSBatch.objects.create(provider=self.provider)
+        batch.guides.add(guide)
+
+        assert validate_xml(generate_batch_xml(batch)) == []
+
+
 class SadtGuideXMLConformanceTests(XMLEngineTestCase):
     """guiaSP-SADT (ctm_sp-sadtGuia) — dadosSolicitante FECHADO, residual avançou.
 
@@ -650,7 +711,9 @@ class SadtSolicitanteResolutionTests(XMLEngineTestCase):
         solicitante = self._outro_profissional()
         guide = self._sadt_guide(requesting_professional=solicitante)
 
-        with pytest.raises(TISSXMLGenerationError, match="não tem CNES do executante"):
+        with pytest.raises(
+            TISSXMLGenerationError, match="não tem CNES do estabelecimento executante"
+        ):
             generate_guide_xml(guide)
 
     def test_cnes_longo_demais_falha_em_vez_de_truncar(self):

@@ -795,6 +795,44 @@ def _resolve_sadt_solicitacao(guide) -> dict:
     return {"sadt_carater_atendimento": carater}
 
 
+def _cnes_obrigatorio(professional, *, onde: str, referencia: str) -> str:
+    """CNES do executante, ou falha alta. Fonte única da regra nas TRÊS guias.
+
+    POR QUE ISTO EXISTE, com a medição que o motivou. ``CNES`` é ``st_texto7`` e
+    ``codigoPrestadorNaOperadora`` é ``st_texto14`` — **os dois com
+    ``minLength="1"``**. O padrão que os templates usavam,
+    ``{{ professional.cnes_code if professional else '' }}``, emite o elemento
+    VAZIO quando não há CNES, e isso não é "campo em branco aceitável": um lote
+    de uma guia de consulta sem CNES produz TRÊS erros
+    ``SCHEMAV_CVC_MINLENGTH_VALID`` — dois no ``codigoPrestadorNaOperadora`` (o do
+    cabeçalho do lote e o da guia) e um no ``CNES``.
+
+    O envelope inválido derruba o LOTE INTEIRO, não a guia sem CNES: todas as
+    outras guias do mesmo lote vão junto, e a operadora rejeita sem dizer qual
+    prestador estava sem cadastro. Falhar aqui, com o número da guia e o que
+    corrigir, troca uma rejeição silenciosa e cara por um erro acionável.
+
+    Passou despercebido até agora só porque toda fixtura do repo sempre teve
+    CNES — o defeito era latente, não inexistente.
+    """
+    cnes = (getattr(professional, "cnes_code", "") or "").strip() if professional else ""
+    if not cnes:
+        raise TISSXMLGenerationError(
+            f"{onde} não tem CNES do estabelecimento executante: o XSD exige "
+            "CNES (st_texto7) e codigoPrestadorNaOperadora (st_texto14), ambos com "
+            "minLength=1 — emitir vazio invalida o lote INTEIRO, não só esta guia, e "
+            "a operadora rejeita sem dizer qual prestador está sem cadastro. "
+            f"O CNES vem de {referencia}; cadastre-o antes de gerar o XML."
+        )
+    if len(cnes) > 7:
+        raise TISSXMLGenerationError(
+            f"{onde}: CNES {cnes!r} tem {len(cnes)} caracteres e o XSD aceita no "
+            "máximo 7 (st_texto7). Truncar mudaria o identificador do "
+            "estabelecimento — corrija o cadastro do profissional."
+        )
+    return cnes
+
+
 def _resolve_sadt_executante(guide, professional) -> dict:
     """Resolve ``<dadosExecutante>`` de ctm_sp-sadtGuia.
 
@@ -826,21 +864,11 @@ def _resolve_sadt_executante(guide, professional) -> dict:
     rejeita sem dizer por quê. O mesmo endurecimento cabe ao template de
     internação; fica registrado como pendência, fora do escopo desta fatia.
     """
-    cnes = (getattr(professional, "cnes_code", "") or "").strip() if professional else ""
-    if not cnes:
-        raise TISSXMLGenerationError(
-            f"Guia SP/SADT {guide.guide_number} não tem CNES do executante: "
-            "dadosExecutante (ctm_sp-sadtGuia) exige contratadoExecutante e CNES, e "
-            "st_texto7 tem minLength=1 — emitir o elemento vazio geraria um lote "
-            "XSD-inválido. O CNES vem do profissional do atendimento "
-            "(encounter.professional); cadastre-o antes de gerar o XML."
-        )
-    if len(cnes) > 7:
-        raise TISSXMLGenerationError(
-            f"Guia SP/SADT {guide.guide_number}: CNES {cnes!r} tem {len(cnes)} "
-            "caracteres e o XSD aceita no máximo 7 (st_texto7). Truncar mudaria o "
-            "identificador do estabelecimento — corrija o cadastro do profissional."
-        )
+    cnes = _cnes_obrigatorio(
+        professional,
+        onde=f"Guia SP/SADT {guide.guide_number}",
+        referencia="o profissional do atendimento (encounter.professional)",
+    )
     return {"executante_cnes": cnes}
 
 
@@ -950,6 +978,18 @@ def generate_guide_xml(guide) -> str:
 
     context: dict = {"guide": guide, "professional": professional}
 
+    # CNES do executante: consulta e internação emitem CNES e
+    # codigoPrestadorNaOperadora, os dois com minLength=1 no XSD. Validado aqui,
+    # uma vez, em vez de o template decidir o que fazer com a ausência — ver
+    # _cnes_obrigatorio para a medição que motivou o endurecimento. A SP/SADT
+    # resolve o mesmo valor no seu próprio bloco, logo abaixo.
+    if guide.guide_type in ("consulta", "internacao"):
+        context["executante_cnes"] = _cnes_obrigatorio(
+            professional,
+            onde=f"Guia {guide.get_guide_type_display()} {guide.guide_number}",
+            referencia="o profissional do atendimento (encounter.professional)",
+        )
+
     if guide.guide_type == "consulta":
         # ctm_consultaGuia (tissGuiasV4_01_00.xsd) models exactly ONE
         # <procedimento> per guia de consulta — not a repeatable list. Fail
@@ -1050,12 +1090,24 @@ def generate_batch_xml(batch) -> str:
             guide_xml[guide.guide_number] = f"<!-- ERROR guide {guide.guide_number}: {exc} -->"
 
     # Clinic CNES — derive from first guide's professional CNES if available
+    # O cabeçalho do lote emite codigoPrestadorNaOperadora (st_texto14,
+    # minLength=1) a partir deste valor. Vazio invalida o ENVELOPE, e com ele
+    # todas as guias do lote — inclusive as que estão perfeitas. Por isso a
+    # ausência falha alto aqui, antes de render, em vez de virar rejeição.
     clinic_cnes = ""
     if guides:
         try:
             clinic_cnes = guides[0].encounter.professional.cnes_code or ""
         except Exception:
             pass
+        if not (clinic_cnes or "").strip():
+            raise TISSXMLGenerationError(
+                f"Lote {batch.batch_number} não tem CNES do prestador: o cabeçalho do "
+                "lote emite codigoPrestadorNaOperadora (st_texto14, minLength=1) a "
+                "partir do CNES do profissional da primeira guia, e vazio invalida o "
+                "envelope INTEIRO — todas as guias do lote são rejeitadas junto. "
+                "Cadastre o CNES do profissional antes de gerar o lote."
+            )
 
     now = timezone.now()
     rendered = template.render(

@@ -74,7 +74,7 @@ tabelas abaixo são a leitura orientada a "de onde vem o dado".
 | `dadosSolicitacao.indicacaoClinica` | opcional | parcial | `guide.encounter` tem `chief_complaint` (encrypted) — não é o mesmo campo semântico | não bloqueador (opcional) |
 | `dadosSolicitacao.indCobEspecial` | opcional | ❌ | — | não bloqueador (opcional) |
 | `dadosExecutante.contratadoExecutante` (choice) | sim | ✅ **(resolvido 18/08)** | `encounter.professional.cnes_code` via `_resolve_sadt_executante` | forma MEDIDA no XSD e igual à do resumo de internação (`contratadoExecutante` + `CNES` irmão), **não** a de `guiaConsulta` (que usa `contratadoExecutante`+`profissionalExecutante`). `codigoPrestadorNaOperadora` é texto livre e recebe o CNES: placeholder documentado, o mesmo do cabeçalho do lote |
-| `dadosExecutante.CNES` | sim | ✅ **(endurecido 18/08)** | `professional.cnes_code` (governado via `core.CNESEstablishment`) | `st_texto7` tem `minLength="1"`: CNES ausente produziria `<CNES></CNES>`, XSD-**inválido**. `_resolve_sadt_executante` falha alto em vez de gerar lote que a operadora rejeita sem explicar. **Pendência**: `internacao_guide.xml.j2` emite `{{ professional.cnes_code if professional else '' }}` e tem o mesmo buraco latente — passa hoje só porque as fixturas sempre têm CNES |
+| `dadosExecutante.CNES` | sim | ✅ **(endurecido 18/08)** | `professional.cnes_code` (governado via `core.CNESEstablishment`) | `st_texto7` tem `minLength="1"`: CNES ausente produziria `<CNES></CNES>`, XSD-**inválido**. `_cnes_obrigatorio` falha alto em vez de gerar lote que a operadora rejeita sem explicar. **Pendência RESOLVIDA em 18/08** — ver a seção abaixo |
 | `dadosAtendimento.tipoAtendimento` | sim | ✅ **(resolvido 18/08)** | `TISSGuide.tipo_atendimento` (migration `0039`) | 9 códigos lidos do XSD (`01,02,03,04,08,09,10,13,23`). **Não virou default fixo**: nada no Vitali diz o tipo do atendimento, e escolher um por guia-type seria inferência clínica. Campo próprio + falha alta, mesmo movimento de `tipo_faturamento`. Rótulos pendentes de manual |
 | `dadosAtendimento.indicacaoAcidente` | sim | ✅ **(portado 18/08)** | default `"9"` de `_INDICACAO_ACIDENTE_DEFAULT` | política JÁ VIGENTE no repo (`consulta_guide.xml.j2` e `internacao_guide.xml.j2` emitem o mesmo), aplicada com consistência em vez de inventada aqui. **Ressalva registrada**: afirmar "não acidente" para todo atendimento É suposição sobre fato clínico; o resolve permanente é capturá-lo, e mudar isso agora divergiria das outras duas guias sem teste que cubra a mudança |
 | `dadosAtendimento.regimeAtendimento` | sim | ✅ **(resolvido 18/08)** | `TISSGuide.regime_atendimento` (migration `0039`) | 5 códigos do XSD. O atalho sugerido aqui ("01 cobre a maioria", ou deduzir de `guide.admission_id`) foi **recusado**: "a maioria" não é o caso concreto, e deduzir regime de um FK é inferência clínica. Campo próprio + falha alta |
@@ -111,6 +111,33 @@ consumida sem normalização. Uma resposta fora do contrato (proxy, 302 para HTM
 deixaria os arrays `undefined` e o `.map` do `<select>` derrubaria a **página
 inteira** — select vazio é ruim, tela em branco é pior. Corrigido nas duas telas,
 com teste dedicado.
+
+### CNES vazio: o defeito latente que valia o lote inteiro (resolvido 18/08/2026)
+
+A pendência registrada na fatia de `dadosExecutante` era maior do que parecia: o padrão
+`{{ professional.cnes_code if professional else '' }}` estava em **duas** guias
+(`consulta_guide.xml.j2` e `internacao_guide.xml.j2`, duas ocorrências cada) e o cabeçalho do
+lote tinha o **terceiro** caso, em `clinic_cnes`.
+
+`CNES` é `st_texto7` e `codigoPrestadorNaOperadora` é `st_texto14` — **os dois com
+`minLength="1"`**. Medido antes de corrigir, com um lote real de uma guia de consulta cujo
+profissional não tem CNES:
+
+```
+PROVA_ERROS: 3
+  SCHEMAV_CVC_MINLENGTH_VALID: codigoPrestadorNaOperadora   (cabeçalho do lote)
+  SCHEMAV_CVC_MINLENGTH_VALID: codigoPrestadorNaOperadora   (guia)
+  SCHEMAV_CVC_MINLENGTH_VALID: CNES                          (guia)
+```
+
+O que torna isso caro não é a guia sem CNES — é que o **envelope inválido derruba o LOTE
+INTEIRO**, inclusive as guias que estão perfeitas, e a operadora rejeita sem dizer qual
+prestador está sem cadastro.
+
+Resolvido com `_cnes_obrigatorio`, fonte única da regra nas três guias e no lote: falha alta
+com o número da guia (ou do lote), o que falta e onde cadastrar. Passou despercebido até agora
+só porque **toda fixtura do repo sempre teve CNES** — o defeito era latente, não inexistente,
+e foi encontrado escrevendo o teste antes da correção.
 
 ## 3. Inventário — Resumo de Internação (`ctm_internacaoResumoGuia`)
 

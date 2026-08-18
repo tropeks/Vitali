@@ -98,9 +98,9 @@
       {# codigoPrestadorNaOperadora: mesmo placeholder do cabeçalho do lote —
          ver comentário em batch_envelope.xml.j2 e em
          consulta_guide.xml.j2/contratadoExecutante. #}
-      <ans:codigoPrestadorNaOperadora>{{ professional.cnes_code if professional else '' }}</ans:codigoPrestadorNaOperadora>
+      <ans:codigoPrestadorNaOperadora>{{ executante_cnes }}</ans:codigoPrestadorNaOperadora>
     </ans:contratadoExecutante>
-    <ans:CNES>{{ professional.cnes_code if professional else '' }}</ans:CNES>
+    <ans:CNES>{{ executante_cnes }}</ans:CNES>
   </ans:dadosExecutante>
   <ans:dadosInternacao>
     <ans:caraterAtendimento>{{ internacao_carater_atendimento }}</ans:caraterAtendimento>

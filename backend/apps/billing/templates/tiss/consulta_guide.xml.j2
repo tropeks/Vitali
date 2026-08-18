@@ -17,8 +17,8 @@
   <ans:contratadoExecutante>
     {# codigoPrestadorNaOperadora: mesmo placeholder do cabeçalho do lote —
        ver comentário em batch_envelope.xml.j2. #}
-    <ans:codigoPrestadorNaOperadora>{{ professional.cnes_code if professional else '' }}</ans:codigoPrestadorNaOperadora>
-    <ans:CNES>{{ professional.cnes_code if professional else '' }}</ans:CNES>
+    <ans:codigoPrestadorNaOperadora>{{ executante_cnes }}</ans:codigoPrestadorNaOperadora>
+    <ans:CNES>{{ executante_cnes }}</ans:CNES>
   </ans:contratadoExecutante>
   <ans:profissionalExecutante>
     <ans:conselhoProfissional>{{ professional.council_type | conselho_ans_code if professional else '' }}</ans:conselhoProfissional>
