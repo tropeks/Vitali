@@ -351,26 +351,13 @@ class SadtGuideXMLConformanceTests(XMLEngineTestCase):
     mapeia para ``dm_caraterAtendimento`` (eletiva → ``1``; urgência/emergência →
     ``2``). Para laboratório, a ausência de fonte continua sendo uma falha explícita;
     ``LabOrder.status`` não é promovido a uma afirmação clínica de urgência. O
-    residual agora começa em ``dadosExecutante``, seguido de ``dadosAtendimento``,
-    ``procedimentosExecutados`` e ``valorTotal``, ainda inalcançados pelo validador.
+    O bloco cirúrgico agora fecha toda a sequência obrigatória, incluindo
+    ``procedimentosExecutados`` e ``valorTotal``; ``validate_xml`` devolve lista
+    vazia. Para laboratório, a ausência de fonte de caráter continua sendo uma
+    falha explícita antes do XML.
     Ver docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §2.
     """
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "ctm_sp-sadtGuia: dadosSolicitante, dadosSolicitacao, "
-            "dadosExecutante e dadosAtendimento FECHADOS. MEDIDO com "
-            "validate_xml sobre guia de origem cirúrgica: o residual passou a "
-            "ser o grupo final — 'Expected is one of ( procedimentosExecutados, "
-            "outrasDespesas, observacao, valorTotal )', ou seja valorTotal, o "
-            "único obrigatório dos quatro. É a MESMA fatia que o resumo de "
-            "internação já resolveu (Alternativa A + breakdown por categoria), "
-            "aplicável aqui com ct_procedimentoExecutadoSadt no lugar de "
-            "...Int. Guia de LABORATÓRIO segue sem chegar ao validador: falha "
-            "alto em _resolve_sadt_solicitacao — ver Onda 4 §2."
-        ),
-    )
     def test_batch_envelope_with_sadt_guide_is_schema_valid(self):
         guide = TISSGuide.objects.create(
             guide_type="sadt",
@@ -584,12 +571,9 @@ class SadtSolicitanteResolutionTests(XMLEngineTestCase):
         batch.guides.add(guide)
         erros = validate_xml(generate_batch_xml(batch))
 
-        # O residual já não é dadosExecutante — é o que estiver adiante dele na
-        # sequência. Esta asserção é sobre o que ESTE bloco fechou; qual é o
-        # residual do momento é responsabilidade do teste de dadosAtendimento e
-        # do reason do xfail, para os dois não brigarem a cada fatia.
-        assert len(erros) == 1, erros
-        assert "dadosExecutante" not in erros[0]
+        # O bloco completo agora fecha a sequência obrigatória do SADT, incluindo
+        # procedimentosExecutados e valorTotal.
+        assert erros == [], erros
 
     def test_dados_atendimento_sai_na_ordem_do_xsd_e_avanca_o_residual(self):
         """Fecha dadosAtendimento e prova o avanço.
@@ -616,9 +600,9 @@ class SadtSolicitanteResolutionTests(XMLEngineTestCase):
         batch.guides.add(guide)
         erros = validate_xml(generate_batch_xml(batch))
 
-        assert len(erros) == 1, erros
-        assert "dadosAtendimento" not in erros[0]
-        assert "valorTotal" in erros[0]
+        assert erros == [], erros
+        assert "<ans:procedimentosExecutados>" in xml
+        assert "<ans:valorTotalGeral>150.00</ans:valorTotalGeral>" in xml
 
     def test_indicacao_acidente_usa_o_default_ja_vigente_no_repo(self):
         """ "9" não é decisão nova desta fatia: consulta_guide.xml.j2 e

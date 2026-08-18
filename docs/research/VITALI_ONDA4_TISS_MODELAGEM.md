@@ -1,8 +1,9 @@
 # Onda 4 — Modelagem de domínio para fechar SP/SADT e Resumo de Internação (TISS 4.01.00)
 
-> Documento de planejamento. Não altera código. Alvo: `SadtGuideXMLConformanceTests` e
-> `InternacaoGuideXMLConformanceTests` (`backend/apps/billing/tests/test_xml_engine.py`),
-> hoje `xfail(strict=True)`.
+> Documento de planejamento e evidência de implementação. Alvo original:
+> `SadtGuideXMLConformanceTests` e `InternacaoGuideXMLConformanceTests`
+> (`backend/apps/billing/tests/test_xml_engine.py`). Os dois gates cirúrgicos agora
+> estão verdes; continuam explícitas as falhas honestas para fontes ausentes.
 
 ## Resumo executivo (leia isto e decida)
 
@@ -34,9 +35,9 @@
 > faturadas antes das migrations `0036`/`0037` não têm `execution_date` nem
 > `billing_category`: a emissão falha alto na primeira e omite o breakdown na
 > segunda, de propósito, porque não há backfill honesto; (b) a SP/SADT segue em
-> `xfail`, agora parada em **`valorTotal`** — medido com `validate_xml` depois de
-> fechar `dadosSolicitante`, `dadosSolicitacao`, `dadosExecutante` e
-> `dadosAtendimento` para guias cirúrgicas; para laboratório, sem fonte de caráter, a emissão continua
+> conformidade de schema para guias cirúrgicas — medido com `validate_xml` depois de
+> fechar `dadosSolicitante`, `dadosSolicitacao`, `dadosExecutante`, `dadosAtendimento`,
+> `procedimentosExecutados` e `valorTotal`; para laboratório, sem fonte de caráter, a emissão continua
 > falhando alto. **`valorTotal` com breakdown por
 > categoria está FECHADO** (§4) — e por fato de origem, não por classificação de
 > TUSS, que a medição provou ser impossível.
@@ -156,7 +157,7 @@ de algumas operadoras, mas não é violação de schema).
 ### Duas alternativas
 
 **A — Total único, breakdown zero.** `valorTotalGeral = guide.total_value`, os sete campos
-opcionais omitidos. Sai do `xfail` imediatamente, zero migration, zero decisão de produto.
+ opcionais omitidos. Foi o primeiro caminho para sair do `xfail`, sem migration.
 Risco: operadoras que exigem breakdown (prática comum em glosas hospitalares) rejeitam ou
 glosam na prática, mesmo com XML schema-válido — **conformidade de schema ≠ aceite da
 operadora**, e isso precisa estar explícito para quem for aprovar esta fatia como "pronta".
@@ -172,7 +173,7 @@ as futuras, geradas depois do campo existir, seriam confiáveis 100%; as passada
 da reconstrução por `Admission.daily_charges`/`inpatient_fees`, que funciona hoje mas não é
 garantida para sempre).
 
-**Recomendação**: começar pela Alternativa A (sai do `xfail`, mede o resto do gap real) e
+**Recomendação histórica**: começar pela Alternativa A (sai do `xfail`, mede o resto do gap real) e
 tratar B como uma fatia separada, condicionada a (a) confirmar a correspondência
 tabela→categoria contra dado real e (b) o Capitão decidir se a operadora-alvo do MVP exige
 breakdown de fato ou se `valorTotalGeral` sozinho já resolve o caso de uso imediato.
@@ -363,23 +364,21 @@ Pequena: autorreferência ao `guide_number` (decisão de produto simples, baixo 
 validação de negócio bloqueando geração de guia de internação sem `authorization_number`
 preenchido. **Agente: `dev-pleno`.**
 
-**Fatia 5 — `ct_guiaValorTotal`, Alternativa A (total único).** ✅ **LANDED** (junto com
-`dadosInternacao`/`dadosSaidaInternacao`). `valorTotalGeral = guide.total_value`, sem
-breakdown, zero migration. O `xfail` de `InternacaoGuideXMLConformanceTests` CAIU:
-`validate_xml` devolve `[]` para a guia de resumo de internação.
-**Ressalva que precisa sobreviver a este check verde**: `procedimentosExecutados` é
-`minOccurs="0"` e NÃO é emitido — `ct_procedimentoExecutadoInt` exige `reducaoAcrescimo`
-(Fatia 1, não landed) e `dataExecucao` por item, e `TISSGuideItem` não tem nenhum dos dois.
-Ou seja, a guia sai XSD-válida com o total geral e SEM nenhuma linha de procedimento e sem
-breakdown. Schema-válido ≠ aceite: internação sem discriminação de itens é candidata natural
-a glosa. Fatia 1 + Alternativa B (§4) continuam abertas.
+**Fatia 5 — `ct_guiaValorTotal`, Alternativa A (total único).** ✅ **LANDED** (primeiro
+no resumo de internação, depois portado para SP/SADT). `valorTotalGeral = guide.total_value`,
+sem migration. Os dois gates cirúrgicos passaram a devolver `validate_xml == []`.
 
-**Fatia 6 (condicional) — `ct_guiaValorTotal`, Alternativa B (breakdown real).**
-Só se o Capitão decidir que a Alternativa A não basta. Primeiro passo obrigatório: medir a
-correspondência `table_number`/`group` real contra o catálogo TUSS importado (não supor).
-Maior fatia do documento — reabre a pergunta de proveniência `DailyCharge`/`InpatientFee`
-em `TISSGuideItem`. **Agente: este skill de novo para desenhar a modelagem específica antes
-de qualquer código, dado o tamanho da decisão.**
+**Fatia 6 — itens executados + Alternativa B (breakdown por fato de origem).** ✅ **LANDED**.
+`procedimentosExecutados` agora é emitido nos dois templates com `execution_date` e
+`reduction_increase_factor`; a forma SADT foi medida especificamente como
+`ct_procedimentoExecutadoSadt`, omitindo apenas opcionais sem fonte (horas, via, técnica,
+equipe). `_resolve_valor_total` aplica tudo-ou-nada: breakdown só sai quando toda linha tem
+categoria e a soma fecha com `guide.total_value`; senão permanece somente
+`valorTotalGeral`. Itens legados sem data continuam falhando alto, sem backfill inventado.
+Para laboratório, permanece a falha de fonte em `dadosSolicitacao`.
+
+O histórico da decisão permanece registrado na §4: a categoria é capturada na origem, não
+inferida de TUSS; a mesma regra é segura para SADT e internação.
 
 ## 8. Riscos e o que NÃO fazer
 

@@ -975,6 +975,10 @@ def generate_guide_xml(guide) -> str:
         context.update(_resolve_sadt_executante(guide, professional))
         # dadosAtendimento — tipo e regime NÃO são inferidos de nada.
         context.update(_resolve_sadt_atendimento(guide))
+        # A forma de ct_procedimentoExecutadoSadt foi medida no XSD e compartilha
+        # os mesmos campos obrigatórios já resolvidos para internação.
+        context["procedimentos"] = _resolve_internacao_procedimentos(guide)
+        context["valor_total_breakdown"] = _resolve_valor_total(guide)
 
     if guide.guide_type == "internacao":
         # dadosAutorizacao (ct_autorizacaoInternacao) is mandatory — see
