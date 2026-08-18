@@ -34,9 +34,10 @@
 > faturadas antes das migrations `0036`/`0037` não têm `execution_date` nem
 > `billing_category`: a emissão falha alto na primeira e omite o breakdown na
 > segunda, de propósito, porque não há backfill honesto; (b) a SP/SADT segue em
-> `xfail`, agora parada em **`dadosExecutante`** depois de fechar `dadosSolicitante`
-> e `dadosSolicitacao` para guias cirúrgicas; para laboratório, sem fonte de caráter,
-> a emissão continua falhando alto. **`valorTotal` com breakdown por
+> `xfail`, agora parada em **`dadosAtendimento`** — medido com `validate_xml`
+> depois de fechar `dadosSolicitante`, `dadosSolicitacao` e `dadosExecutante` para
+> guias cirúrgicas; para laboratório, sem fonte de caráter, a emissão continua
+> falhando alto. **`valorTotal` com breakdown por
 > categoria está FECHADO** (§4) — e por fato de origem, não por classificação de
 > TUSS, que a medição provou ser impossível.
 
@@ -71,8 +72,8 @@ tabelas abaixo são a leitura orientada a "de onde vem o dado".
 | `dadosSolicitacao.caraterAtendimento` | sim | ✅ **(resolvido 18/08)** | `SurgicalCase.priority` | mapeamento governado: `eletiva` → ANS `1`; `urgencia`/`emergencia` → ANS `2`; sem caso cirúrgico (ex.: laboratório), falha alto em vez de inferir urgência do status do pedido |
 | `dadosSolicitacao.indicacaoClinica` | opcional | parcial | `guide.encounter` tem `chief_complaint` (encrypted) — não é o mesmo campo semântico | não bloqueador (opcional) |
 | `dadosSolicitacao.indCobEspecial` | opcional | ❌ | — | não bloqueador (opcional) |
-| `dadosExecutante.contratadoExecutante` (choice) | sim | ✅ (placeholder) | template já usa `professional.cnes_code` como `codigoPrestadorNaOperadora` — mesmo padrão aceito no `consulta_guide.xml.j2` | já resolvido do jeito "placeholder documentado" — só falta portar a forma para o template SADT (Fatia 0) |
-| `dadosExecutante.CNES` | sim | ✅ | `professional.cnes_code` (governado via `core.CNESEstablishment`) | já funciona |
+| `dadosExecutante.contratadoExecutante` (choice) | sim | ✅ **(resolvido 18/08)** | `encounter.professional.cnes_code` via `_resolve_sadt_executante` | forma MEDIDA no XSD e igual à do resumo de internação (`contratadoExecutante` + `CNES` irmão), **não** a de `guiaConsulta` (que usa `contratadoExecutante`+`profissionalExecutante`). `codigoPrestadorNaOperadora` é texto livre e recebe o CNES: placeholder documentado, o mesmo do cabeçalho do lote |
+| `dadosExecutante.CNES` | sim | ✅ **(endurecido 18/08)** | `professional.cnes_code` (governado via `core.CNESEstablishment`) | `st_texto7` tem `minLength="1"`: CNES ausente produziria `<CNES></CNES>`, XSD-**inválido**. `_resolve_sadt_executante` falha alto em vez de gerar lote que a operadora rejeita sem explicar. **Pendência**: `internacao_guide.xml.j2` emite `{{ professional.cnes_code if professional else '' }}` e tem o mesmo buraco latente — passa hoje só porque as fixturas sempre têm CNES |
 | `dadosAtendimento.tipoAtendimento` | sim | ❌ | — | taxonomia ANS de 9 valores sem equivalente — **decisão de produto**: provavelmente sempre "SADT" (código a confirmar no manual ANS), pode ser default fixo documentado em vez de campo por guia |
 | `dadosAtendimento.indicacaoAcidente` | sim | ❌ | — | já tem default seguro `"9"` (não acidente) usado no `consulta_guide.xml.j2`; portar |
 | `dadosAtendimento.regimeAtendimento` | sim | ❌ | — | 5 valores; SADT ambulatorial = "01" cobre a maioria; internado precisaria saber se a guia SADT nasceu durante uma internação (`guide.admission_id` já existe como sinal) |

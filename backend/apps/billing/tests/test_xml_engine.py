@@ -359,14 +359,15 @@ class SadtGuideXMLConformanceTests(XMLEngineTestCase):
     @pytest.mark.xfail(
         strict=True,
         reason=(
-            "ctm_sp-sadtGuia: dadosSolicitante e dadosSolicitacao FECHADOS. "
-            "MEDIDO com validate_xml sobre uma guia de origem cirúrgica (a "
-            "única que hoje resolve caraterAtendimento): o residual é "
-            "dadosExecutante. Guia de LABORATÓRIO nem chega ao validador — "
-            "falha alto em _resolve_sadt_solicitacao, porque LabOrder não "
-            "registra caráter eletivo/urgente e assumir um default seria "
-            "inventar fato clínico. dadosAtendimento, procedimentosExecutados "
-            "e valorTotal seguem inalcançados — ver Onda 4 §2."
+            "ctm_sp-sadtGuia: dadosSolicitante, dadosSolicitacao e "
+            "dadosExecutante FECHADOS. MEDIDO com validate_xml sobre uma guia "
+            "de origem cirúrgica (a única que hoje resolve caraterAtendimento): "
+            "o residual é dadosAtendimento — avançou um elemento com esta "
+            "fatia. Guia de LABORATÓRIO nem chega ao validador: falha alto em "
+            "_resolve_sadt_solicitacao, porque LabOrder não registra caráter "
+            "eletivo/urgente e assumir default seria inventar fato clínico. "
+            "procedimentosExecutados e valorTotal seguem inalcançados — ver "
+            "Onda 4 §2."
         ),
     )
     def test_batch_envelope_with_sadt_guide_is_schema_valid(self):
@@ -548,6 +549,58 @@ class SadtSolicitanteResolutionTests(XMLEngineTestCase):
         )
 
         with pytest.raises(TISSXMLGenerationError, match="não tem fonte honesta"):
+            generate_guide_xml(guide)
+
+    def test_dados_executante_sai_com_a_forma_do_xsd_e_avanca_o_residual(self):
+        """Prova o avanço, não só a presença do bloco.
+
+        A forma é a MESMA do resumo de internação (contratadoExecutante + CNES
+        irmão), não a de guiaConsulta. E o teste mede o que passou a faltar: com
+        dadosExecutante emitido, o validador acusa dadosAtendimento — um elemento
+        adiante. Sem esta asserção, emitir o bloco em forma errada ainda passaria
+        aqui e só quebraria na conformidade.
+        """
+        solicitante = self._outro_profissional()
+        guide = self._sadt_guide(requesting_professional=solicitante)
+
+        xml = generate_guide_xml(guide)
+
+        assert "<ans:dadosExecutante>" in xml
+        assert "<ans:contratadoExecutante>" in xml
+        # CNES do executante = professional do encounter (fixture: "1234567").
+        assert "<ans:codigoPrestadorNaOperadora>1234567</ans:codigoPrestadorNaOperadora>" in xml
+        assert "<ans:CNES>1234567</ans:CNES>" in xml
+        # A forma de guiaConsulta (profissionalExecutante) NÃO pertence aqui.
+        assert "<ans:profissionalExecutante>" not in xml
+
+        batch = TISSBatch.objects.create(provider=self.provider)
+        batch.guides.add(guide)
+        erros = validate_xml(generate_batch_xml(batch))
+
+        assert len(erros) == 1, erros
+        assert "dadosAtendimento" in erros[0]
+        assert "dadosExecutante" not in erros[0]
+
+    def test_executante_sem_cnes_falha_em_vez_de_emitir_elemento_vazio(self):
+        """st_texto7 tem minLength=1: <CNES></CNES> é XSD-inválido e viraria
+        rejeição do lote sem explicação. Falha com mensagem acionável."""
+        self.professional.cnes_code = ""
+        self.professional.save()
+        solicitante = self._outro_profissional()
+        guide = self._sadt_guide(requesting_professional=solicitante)
+
+        with pytest.raises(TISSXMLGenerationError, match="não tem CNES do executante"):
+            generate_guide_xml(guide)
+
+    def test_cnes_longo_demais_falha_em_vez_de_truncar(self):
+        """Truncar mudaria o identificador do estabelecimento — é dado cadastral
+        de identificação, não texto livre."""
+        self.professional.cnes_code = "12345678"
+        self.professional.save()
+        solicitante = self._outro_profissional()
+        guide = self._sadt_guide(requesting_professional=solicitante)
+
+        with pytest.raises(TISSXMLGenerationError, match="no máximo 7"):
             generate_guide_xml(guide)
 
     def test_cbo_fora_de_dm_cbos_falha_com_o_codigo_na_mensagem(self):

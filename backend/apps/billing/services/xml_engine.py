@@ -795,6 +795,55 @@ def _resolve_sadt_solicitacao(guide) -> dict:
     return {"sadt_carater_atendimento": carater}
 
 
+def _resolve_sadt_executante(guide, professional) -> dict:
+    """Resolve ``<dadosExecutante>`` de ctm_sp-sadtGuia.
+
+    FORMA MEDIDA no XSD (``tissGuiasV4_01_00.xsd``), e é a MESMA do resumo de
+    internação — não a de guiaConsulta::
+
+        dadosExecutante
+          contratadoExecutante  ct_contratadoDados (choice)
+          CNES                  st_texto7
+
+    ``ct_contratadoDados`` é um ``<choice>`` entre ``codigoPrestadorNaOperadora``
+    (st_texto14), ``cpfContratado`` e ``cnpjContratado``. Emitimos o primeiro com
+    o CNES, exatamente como o cabeçalho do lote e o resumo de internação já
+    fazem: o código atribuído pela operadora não existe em model nenhum, e
+    ``codigoPrestadorNaOperadora`` é texto livre. É placeholder DOCUMENTADO, não
+    invenção — o CNES é um identificador real do estabelecimento, só não é o
+    identificador que a operadora atribuiu.
+
+    DADO: ``guide.encounter.professional.cnes_code``, o mesmo que todo template
+    desta pasta já resolve. Nenhum dado clínico é assumido aqui — CNES é
+    cadastral.
+
+    FALHA ALTA, e aqui esta função é mais dura que o template de internação:
+    ``st_texto7`` tem ``minLength="1"``, então ``<CNES></CNES>`` é XSD-INVÁLIDO.
+    O template de internação emite ``{{ professional.cnes_code if professional
+    else '' }}`` e produziria exatamente esse elemento vazio quando o profissional
+    não tem CNES — passa hoje só porque as fixturas sempre têm. Aqui a ausência
+    falha com mensagem acionável em vez de gerar um lote que a operadora
+    rejeita sem dizer por quê. O mesmo endurecimento cabe ao template de
+    internação; fica registrado como pendência, fora do escopo desta fatia.
+    """
+    cnes = (getattr(professional, "cnes_code", "") or "").strip() if professional else ""
+    if not cnes:
+        raise TISSXMLGenerationError(
+            f"Guia SP/SADT {guide.guide_number} não tem CNES do executante: "
+            "dadosExecutante (ctm_sp-sadtGuia) exige contratadoExecutante e CNES, e "
+            "st_texto7 tem minLength=1 — emitir o elemento vazio geraria um lote "
+            "XSD-inválido. O CNES vem do profissional do atendimento "
+            "(encounter.professional); cadastre-o antes de gerar o XML."
+        )
+    if len(cnes) > 7:
+        raise TISSXMLGenerationError(
+            f"Guia SP/SADT {guide.guide_number}: CNES {cnes!r} tem {len(cnes)} "
+            "caracteres e o XSD aceita no máximo 7 (st_texto7). Truncar mudaria o "
+            "identificador do estabelecimento — corrija o cadastro do profissional."
+        )
+    return {"executante_cnes": cnes}
+
+
 # ─── Guide XML generation ─────────────────────────────────────────────────────
 
 
@@ -857,6 +906,10 @@ def generate_guide_xml(guide) -> str:
         # acionável quando não há fonte honesta; nunca cai no executante.
         context.update(_resolve_sadt_solicitante(guide))
         context.update(_resolve_sadt_solicitacao(guide))
+        # dadosExecutante — quem EXECUTOU. Mesma forma do resumo de internação
+        # (contratadoExecutante + CNES irmão), mesmo dado já resolvido em todo
+        # template desta pasta.
+        context.update(_resolve_sadt_executante(guide, professional))
 
     if guide.guide_type == "internacao":
         # dadosAutorizacao (ct_autorizacaoInternacao) is mandatory — see

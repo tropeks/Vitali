@@ -63,4 +63,20 @@
   <ans:dadosSolicitacao>
     <ans:caraterAtendimento>{{ sadt_carater_atendimento }}</ans:caraterAtendimento>
   </ans:dadosSolicitacao>
+  {# dadosExecutante: MESMA forma do resumo de internação (contratadoExecutante
+     + CNES irmão), não a de guiaConsulta. ct_contratadoDados é um <choice>;
+     emitimos codigoPrestadorNaOperadora com o CNES — placeholder DOCUMENTADO,
+     igual ao cabeçalho do lote: o código atribuído pela operadora não existe em
+     model nenhum, e o campo é texto livre.
+
+     Ausência e tamanho do CNES falham ALTO em
+     xml_engine._resolve_sadt_executante, e não aqui: st_texto7 tem
+     minLength="1", então <CNES></CNES> é XSD-inválido e viraria rejeição do lote
+     sem explicação. #}
+  <ans:dadosExecutante>
+    <ans:contratadoExecutante>
+      <ans:codigoPrestadorNaOperadora>{{ executante_cnes }}</ans:codigoPrestadorNaOperadora>
+    </ans:contratadoExecutante>
+    <ans:CNES>{{ executante_cnes }}</ans:CNES>
+  </ans:dadosExecutante>
 </ans:guiaSP-SADT>
