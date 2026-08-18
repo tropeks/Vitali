@@ -9,18 +9,26 @@
    <procedimentosExecutados>/<procedimentoExecutado>, e só depois de
    dadosSolicitante/dadosSolicitacao/dadosExecutante/dadosAtendimento).
 
-   Forma corrigida nesta fatia: cabecalhoGuia + dadosBeneficiario, no
-   formato real do XSD (mesmos filtros de consulta_guide.xml.j2). O próximo
-   elemento obrigatório na sequência, <dadosSolicitante>
-   (ct_contratadoDados do prestador solicitante + profissionalSolicitante
-   com conselho/UF/CBOS), não tem NENHUMA fonte de dado no Vitali hoje — não
-   existe conceito de "profissional solicitante" distinto do executante (ver
-   docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §2). Usar os dados do
-   profissional executante ali seria inventar quem pediu o exame, não um
-   placeholder honesto como o já aceito para codigoPrestadorNaOperadora.
-   Parando aqui: dadosSolicitante em diante (dadosSolicitacao, dadosExecutante,
-   dadosAtendimento, procedimentosExecutados, valorTotal) é gap de DADO
-   (Fatia 2+), não de forma — fora do escopo desta fatia (só template). #}
+   Forma corrigida na Fatia 0: cabecalhoGuia + dadosBeneficiario, no formato
+   real do XSD (mesmos filtros de consulta_guide.xml.j2).
+
+   dadosSolicitante FECHADO (18/08/2026). Era o último gap de dado da Onda 4 e o
+   único que exigiu um PAPEL novo no domínio: o Vitali só modelava quem executa
+   (encounter.professional). Emitir o executante aqui declararia à operadora que
+   quem pediu o exame foi quem o fez — não é placeholder honesto como o
+   codigoPrestadorNaOperadora (texto livre cujo valor real não temos), é
+   afirmação clínica falsa sobre quem indicou o procedimento.
+
+   Fonte: TISSGuide.requesting_professional, herdado de LabOrder.requested_by
+   quando a guia nasce de um pedido de exame, informado à mão nos demais casos
+   (SurgicalCase tem surgeon — quem opera —, não quem indicou). Toda a validação
+   (conselho em dm_conselhoProfissional, UF em dm_UF, CBOS entre os 171 de
+   dm_CBOS, CNES presente) mora em xml_engine._resolve_sadt_solicitante e falha
+   ALTO antes daqui, então este bloco não tem defesa inline.
+
+   RESIDUAL: dadosSolicitacao em diante (dadosExecutante, dadosAtendimento,
+   procedimentosExecutados, valorTotal) — ver docs/research/
+   VITALI_ONDA4_TISS_MODELAGEM.md §2. #}
 <ans:guiaSP-SADT>
   <ans:cabecalhoGuia>
     <ans:registroANS>{{ guide.provider.ans_code }}</ans:registroANS>
@@ -33,4 +41,21 @@
        recém-nascido). #}
     <ans:atendimentoRN>N</ans:atendimentoRN>
   </ans:dadosBeneficiario>
+  <ans:dadosSolicitante>
+    <ans:contratadoSolicitante>
+      {# ct_contratadoDados é um <choice>: codigoPrestadorNaOperadora | CPF |
+         CNPJ. Mesmo placeholder documentado do executante e do cabeçalho do
+         lote — o código atribuído pela operadora não existe em model nenhum, e
+         o CNES é texto livre válido aqui (<=14 chars). Ver batch_envelope. #}
+      <ans:codigoPrestadorNaOperadora>{{ solicitante_codigo_prestador }}</ans:codigoPrestadorNaOperadora>
+    </ans:contratadoSolicitante>
+    <ans:nomeContratadoSolicitante>{{ solicitante_nome_contratado }}</ans:nomeContratadoSolicitante>
+    <ans:profissionalSolicitante>
+      <ans:nomeProfissional>{{ solicitante_nome_profissional }}</ans:nomeProfissional>
+      <ans:conselhoProfissional>{{ solicitante_conselho }}</ans:conselhoProfissional>
+      <ans:numeroConselhoProfissional>{{ solicitante_numero_conselho }}</ans:numeroConselhoProfissional>
+      <ans:UF>{{ solicitante_uf }}</ans:UF>
+      <ans:CBOS>{{ solicitante_cbos }}</ans:CBOS>
+    </ans:profissionalSolicitante>
+  </ans:dadosSolicitante>
 </ans:guiaSP-SADT>

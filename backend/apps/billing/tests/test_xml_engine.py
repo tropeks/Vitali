@@ -326,45 +326,46 @@ class HonorariosGuideXMLTests(XMLEngineTestCase):
 
 
 class SadtGuideXMLConformanceTests(XMLEngineTestCase):
-    """guiaSP-SADT (ctm_sp-sadtGuia) — NOT brought to conformance.
+    """guiaSP-SADT (ctm_sp-sadtGuia) — dadosSolicitante FECHADO, residual avançou.
 
-    Onda 4 Fatia 0 ported the proven cabecalhoGuia/dadosBeneficiario form
-    from consulta_guide.xml.j2 (the old template emitted fields inside
-    <cabecalhoGuia> — numeroGuiaOperadora, dataAutorizacao, senhaAutorizacao,
-    numeroCarteira, codigoCBO, CNES, dataInicioFaturamento,
-    dataFinalFaturamento — none of which belong to ct_guiaCabecalho, and a
-    <dadosSolicitacaoExame>/<procedimentosSolicitados> pair that doesn't
-    exist anywhere in ctm_sp-sadtGuia). Measured before the fix: 2 form
-    errors (unexpected numeroGuiaOperadora inside cabecalhoGuia; unexpected
-    dadosSolicitacaoExame in place of dadosSolicitante). Measured after: 1
-    residual error, and it is a genuine DATA gap, not form —
+    A Fatia 0 portou a forma provada de cabecalhoGuia/dadosBeneficiario e parou
+    em <dadosSolicitante>, que era o gap de dado mais caro da onda: o Vitali só
+    modelava quem EXECUTA (encounter.professional). Reusar o executante ali
+    declararia à operadora que quem pediu o exame foi quem o fez — não é
+    placeholder honesto como o codigoPrestadorNaOperadora (texto livre cujo valor
+    real não temos), é afirmação clínica falsa sobre quem indicou.
 
-    - <dadosSolicitante> is the very next mandatory element after
-      dadosBeneficiario: contratadoSolicitante (CNPJ/CPF/
-      codigoPrestadorNaOperadora) + profissionalSolicitante (conselho/UF/CBOS
-      of the REQUESTING professional). TISSGuide only tracks the executing
-      professional (via encounter); nothing distinguishes solicitante from
-      executante, so the template stops right there instead of misattributing
-      the executante as solicitante.
+    Fechado com TISSGuide.requesting_professional (migration 0038), herdado de
+    LabOrder.requested_by quando a guia nasce de um pedido de exame e informado à
+    mão nos demais casos — SurgicalCase tem surgeon (quem opera), não quem
+    indicou.
 
-    Everything after dadosSolicitante in the schema (dadosSolicitacao.
-    caraterAtendimento, dadosAtendimento.tipoAtendimento/regimeAtendimento,
-    ct_guiaValorTotal breakdown, per-item reducaoAcrescimo) is unreached by
-    the validator as a direct consequence and remains real, separately
-    itemized data gaps for Fatia 2+ — see
-    docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §2.
+    MEDIDO com validate_xml a cada passo::
+
+        antes da Fatia 0   2 erros de FORMA
+        depois da Fatia 0  1 erro: falta dadosSolicitante
+        depois desta fatia 1 erro: falta dadosSolicitacao  <- avançou um elemento
+
+    O residual atual é dadosSolicitacao, e é gap de dado de novo: dos quatro
+    filhos, só caraterAtendimento (dm_caraterAtendimento) é obrigatório, e não há
+    fonte para ele numa guia de laboratório — LabOrder não registra se o exame é
+    eletivo ou de urgência. Atrás dele seguem dadosExecutante, dadosAtendimento,
+    procedimentosExecutados e valorTotal, ainda inalcançados pelo validador.
+    Ver docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §2.
     """
 
     @pytest.mark.xfail(
         strict=True,
         reason=(
-            "ctm_sp-sadtGuia: cabecalhoGuia/dadosBeneficiario form fixed "
-            "(Fatia 0). Residual is a genuine data gap, not form: "
-            "dadosSolicitante (solicitante professional/contratado) has no "
-            "model field — TISSGuide only tracks the executante. Everything "
-            "after it in the schema (caraterAtendimento, dadosAtendimento, "
-            "valorTotal breakdown, reducaoAcrescimo) is unreached as a "
-            "consequence — see 2.4/Onda 4 Fatia 0 report."
+            "ctm_sp-sadtGuia: dadosSolicitante FECHADO nesta fatia "
+            "(TISSGuide.requesting_professional, migration 0038) — o "
+            "validador avançou um elemento e agora acusa dadosSolicitacao. "
+            "Residual segue sendo gap de DADO, não de forma: dos quatro "
+            "filhos de dadosSolicitacao só caraterAtendimento "
+            "(dm_caraterAtendimento) é obrigatório, e LabOrder não registra "
+            "se o exame é eletivo ou de urgência. dadosExecutante, "
+            "dadosAtendimento, procedimentosExecutados e valorTotal seguem "
+            "inalcançados como consequência — ver Onda 4 §2."
         ),
     )
     def test_batch_envelope_with_sadt_guide_is_schema_valid(self):
@@ -375,6 +376,7 @@ class SadtGuideXMLConformanceTests(XMLEngineTestCase):
             provider=self.provider,
             insured_card_number="1234567890123456",
             authorization_number="AUTH123",
+            requesting_professional=self.professional,
             competency="2026-08",
         )
         TISSGuideItem.objects.create(
@@ -392,6 +394,144 @@ class SadtGuideXMLConformanceTests(XMLEngineTestCase):
         errors = validate_xml(xml)
 
         assert errors == [], errors
+
+
+class SadtSolicitanteResolutionTests(XMLEngineTestCase):
+    """``dadosSolicitante`` — um teste por ramo de falha alta.
+
+    A regra de fundo é a mesma de toda a Onda 4: **nunca fabricar**. Aqui ela é
+    mais dura que em outros blocos, porque o dado disponível e errado está a um
+    atributo de distância — ``guide.encounter.professional`` tem conselho, UF e
+    CBOS válidos e passaria pelo XSD sem reclamar. Passaria e mentiria: diria à
+    operadora que quem pediu o exame foi quem o executou.
+    """
+
+    def _sadt_guide(self, **kwargs):
+        guide = TISSGuide.objects.create(
+            guide_type="sadt",
+            encounter=self.encounter,
+            patient=self.patient,
+            provider=self.provider,
+            insured_card_number="1234567890123456",
+            competency="2026-08",
+            **kwargs,
+        )
+        TISSGuideItem.objects.create(
+            guide=guide,
+            tuss_code=self.tuss_consulta,
+            description="Consulta em consultório",
+            quantity=Decimal("1"),
+            unit_value=Decimal("150.00"),
+            execution_date=datetime.date(2026, 8, 10),
+        )
+        return guide
+
+    def _outro_profissional(self, **overrides):
+        user = User.objects.create_user(
+            email=overrides.pop("email", "solicitante@test.com"),
+            full_name=overrides.pop("full_name", "Dra. Solicitante"),
+            password="Str0ng!Pass#2024",
+            role=self.professional.user.role,
+        )
+        campos = {
+            "council_type": "CRM",
+            "council_number": "654321",
+            "council_state": "RJ",
+            **overrides,
+        }
+        prof = Professional.objects.create(user=user, **campos)
+        prof.cbo_code = overrides.pop("cbo_code", "225120")
+        prof.cnes_code = overrides.pop("cnes_code", "7654321")
+        prof.save()
+        return prof
+
+    def test_sem_solicitante_falha_e_nao_cai_no_executante(self):
+        """O ramo que justifica o campo existir. A guia TEM executante completo
+        (self.encounter.professional, com CRM/SP/CBOS válidos) — e ainda assim
+        falha, em vez de emitir os dados dele como se fosse o solicitante."""
+        guide = self._sadt_guide()
+
+        with pytest.raises(TISSXMLGenerationError, match="não tem profissional solicitante"):
+            generate_guide_xml(guide)
+
+    def test_solicitante_completo_emite_o_bloco(self):
+        solicitante = self._outro_profissional()
+        guide = self._sadt_guide(requesting_professional=solicitante)
+
+        xml = generate_guide_xml(guide)
+
+        assert "<ans:dadosSolicitante>" in xml
+        # CRM -> "06" em dm_conselhoProfissional; RJ -> "33" em dm_UF.
+        assert "<ans:conselhoProfissional>06</ans:conselhoProfissional>" in xml
+        assert "<ans:numeroConselhoProfissional>654321</ans:numeroConselhoProfissional>" in xml
+        assert "<ans:UF>33</ans:UF>" in xml
+        assert "<ans:CBOS>225120</ans:CBOS>" in xml
+        assert "<ans:nomeProfissional>Dra. Solicitante</ans:nomeProfissional>" in xml
+
+    def test_solicitante_e_distinto_do_executante_no_xml(self):
+        """Prova o ponto inteiro da fatia: os dois papéis saem com dados
+        diferentes, e o solicitante não é cópia do executante."""
+        solicitante = self._outro_profissional()
+        guide = self._sadt_guide(requesting_professional=solicitante)
+
+        xml = generate_guide_xml(guide)
+
+        assert "654321" in xml  # conselho do solicitante
+        assert "<ans:numeroConselhoProfissional>123456<" not in xml  # o do executante
+
+    def test_cbo_fora_de_dm_cbos_falha_com_o_codigo_na_mensagem(self):
+        """dm_CBOS é enum FECHADO de 171 códigos, e Professional.cbo é opcional
+        (há legacy_cbo_text/cbo_unmatched no model) — este é o ramo mais provável
+        na prática."""
+        solicitante = self._outro_profissional()
+        # "000000" não existe na tabela. NÃO use "999999": ele ESTÁ em dm_CBOS
+        # (código coringa da ANS) — foi o que este teste descobriu na primeira
+        # rodada, quando não levantou nada com ele.
+        solicitante.cbo_code = "000000"
+        solicitante.save()
+        guide = self._sadt_guide(requesting_professional=solicitante)
+
+        with pytest.raises(TISSXMLGenerationError, match="fora de dm_CBOS"):
+            generate_guide_xml(guide)
+
+    def test_uf_invalida_falha(self):
+        solicitante = self._outro_profissional(council_state="XX")
+        guide = self._sadt_guide(requesting_professional=solicitante)
+
+        with pytest.raises(TISSXMLGenerationError, match="UF do conselho"):
+            generate_guide_xml(guide)
+
+    def test_campos_faltando_sao_relatados_todos_de_uma_vez(self):
+        """Mesma escolha de _resolve_internacao_dados: o faturista não pode
+        descobrir os buracos um por tentativa de gerar XML."""
+        solicitante = self._outro_profissional(council_state="XX", council_number="   ")
+        solicitante.cbo_code = ""
+        solicitante.save()
+        guide = self._sadt_guide(requesting_professional=solicitante)
+
+        with pytest.raises(TISSXMLGenerationError) as exc:
+            generate_guide_xml(guide)
+
+        mensagem = str(exc.value)
+        assert "número do conselho" in mensagem
+        assert "UF do conselho" in mensagem
+        assert "CBO" in mensagem
+
+    def test_dm_cbos_vem_do_xsd_e_nao_de_lista_transcrita(self):
+        """Se a lista fosse copiada para dentro do Python, divergiria do XSD em
+        silêncio na primeira atualização do padrão."""
+        from apps.billing.services.xml_engine import _dm_cbos_validos
+
+        codigos = _dm_cbos_validos()
+
+        # 171 xs:enumeration, 169 DISTINTOS: o XSD repete 225121 e 225325.
+        # A diferença é medida, não suposta, e é por isso que a função devolve
+        # um conjunto.
+        assert len(codigos) == 169
+        assert "225120" in codigos
+        assert "000000" not in codigos
+        # Fato contraintuitivo que vale travar: o coringa 999999 É válido.
+        assert "999999" in codigos
 
 
 class InternacaoFixtureMixin:

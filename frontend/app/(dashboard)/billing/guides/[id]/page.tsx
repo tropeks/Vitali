@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import RemoteCombobox from '@/components/shared/RemoteCombobox';
 
 const STATUS_BADGE: Record<string, string> = {
   draft: 'bg-neu-app text-neu-inkSoft',
@@ -37,6 +38,12 @@ function Field({ label, value }: { label: string; value: any }) {
 
 type TipoFaturamentoOption = { value: string; label: string };
 
+/** Espelha o que `ProfessionalSerializer` expõe e o combobox precisa. */
+type ProfessionalOption = { id: string; user_name?: string | null; council_number?: string | null };
+
+const professionalLabel = (p: ProfessionalOption) =>
+  p.user_name || (p.council_number ? `Registro ${p.council_number}` : p.id);
+
 export default function GuideDetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -62,6 +69,10 @@ export default function GuideDetailPage() {
   // ("Autorização TISS"), longe do botão que o faturista acabou de clicar.
   const [tipoFaturamentoError, setTipoFaturamentoError] = useState('');
   const [tipoFaturamentoSaved, setTipoFaturamentoSaved] = useState(false);
+  const [solicitante, setSolicitante] = useState<ProfessionalOption | null>(null);
+  const [savingSolicitante, setSavingSolicitante] = useState(false);
+  const [solicitanteError, setSolicitanteError] = useState('');
+  const [solicitanteSaved, setSolicitanteSaved] = useState(false);
 
   useEffect(() => {
     fetch(`/api/v1/billing/guides/${id}/`, {
@@ -79,6 +90,10 @@ export default function GuideDetailPage() {
   // pedir ao faturista um código ANS que nenhum XML carrega é prometer
   // significado que o sistema não tem.
   const isInternacao = guide?.guide_type === 'internacao';
+  // dadosSolicitante existe SÓ em ctm_sp-sadtGuia. A guia de resumo de
+  // internação não tem o bloco (tem numeroGuiaSolicitacaoInternacao, que é
+  // outra coisa), e a de consulta também não.
+  const isSadt = guide?.guide_type === 'sadt';
 
   useEffect(() => {
     // Só busca a lista quando o painel pode aparecer: para os outros tipos de
@@ -159,6 +174,26 @@ export default function GuideDetailPage() {
       setError(e.message);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const saveSolicitante = async () => {
+    setSavingSolicitante(true);
+    setSolicitanteError('');
+    setSolicitanteSaved(false);
+    try {
+      const res = await fetch(`/api/v1/billing/guides/${id}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requesting_professional: solicitante?.id ?? null }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail ?? `${res.status}`);
+      setGuide(await res.json());
+      setSolicitanteSaved(true);
+    } catch (e: any) {
+      setSolicitanteError(e.message || 'Não foi possível salvar o profissional solicitante.');
+    } finally {
+      setSavingSolicitante(false);
     }
   };
 
@@ -257,6 +292,64 @@ export default function GuideDetailPage() {
           próprios: quem clica "Salvar tipo de faturamento" precisa ver a
           resposta aqui, não no painel de autorização logo abaixo. Só aparece na
           guia de internação, a única que emite o campo no XML. */}
+      {/* dadosSolicitante (SP/SADT) — quem PEDIU, distinto de quem executou.
+          Guia nascida de pedido de exame já vem preenchida; as demais precisam
+          disto, senão a emissão do XML falha alto. */}
+      {isSadt && (
+        <div className="bg-neu-panel rounded-lg border border-slate-200 p-4">
+          <h2 className="font-semibold text-neu-ink mb-1">Profissional solicitante (TISS)</h2>
+          <p className="text-xs text-neu-inkMuted mb-4">
+            <code>dadosSolicitante</code> exige conselho, número, UF e CBO de quem{' '}
+            <strong>solicitou</strong> o procedimento — que não é o executante. Guias geradas de um
+            pedido de exame herdam o solicitante automaticamente; nas demais, informe aqui. Sem
+            isso a guia não gera XML, e o executante nunca é usado no lugar.
+          </p>
+
+          <Field
+            label="Solicitante atual"
+            value={guide?.requesting_professional_name ?? guide?.requesting_professional ?? null}
+          />
+
+          {!isDraft ? (
+            <p className="mt-3 text-xs text-neu-inkMuted bg-neu-app rounded-lg px-3 py-2">
+              Guia com status &quot;{STATUS_LABEL[guide.status] ?? guide.status}&quot;: o
+              solicitante só muda enquanto a guia é rascunho.
+            </p>
+          ) : (
+            <div className="mt-3 max-w-xl">
+              <RemoteCombobox<ProfessionalOption>
+                label="Profissional solicitante"
+                endpoint="/api/v1/professionals/"
+                value={solicitante}
+                getKey={(item) => item.id}
+                getLabel={professionalLabel}
+                onChange={setSolicitante}
+                placeholder="Buscar quem solicitou..."
+              />
+            </div>
+          )}
+
+          {solicitanteError && (
+            <div className="mt-3 bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">{solicitanteError}</div>
+          )}
+          {solicitanteSaved && (
+            <div className="mt-3 bg-green-50 border border-green-200 text-green-700 rounded-lg px-4 py-3 text-sm">Profissional solicitante salvo.</div>
+          )}
+
+          {isDraft && (
+            <button
+              type="button"
+              onClick={saveSolicitante}
+              disabled={savingSolicitante || !solicitante}
+              className="mt-4 bg-gradient-to-b from-neu-brand to-neu-brandDeep border-t border-neu-brandEdge shadow-neu-btn-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:shadow-neu-btn-primary-hover disabled:opacity-50"
+            >
+              {savingSolicitante ? 'Salvando...' : 'Salvar solicitante'}
+            </button>
+          )}
+        </div>
+      )}
+
+
       {isInternacao && (
         <div className="bg-neu-panel rounded-lg border border-slate-200 p-4">
           <h2 className="font-semibold text-neu-ink mb-1">Tipo de faturamento (TISS)</h2>

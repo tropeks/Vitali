@@ -381,6 +381,34 @@ class TISSGuide(models.Model):
     # below) is what makes Admission→guide generation IDEMPOTENT: at most one
     # internação guide per admission. SET_NULL so an admission delete never
     # destroys the billing record.
+    # Quem SOLICITOU o que a guia SP/SADT cobra — distinto de quem executou.
+    #
+    # `dadosSolicitante` (ctm_sp-sadtGuia) é obrigatório e exige conselho, número,
+    # UF e CBOS do profissional solicitante. O Vitali nunca modelou esse papel: o
+    # executante vem de `encounter.professional`, e usar ELE aqui declararia à
+    # operadora que quem pediu o exame foi quem o fez — invenção, não placeholder.
+    # Por isso um campo próprio, e não um reaproveitamento.
+    #
+    # Preenchido automaticamente pela ponte de laboratório a partir de
+    # `LabOrder.requested_by` (o médico que pediu o exame é literalmente o
+    # solicitante). Para guia de cirurgia não há fonte: `SurgicalCase` tem
+    # `surgeon` (quem opera), não quem indicou — fica nulo e a emissão falha
+    # alto, com o campo editável enquanto a guia é rascunho. Mesma precedência já
+    # aprovada para `authorization_date`: fonte automática quando existe,
+    # digitação quando não, nunca fabricação.
+    requesting_professional = models.ForeignKey(
+        "emr.Professional",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="requested_tiss_guides",
+        verbose_name="Profissional solicitante",
+        help_text=(
+            "profissionalSolicitante de dadosSolicitante (SP/SADT). Resolvido de "
+            "LabOrder.requested_by quando a guia nasce de um pedido de exame; "
+            "informado à mão nos demais casos."
+        ),
+    )
     admission = models.ForeignKey(
         "emr.Admission",
         on_delete=models.SET_NULL,

@@ -116,6 +116,13 @@ def generate_sadt_guide_for_lab_order(order: LabOrder) -> TISSGuide:
             provider=provider,
             price_table=price_table,
             lab_order=order,
+            # O médico que PEDIU o exame é literalmente o solicitante da guia
+            # SP/SADT — fato do fluxo, não inferência. `requested_by` é um
+            # core.User; só vira solicitante quem tem perfil de profissional
+            # (conselho/UF/CBO), porque é isso que profissionalSolicitante exige.
+            # Recepcionista que registra um pedido não tem conselho e não pode
+            # ser declarada solicitante: fica nulo e o XML falha alto.
+            requesting_professional=getattr(order.requested_by, "professional", None),
             status="draft",
             insured_card_number=insurance.card_number or "",
             competency=competency,

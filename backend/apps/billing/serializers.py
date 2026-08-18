@@ -214,6 +214,7 @@ class TISSGuideSerializer(serializers.ModelSerializer):
             "insured_card_number",
             "authorization_number",
             "authorization_date",
+            "requesting_professional",
             "tipo_faturamento",
             "tipo_faturamento_display",
             "competency",

@@ -66,6 +66,20 @@ const tipoFaturamentoOptions = [
   { value: '2', label: 'Código 2 (rótulo a confirmar no manual ANS)' },
 ];
 
+// O combobox remoto é mockado por um botão: o alvo destes testes é o painel de
+// solicitante, não a busca remota (que tem cobertura própria).
+vi.mock('@/components/shared/RemoteCombobox', () => ({
+  default: ({ value, onChange, label }: any) => (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={() => onChange({ id: 'prof-9', user_name: 'Dra. Solicitante', council_number: '654321' })}
+    >
+      {value ? value.user_name : 'Buscar profissional mock'}
+    </button>
+  ),
+}));
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -217,6 +231,94 @@ describe('GuideDetailPage — authorization_date', () => {
     await waitFor(() => {
       expect(screen.getByText(/não pode mais ser editada/)).toBeInTheDocument();
     });
+  });
+});
+
+describe('GuideDetailPage — profissional solicitante (SP/SADT)', () => {
+  const sadtComSolicitante = {
+    ...draftGuide,
+    requesting_professional: 'prof-9',
+    requesting_professional_name: 'Dra. Solicitante',
+  };
+
+  it('shows the panel for a SADT guide, where dadosSolicitante exists', async () => {
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith(TIPO_FATURAMENTO_OPTIONS_URL)) return okJson(tipoFaturamentoOptions);
+      return okJson(sadtComSolicitante);
+    });
+
+    render(<GuideDetailPage />);
+
+    await waitFor(() =>
+      expect(screen.getByText('Profissional solicitante (TISS)')).toBeInTheDocument(),
+    );
+    expect(screen.getByText('Dra. Solicitante')).toBeInTheDocument();
+  });
+
+  it('hides the panel for a guide type that has no dadosSolicitante', async () => {
+    // Resumo de internação NÃO tem o bloco (tem numeroGuiaSolicitacaoInternacao,
+    // que é outra coisa). Mostrar o painel ali convidaria a preencher um campo
+    // que nunca vira XML — o mesmo defeito já corrigido no tipo de faturamento.
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith(TIPO_FATURAMENTO_OPTIONS_URL)) return okJson(tipoFaturamentoOptions);
+      return okJson(internacaoDraftGuide);
+    });
+
+    render(<GuideDetailPage />);
+
+    // getByRole('heading'): 'Tipo de faturamento (TISS)' aparece também como
+    // rótulo no <dl> de resumo, e um getByText solto acha os dois.
+    await waitFor(() =>
+      expect(
+        screen.getByRole('heading', { name: 'Tipo de faturamento (TISS)' }),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.queryByText('Profissional solicitante (TISS)')).not.toBeInTheDocument();
+  });
+
+  it('saves the picked professional with a PATCH', async () => {
+    const calls: Array<[string, RequestInit | undefined]> = [];
+    mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      calls.push([url, init]);
+      if (url.endsWith(TIPO_FATURAMENTO_OPTIONS_URL)) return okJson(tipoFaturamentoOptions);
+      if (init?.method === 'PATCH') return okJson(sadtComSolicitante);
+      return okJson(draftGuide);
+    });
+
+    render(<GuideDetailPage />);
+    await waitFor(() =>
+      expect(screen.getByText('Profissional solicitante (TISS)')).toBeInTheDocument(),
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Profissional solicitante' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar solicitante' }));
+
+    await waitFor(() =>
+      expect(screen.getByText('Profissional solicitante salvo.')).toBeInTheDocument(),
+    );
+    const patch = calls.find(([, init]) => init?.method === 'PATCH');
+    expect(JSON.parse((patch![1] as RequestInit).body as string)).toEqual({
+      requesting_professional: 'prof-9',
+    });
+  });
+
+  it('locks the solicitante once the guide leaves draft', async () => {
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith(TIPO_FATURAMENTO_OPTIONS_URL)) return okJson(tipoFaturamentoOptions);
+      return okJson({ ...sadtComSolicitante, status: 'submitted' });
+    });
+
+    render(<GuideDetailPage />);
+
+    await waitFor(() =>
+      expect(screen.getByText('Profissional solicitante (TISS)')).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole('button', { name: 'Salvar solicitante' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Profissional solicitante' })).not.toBeInTheDocument();
   });
 });
 

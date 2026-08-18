@@ -97,6 +97,37 @@ class LabOrderBillingTestCase(TenantTestCase):
         self.assertEqual(codes, {"40304361": Decimal("50.00"), "40302024": Decimal("30.00")})
         self.assertEqual(guide.total_value, Decimal("80.00"))
 
+    def test_solicitante_herdado_de_quem_pediu_o_exame(self):
+        """``requesting_professional`` sai de ``LabOrder.requested_by`` — o médico
+        que pediu o exame É o solicitante da guia SP/SADT (dadosSolicitante).
+
+        Trava o que NÃO pode acontecer: cair no executante. Aqui os dois são a
+        mesma pessoa por acaso do fixture, então a asserção é sobre a ORIGEM do
+        vínculo, não sobre o valor — o teste de ponta a ponta que separa os dois
+        papéis vive em SadtSolicitanteResolutionTests.
+        """
+        order = self._make_order()
+
+        guide = generate_sadt_guide_for_lab_order(order)
+
+        self.assertEqual(guide.requesting_professional_id, order.requested_by.professional.id)
+
+    def test_pedido_de_quem_nao_e_profissional_nao_vira_solicitante(self):
+        """``requested_by`` é um ``core.User``, e nem todo usuário tem perfil de
+        profissional — recepção que registra um pedido não tem conselho/CBO, que
+        é justamente o que ``profissionalSolicitante`` exige. Fica nulo, e a
+        emissão do XML falha alto depois; nunca se inventa um conselho."""
+        recepcao = User.objects.create_user(
+            email="recepcao-lab@example.com", password="pw", role=self.user.role
+        )
+        order = self._make_order()
+        order.requested_by = recepcao
+        order.save(update_fields=["requested_by"])
+
+        guide = generate_sadt_guide_for_lab_order(order)
+
+        self.assertIsNone(guide.requesting_professional_id)
+
     def test_idempotent_no_duplicate_guide(self):
         order = self._make_order()
         first = generate_sadt_guide_for_lab_order(order)

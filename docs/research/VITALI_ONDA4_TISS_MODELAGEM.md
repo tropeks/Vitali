@@ -34,7 +34,8 @@
 > faturadas antes das migrations `0036`/`0037` não têm `execution_date` nem
 > `billing_category`: a emissão falha alto na primeira e omite o breakdown na
 > segunda, de propósito, porque não há backfill honesto; (b) a SP/SADT segue em
-> `xfail`, parada em `dadosSolicitante`. **`valorTotal` com breakdown por
+> `xfail`, agora parada em **`dadosSolicitacao`** — `dadosSolicitante` foi
+> fechado em 18/08 (§2). **`valorTotal` com breakdown por
 > categoria está FECHADO** (§4) — e por fato de origem, não por classificação de
 > TUSS, que a medição provou ser impossível.
 
@@ -63,9 +64,9 @@ tabelas abaixo são a leitura orientada a "de onde vem o dado".
 | `dadosAutorizacao.senha` | opcional dentro do bloco | ✅ | `guide.authorization_number` | já existe, `blank=True` |
 | `dadosBeneficiario.numeroCarteira` | sim | ✅ | `guide.insured_card_number` | já funciona |
 | `dadosBeneficiario.atendimentoRN` | sim (S/N) | ❌ | — | hoje hardcoded `"N"` no template — aceitável como default documentado (RN é minoria), não é bloqueador de dado |
-| `dadosSolicitante.contratadoSolicitante` (CNPJ/CPF/`codigoPrestadorNaOperadora`) | sim | ❌ | — | é o prestador (clínica/consultório) do profissional solicitante — **não existe conceito de "prestador do solicitante" no Vitali**, só do executante (via `professional.cnes_code` usado como placeholder, mesma gambiarra já aceita na Onda 2 para o executante) |
-| `dadosSolicitante.nomeContratadoSolicitante` | sim | ❌ | — | idem |
-| `dadosSolicitante.profissionalSolicitante` (conselho/nº/UF/CBOS) | sim | ❌ (mas há filtros Jinja prontos: `conselho_ans_code`, `uf_ibge_code`) | — | **fonte real já existe em parte**: `emr.LabOrder.requested_by` é `core.User` — quando a guia SADT nasce de um pedido de exame (ponte `TISSGuide.lab_order`), o solicitante é literalmente quem pediu o exame. Falta (i) resolver `User → Professional` (`user.professional`, nem todo `requested_by` tem perfil de profissional) e (ii) um FK em `TISSGuide` para guardá-lo. Para guias sem `lab_order` (ex.: SADT manual), não há hoje NENHUMA captura — precisa de tela nova. |
+| `dadosSolicitante.contratadoSolicitante` (CNPJ/CPF/`codigoPrestadorNaOperadora`) | sim | ✅ **(resolvido 18/08)** | `requesting_professional.cnes_code` | mesmo placeholder documentado do executante e do cabeçalho do lote — `codigoPrestadorNaOperadora` é texto livre (≤14) e o código atribuído pela operadora não existe em model nenhum |
+| `dadosSolicitante.nomeContratadoSolicitante` | sim | ✅ **(resolvido 18/08)** | `requesting_professional.cnes.display` | nome do estabelecimento vem do catálogo CNES governado (`core.CNESEstablishment`); quando o profissional guarda só o texto legado, cai para o próprio código — verdade verificável em vez de string inventada |
+| `dadosSolicitante.profissionalSolicitante` (conselho/nº/UF/CBOS) | sim | ✅ **(resolvido 18/08)** | `TISSGuide.requesting_professional` (migration `0038`) | **papel novo no domínio**, não reaproveitamento: o Vitali só modelava quem EXECUTA. Herdado de `LabOrder.requested_by` quando a guia nasce de pedido de exame; informado à mão nos demais casos (`SurgicalCase` tem `surgeon` — quem opera —, não quem indicou). Os filtros `conselho_ans_code`/`uf_ibge_code` já existiam; `CBOS` é validado contra `dm_CBOS` lido do XSD em runtime |
 | `dadosSolicitacao.caraterAtendimento` | sim | ❌ | — | ver precedente `AihAutorizacao.CaraterInternacao` (§5); para SADT ligado a `SurgicalCase`, `SurgicalCase.Priority` (eletiva/urgência/emergência) é candidato de mapeamento |
 | `dadosSolicitacao.indicacaoClinica` | opcional | parcial | `guide.encounter` tem `chief_complaint` (encrypted) — não é o mesmo campo semântico | não bloqueador (opcional) |
 | `dadosSolicitacao.indCobEspecial` | opcional | ❌ | — | não bloqueador (opcional) |

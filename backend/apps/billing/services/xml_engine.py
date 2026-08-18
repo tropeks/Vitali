@@ -15,6 +15,7 @@ Design notes:
 """
 
 import datetime
+import functools
 import hashlib
 import logging
 from decimal import Decimal
@@ -43,6 +44,9 @@ class TISSXMLGenerationError(Exception):
 _BILLING_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = _BILLING_DIR / "templates" / "tiss"
 TISS_XSD_PATH = _BILLING_DIR / "schemas" / "tissV4_01_00.xsd"
+# Lido em runtime para validar CBOS contra dm_CBOS sem transcrever 171 códigos
+# para dentro do Python — ver _dm_cbos_validos.
+TISS_SIMPLE_TYPES_XSD_PATH = _BILLING_DIR / "schemas" / "tissSimpleTypesV4_01_00.xsd"
 
 # ─── Jinja2 environment ───────────────────────────────────────────────────────
 
@@ -638,6 +642,133 @@ def _resolve_valor_total(guide) -> list[dict]:
     ]
 
 
+@functools.lru_cache(maxsize=1)
+def _dm_cbos_validos() -> frozenset[str]:
+    """Os códigos de ``dm_CBOS`` (enum FECHADO), lidos do XSD do próprio repo.
+
+    São 171 ``xs:enumeration`` mas **169 valores distintos**: o XSD repete
+    ``225121`` e ``225325``. Medido, não suposto — e é a razão de esta função
+    devolver um conjunto em vez de uma lista.
+
+    Lidos, e não transcritos: uma cópia da lista no código vira mentira silenciosa
+    no dia em que o XSD for atualizado, e o erro apareceria só como rejeição da
+    operadora. O arquivo já está aqui e é a fonte — ``validate_xml`` valida contra
+    ele. Em cache porque o parse custa e o conjunto não muda em runtime.
+    """
+    from lxml import etree
+
+    arvore = etree.parse(str(TISS_SIMPLE_TYPES_XSD_PATH))
+    ns = {"xs": "http://www.w3.org/2001/XMLSchema"}
+    st = arvore.find('.//xs:simpleType[@name="dm_CBOS"]', ns)
+    return frozenset(e.get("value") for e in st.iterfind(".//xs:enumeration", ns))
+
+
+def _resolve_sadt_solicitante(guide) -> dict:
+    """Resolve ``<dadosSolicitante>`` de ctm_sp-sadtGuia.
+
+    O ÚLTIMO gap de dado da Onda 4, e o único que exigiu um papel novo no
+    domínio. Os três filhos são obrigatórios::
+
+        contratadoSolicitante      ct_contratadoDados (choice)
+        nomeContratadoSolicitante  st_texto70
+        profissionalSolicitante    ct_contratadoProfissionalDados
+
+    e ``ct_contratadoProfissionalDados`` pede ``conselhoProfissional``
+    (dm_conselhoProfissional), ``numeroConselhoProfissional``, ``UF`` (dm_UF) e
+    ``CBOS`` (dm_CBOS, enum FECHADO) — ``nomeProfissional`` é o único opcional.
+
+    POR QUE NÃO REUSAR O EXECUTANTE. O template parou aqui desde a Fatia 0 com
+    esta justificativa, que segue valendo: `encounter.professional` é quem
+    EXECUTOU. Emitir os dados dele em ``dadosSolicitante`` declararia à operadora
+    que quem pediu o exame foi quem o fez. Isso não é um placeholder honesto como
+    o ``codigoPrestadorNaOperadora`` (campo de texto livre cujo valor real não
+    temos); é uma AFIRMAÇÃO CLÍNICA falsa sobre quem indicou o procedimento —
+    exatamente o tipo de coisa que gera glosa por inconsistência e, pior, distorce
+    o registro de quem responde pela indicação.
+
+    FONTE REAL. ``TISSGuide.requesting_professional``, preenchido pela ponte de
+    laboratório a partir de ``LabOrder.requested_by`` (quem pediu o exame É o
+    solicitante) e informado à mão nos demais casos — a guia de cirurgia não tem
+    fonte, porque ``SurgicalCase.surgeon`` é quem opera, não quem indicou.
+
+    Falha alta, campo a campo, com o que preencher e onde:
+
+    1. sem ``requesting_professional``;
+    2. ``council_type`` fora de dm_conselhoProfissional, ou ``council_number``
+       vazio;
+    3. ``council_state`` que não resolve para o código IBGE de dm_UF;
+    4. CBO ausente, ou fora de dm_CBOS — este é o mais provável na
+       prática, porque ``Professional.cbo`` é opcional e há
+       ``legacy_cbo_text``/``cbo_unmatched`` no model, sinal de que o catálogo
+       nem sempre casa;
+    5. sem CNES — é o que identifica o contratado solicitante.
+    """
+    solicitante = guide.requesting_professional
+    if solicitante is None:
+        raise TISSXMLGenerationError(
+            f"Guia SP/SADT {guide.guide_number} não tem profissional solicitante: "
+            "dadosSolicitante (ctm_sp-sadtGuia) é obrigatório e exige conselho, número, "
+            "UF e CBOS de QUEM PEDIU o procedimento — que não é o executante. Guias "
+            "geradas de um pedido de exame herdam o solicitante automaticamente; nos "
+            "demais casos, informe o profissional solicitante nesta guia enquanto ela "
+            "estiver em rascunho."
+        )
+
+    faltando = []
+
+    conselho = _conselho_ans_code(solicitante.council_type)
+    if not conselho:
+        faltando.append(
+            f"conselho profissional ({solicitante.council_type or 'vazio'!r} não está em "
+            "dm_conselhoProfissional)"
+        )
+    if not (solicitante.council_number or "").strip():
+        faltando.append("número do conselho")
+
+    uf = _uf_ibge_code(solicitante.council_state)
+    if not uf:
+        faltando.append(
+            f"UF do conselho ({solicitante.council_state or 'vazio'!r} não resolve em dm_UF)"
+        )
+
+    cbo = (solicitante.cbo_code or "").strip()
+    if not cbo:
+        faltando.append("CBO (ocupação)")
+    elif cbo not in _dm_cbos_validos():
+        faltando.append(
+            f"CBO {cbo} fora de dm_CBOS — o XSD aceita apenas os códigos de ocupação "
+            "enumerados na tabela ANS, e este não está entre eles"
+        )
+
+    cnes = (solicitante.cnes_code or "").strip()
+    if not cnes:
+        faltando.append("CNES do estabelecimento")
+
+    if faltando:
+        raise TISSXMLGenerationError(
+            f"Guia SP/SADT {guide.guide_number}: o cadastro do profissional solicitante "
+            f"({solicitante}) está incompleto para dadosSolicitante — falta "
+            f"{'; '.join(faltando)}. Complete o cadastro do profissional antes de gerar o XML; "
+            "nenhum desses campos pode ser suprido pelo executante da guia."
+        )
+
+    # nomeContratadoSolicitante: o nome do estabelecimento vem do catálogo CNES
+    # governado (core.CNESEstablishment.display). Quando o profissional guarda só
+    # o texto legado de CNES, não há nome — cai para o código, que é verdade
+    # verificável, em vez de string inventada.
+    estabelecimento = solicitante.cnes.display if solicitante.cnes_id else cnes
+
+    return {
+        "solicitante_codigo_prestador": cnes,
+        "solicitante_nome_contratado": (estabelecimento or cnes)[:70],
+        "solicitante_nome_profissional": (getattr(solicitante.user, "full_name", "") or "")[:70],
+        "solicitante_conselho": conselho,
+        "solicitante_numero_conselho": solicitante.council_number.strip()[:15],
+        "solicitante_uf": uf,
+        "solicitante_cbos": cbo,
+    }
+
+
 # ─── Guide XML generation ─────────────────────────────────────────────────────
 
 
@@ -694,6 +825,11 @@ def generate_guide_xml(guide) -> str:
                 "<procedimento> por guia de consulta."
             )
         context["item"] = items[0]
+
+    if guide.guide_type == "sadt":
+        # dadosSolicitante — quem PEDIU, distinto de quem executou. Falha alta e
+        # acionável quando não há fonte honesta; nunca cai no executante.
+        context.update(_resolve_sadt_solicitante(guide))
 
     if guide.guide_type == "internacao":
         # dadosAutorizacao (ct_autorizacaoInternacao) is mandatory — see
