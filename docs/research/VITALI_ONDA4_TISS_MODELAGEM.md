@@ -210,6 +210,17 @@ ela não tem OPME.
 Elas continuam saindo exatamente como saíam. Só o que for faturado a partir daqui tem
 breakdown — e tem por fato registrado, não por reclassificação.
 
+**Captura na tela** (18/08/2026): `InpatientFeePanel` (aba Internação do prontuário, ao lado de
+`AdmissionPanel`) ganhou o seletor **Categoria (TISS)**, obrigatório para lançar. É obrigatório
+na TELA embora seja opcional na API, e de propósito: pela regra tudo-ou-nada, uma única linha
+sem categoria derruba o breakdown da guia inteira — o custo de esquecer é invisível para quem
+lança e caro no faturamento. Os dois rótulos são lista local (mesmo padrão de `UNIT_OPTIONS`,
+espelho de `InpatientFee.Unit`, no mesmo arquivo) e não endpoint de choices como
+`dm_tipoFaturamento`: lá os rótulos ANS estão pendentes de manual e podem mudar, aqui eles saem
+do nome dos próprios campos do XSD (`valorTaxasAlugueis`, `valorGasesMedicinais`). A listagem
+mostra **"Sem categoria"** em destaque para lançamentos anteriores a esta fatia — enquanto
+houver um assim na internação, a guia sai sem breakdown, e quem olha precisa poder ver isso.
+
 ## 5. Proposta de modelagem — taxonomias fechadas
 
 Todas as enumerações abaixo (`caraterAtendimento`, `tipoInternacao`, `regimeInternacao`,

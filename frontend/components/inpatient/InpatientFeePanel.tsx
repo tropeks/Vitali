@@ -18,6 +18,7 @@ export interface InpatientFee {
   description: string
   quantity: string
   unit: 'dia' | 'hora' | 'unidade'
+  category: '' | 'taxa' | 'gas_medicinal'
   notes: string
   created_by: string | null
   created_by_name: string
@@ -33,6 +34,29 @@ const UNIT_OPTIONS: Array<{ value: InpatientFee['unit']; label: string }> = [
 
 const UNIT_LABELS: Record<string, string> = Object.fromEntries(
   UNIT_OPTIONS.map((option) => [option.value, option.label]),
+)
+
+/**
+ * `InpatientFee.Category` — a distinção que a tabela 18 do TUSS NÃO carrega.
+ *
+ * `ct_guiaValorTotal` tem `valorTaxasAlugueis` e `valorGasesMedicinais` como
+ * campos SEPARADOS, mas as duas coisas moram na mesma tabela 18 (das 3.595
+ * linhas, ~1.590 são taxa e ~890 são gás). Nenhum eixo do catálogo separa —
+ * `table_number` e `group` erram em ~25% do volume. Por isso quem lança informa.
+ *
+ * Lista local, e não vinda da API, ao contrário dos códigos de
+ * `dm_tipoFaturamento`: lá os rótulos ANS estão pendentes de manual e podem
+ * mudar, então precisam de fonte única no servidor. Aqui os dois rótulos saem
+ * do NOME DOS PRÓPRIOS CAMPOS do XSD — não há manual a esperar, e o arquivo já
+ * usa esse padrão para `UNIT_OPTIONS`, espelho de `InpatientFee.Unit`.
+ */
+const CATEGORY_OPTIONS: Array<{ value: 'taxa' | 'gas_medicinal'; label: string }> = [
+  { value: 'taxa', label: 'Taxa / aluguel' },
+  { value: 'gas_medicinal', label: 'Gás medicinal' },
+]
+
+const CATEGORY_LABELS: Record<string, string> = Object.fromEntries(
+  CATEGORY_OPTIONS.map((option) => [option.value, option.label]),
 )
 
 /** Dict-shape 400 (`{"tuss_code": ["..."]}`) → first message per field. */
@@ -78,6 +102,7 @@ export default function InpatientFeePanel({ patientId, canManage }: Props) {
   const [tussCode, setTussCode] = useState<TUSSOption | null>(null)
   const [quantity, setQuantity] = useState('')
   const [unit, setUnit] = useState<InpatientFee['unit']>('unidade')
+  const [category, setCategory] = useState<'' | 'taxa' | 'gas_medicinal'>('')
   const [serviceDate, setServiceDate] = useState(() => nowLocalInput().slice(0, 10))
   const [notes, setNotes] = useState('')
 
@@ -122,8 +147,16 @@ export default function InpatientFeePanel({ patientId, canManage }: Props) {
     loadAdmission()
   }, [loadAdmission])
 
+  // `category` entra no gate de propósito, mesmo sendo opcional na API: uma
+  // única linha sem categoria derruba o breakdown de <valorTotal> da guia
+  // INTEIRA (regra tudo-ou-nada em xml_engine._resolve_valor_total). O custo de
+  // esquecer é invisível aqui e caro lá, então a tela não deixa esquecer.
   const canSubmit =
-    !!tussCode && quantity.trim() !== '' && Number(quantity) > 0 && !submitting
+    !!tussCode &&
+    quantity.trim() !== '' &&
+    Number(quantity) > 0 &&
+    category !== '' &&
+    !submitting
 
   const submit = async () => {
     if (!admission || !tussCode) return
@@ -141,6 +174,7 @@ export default function InpatientFeePanel({ patientId, canManage }: Props) {
             tuss_code: tussCode.id,
             quantity: quantity.trim(),
             unit,
+            category,
             service_date: serviceDate || undefined,
             notes: notes.trim(),
           }),
@@ -152,6 +186,7 @@ export default function InpatientFeePanel({ patientId, canManage }: Props) {
         setTussCode(null)
         setQuantity('')
         setUnit('unidade')
+        setCategory('')
         setNotes('')
       }
       await loadFees(admission.id)
@@ -235,7 +270,15 @@ export default function InpatientFeePanel({ patientId, canManage }: Props) {
             <table className="w-full text-sm">
               <thead className="border-b border-slate-100">
                 <tr>
-                  {['Data', 'TUSS', 'Quantidade', 'Unidade', 'Lançado por', 'Observação'].map(
+                  {[
+                    'Data',
+                    'TUSS',
+                    'Categoria',
+                    'Quantidade',
+                    'Unidade',
+                    'Lançado por',
+                    'Observação',
+                  ].map(
                     (header) => (
                       <th
                         key={header}
@@ -252,6 +295,16 @@ export default function InpatientFeePanel({ patientId, canManage }: Props) {
                   <tr key={fee.id}>
                     <td className="px-4 py-2 text-neu-ink">{fee.service_date}</td>
                     <td className="px-4 py-2 text-neu-ink">{fee.tuss_code_display}</td>
+                    {/* Lançamento anterior à Onda 4 não tem categoria, e isso é
+                        visível de propósito: enquanto houver um assim na
+                        internação, a guia sai sem breakdown por categoria. */}
+                    <td className="px-4 py-2 text-neu-inkSoft">
+                      {fee.category ? (
+                        CATEGORY_LABELS[fee.category]
+                      ) : (
+                        <span className="text-amber-700">Sem categoria</span>
+                      )}
+                    </td>
                     <td className="px-4 py-2 text-neu-ink">{fee.quantity}</td>
                     <td className="px-4 py-2 text-neu-inkSoft">
                       {UNIT_LABELS[fee.unit] ?? fee.unit}
@@ -334,6 +387,36 @@ export default function InpatientFeePanel({ patientId, canManage }: Props) {
             </select>
             {fieldErrors.unit && (
               <p className="mt-1 text-xs font-semibold text-red-700">{fieldErrors.unit}</p>
+            )}
+          </div>
+
+          <div>
+            <label
+              htmlFor="fee-category"
+              className="mb-1 block text-xs font-semibold text-neu-inkSoft"
+            >
+              Categoria (TISS) *
+            </label>
+            <select
+              id="fee-category"
+              value={category}
+              onChange={(e) => setCategory(e.target.value as 'taxa' | 'gas_medicinal')}
+              disabled={submitting}
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-neu-panel"
+            >
+              <option value="">Selecione...</option>
+              {CATEGORY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-neu-inkMuted">
+              A tabela 18 do TUSS não separa taxa de gás, e a operadora cobra os dois em campos
+              diferentes da conta. Quem lança é quem sabe qual é.
+            </p>
+            {fieldErrors.category && (
+              <p className="mt-1 text-xs font-semibold text-red-700">{fieldErrors.category}</p>
             )}
           </div>
 
