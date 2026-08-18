@@ -215,6 +215,8 @@ class TISSGuideSerializer(serializers.ModelSerializer):
             "authorization_number",
             "authorization_date",
             "requesting_professional",
+            "tipo_atendimento",
+            "regime_atendimento",
             "tipo_faturamento",
             "tipo_faturamento_display",
             "competency",

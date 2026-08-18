@@ -359,15 +359,16 @@ class SadtGuideXMLConformanceTests(XMLEngineTestCase):
     @pytest.mark.xfail(
         strict=True,
         reason=(
-            "ctm_sp-sadtGuia: dadosSolicitante, dadosSolicitacao e "
-            "dadosExecutante FECHADOS. MEDIDO com validate_xml sobre uma guia "
-            "de origem cirúrgica (a única que hoje resolve caraterAtendimento): "
-            "o residual é dadosAtendimento — avançou um elemento com esta "
-            "fatia. Guia de LABORATÓRIO nem chega ao validador: falha alto em "
-            "_resolve_sadt_solicitacao, porque LabOrder não registra caráter "
-            "eletivo/urgente e assumir default seria inventar fato clínico. "
-            "procedimentosExecutados e valorTotal seguem inalcançados — ver "
-            "Onda 4 §2."
+            "ctm_sp-sadtGuia: dadosSolicitante, dadosSolicitacao, "
+            "dadosExecutante e dadosAtendimento FECHADOS. MEDIDO com "
+            "validate_xml sobre guia de origem cirúrgica: o residual passou a "
+            "ser o grupo final — 'Expected is one of ( procedimentosExecutados, "
+            "outrasDespesas, observacao, valorTotal )', ou seja valorTotal, o "
+            "único obrigatório dos quatro. É a MESMA fatia que o resumo de "
+            "internação já resolveu (Alternativa A + breakdown por categoria), "
+            "aplicável aqui com ct_procedimentoExecutadoSadt no lugar de "
+            "...Int. Guia de LABORATÓRIO segue sem chegar ao validador: falha "
+            "alto em _resolve_sadt_solicitacao — ver Onda 4 §2."
         ),
     )
     def test_batch_envelope_with_sadt_guide_is_schema_valid(self):
@@ -379,6 +380,10 @@ class SadtGuideXMLConformanceTests(XMLEngineTestCase):
             insured_card_number="1234567890123456",
             authorization_number="AUTH123",
             requesting_professional=self.professional,
+            # tipoAtendimento/regimeAtendimento não têm fonte no Vitali — são
+            # campos da guia, e sem eles a emissão falha alto de propósito.
+            tipo_atendimento=TISSGuide.TipoAtendimento.CODIGO_04,
+            regime_atendimento=TISSGuide.RegimeAtendimento.CODIGO_01,
             # A guia PRECISA de um caso cirúrgico: caraterAtendimento
             # (dadosSolicitacao) só tem fonte governada em SurgicalCase.priority,
             # e guia de laboratório falha alto de propósito. Sem isto o teste
@@ -432,6 +437,8 @@ class SadtSolicitanteResolutionTests(XMLEngineTestCase):
             provider=self.provider,
             insured_card_number="1234567890123456",
             competency="2026-08",
+            tipo_atendimento=TISSGuide.TipoAtendimento.CODIGO_04,
+            regime_atendimento=TISSGuide.RegimeAtendimento.CODIGO_01,
             surgical_case=surgical_case,
             **kwargs,
         )
@@ -577,9 +584,79 @@ class SadtSolicitanteResolutionTests(XMLEngineTestCase):
         batch.guides.add(guide)
         erros = validate_xml(generate_batch_xml(batch))
 
+        # O residual já não é dadosExecutante — é o que estiver adiante dele na
+        # sequência. Esta asserção é sobre o que ESTE bloco fechou; qual é o
+        # residual do momento é responsabilidade do teste de dadosAtendimento e
+        # do reason do xfail, para os dois não brigarem a cada fatia.
         assert len(erros) == 1, erros
-        assert "dadosAtendimento" in erros[0]
         assert "dadosExecutante" not in erros[0]
+
+    def test_dados_atendimento_sai_na_ordem_do_xsd_e_avanca_o_residual(self):
+        """Fecha dadosAtendimento e prova o avanço.
+
+        A ``<sequence>`` de ctm_sp-sadtAtendimento é tipoAtendimento →
+        indicacaoAcidente → regimeAtendimento; fora de ordem o XML é inválido, e
+        só a medição do lote pega isso. Por isso o teste vai até validate_xml em
+        vez de parar em "o elemento existe".
+        """
+        solicitante = self._outro_profissional()
+        guide = self._sadt_guide(requesting_professional=solicitante)
+
+        xml = generate_guide_xml(guide)
+
+        assert "<ans:dadosAtendimento>" in xml
+        assert "<ans:tipoAtendimento>04</ans:tipoAtendimento>" in xml
+        assert "<ans:regimeAtendimento>01</ans:regimeAtendimento>" in xml
+        # Opcionais sem fonte: não emitidos.
+        assert "<ans:tipoConsulta>" not in xml
+        assert "<ans:motivoEncerramento>" not in xml
+        assert "<ans:saudeOcupacional>" not in xml
+
+        batch = TISSBatch.objects.create(provider=self.provider)
+        batch.guides.add(guide)
+        erros = validate_xml(generate_batch_xml(batch))
+
+        assert len(erros) == 1, erros
+        assert "dadosAtendimento" not in erros[0]
+        assert "valorTotal" in erros[0]
+
+    def test_indicacao_acidente_usa_o_default_ja_vigente_no_repo(self):
+        """ "9" não é decisão nova desta fatia: consulta_guide.xml.j2 e
+        internacao_guide.xml.j2 já emitem o mesmo. O teste trava a CONSISTÊNCIA —
+        divergir aqui criaria política local sem cobertura."""
+        solicitante = self._outro_profissional()
+        guide = self._sadt_guide(requesting_professional=solicitante)
+
+        xml = generate_guide_xml(guide)
+
+        assert "<ans:indicacaoAcidente>9</ans:indicacaoAcidente>" in xml
+
+    def test_sem_tipo_e_regime_falha_relatando_os_dois_de_uma_vez(self):
+        """Nenhum dos dois é inferido de guide_type, encounter_type ou
+        SurgicalCase.priority — seriam adivinhação vestida de regra. E os dois
+        faltantes saem numa exceção só, para o faturista não descobrir os buracos
+        uma tentativa por vez."""
+        solicitante = self._outro_profissional()
+        guide = self._sadt_guide(requesting_professional=solicitante)
+        TISSGuide.objects.filter(pk=guide.pk).update(tipo_atendimento="", regime_atendimento="")
+        guide.refresh_from_db()
+
+        with pytest.raises(TISSXMLGenerationError) as exc:
+            generate_guide_xml(guide)
+
+        mensagem = str(exc.value)
+        assert "tipo de atendimento" in mensagem
+        assert "regime de atendimento" in mensagem
+
+    def test_regime_faltando_sozinho_tambem_falha(self):
+        """Um campo só já basta: o XSD exige os dois."""
+        solicitante = self._outro_profissional()
+        guide = self._sadt_guide(requesting_professional=solicitante)
+        TISSGuide.objects.filter(pk=guide.pk).update(regime_atendimento="")
+        guide.refresh_from_db()
+
+        with pytest.raises(TISSXMLGenerationError, match="regime de atendimento"):
+            generate_guide_xml(guide)
 
     def test_executante_sem_cnes_falha_em_vez_de_emitir_elemento_vazio(self):
         """st_texto7 tem minLength=1: <CNES></CNES> é XSD-inválido e viraria

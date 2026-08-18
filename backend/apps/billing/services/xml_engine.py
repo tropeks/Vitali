@@ -844,6 +844,69 @@ def _resolve_sadt_executante(guide, professional) -> dict:
     return {"executante_cnes": cnes}
 
 
+#: dm_indicadorAcidente = {0,1,2,9}. "9" é o default JÁ DOCUMENTADO E EM USO neste
+#: repo (consulta_guide.xml.j2/<indicacaoAcidente> e
+#: internacao_guide.xml.j2/<indicadorAcidente>). Não é decisão nova desta fatia —
+#: é a política existente, aplicada com consistência. Vale dizer o que ela é:
+#: afirmar "não acidente" para todo atendimento É uma suposição sobre fato
+#: clínico, e o resolve permanente seria capturá-lo. Mudar isso agora divergiria
+#: das outras duas guias sem teste que cubra a mudança, então fica REGISTRADO
+#: como pendência em vez de virar invenção local.
+_INDICACAO_ACIDENTE_DEFAULT = "9"
+
+
+def _resolve_sadt_atendimento(guide) -> dict:
+    """Resolve ``<dadosAtendimento>`` (ctm_sp-sadtAtendimento).
+
+    FORMA MEDIDA no XSD (``tissGuiasV4_01_00.xsd``), na ordem da ``<sequence>``::
+
+        tipoAtendimento     dm_tipoAtendimento    OBRIG  (9 códigos)
+        indicacaoAcidente   dm_indicadorAcidente  OBRIG  (0,1,2,9)
+        tipoConsulta        dm_tipoConsulta       opcional — não emitido
+        motivoEncerramento  dm_motivoSaidaObito   opcional — não emitido
+        regimeAtendimento   dm_regimeAtendimento  OBRIG  (5 códigos)
+        saudeOcupacional    dm_saudeOcupacional   opcional — não emitido
+
+    Os três opcionais ficam de fora: não há fonte para nenhum, e emitir opcional
+    inventado é pior que omitir.
+
+    SEM INFERÊNCIA CLÍNICA. ``tipoAtendimento`` e ``regimeAtendimento`` não têm
+    fonte alguma no Vitali — nada no encounter, no pedido de exame ou no caso
+    cirúrgico diz "isto foi atendimento de urgência em regime ambulatorial".
+    Havia atalhos tentadores (mapear de ``SurgicalCase.priority``, de
+    ``encounter_type``, do tipo de guia) e todos seriam adivinhação vestida de
+    regra. São campos próprios em ``TISSGuide``, preenchidos por quem sabe, e
+    esta função FALHA ALTO quando vazios — relatando os dois de uma vez, como
+    ``_resolve_internacao_dados``, para o faturista não descobrir os buracos uma
+    tentativa por vez.
+
+    ``indicacaoAcidente`` é o caso diferente e está documentado em
+    ``_INDICACAO_ACIDENTE_DEFAULT``: usa o default que as outras duas guias deste
+    repo já emitem, em vez de inventar política nova só aqui.
+    """
+    faltando = []
+    if not (guide.tipo_atendimento or "").strip():
+        faltando.append("tipo de atendimento (dm_tipoAtendimento)")
+    if not (guide.regime_atendimento or "").strip():
+        faltando.append("regime de atendimento (dm_regimeAtendimento)")
+
+    if faltando:
+        raise TISSXMLGenerationError(
+            f"Guia SP/SADT {guide.guide_number} não pode emitir dadosAtendimento: "
+            f"falta {'; '.join(faltando)}. São enums fechados da ANS e o Vitali não "
+            "tem de onde deduzi-los — nem o atendimento, nem o pedido de exame, nem o "
+            "caso cirúrgico dizem o tipo e o regime do atendimento. Informe os dois "
+            "nesta guia enquanto ela estiver em rascunho; nenhum é inferido de outro "
+            "campo, para não declarar à operadora um fato clínico que ninguém afirmou."
+        )
+
+    return {
+        "atendimento_tipo": guide.tipo_atendimento,
+        "atendimento_indicacao_acidente": _INDICACAO_ACIDENTE_DEFAULT,
+        "atendimento_regime": guide.regime_atendimento,
+    }
+
+
 # ─── Guide XML generation ─────────────────────────────────────────────────────
 
 
@@ -910,6 +973,8 @@ def generate_guide_xml(guide) -> str:
         # (contratadoExecutante + CNES irmão), mesmo dado já resolvido em todo
         # template desta pasta.
         context.update(_resolve_sadt_executante(guide, professional))
+        # dadosAtendimento — tipo e regime NÃO são inferidos de nada.
+        context.update(_resolve_sadt_atendimento(guide))
 
     if guide.guide_type == "internacao":
         # dadosAutorizacao (ct_autorizacaoInternacao) is mandatory — see

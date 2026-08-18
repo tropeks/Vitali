@@ -374,6 +374,7 @@ class TISSGuide(models.Model):
         related_name="tiss_guides",
         help_text="Caso cirúrgico que originou esta guia (ponte Centro Cirúrgico→faturamento).",
     )
+
     # ── B3: Admission → Resumo de Internação bridge ──────────────────────────────
     # Same-schema FK (emr and billing are both tenant apps) linking an internação
     # guide to the Admission whose accumulated DailyCharges it bills. Nullable — set
@@ -396,6 +397,61 @@ class TISSGuide(models.Model):
     # alto, com o campo editável enquanto a guia é rascunho. Mesma precedência já
     # aprovada para `authorization_date`: fonte automática quando existe,
     # digitação quando não, nunca fabricação.
+    # ─── Taxonomias de ctm_sp-sadtAtendimento ─────────────────────────────────
+    #
+    # `dadosAtendimento` da guia SP/SADT exige tipoAtendimento e
+    # regimeAtendimento, dois enums FECHADOS da ANS sem NENHUMA fonte no Vitali:
+    # não há campo, nem no encounter nem no pedido, que diga "isto foi um
+    # atendimento de urgência em regime ambulatorial". Derivar de qualquer outro
+    # campo seria inferência clínica — exatamente o que esta onda recusa.
+    #
+    # Então são campos próprios, capturados por quem sabe, com falha alta na
+    # emissão quando vazios. Mesmo movimento de `tipo_faturamento`: a decisão vai
+    # para quem tem o fato, em vez de o sistema adivinhar.
+    #
+    # Os rótulos ficam pendentes de manual, como em `TipoFaturamento` e em
+    # `emr.Admission.MotivoEncerramento` (41–67): os XSDs deste repo não têm
+    # `xs:documentation` e o manual de tabelas de domínio da ANS não está
+    # versionado aqui. Inventar rótulo clínico é linha vermelha declarada.
+    class TipoAtendimento(models.TextChoices):
+        """TISS ``dm_tipoAtendimento`` — 9 códigos, lidos do XSD."""
+
+        CODIGO_01 = "01", "Código 01 (rótulo a confirmar no manual ANS)"
+        CODIGO_02 = "02", "Código 02 (rótulo a confirmar no manual ANS)"
+        CODIGO_03 = "03", "Código 03 (rótulo a confirmar no manual ANS)"
+        CODIGO_04 = "04", "Código 04 (rótulo a confirmar no manual ANS)"
+        CODIGO_08 = "08", "Código 08 (rótulo a confirmar no manual ANS)"
+        CODIGO_09 = "09", "Código 09 (rótulo a confirmar no manual ANS)"
+        CODIGO_10 = "10", "Código 10 (rótulo a confirmar no manual ANS)"
+        CODIGO_13 = "13", "Código 13 (rótulo a confirmar no manual ANS)"
+        CODIGO_23 = "23", "Código 23 (rótulo a confirmar no manual ANS)"
+
+    class RegimeAtendimento(models.TextChoices):
+        """TISS ``dm_regimeAtendimento`` — 5 códigos, lidos do XSD."""
+
+        CODIGO_01 = "01", "Código 01 (rótulo a confirmar no manual ANS)"
+        CODIGO_02 = "02", "Código 02 (rótulo a confirmar no manual ANS)"
+        CODIGO_03 = "03", "Código 03 (rótulo a confirmar no manual ANS)"
+        CODIGO_04 = "04", "Código 04 (rótulo a confirmar no manual ANS)"
+        CODIGO_05 = "05", "Código 05 (rótulo a confirmar no manual ANS)"
+
+    tipo_atendimento = models.CharField(  # noqa: DJ001
+        "Tipo de atendimento (TISS)",
+        max_length=2,
+        choices=TipoAtendimento.choices,
+        blank=True,
+        default="",
+        help_text="dm_tipoAtendimento (ctm_sp-sadtAtendimento). Sem ele a guia SP/SADT não gera XML.",
+    )
+    regime_atendimento = models.CharField(  # noqa: DJ001
+        "Regime de atendimento (TISS)",
+        max_length=2,
+        choices=RegimeAtendimento.choices,
+        blank=True,
+        default="",
+        help_text="dm_regimeAtendimento (ctm_sp-sadtAtendimento). Sem ele a guia SP/SADT não gera XML.",
+    )
+
     requesting_professional = models.ForeignKey(
         "emr.Professional",
         on_delete=models.SET_NULL,

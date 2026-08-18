@@ -79,4 +79,22 @@
     </ans:contratadoExecutante>
     <ans:CNES>{{ executante_cnes }}</ans:CNES>
   </ans:dadosExecutante>
+  {# dadosAtendimento (ctm_sp-sadtAtendimento): três filhos obrigatórios na ordem
+     da <sequence> — tipoAtendimento, indicacaoAcidente, regimeAtendimento. Os
+     três opcionais (tipoConsulta, motivoEncerramento, saudeOcupacional) ficam de
+     fora: não há fonte para nenhum.
+
+     tipo e regime vêm de campos próprios da guia, NUNCA inferidos: nada no
+     Vitali diz o tipo e o regime do atendimento, e mapear de guide_type, de
+     encounter_type ou de SurgicalCase.priority seria adivinhação vestida de
+     regra. Falha alta em xml_engine._resolve_sadt_atendimento quando vazios.
+
+     indicacaoAcidente usa o default "9" que consulta_guide.xml.j2 e
+     internacao_guide.xml.j2 já emitem — política existente do repo, não decisão
+     nova desta fatia. Ver _INDICACAO_ACIDENTE_DEFAULT para a ressalva. #}
+  <ans:dadosAtendimento>
+    <ans:tipoAtendimento>{{ atendimento_tipo }}</ans:tipoAtendimento>
+    <ans:indicacaoAcidente>{{ atendimento_indicacao_acidente }}</ans:indicacaoAcidente>
+    <ans:regimeAtendimento>{{ atendimento_regime }}</ans:regimeAtendimento>
+  </ans:dadosAtendimento>
 </ans:guiaSP-SADT>
