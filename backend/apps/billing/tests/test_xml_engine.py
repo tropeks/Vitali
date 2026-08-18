@@ -405,7 +405,13 @@ class SadtSolicitanteResolutionTests(XMLEngineTestCase):
     operadora que quem pediu o exame foi quem o executou.
     """
 
-    def _sadt_guide(self, **kwargs):
+    def _sadt_guide(self, *, surgical_case=_UNSET, **kwargs):
+        if surgical_case is _UNSET:
+            surgical_case = SurgicalCase.objects.create(
+                patient=self.patient,
+                surgeon=self.professional,
+                priority=SurgicalCase.Priority.ELETIVA,
+            )
         guide = TISSGuide.objects.create(
             guide_type="sadt",
             encounter=self.encounter,
@@ -413,11 +419,7 @@ class SadtSolicitanteResolutionTests(XMLEngineTestCase):
             provider=self.provider,
             insured_card_number="1234567890123456",
             competency="2026-08",
-            surgical_case=SurgicalCase.objects.create(
-                patient=self.patient,
-                surgeon=self.professional,
-                priority=SurgicalCase.Priority.ELETIVA,
-            ),
+            surgical_case=surgical_case,
             **kwargs,
         )
         TISSGuideItem.objects.create(
@@ -484,6 +486,33 @@ class SadtSolicitanteResolutionTests(XMLEngineTestCase):
 
         assert "654321" in xml  # conselho do solicitante
         assert "<ans:numeroConselhoProfissional>123456<" not in xml  # o do executante
+
+    def test_carater_atendimento_mapeia_urgencia_e_emergencia(self):
+        solicitante = self._outro_profissional()
+        for priority in (SurgicalCase.Priority.URGENCIA, SurgicalCase.Priority.EMERGENCIA):
+            case = SurgicalCase.objects.create(
+                patient=self.patient,
+                surgeon=self.professional,
+                priority=priority,
+            )
+            guide = self._sadt_guide(
+                surgical_case=case,
+                requesting_professional=solicitante,
+            )
+
+            xml = generate_guide_xml(guide)
+
+            assert "<ans:caraterAtendimento>2</ans:caraterAtendimento>" in xml
+
+    def test_lab_guide_sem_fonte_de_prioridade_falha_sem_default_clinico(self):
+        solicitante = self._outro_profissional()
+        guide = self._sadt_guide(
+            surgical_case=None,
+            requesting_professional=solicitante,
+        )
+
+        with pytest.raises(TISSXMLGenerationError, match="não tem fonte honesta"):
+            generate_guide_xml(guide)
 
     def test_cbo_fora_de_dm_cbos_falha_com_o_codigo_na_mensagem(self):
         """dm_CBOS é enum FECHADO de 171 códigos, e Professional.cbo é opcional
