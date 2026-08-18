@@ -259,11 +259,12 @@ class SadtGuideXMLConformanceTests(XMLEngineTestCase):
 
 class InternacaoGuideXMLConformanceTests(XMLEngineTestCase):
     """guiaResumoInternacao (ctm_internacaoResumoGuia) — NOT brought to full
-    conformance in this slice, but the dadosAutorizacao gap is CLOSED.
+    conformance in this slice, but the dadosAutorizacao, dadosBeneficiario
+    AND dadosExecutante gaps are CLOSED.
 
     Onda 4 Fatia 0 ported cabecalhoGuia and resolved
     numeroGuiaSolicitacaoInternacao (self-reference, Capitão's product
-    decision). This slice resolves <dadosAutorizacao> (ct_autorizacaoInternacao)
+    decision). A later slice resolved <dadosAutorizacao> (ct_autorizacaoInternacao)
     from data that already exists — no new model field:
 
     - senha ← TISSGuide.authorization_number (models.py:367) when set, else
@@ -284,13 +285,33 @@ class InternacaoGuideXMLConformanceTests(XMLEngineTestCase):
       wrong item count, mixed-type batch) instead of emitting a guide with a
       fabricated authorization date.
 
-    Measured before this slice: 1 residual error (missing dadosAutorizacao).
-    Measured after, with a resolvable Authorization: 1 residual error, now
-    further into the sequence — <dadosBeneficiario> is next, and it is a
-    genuine DATA gap, not form. Everything after it (dadosExecutante,
-    dadosInternacao, dadosSaidaInternacao, valorTotal breakdown) is unreached
-    as a consequence and remains real, separately itemized gaps for Fatia 2+
-    — see docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §3.
+    This slice closes the next two elements, BOTH pure form (ligação, no new
+    model field, no migration):
+
+    - <dadosBeneficiario> is ct_beneficiarioDados — the EXACT SAME type
+      consulta_guide.xml.j2/sadt_guide.xml.j2 already emit correctly
+      (numeroCarteira ← guide.insured_card_number; atendimentoRN ← "N"
+      default, same as those two templates — no RN signal in the model).
+    - <dadosExecutante> wraps contratadoExecutante (ct_contratadoDados,
+      codigoPrestadorNaOperadora choice) + a sibling CNES — new SHAPE (not
+      the contratadoExecutante+profissionalExecutante pair guiaConsulta
+      uses), but the same DATA every other template already resolves:
+      professional.cnes_code from the encounter's professional (already in
+      generate_guide_xml's context dict for every guide type).
+
+    Measured before this slice: 1 residual error (missing dadosBeneficiario).
+    Measured after: 1 residual error, now further into the sequence —
+    <dadosInternacao> is next, and it IS a genuine DATA gap: its
+    tipoFaturamento (dm_tipoFaturamento) child has NO source anywhere in the
+    Vitali model (not TISSGuide, not emr.Admission) — it is a product
+    decision about billing-moment (partial/final/complementary), not a
+    ligação. emr.Admission does already carry carater_atendimento/
+    tipo_internacao/regime_internacao/disposition_ans_code (a prior Onda 4
+    slice — "Fatia 3" in the research doc), but TISSGuide.admission is
+    optional and unresolved here; wiring it plus deciding tipoFaturamento is
+    real, separately itemized modeling work. Everything after dadosInternacao
+    (dadosSaidaInternacao, valorTotal breakdown) is unreached as a
+    consequence — see docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §3/§7.
     """
 
     def _make_internacao_guide(self, *, authorization_number="AUTH123"):
@@ -316,12 +337,14 @@ class InternacaoGuideXMLConformanceTests(XMLEngineTestCase):
         strict=True,
         reason=(
             "ctm_internacaoResumoGuia: cabecalhoGuia, "
-            "numeroGuiaSolicitacaoInternacao and dadosAutorizacao now form- "
-            "AND data-complete (Onda 4). Residual is a genuine data gap, not "
-            "form: <dadosBeneficiario> is the next mandatory element and is "
-            "out of this slice's scope. Everything after it (dadosExecutante, "
-            "dadosInternacao, dadosSaidaInternacao, valorTotal breakdown) is "
-            "unreached as a consequence — see Onda 4 report."
+            "numeroGuiaSolicitacaoInternacao, dadosAutorizacao, "
+            "dadosBeneficiario AND dadosExecutante are now form- AND "
+            "data-complete (Onda 4). Residual is a genuine data gap, not "
+            "form: <dadosInternacao> is next, and its tipoFaturamento child "
+            "has no model source (not TISSGuide, not emr.Admission) — a "
+            "product decision about billing-moment, out of this slice's "
+            "scope. Everything after it (dadosSaidaInternacao, valorTotal "
+            "breakdown) is unreached as a consequence — see Onda 4 report."
         ),
     )
     def test_batch_envelope_with_internacao_guide_is_schema_valid(self):

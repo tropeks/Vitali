@@ -27,9 +27,25 @@
    não há fonte honesta para os dois — este template nunca é renderizado
    nesse caso.
 
-   Restante da sequência (dadosBeneficiario, dadosExecutante, dadosInternacao,
-   dadosSaidaInternacao, procedimentosExecutados, valorTotal) segue sendo gap
-   de DADO (Fatia 2+), não de forma — fora do escopo desta fatia. #}
+   Fatia seguinte (mesma leva): dadosBeneficiario (ct_beneficiarioDados) é o
+   MESMO tipo já usado em consulta_guide.xml.j2/sadt_guide.xml.j2 —
+   numeroCarteira + atendimentoRN="N" (default, sem dado de recém-nascido no
+   model). dadosExecutante é forma nova (contratadoExecutante/ct_contratadoDados
+   + CNES sibling, em vez do bloco contratadoExecutante+profissionalExecutante
+   de guiaConsulta), mas o DADO é o mesmo já resolvido em todo template desta
+   pasta: professional.cnes_code (encounter.professional), mesmo placeholder
+   de codigoPrestadorNaOperadora usado no cabeçalho do lote — ver comentário em
+   batch_envelope.xml.j2.
+
+   Restante da sequência (dadosInternacao, dadosSaidaInternacao,
+   procedimentosExecutados, valorTotal) é gap de DADO real, não de forma:
+   dadosInternacao.tipoFaturacao (dm_tipoFaturamento) não tem NENHUMA fonte no
+   Vitali hoje (nem em TISSGuide nem em emr.Admission) — é uma decisão de
+   produto sobre o momento do faturamento (parcial/final/complementar), fora
+   do escopo desta fatia. emr.Admission já tem carater_atendimento/
+   tipo_internacao/regime_internacao/disposition_ans_code (Fatia 3 anterior),
+   mas TISSGuide.admission é opcional e não é resolvido aqui — ver
+   docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §3/§7 Fatia 4+. #}
 <ans:guiaResumoInternacao>
   <ans:cabecalhoGuia>
     <ans:registroANS>{{ guide.provider.ans_code }}</ans:registroANS>
@@ -43,4 +59,19 @@
     <ans:dataAutorizacao>{{ autorizacao_data | format_date }}</ans:dataAutorizacao>
     <ans:senha>{{ autorizacao_senha }}</ans:senha>
   </ans:dadosAutorizacao>
+  <ans:dadosBeneficiario>
+    <ans:numeroCarteira>{{ guide.insured_card_number }}</ans:numeroCarteira>
+    {# atendimentoRN: sem dado de origem no model — "N" é o default seguro,
+       mesmo usado em consulta_guide.xml.j2/sadt_guide.xml.j2. #}
+    <ans:atendimentoRN>N</ans:atendimentoRN>
+  </ans:dadosBeneficiario>
+  <ans:dadosExecutante>
+    <ans:contratadoExecutante>
+      {# codigoPrestadorNaOperadora: mesmo placeholder do cabeçalho do lote —
+         ver comentário em batch_envelope.xml.j2 e em
+         consulta_guide.xml.j2/contratadoExecutante. #}
+      <ans:codigoPrestadorNaOperadora>{{ professional.cnes_code if professional else '' }}</ans:codigoPrestadorNaOperadora>
+    </ans:contratadoExecutante>
+    <ans:CNES>{{ professional.cnes_code if professional else '' }}</ans:CNES>
+  </ans:dadosExecutante>
 </ans:guiaResumoInternacao>
