@@ -263,16 +263,42 @@ O corpo do alerta nunca vira entrada de agente, e a superfície de injeção des
 Esta restrição é parte da decisão, não um detalhe de implementação: se algum dia alguém precisar de
 `prompt`/`script` neste webhook, é uma decisão nova, não uma extensão desta.
 
-**2, 3 e 4 — PENDENTES. O webhook NÃO deve ser criado enquanto não forem respondidas.**
+**3 — Secret: DECIDIDO (Capitão, 2026-08-17).** Sem `secret` por enquanto.
+Risco aceito e registrado: qualquer processo capaz de alcançar a bridge pode forjar um alerta. A
+exposição é limitada — o `hermes` escuta apenas em `127.0.0.1`, então o alcance é restrito a processos
+deste host. Nota operacional: adicionar `secret` depois exige recriar ou reconfigurar o webhook, não é
+só setar uma variável.
 
-| # | Pergunta | Por que trava |
-|---|---|---|
-| 2 | Qual `deliver_chat_id` recebe? | Sem destinatário, o webhook entrega no vazio — o mesmo estado de hoje, com uma peça a mais para manter |
-| 3 | Define `secret` para o Alertmanager assinar as chamadas? | Sem ele, qualquer processo que alcance a bridge pode forjar alerta. Definir depois exige recriar/reconfigurar o webhook |
-| 4 | Alcance de rede: IP do gateway docker (`172.17.0.1`) ou `extra_hosts: ["host.docker.internal:host-gateway"]`? | Determina se o `docker-compose.observability.yml` muda ou não. `extra_hosts` é mudança de repo; IP de gateway é só valor de env |
+**4 — Alcance de rede: DECIDIDO (Capitão, 2026-08-17).** `extra_hosts`.
+**APLICADO** em `docker-compose.observability.yml`: o serviço `alertmanager` recebeu
+`extra_hosts: ["host.docker.internal:host-gateway"]`.
 
-**Nenhum `POST` deve ser emitido até 2, 3 e 4 estarem respondidas.** A decisão 1 sozinha não autoriza
-a criação — define apenas a forma que ela terá quando autorizada.
+⚠️ **Necessário, mas comprovadamente não suficiente.** Diagnóstico feito nesta box:
+
+| Verificação | Resultado |
+|---|---|
+| `ss -ltnp` na porta 9119 | `hermes` escuta em **`127.0.0.1:9119` apenas** |
+| Segundo listener na mesma porta | `hermes_dashboard_zerotier_proxy.py` em `172.29.147.53:9119` (interface ZeroTier `ztrfyczk3a`) — processo **separado**, não o agente |
+| Gateway docker (`ip addr show docker0`) | `172.17.0.1/16` |
+| `curl http://172.17.0.1:9119/` | **HTTP 000 — sem resposta** |
+
+Um serviço ligado a `127.0.0.1` não aceita conexões chegando por `172.17.0.1`. Portanto
+`host.docker.internal` resolve corretamente para o host e ainda assim **não entrega**.
+
+**2 — `deliver_chat_id`: PENDENTE.** Fica para depois, por decisão do Capitão.
+
+### O que ainda falta para o alerta chegar em alguém
+
+1. **`deliver_chat_id`** — pendente.
+2. **Tornar a bridge alcançável a partir do container.** Dois caminhos, ambos exigindo decisão:
+   - **(a) Sem alteração externa:** apontar `ALERTMANAGER_WEBHOOK_URL` para o proxy ZeroTier já
+     existente, `172.29.147.53:9119`. O container consegue rotear para um IP de interface do host. Não
+     validado (docker indisponível), e desconheço a autenticação e o comportamento desse proxy.
+   - **(b) Com alteração externa:** fazer o `hermes` — ou um proxy análogo ao do ZeroTier — escutar
+     também em `172.17.0.1`. **Requer autorização explícita**, é config fora do repositório Vitali.
+
+**Nenhum `POST` deve ser emitido até (1) e (2) estarem resolvidas.** As decisões 1, 3 e 4 definem a
+forma do webhook; não autorizam sua criação.
 
 Enquanto não houver decisão, o Alertmanager sobe normalmente com `ALERTMANAGER_WEBHOOK_URL` vazio: as
 tentativas de notificação falham de forma visível (`alertmanager_notifications_failed_total`), sem
