@@ -359,13 +359,14 @@ class SadtGuideXMLConformanceTests(XMLEngineTestCase):
     @pytest.mark.xfail(
         strict=True,
         reason=(
-            "ctm_sp-sadtGuia: dadosSolicitante e dadosSolicitacao são emitidos "
-            "para guias cirúrgicas (requesting_professional + SurgicalCase.priority); "
-            "o validador avança e acusa agora dadosExecutante. Para guias de laboratório, "
-            "dadosSolicitacao continua sendo um gap de DADO porque LabOrder não registra "
-            "caráter eletivo/urgente. dadosExecutante, "
-            "dadosAtendimento, procedimentosExecutados e valorTotal seguem "
-            "inalcançados como consequência — ver Onda 4 §2."
+            "ctm_sp-sadtGuia: dadosSolicitante e dadosSolicitacao FECHADOS. "
+            "MEDIDO com validate_xml sobre uma guia de origem cirúrgica (a "
+            "única que hoje resolve caraterAtendimento): o residual é "
+            "dadosExecutante. Guia de LABORATÓRIO nem chega ao validador — "
+            "falha alto em _resolve_sadt_solicitacao, porque LabOrder não "
+            "registra caráter eletivo/urgente e assumir um default seria "
+            "inventar fato clínico. dadosAtendimento, procedimentosExecutados "
+            "e valorTotal seguem inalcançados — ver Onda 4 §2."
         ),
     )
     def test_batch_envelope_with_sadt_guide_is_schema_valid(self):
@@ -377,6 +378,16 @@ class SadtGuideXMLConformanceTests(XMLEngineTestCase):
             insured_card_number="1234567890123456",
             authorization_number="AUTH123",
             requesting_professional=self.professional,
+            # A guia PRECISA de um caso cirúrgico: caraterAtendimento
+            # (dadosSolicitacao) só tem fonte governada em SurgicalCase.priority,
+            # e guia de laboratório falha alto de propósito. Sem isto o teste
+            # media outra coisa — a guia nem chegava a ser emitida, e o erro do
+            # validador era "falta guiaSP-SADT no lote", não o residual real.
+            surgical_case=SurgicalCase.objects.create(
+                patient=self.patient,
+                surgeon=self.professional,
+                priority=SurgicalCase.Priority.ELETIVA,
+            ),
             competency="2026-08",
         )
         TISSGuideItem.objects.create(
@@ -487,6 +498,30 @@ class SadtSolicitanteResolutionTests(XMLEngineTestCase):
 
         assert "654321" in xml  # conselho do solicitante
         assert "<ans:numeroConselhoProfissional>123456<" not in xml  # o do executante
+
+    def test_carater_atendimento_mapeia_eletiva(self):
+        """O outro lado do mapeamento. Sem isto, trocar o valor de "eletiva" por
+        qualquer coisa passaria: os testes existentes só afirmavam o código 2."""
+        solicitante = self._outro_profissional()
+        guide = self._sadt_guide(requesting_professional=solicitante)
+
+        xml = generate_guide_xml(guide)
+
+        assert "<ans:caraterAtendimento>1</ans:caraterAtendimento>" in xml
+
+    def test_dados_solicitacao_omite_os_filhos_opcionais(self):
+        """dataSolicitacao, indicacaoClinica e indCobEspecial são minOccurs="0" e
+        NÃO são emitidos: não há fonte clínica equivalente para nenhum, e emitir
+        opcional inventado é pior que omitir."""
+        solicitante = self._outro_profissional()
+        guide = self._sadt_guide(requesting_professional=solicitante)
+
+        xml = generate_guide_xml(guide)
+
+        assert "<ans:dadosSolicitacao>" in xml
+        assert "<ans:dataSolicitacao>" not in xml
+        assert "<ans:indicacaoClinica>" not in xml
+        assert "<ans:indCobEspecial>" not in xml
 
     def test_carater_atendimento_mapeia_urgencia_e_emergencia(self):
         solicitante = self._outro_profissional()
