@@ -940,10 +940,9 @@ class TISSGuideViewSet(AuditReadMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="tipo-faturamento-options")
     def tipo_faturamento_options(self, request):
         """Expose ANS codes and their authoritative current labels to the UI."""
-        return Response([
-            {"value": value, "label": label}
-            for value, label in TISSGuide.TipoFaturamento.choices
-        ])
+        return Response(
+            [{"value": value, "label": label} for value, label in TISSGuide.TipoFaturamento.choices]
+        )
 
     def get_queryset(self):
         qs = TISSGuide.objects.select_related("patient", "provider", "price_table", "encounter")

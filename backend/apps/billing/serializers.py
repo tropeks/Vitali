@@ -189,8 +189,7 @@ class TISSGuideSerializer(serializers.ModelSerializer):
 
     def get_tipo_faturamento_options(self, obj):
         return [
-            {"value": value, "label": label}
-            for value, label in TISSGuide.TipoFaturamento.choices
+            {"value": value, "label": label} for value, label in TISSGuide.TipoFaturamento.choices
         ]
 
     class Meta:

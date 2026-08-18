@@ -65,7 +65,7 @@ describe('GuideDetailPage — authorization_date', () => {
 
     expect(screen.getByLabelText('Data da autorização')).not.toBeDisabled();
     expect(screen.getByLabelText('Senha de autorização')).not.toBeDisabled();
-    expect(screen.getByLabelText('Tipo de faturamento (TISS)')).toHaveValue('2');
+    await waitFor(() => expect(screen.getByLabelText('Tipo de faturamento (TISS)')).toHaveValue('2'));
   });
 
   it('sends the picked date as plain YYYY-MM-DD, with no timezone shift', async () => {

@@ -80,7 +80,7 @@ export default function GuideDetailPage() {
     if (tipoFaturamentoOptions.length === 0 && Array.isArray(guide.tipo_faturamento_options)) {
       setTipoFaturamentoOptions(guide.tipo_faturamento_options);
     }
-  }, [guide]);
+  }, [guide, tipoFaturamentoOptions.length]);
 
   const isDraft = guide?.status === 'draft';
 
