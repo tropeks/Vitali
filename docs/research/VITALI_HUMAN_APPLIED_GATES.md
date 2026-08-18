@@ -189,3 +189,91 @@ estiver de pé, faça o `restore_test.sh` escrever o resultado num arquivo `.pro
 collector do node_exporter, e adicione a regra correspondente — mesmo mecanismo do
 `VitaliBackupStale`. Assim "o drill parou de rodar" e "o drill rodou e falhou" viram alertas, em vez
 de linhas no journal que ninguém lê.
+
+---
+
+## Item 1.4b — webhook na bridge Hermes `[BLOQUEADO — aguarda autorização]`
+
+**Status:** não executado. Nenhum `POST`, nenhuma alteração, nenhum recurso criado.
+**Motivo:** é configuração de infraestrutura **externa ao repositório Vitali**. Alterá-la exige
+autorização explícita do operador, que não foi dada.
+
+### O que foi feito (escopo exato)
+
+Somente descoberta read-only, para levantar os dados desta decisão:
+
+| Ação | Resultado |
+|---|---|
+| `GET 127.0.0.1:9119/` · `/health` · `/healthz` | 200, SPA HTML |
+| `GET /docs` | 200, UI de documentação |
+| `GET /openapi.json` | 200, spec salvo em arquivo local de scratchpad |
+
+Nada além disso. Nenhum webhook criado, habilitado, listado ou modificado.
+
+### O que a integração exigiria
+
+O Alertmanager (item 1.4) já está pronto e parametrizado: ele lê o destino de
+`ALERTMANAGER_WEBHOOK_URL` via `url_file`. Ligar na bridge significa (a) criar um webhook no Hermes e
+(b) apontar essa variável para a URL resultante. Nada no repositório Vitali precisa mudar.
+
+**Contrato do endpoint** (`POST /api/webhooks`, Hermes Agent 0.20.1) — campos declarados no spec:
+
+```
+name           (obrigatório)   events        deliver        secret
+description                    prompt        deliver_only
+script                         skills        deliver_chat_id
+```
+
+### O ponto que exige decisão consciente
+
+O webhook aceita **`prompt`, `script` e `skills`**. Um webhook do Hermes não é apenas um canal de
+entrega: ele pode **executar um prompt de agente ou um script** quando acionado.
+
+Se o webhook for criado com `prompt` ou `script`, o corpo do alerta do Alertmanager passa a ser
+**entrada de um agente com capacidade de execução**. Os rótulos de um alerta são majoritariamente
+controlados pela configuração, mas `instance`, `mountpoint` e anotações derivadas de séries podem
+carregar texto vindo do ambiente monitorado. É uma superfície de injeção que não existe hoje.
+
+**Recomendação:** criar com `deliver_only: true` e **sem** `prompt`/`script`/`skills` — entrega pura,
+sem execução. Isso resolve o item 1.4 (alerta chega num humano) sem abrir superfície nova.
+
+### Dados que sairiam do stack Vitali
+
+As 6 regras hoje em `alerts.yml` são todas de infraestrutura:
+
+`VitaliTelemetryTargetDown` · `VitaliHighServerErrorRatio` · `VitaliHostDiskLow` ·
+`VitaliRedisMemoryHigh` · `VitaliPostgresConnectionsHigh` · `VitaliBackupStale`
+
+**Nenhuma contém dado de paciente.** O payload leva `alertname`, `severity`, rótulos de instância/job,
+e o texto de `summary` definido no próprio YAML. Não há PHI, e nenhum alerta futuro deve introduzi-lo —
+vale registrar isso como regra ao adicionar regras novas.
+
+### Detalhe de rede que vai travar na primeira tentativa
+
+O Alertmanager roda em container. **`127.0.0.1` dentro do container não é o host** — a bridge não será
+alcançada por esse endereço. É preciso usar o IP do gateway da rede docker (tipicamente `172.17.0.1`)
+ou adicionar `extra_hosts: ["host.docker.internal:host-gateway"]` ao serviço `alertmanager`, que
+deliberadamente **não** foi configurado.
+
+### Decisões
+
+**1 — Modo do webhook: DECIDIDO (Capitão, 2026-08-17).**
+`deliver_only: true`, **sem** `prompt`, **sem** `script`, **sem** `skills`. Entrega pura, zero execução.
+O corpo do alerta nunca vira entrada de agente, e a superfície de injeção descrita acima não se abre.
+Esta restrição é parte da decisão, não um detalhe de implementação: se algum dia alguém precisar de
+`prompt`/`script` neste webhook, é uma decisão nova, não uma extensão desta.
+
+**2, 3 e 4 — PENDENTES. O webhook NÃO deve ser criado enquanto não forem respondidas.**
+
+| # | Pergunta | Por que trava |
+|---|---|---|
+| 2 | Qual `deliver_chat_id` recebe? | Sem destinatário, o webhook entrega no vazio — o mesmo estado de hoje, com uma peça a mais para manter |
+| 3 | Define `secret` para o Alertmanager assinar as chamadas? | Sem ele, qualquer processo que alcance a bridge pode forjar alerta. Definir depois exige recriar/reconfigurar o webhook |
+| 4 | Alcance de rede: IP do gateway docker (`172.17.0.1`) ou `extra_hosts: ["host.docker.internal:host-gateway"]`? | Determina se o `docker-compose.observability.yml` muda ou não. `extra_hosts` é mudança de repo; IP de gateway é só valor de env |
+
+**Nenhum `POST` deve ser emitido até 2, 3 e 4 estarem respondidas.** A decisão 1 sozinha não autoriza
+a criação — define apenas a forma que ela terá quando autorizada.
+
+Enquanto não houver decisão, o Alertmanager sobe normalmente com `ALERTMANAGER_WEBHOOK_URL` vazio: as
+tentativas de notificação falham de forma visível (`alertmanager_notifications_failed_total`), sem
+derrubar o serviço. **O alerta continua não chegando em ninguém** — o bloqueador segue aberto.
