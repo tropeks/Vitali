@@ -1,5 +1,5 @@
 {# SP/SADT Guide fragment — TISS 4.01.00 #}
-<ans:guiaSP_SADT>
+<ans:guiaSP-SADT>
   <ans:cabecalhoGuia>
     <ans:registroANS>{{ guide.provider.ans_code }}</ans:registroANS>
     <ans:numeroGuiaPrestador>{{ guide.guide_number }}</ans:numeroGuiaPrestador>
@@ -8,8 +8,8 @@
     <ans:senhaAutorizacao>{{ guide.authorization_number or '' }}</ans:senhaAutorizacao>
     <ans:dataValidadeSenha>{{ guide.created_at | format_date }}</ans:dataValidadeSenha>
     <ans:numeroCarteira>{{ guide.insured_card_number }}</ans:numeroCarteira>
-    <ans:nomeBeneficiario>{{ guide.patient.full_name | truncate(70, false, '') }}</ans:nomeBeneficiario>
-    <ans:dataNascimentoBeneficiario>{{ guide.patient.birth_date | format_date }}</ans:dataNascimentoBeneficiario>
+    {# nomeBeneficiario/dataNascimentoBeneficiario: retirados na versão 4.00.00
+       (ver tissComplexTypesV4_01_00.xsd ct_beneficiarioDados) — removidos. #}
     <ans:codigoCBO>{{ professional.cbo_code if professional else '225120' }}</ans:codigoCBO>
     <ans:CNES>{{ professional.cnes_code if professional else '' }}</ans:CNES>
     <ans:dataInicioFaturamento>{{ guide.created_at | format_date }}</ans:dataInicioFaturamento>
@@ -37,4 +37,4 @@
     <ans:indicadorAcidente>N</ans:indicadorAcidente>
   </ans:diagnostico>
 {% endfor %}
-</ans:guiaSP_SADT>
+</ans:guiaSP-SADT>

@@ -32,10 +32,26 @@ class TenantIdentityScopingTests(TenantTestCase):
     assignment must never cross the boundary."""
 
     def setUp(self):
+        # apps.core (Tenant, Domain, User, Role, FeatureFlag) is entirely
+        # SHARED_APPS — every model exercised below lives in the PUBLIC
+        # schema regardless of which tenant "owns" a row (ownership here is
+        # the ``tenant_id`` FK, not physical schema placement). No test in
+        # this class ever issues an HTTP request against tenant B's domain or
+        # touches a TENANT_APPS model in its schema, so provisioning a real
+        # Postgres schema for it (CREATE SCHEMA + ~250 migrations) would only
+        # buy per-test latency, not coverage: the boundary under test is the
+        # ``for_current_tenant()`` filter, not schema isolation (see
+        # apps/imaging/tests/test_orthanc_sync.py::OrthancSyncMultiTenantTest
+        # for the schema-isolation case, which DOES need a real schema).
+        # ``Tenant.save()`` only calls ``create_schema()`` when
+        # ``self.auto_create_schema`` is true; overriding it on the instance
+        # (shadowing the class attribute, no production code touched) skips
+        # the DDL/migration entirely while still exercising the FK row real
+        # tenant-scoping tests need.
         with schema_context(get_public_schema_name()):
-            self.tenant_b = Tenant.objects.create(
-                name="Identity Scoping Clinic B", slug="identity-scoping-b"
-            )
+            self.tenant_b = Tenant(name="Identity Scoping Clinic B", slug="identity-scoping-b")
+            self.tenant_b.auto_create_schema = False
+            self.tenant_b.save()
             self.domain_b = Domain.objects.create(
                 tenant=self.tenant_b,
                 domain="identity-scoping-b.testserver",

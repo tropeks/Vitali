@@ -76,6 +76,26 @@ Rode uma vez com `ENFORCE_TENANT_MEMBERSHIP: "false"` no env do step. O job **de
 com `core.E002`. Se ficar verde, o gate não está pegando e o step precisa ser revisto. Volte para
 `"true"` depois do teste.
 
+### Addendum (Onda 2 / item 2.6, 2026-08-18)
+
+`backend/apps/core/checks.py` ganhou um novo check `core.E008`
+(`check_catalogs_loaded_in_production`, mesmo padrão `Tags.security, deploy=True` de E002/E003/E004):
+falha se TUSS/ANVISA/SIGTAP/CID-10/CNES/CBO/CID-O/UCUM estiverem vazios em produção. **Não precisa de
+step de CI separado** — ele roda automaticamente assim que o step acima (`check --deploy`) for aplicado,
+porque `--deploy` executa todo check registrado com `deploy=True`, não um por vez. Só o CI env do step
+precisa continuar apontando para um banco de dados real acessível (hoje `backend-lint` não abre conexão
+de banco — ver nota original abaixo sobre por que `backend-lint` foi escolhido). Se E008 disparar em CI
+com um banco vazio de propósito (ex.: banco de teste limpo), isso é esperado e correto: em CI/dev o
+`ENVIRONMENT` não é `"production"`, então o check retorna vazio (silencioso) a menos que alguém force
+`ENVIRONMENT=production` no step — o que o step de 0.3 já faz. Ou seja: **depois de aplicar 0.3, o
+próprio CI job vai falhar com core.E008** até que os catálogos estejam carregados no banco que o step usa
+— o que não é o caso hoje (o step usa um Postgres efêmero do runner, sempre vazio). Duas opções para quem
+for aplicar isto: (a) usar `--allow-empty`-equivalente para E008 (não existe hoje — o check não tem essa
+opção, só o management command `verify_catalogs` tem) enquanto o gate de CI não tiver um banco com
+catálogos; ou (b) restringir 0.3 a rodar só no deploy real (fora do CI de PR), não no `backend-lint` de
+todo PR. Ver `docs/DEPLOY.md` ("Reference Catalogs") para o gate real (`verify_catalogs`), que roda no
+host de deploy, não no CI, e não tem esse problema porque o banco ali é o de produção/staging de verdade.
+
 ---
 
 ## Item 1.8 — teste unitário do frontend no CI

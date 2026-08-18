@@ -1,5 +1,6 @@
 from datetime import UTC, date, datetime
 
+from django.db import connection
 from django_tenants.utils import get_public_schema_name, schema_context
 from rest_framework.test import APIClient
 
@@ -201,7 +202,37 @@ class PortalImagingStaffViewerAuthorizationTest(TenantTestCase):
     branch already had, minus the ``patient=`` scoping staff doesn't have.
     """
 
+    #: Only this test needs a real second schema; provisioning one costs a
+    #: full migrate_schemas run (~2 min), so it is NOT paid by the other 5
+    #: tests in this class — see the ordering note in setUp() below.
+    _NEEDS_TENANT_B = "test_staff_denied_for_study_in_another_tenant"
+
     def setUp(self):
+        # Provision tenant B FIRST — before ANYTHING else in this method
+        # touches a SHARED_APPS table (User/Role/FeatureFlag all live in the
+        # public schema, core_user included). Tenant.save() provisions the
+        # new schema via migrate_schemas — real DDL — and Postgres refuses
+        # DDL that touches a table (e.g. core_user, via an FK constraint
+        # some tenant-app migration holds against it) while that table has
+        # deferred FK trigger events pending from inserts earlier in this
+        # same atomic test transaction ("cannot ALTER TABLE ... because it
+        # has pending trigger events"). Doing the DDL before any such insert
+        # exists sidesteps that; only ``_NEEDS_TENANT_B`` needs it at all,
+        # so it stays out of the other tests' setUp cost. B is left with NO
+        # TENANT_APPS rows for the same reason (inserting into B's own
+        # schema under this transaction would reproduce the problem) — see
+        # apps/imaging/tests/test_orthanc_sync.py::OrthancSyncMultiTenantTest
+        # for the full explanation of the ordering constraint.
+        if self._testMethodName == self._NEEDS_TENANT_B:
+            with schema_context(get_public_schema_name()):
+                self.tenant_b = Tenant.objects.create(
+                    name="Clinic B (imaging auth test)", slug="clinicb-imgauth"
+                )
+                self.domain_b = Domain.objects.create(
+                    domain="clinicb-imgauth.test.com", tenant=self.tenant_b
+                )
+            FeatureFlag.objects.create(tenant=self.tenant_b, module_key="imaging", is_enabled=True)
+
         FeatureFlag.objects.update_or_create(
             tenant=self.__class__.tenant,
             module_key="imaging",
@@ -233,6 +264,26 @@ class PortalImagingStaffViewerAuthorizationTest(TenantTestCase):
         self.client = APIClient()
         self.client.defaults["SERVER_NAME"] = self.__class__.domain.domain
         self.client.force_authenticate(self.staff)
+
+    def tearDown(self):
+        if not hasattr(self, "tenant_b"):
+            return
+        self.domain_b.delete()
+        with schema_context(get_public_schema_name()):
+            try:
+                self.tenant_b.delete(force_drop=True)
+            except Exception:
+                self.tenant_b.delete()
+        # The one test using tenant_b routes a REAL HTTP request through
+        # domain_b, which lets TenantMainMiddleware call
+        # connection.set_tenant(tenant_b) mid-request — invisible to
+        # schema_context's own "previous tenant" bookkeeping above, whose
+        # __exit__ therefore restores the connection to tenant B (whose
+        # schema this method just dropped) instead of tenant A. Every other
+        # test in this class assumes the connection is on tenant A
+        # (TenantTestCase's fast_test schema), so force it back explicitly
+        # rather than trust schema_context's restore.
+        connection.set_tenant(self.__class__.tenant)
 
     def _authorize(self, uri, client=None):
         client = client or self.client
@@ -273,25 +324,8 @@ class PortalImagingStaffViewerAuthorizationTest(TenantTestCase):
         apps/imaging/tests/test_orthanc_sync.py::OrthancSyncMultiTenantTest.
         Failed before the fix, for the same reason as the test above.
         """
-        with schema_context(get_public_schema_name()):
-            tenant_b = Tenant.objects.create(
-                name="Clinic B (imaging auth test)", slug="clinicb-imgauth"
-            )
-            domain_b = Domain.objects.create(domain="clinicb-imgauth.test.com", tenant=tenant_b)
-        FeatureFlag.objects.create(tenant=tenant_b, module_key="imaging", is_enabled=True)
-
-        def _cleanup():
-            domain_b.delete()
-            with schema_context(get_public_schema_name()):
-                try:
-                    tenant_b.delete(force_drop=True)
-                except Exception:
-                    tenant_b.delete()
-
-        self.addCleanup(_cleanup)
-
         client_b = APIClient()
-        client_b.defaults["SERVER_NAME"] = domain_b.domain
+        client_b.defaults["SERVER_NAME"] = self.domain_b.domain
         client_b.force_authenticate(self.staff)
 
         response = self._authorize(

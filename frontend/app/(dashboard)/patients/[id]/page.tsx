@@ -41,6 +41,7 @@ import ReconciliationList from '@/components/patients/ReconciliationList'
 import SaeDiagnosisList from '@/components/nursing/SaeDiagnosisList'
 import SaeEvolution from '@/components/nursing/SaeEvolution'
 import AdmissionPanel from '@/components/inpatient/AdmissionPanel'
+import InpatientFeePanel from '@/components/inpatient/InpatientFeePanel'
 import SurgeryCasePanel from '@/components/surgery/SurgeryCasePanel'
 import EmergencyChartPanel from '@/components/emergency/EmergencyChartPanel'
 import TransfusaoTab from '@/components/transfusion/TransfusaoTab'
@@ -636,6 +637,13 @@ export default function PatientDetailPage() {
   const canReadBeds = useMemo(() => hasPermission(PERMISSIONS.BEDS_READ), [])
   const canAdmit = useMemo(() => hasPermission(PERMISSIONS.ADT_ADMIT), [])
   const canDischarge = useMemo(() => hasPermission(PERMISSIONS.ADT_DISCHARGE), [])
+  // Mirrors the backend's CanRecordInpatientFee (billing.write OR emr.write) —
+  // quem lança oxigênio/incubadora está à beira do leito, então a enfermagem
+  // (emr.write) libera o painel tanto quanto o faturista (billing.write).
+  const canManageInpatientFees = useMemo(
+    () => hasPermission(PERMISSIONS.BILLING_WRITE) || hasPermission(PERMISSIONS.EMR_WRITE),
+    [],
+  )
   const canReadSurgery = useMemo(() => hasPermission(PERMISSIONS.SURGERY_READ), [])
   const canManageSurgery = useMemo(() => hasPermission(PERMISSIONS.SURGERY_MANAGE), [])
   const canReadEmergency = useMemo(() => hasPermission(PERMISSIONS.EMERGENCY_READ), [])
@@ -1206,6 +1214,7 @@ export default function PatientDetailPage() {
                     canAdmit={canAdmit}
                     canDischarge={canDischarge}
                   />
+                  <InpatientFeePanel patientId={id} canManage={canManageInpatientFees} />
                 </div>
               )}
 

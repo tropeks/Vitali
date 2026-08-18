@@ -185,7 +185,7 @@ def record_inpatient_fee(
     notes: str = "",
     actor=None,
 ) -> InpatientFee:
-    """B6 — Lança uma taxa/gás medicinal numa internação ativa.
+    """B6/Onda2 2.2 — Lança uma taxa/gás medicinal numa internação ativa.
 
     Ao contrário da diária, que é acumulada automaticamente pela estada, a taxa é
     um lançamento **explícito**: quem sabe que a incubadora ficou ligada 6 horas é
@@ -200,15 +200,35 @@ def record_inpatient_fee(
       punir o dado antigo.
     * **quantidade positiva** — 0 hora de oxigênio não é um lançamento.
     * **internação ativa** — depois da alta a conta está fechada.
+
+    Idempotência
+    ------------
+    Ao contrário de ``DailyCharge`` (uma por dia, ``UniqueConstraint`` no banco),
+    uma taxa **legitimamente repete** no mesmo dia — incubadora, oxigênio e bomba
+    de infusão convivem, e o mesmo gás pode ser lançado em turnos diferentes com
+    durações diferentes. Não dá para travar por ``(admission, tuss_code,
+    service_date)`` sem inventar uma restrição que a clínica não pediu.
+
+    O que caracteriza reenvio acidental (duplo clique, retry de rede) em vez de
+    dois lançamentos reais é a **repetição exata**: mesmo TUSS, mesmo dia, mesma
+    quantidade e mesma unidade. Duas administrações de fato distintas quase
+    sempre diferem em quantidade (duração/dose) — e mesmo quando não diferem,
+    ``generate_internacao_guide_for_admission`` agrega por TUSS somando as
+    quantidades, então um "falso positivo" raro (duas horas reais idênticas)
+    chegaria ao mesmo total faturado de qualquer forma. Por isso o critério de
+    igualdade em ``(admission, tuss_code, service_date, quantity, unit)`` é
+    seguro: nunca perde receita real, e sempre blinda contra duplicata de
+    reenvio. ``notes`` fica fora do critério de propósito (mesma taxa, anotação
+    diferente, ainda é a mesma taxa).
+
+    Sem ``UniqueConstraint`` no banco (mudança em ``inpatient_models.py``, fora
+    do escopo deste sprint) a idempotência depende do lock em ``Admission`` para
+    serializar chamadas concorrentes na mesma internação — outra opção é uma
+    ``UniqueConstraint(admission, tuss_code, service_date, quantity, unit)``
+    quando essa migration puder ser feita.
     """
     if quantity is None or Decimal(quantity) <= 0:
         raise ValidationError("Quantidade da taxa deve ser maior que zero.")
-
-    if admission.status != Admission.Status.ADMITTED:
-        raise ValidationError(
-            "Internação não está ativa; não aceita lançamento de taxa. "
-            "Corrija pela guia já emitida."
-        )
 
     table_number = getattr(tuss_code, "table_number", None)
     if table_number and table_number != "18":
@@ -217,16 +237,45 @@ def record_inpatient_fee(
             "exige um código da tabela 18 (diárias, taxas e gases medicinais)."
         )
 
-    return InpatientFee.objects.create(
-        admission=admission,
-        service_date=service_date or timezone.now().date(),
-        tuss_code=tuss_code,
-        description=(tuss_code.description or "")[:500],
-        quantity=Decimal(quantity),
-        unit=unit,
-        notes=notes,
-        created_by=actor,
-    )
+    quantity = Decimal(quantity)
+    resolved_service_date = service_date or timezone.now().date()
+
+    with transaction.atomic():
+        # Trava a internação (mesmo padrão de accrue_daily_charges) para que duas
+        # chamadas concorrentes com os mesmos dados não passem ambas pelo cheque
+        # de duplicata antes de qualquer uma commitar.
+        admission = Admission.objects.select_for_update(of=("self",)).get(pk=admission.pk)
+
+        if admission.status != Admission.Status.ADMITTED:
+            raise ValidationError(
+                "Internação não está ativa; não aceita lançamento de taxa. "
+                "Corrija pela guia já emitida."
+            )
+
+        existing = (
+            InpatientFee.objects.filter(
+                admission=admission,
+                tuss_code=tuss_code,
+                service_date=resolved_service_date,
+                quantity=quantity,
+                unit=unit,
+            )
+            .order_by("created_at")
+            .first()
+        )
+        if existing is not None:
+            return existing
+
+        return InpatientFee.objects.create(
+            admission=admission,
+            service_date=resolved_service_date,
+            tuss_code=tuss_code,
+            description=(tuss_code.description or "")[:500],
+            quantity=quantity,
+            unit=unit,
+            notes=notes,
+            created_by=actor,
+        )
 
 
 def generate_internacao_guide_for_admission(admission: Admission) -> TISSGuide:

@@ -6,6 +6,7 @@ from rest_framework import serializers
 
 from apps.core.models import TUSSCode
 
+from .inpatient_models import InpatientFee
 from .models import (
     AccountingCategory,
     AccountingEntry,
@@ -417,3 +418,49 @@ class AccountingEntrySerializer(serializers.ModelSerializer):
                 {"kind": "A categoria não é compatível com o tipo do lançamento."}
             )
         return attrs
+
+
+# ─── Internação: taxas e gases medicinais (Onda2 2.1/2.2) ─────────────────────
+
+
+class InpatientFeeSerializer(serializers.ModelSerializer):
+    """Taxa/gás medicinal lançado numa internação (B6, exposto na Onda 2).
+
+    A criação NÃO passa por ``ModelSerializer.save()``: é
+    ``InpatientFeeViewSet.perform_create`` que delega a
+    ``services.inpatient_billing.record_inpatient_fee``, onde moram a validação
+    de tabela TUSS/quantidade/internação ativa e a idempotência (mesmo TUSS +
+    dia + quantidade + unidade não duplica). Este serializer só valida forma e
+    faz a leitura de ida e volta.
+    """
+
+    tuss_code_display = serializers.SerializerMethodField()
+    created_by_name = serializers.CharField(
+        source="created_by.full_name", read_only=True, default=""
+    )
+    # Opcional na entrada: o serviço default para "hoje" quando omitido.
+    service_date = serializers.DateField(required=False)
+
+    class Meta:
+        model = InpatientFee
+        fields = [
+            "id",
+            "admission",
+            "service_date",
+            "tuss_code",
+            "tuss_code_display",
+            "description",
+            "quantity",
+            "unit",
+            "notes",
+            "created_by",
+            "created_by_name",
+            "created_at",
+            "updated_at",
+        ]
+        # description = snapshot do texto TUSS no momento do lançamento;
+        # created_by = ator autenticado. Nenhum dos dois é aceito do cliente.
+        read_only_fields = ["id", "description", "created_by", "created_at", "updated_at"]
+
+    def get_tuss_code_display(self, obj):
+        return f"{obj.tuss_code.code} — {obj.tuss_code.description[:60]}"

@@ -7,6 +7,42 @@ Idempotent: checks for [DEMO] sentinel prefix — safe to run on real tenants.
 Usage:
     python manage.py seed_demo_data --tenant=<schema_name>
     python manage.py seed_demo_data --tenant=demo --force   # re-seeds even if present
+
+Onda 2 / item 2.7 — governed-catalog code convention (audited 2026-08-18)
+--------------------------------------------------------------------------
+docs/DEPTH_BACKLOG.md (P1) documents a historical bug: this command used to
+plant a fictional ``core.CNESEstablishment`` row keyed on a REAL DATASUS code
+(CNES 2077469, labelled "Hospital das Clínicas" — the real establishment at
+that code is HOSP DOM ALVARENGA). Importing the real CNES catalog afterwards
+then created a duplicate-by-collision instead of a clean load.
+
+As of this audit, this file does NOT create ``CNESEstablishment``,
+``UcumUnit``, or any other SHARED-schema catalog row (``core.*``) at all — the
+bug does not currently reproduce here (the backlog entry is stale; it was not
+re-verified after the fix). This docstring exists so it never comes back:
+
+**If demo/seed data here ever needs to reference a governed catalog**
+(``core.CNESEstablishment``, ``core.UcumUnit``, ``core.TUSSCode``,
+``core.AnvisaProduct``, ``core.CID10Code``, ``core.SIGTAPProcedure``,
+``core.CBOCode``, ``core.CIDOMorphology`` — anything importable by the
+``import_*`` commands in this same directory), the fictional code MUST be
+structurally impossible to collide with a real imported code, not merely
+*unlikely* to collide:
+
+- Numeric-only catalogs (CNES 7-digit, SIGTAP 10-digit, CID-O behaviour…):
+  prefix with a non-digit marker, e.g. ``"DEMO-CNES-0001"``. Every real
+  DATASUS/ANS source column for these catalogs is pure digits (see the ETLs
+  in scripts/catalogs/), so any code containing a letter is categorically
+  excluded from ever matching an imported row.
+- UCUM (case-sensitive, no digits-only guarantee): prefix with
+  ``"DEMO_"`` (underscore is not legal UCUM grammar — ``ucum-essence.xml``
+  never emits one), e.g. ``"DEMO_UNIT"``.
+- Never reuse a code copied from real-world documentation/screenshots "because
+  it looks realistic" (that is exactly how CNES 2077469 happened) — invent an
+  address-space-safe one instead, per the rules above.
+
+See ``apps/core/tests/test_seed_demo_data_no_fake_catalog_codes.py`` for the
+regression guard (static source check — no DB needed).
 """
 
 import random

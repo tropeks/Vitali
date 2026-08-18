@@ -67,6 +67,15 @@ services:
       # bypassed by a stale env file. Run backfill_tenant_memberships BEFORE
       # first deploy with this set — see .env.staging.example.
       ENFORCE_TENANT_MEMBERSHIP: "true"
+      # Onda 2 / item 2.9: same reasoning as ENFORCE_TENANT_MEMBERSHIP above —
+      # hardcoded (not left to .env.staging) so the Orthanc webhook/poller can't
+      # silently go inert from a missing env var (settings/base.py defaults
+      # ORTHANC_URL to ""). ORTHANC_USERNAME/PASSWORD are real credentials and
+      # stay in .env.staging (see .env.staging.example) — required there via
+      # ${ORTHANC_USERNAME:?...} for the orthanc/nginx services already.
+      ORTHANC_URL: http://orthanc:8042
+      ORTHANC_USERNAME: ${ORTHANC_USERNAME}
+      ORTHANC_PASSWORD: ${ORTHANC_PASSWORD}
     depends_on:
       postgres:
         condition: service_healthy
@@ -94,6 +103,12 @@ services:
       DJANGO_SETTINGS_MODULE: vitali.settings.production
       # See django service: hardcoded so it can't be silently disabled.
       ENFORCE_TENANT_MEMBERSHIP: "true"
+      # Onda 2 / item 2.9: this is the process that actually executes
+      # imaging.sync_orthanc_studies (celery-beat only schedules it) — see
+      # django service comment above.
+      ORTHANC_URL: http://orthanc:8042
+      ORTHANC_USERNAME: ${ORTHANC_USERNAME}
+      ORTHANC_PASSWORD: ${ORTHANC_PASSWORD}
     depends_on:
       postgres:
         condition: service_healthy

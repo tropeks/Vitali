@@ -24,6 +24,16 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 logger = logging.getLogger(__name__)
 
+
+class TISSXMLGenerationError(Exception):
+    """Raised when a guide/batch cannot be rendered into schema-valid TISS XML.
+
+    Fail loud instead of silently emitting XML for the wrong guide type (or XML
+    that structurally cannot satisfy the ANS XSD) — see the "honorários guide
+    falls through to the consulta template" gap fixed by this exception.
+    """
+
+
 # ─── Paths ────────────────────────────────────────────────────────────────────
 
 _BILLING_DIR = Path(__file__).resolve().parent.parent
@@ -45,6 +55,8 @@ def _make_jinja_env() -> Environment:
     env.filters["format_time"] = _format_time
     env.filters["format_decimal"] = _format_decimal
     env.filters["format_currency"] = _format_currency
+    env.filters["conselho_ans_code"] = _conselho_ans_code
+    env.filters["uf_ibge_code"] = _uf_ibge_code
     return env
 
 
@@ -85,19 +97,99 @@ def _format_currency(value) -> str:
     return f"{Decimal(str(value)):.2f}"
 
 
+# dm_conselhoProfissional (tissSimpleTypesV4_01_00.xsd) — closed 2-digit ANS
+# enumeration for professional councils. apps.emr.Professional.council_type
+# stores the council acronym (CRM, COREN, ...); this maps it to the code the
+# XSD actually requires. Keys are the exact values in
+# apps.emr.models.Professional.COUNCIL_CHOICES.
+_CONSELHO_ANS_CODE = {
+    "CRESS": "01",
+    "COREN": "02",
+    "CRF": "03",
+    "CRFA": "04",
+    "CREFITO": "05",
+    "CRM": "06",
+    "CRN": "07",
+    "CRO": "08",
+    "CRP": "09",
+}
+
+# dm_UF (tissSimpleTypesV4_01_00.xsd) — closed 2-digit IBGE state code
+# enumeration. Professional.council_state stores the 2-letter UF (SP, RJ...);
+# this maps it to the IBGE numeric code the XSD requires.
+_UF_IBGE_CODE = {
+    "RO": "11",
+    "AC": "12",
+    "AM": "13",
+    "RR": "14",
+    "PA": "15",
+    "AP": "16",
+    "TO": "17",
+    "MA": "21",
+    "PI": "22",
+    "CE": "23",
+    "RN": "24",
+    "PB": "25",
+    "PE": "26",
+    "AL": "27",
+    "SE": "28",
+    "BA": "29",
+    "MG": "31",
+    "ES": "32",
+    "RJ": "33",
+    "SP": "35",
+    "PR": "41",
+    "SC": "42",
+    "RS": "43",
+    "MS": "50",
+    "MT": "51",
+    "GO": "52",
+    "DF": "53",
+}
+
+
+def _conselho_ans_code(council_type: str) -> str:
+    """Map Professional.council_type (CRM, COREN, ...) to dm_conselhoProfissional."""
+    return _CONSELHO_ANS_CODE.get(council_type, "")
+
+
+def _uf_ibge_code(uf: str) -> str:
+    """Map a 2-letter UF (SP, RJ, ...) to the dm_UF IBGE numeric code."""
+    return _UF_IBGE_CODE.get((uf or "").upper(), "")
+
+
 # ─── Guide XML generation ─────────────────────────────────────────────────────
+
+
+_TEMPLATE_BY_GUIDE_TYPE = {
+    "consulta": "consulta_guide.xml.j2",
+    "sadt": "sadt_guide.xml.j2",
+    "internacao": "internacao_guide.xml.j2",
+    # "honorarios" is intentionally ABSENT: no ctm_honorarioIndividualGuia
+    # template exists yet (see TISSXMLGenerationError below). It used to fall
+    # through to consulta_guide.xml.j2 via a dict .get() default, silently
+    # emitting a wrong guide type — 2.8 closes that hole.
+}
 
 
 def generate_guide_xml(guide) -> str:
     """
     Generate the XML fragment for a single TISSGuide.
     Returns the rendered XML string (no envelope, no XSD declaration).
+
+    Raises TISSXMLGenerationError for guide types with no schema-conformant
+    template (currently "honorarios") or with data the ANS XSD requires but
+    the guide does not have (e.g. more than one procedure on a guia de
+    consulta, which the XSD models as exactly one <procedimento>).
     """
-    template_by_type = {
-        "sadt": "sadt_guide.xml.j2",
-        "internacao": "internacao_guide.xml.j2",
-    }
-    template_name = template_by_type.get(guide.guide_type, "consulta_guide.xml.j2")
+    template_name = _TEMPLATE_BY_GUIDE_TYPE.get(guide.guide_type)
+    if template_name is None:
+        raise TISSXMLGenerationError(
+            f"guide_type={guide.guide_type!r} has no TISS XML template. "
+            "Rendering it as another guide type would silently produce the "
+            "wrong ANS guide — see billing/models.py TISSGuide.guide_type "
+            "choices and apps/billing/templates/tiss/."
+        )
     template = _env().get_template(template_name)
 
     # Resolve professional from encounter
@@ -107,7 +199,23 @@ def generate_guide_xml(guide) -> str:
     except Exception:
         pass
 
-    return template.render(guide=guide, professional=professional)
+    context: dict = {"guide": guide, "professional": professional}
+
+    if guide.guide_type == "consulta":
+        # ctm_consultaGuia (tissGuiasV4_01_00.xsd) models exactly ONE
+        # <procedimento> per guia de consulta — not a repeatable list. Fail
+        # loud rather than silently dropping items or emitting an invalid
+        # repeated element.
+        items = list(guide.items.all())
+        if len(items) != 1:
+            raise TISSXMLGenerationError(
+                f"Guia de consulta {guide.guide_number} tem {len(items)} item(ns); "
+                "o XSD TISS 4.01.00 (ctm_consultaGuia) permite exatamente um "
+                "<procedimento> por guia de consulta."
+            )
+        context["item"] = items[0]
+
+    return template.render(**context)
 
 
 # ─── Batch XML generation ─────────────────────────────────────────────────────
@@ -122,6 +230,18 @@ def generate_batch_xml(batch) -> str:
 
     guides = list(batch.guides.select_related("patient", "provider", "encounter").all())
 
+    # ctm_guiaLote (tissGuiasV4_01_00.xsd) wraps <guiasTISS> in a <choice>: a
+    # single lote may contain guides of exactly ONE ANS guide type (repeated),
+    # not a mix. A mixed-type batch cannot be expressed as one schema-valid
+    # <guiasTISS> element — fail loud instead of emitting an invalid document.
+    guide_types = {guide.guide_type for guide in guides}
+    if len(guide_types) > 1:
+        raise TISSXMLGenerationError(
+            f"Lote {batch.batch_number} mistura tipos de guia {sorted(guide_types)}; "
+            "o XSD TISS 4.01.00 (ctm_guiaLote/guiasTISS) exige um único tipo de "
+            "guia por lote. Separe em lotes homogêneos antes de gerar o XML."
+        )
+
     # Generate each guide's XML fragment
     guide_xml: dict[str, str] = {}
     for guide in guides:
@@ -130,9 +250,6 @@ def generate_batch_xml(batch) -> str:
         except Exception as exc:
             logger.error("Failed to generate XML for guide %s: %s", guide.guide_number, exc)
             guide_xml[guide.guide_number] = f"<!-- ERROR guide {guide.guide_number}: {exc} -->"
-
-    # Derive competency from the first guide (all should have the same)
-    competency = guides[0].competency if guides else ""
 
     # Clinic CNES — derive from first guide's professional CNES if available
     clinic_cnes = ""
@@ -147,7 +264,6 @@ def generate_batch_xml(batch) -> str:
         batch=batch,
         guides=guides,
         guide_xml=guide_xml,
-        competency=competency,
         clinic_cnes=clinic_cnes,
         now=now,
         xml_hash="",  # placeholder — hash computed below

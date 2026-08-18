@@ -49,6 +49,14 @@ services:
       REDIS_URL: redis://redis:6379/0
       DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-vitali.settings.production}
       E2E_MODE: ${E2E_MODE:-false}
+      # Onda 2 / item 2.9: without this the Orthanc webhook + poller are inert
+      # (ORTHANC_URL defaults to "" in settings/base.py — see imaging/views.py
+      # and imaging/tasks.py). Hardcoded to the internal service DNS name/port
+      # below (matches the `orthanc` service), not left to .env, so it can't be
+      # silently absent. Credentials mirror the orthanc service's own dev defaults.
+      ORTHANC_URL: http://orthanc:8042
+      ORTHANC_USERNAME: ${ORTHANC_USERNAME:-vitali}
+      ORTHANC_PASSWORD: ${ORTHANC_PASSWORD:-vitali}
     ports:
       - "8000:8000"
     volumes:
@@ -85,6 +93,12 @@ services:
       DATABASE_URL: postgres://vitali:vitali@postgres:5432/${POSTGRES_DB:-vitali}
       REDIS_URL: redis://redis:6379/0
       DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-vitali.settings.production}
+      # Onda 2 / item 2.9: this is the process that actually executes
+      # imaging.sync_orthanc_studies (celery-beat only schedules it) — without
+      # ORTHANC_URL here the poller no-ops every tick (imaging/tasks.py:39).
+      ORTHANC_URL: http://orthanc:8042
+      ORTHANC_USERNAME: ${ORTHANC_USERNAME:-vitali}
+      ORTHANC_PASSWORD: ${ORTHANC_PASSWORD:-vitali}
     depends_on:
       postgres:
         condition: service_healthy

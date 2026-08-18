@@ -57,6 +57,56 @@ Subsequent deploys are handled automatically by `.github/workflows/deploy-stagin
 
 ---
 
+## Reference Catalogs (TUSS / ANVISA / SIGTAP / CID-10 / CNES / CBO / CID-O / UCUM)
+
+**These are NOT loaded by any migration, fixture, workflow, or entrypoint.** A
+clean deploy boots with every governed catalog empty, and B6-B9 billing
+(TUSS/ANVISA/SIGTAP-dependent) then fails **silently** — no error, just "sem
+TUSS correspondente" at INFO level and the line never gets billed. Do this
+once per environment (and again whenever refreshing a catalog to a newer
+competência):
+
+```bash
+# 1. Run the ETL for each catalog you need (downloads + transforms the
+#    official source into the CSV import_* expects). See scripts/catalogs/README.md
+#    for the exact source URL, gotchas and expected row count per catalog —
+#    do not skip that doc, several sources have non-obvious encoding/format traps.
+cd scripts/catalogs && python3 etl_tuss.py && python3 etl_anvisa.py anvisa_medicamentos.csv
+# ... one etl_<x>.py per catalog (cid10, cbo, sigtap, cido, ucum, anvisa_cmed, cnes)
+
+# 2. Import into the target environment (idempotent upsert — safe to re-run;
+#    --dry-run first is recommended for the multi-hour ones like CNES)
+docker compose -f docker-compose.staging.yml exec django \
+  python manage.py import_tuss --file /path/to/tuss_full.csv --tuss-version 202607
+# ... one import_<x> per catalog — commands and required flags in scripts/catalogs/README.md
+
+# 3. Gate: fail loudly (exit 1) if anything essential is still empty
+docker compose -f docker-compose.staging.yml exec django \
+  python manage.py verify_catalogs
+```
+
+`verify_catalogs` (`apps/core/management/commands/verify_catalogs.py`) is
+read-only and reports every essential catalog's row count; it is the
+actionable version of the `core.E008` system check
+(`apps/core/checks.py`, `deploy=True`) — E008 only fires under `manage.py
+check --deploy`, which today is **not run by any CI workflow** (same gap as
+`core.E002`, documented in
+`docs/research/VITALI_HUMAN_APPLIED_GATES.md` item 0.3 — applying that item
+also activates E008, no separate CI change needed for the check itself).
+
+**What belongs in CI/deploy automation but isn't wired yet (human lot):**
+`verify_catalogs` cannot run as a CI *workflow* step — GitHub Actions runners
+have no access to the multi-hundred-MB catalog source files staged on the
+deploy host, and the import step itself is host-side for the same reason
+(CNES alone is ~45MB processed / ~40min import). The right automation is a
+**post-deploy step on the host** (e.g. appended to whatever script
+`deploy-staging.yml` SSHes in and runs after `migrate_schemas`), not a GitHub
+Actions job: `python manage.py verify_catalogs || <alert/rollback>`. This
+repo does not touch `.github/workflows/` (denylist) or the host's deploy
+script from an agent session — apply manually.
+
+---
+
 ## Beta via Cloudflare Tunnel (no public host required)
 
 Field-tested recipe (first run: 2026-07-21, `vitali.qtec.me` on a homelab PVE box)
@@ -185,6 +235,10 @@ All variables must be set in `.env.staging` (and GitHub Secrets for the CI pipel
 | `WHATSAPP_EVOLUTION_URL` | ✅ | `http://evolution-api:8080` | Fixed (internal) |
 | `WHATSAPP_EVOLUTION_API_KEY` | ✅ | Strong random string | Set manually |
 | `WHATSAPP_WEBHOOK_SECRET` | ✅ | Strong random string | Set manually — must match Evolution API config |
+| `ORTHANC_USERNAME` | ✅ | Strong random string | Set manually — basic-auth user shared by the `orthanc` service and `django`/`celery-worker` |
+| `ORTHANC_PASSWORD` | ✅ | Strong random string | Set manually — basic-auth password, same as above |
+| `ORTHANC_WEBHOOK_SECRET` | ✅ | Strong random string | Set manually — webhook refuses (`503`) unauthenticated when unset, see docs/IMAGING.md |
+| `ORTHANC_URL` | — | `http://orthanc:8042` | **Not** read from this file — hardcoded in `docker-compose.staging.yml`'s `django`/`celery-worker` (Onda 2 / item 2.9) |
 
 > **Fail-fast validation:** production startup now **rejects** empty or placeholder
 > values for `SECRET_KEY`, `POSTGRES_PASSWORD`, `REDIS_PASSWORD`,
@@ -205,6 +259,15 @@ All variables must be set in `.env.staging` (and GitHub Secrets for the CI pipel
 ### GitHub Actions boundary
 
 No host, SSH key, runtime environment, or deployment secret belongs in GitHub. Actions only receives its repository token to publish GHCR images. Runtime secrets stay in `.env.staging` on the PVE host.
+
+### Static compose config guard
+
+`bash scripts/check_orthanc_config.sh` (Onda 2 / item 2.9) is a fast, Docker-free
+static check: it fails if any `docker-compose*.yml` defines an `orthanc` service
+without a non-empty `ORTHANC_URL` on its `django`/`celery-worker` siblings — the
+exact class of regression this item fixed (imaging silently inert). Cheap enough
+to run as a pre-commit/pre-deploy step; this repo does not wire it into
+`.github/workflows/` itself (denylist — apply manually if you want it gating PRs).
 
 ---
 
@@ -252,6 +315,7 @@ Beyond `smoke_test.sh`, confirm:
 2. JSON logs are structured: `docker compose logs django | head -5 | python3 -m json.tool`
 3. Celery tasks are running: `docker compose exec django celery -A vitali inspect active`
 4. Migrations applied: `docker compose exec django python manage.py showmigrations | grep "\[ \]"` should be empty
+5. Essential catalogs loaded (see "Reference Catalogs" above): `docker compose exec django python manage.py verify_catalogs`
 
 ---
 
