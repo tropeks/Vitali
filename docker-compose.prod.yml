@@ -273,6 +273,19 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # crond runs in the foreground (`crond -f`, PID 1's child) all day and only
+    # forks pg_dump once at 02:00 UTC — there's no HTTP/socket to probe, so the
+    # signal is "is the scheduler still alive". alpine's busybox ps/grep are
+    # always present (no procps dependency, unlike `pgrep -x`). Long interval:
+    # this isn't latency-sensitive, and Docker restarts the container (losing
+    # today's schedule state) on the first failed retry chain, which we don't
+    # want to trigger from a slow but harmless blip.
+    healthcheck:
+      test: ["CMD-SHELL", "ps | grep -q '[c]rond'"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
     mem_limit: 256m
     cpus: 0.25
 

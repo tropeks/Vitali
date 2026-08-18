@@ -178,15 +178,33 @@ strongly recommended to satisfy data isolation requirements.
 
 ---
 
-## Offsite backups + at-rest encryption (production)
+## At-rest encryption (required) + offsite upload (optional)
 
-`scripts/backup.sh` does encrypted, offsite uploads automatically when these envs
-are present (all optional — unset keeps the original local-only behaviour):
+`scripts/backup.sh` **refuses to run** unless `BACKUP_ENCRYPTION_KEY` is set —
+pg_dump output contains LGPD-regulated clinical data (EMR), so an unencrypted
+dump is never written to disk. This is enforced twice, on purpose:
+
+1. **`scripts/backup.sh` itself** — the primary guard. It exits non-zero
+   *before* running `pg_dump` if the key is missing (`[backup] ERROR: BACKUP_ENCRYPTION_KEY
+   is not set …`), because `db-backup` is a bare `postgres:16-alpine` container
+   that never loads Django — nothing else can stop a misconfigured nightly cron
+   run.
+2. **`vitali/settings/production.py`** — a redundant, deploy-time guard. It
+   refuses to boot `django`/`celery-worker`/`celery-beat` (which share the same
+   secrets file) when the key is missing, turning a failure that would
+   otherwise surface silently at 02:00 UTC in a container nobody tails the logs
+   of into a loud failure at deploy time instead.
+
+To explicitly run without encryption (e.g. a throwaway pilot with **no real
+patient data**), set `BACKUP_ALLOW_PLAINTEXT=1` for both the `db-backup`
+service and the Django processes. Never set it against a deployment holding
+real clinical data.
 
 | Env | Purpose |
 |-----|---------|
-| `BACKUP_ENCRYPTION_KEY` | GPG symmetric (AES256) passphrase. Dump is encrypted to `.dump.gpg` before leaving the box. |
-| `BACKUP_S3_BUCKET` | Destination bucket. Triggers upload of the (encrypted) artifact. |
+| `BACKUP_ENCRYPTION_KEY` | GPG symmetric (AES256) passphrase. **Required.** Dump is encrypted to `.dump.gpg` before leaving the box. |
+| `BACKUP_ALLOW_PLAINTEXT` | Explicit opt-out of the requirement above (`1`). Only for environments with no real patient data. |
+| `BACKUP_S3_BUCKET` | Destination bucket. Optional — triggers upload of the (encrypted) artifact. |
 | `BACKUP_S3_ENDPOINT` | Custom endpoint for non-AWS (e.g. Backblaze B2 `https://s3.<region>.backblazeb2.com`). Omit for AWS. |
 | `BACKUP_S3_PREFIX` | Key prefix inside the bucket (default `vitali`). |
 | `BACKUP_S3_ACCESS_KEY` / `BACKUP_S3_SECRET_KEY` | S3 credentials. |
@@ -194,6 +212,16 @@ are present (all optional — unset keeps the original local-only behaviour):
 The `db-backup` service in `docker-compose.prod.yml` installs `gpg` + `aws-cli`
 at startup and snapshots these envs into `/etc/backup.env` for the cron job. Upload
 failures exit non-zero and log `[backup] ERROR …` — they are never silent.
+
+> **`docker-compose.staging.yml` gaps (two, stacked):** unlike
+> `docker-compose.prod.yml`, the staging `db-backup` service (1) does not
+> forward `BACKUP_ENCRYPTION_KEY` / `BACKUP_ALLOW_PLAINTEXT` into its container
+> — its `environment:` block and `printenv` snapshot pattern only list
+> `POSTGRES_*`, `BACKUP_DIR`, `KEEP_LAST` — and (2) never installs `gpg` at
+> startup (prod's `command:` runs `apk add --no-cache gnupg aws-cli`; staging's
+> does not). Fixing only the first still leaves backups failing with `'gpg' is
+> not installed`. Both must be fixed in the compose file before this change
+> ships to staging, or the nightly backup breaks every night.
 
 **Generate the encryption key** with `scripts/gen_secrets.sh` and store it in an
 offline vault. Losing `BACKUP_ENCRYPTION_KEY` makes every encrypted dump
@@ -209,8 +237,22 @@ unrecoverable — guard it like `FIELD_ENCRYPTION_KEY`.
 
 `scripts/restore_test.sh` pulls the most recent backup (local dir or S3), decrypts
 it if needed, restores into a throwaway ephemeral Postgres container, runs sanity
-checks (django_migrations count, tenants_tenant, schema count), and tears down.
-Never touches prod/staging DBs.
+checks, and tears down. Never touches prod/staging DBs — the ephemeral container
+publishes no port and is only reachable via `docker exec`.
+
+Sanity checks, in order:
+
+1. `django_migrations` has rows (public schema restored and migrated).
+2. `core_tenant` is queryable (public schema, `apps.core` — `SHARED_APPS`).
+3. **Clinical data**: for every tenant found in `core_tenant`, its per-tenant
+   Postgres schema (named after `Tenant.schema_name`, dynamic — not a fixed
+   name) must contain at least one `emr_patient` row (`apps.emr` —
+   `TENANT_APPS`) for at least one tenant. A restore that recreates the public
+   schema and the tenant list but loses every patient's clinical record fails
+   here — this is the check that actually proves an EMR restore, not just a
+   schema restore. Skipped only when there are zero tenants (nothing to
+   validate yet).
+4. Total restored schema count (informational only).
 
 ```bash
 # Local volume:

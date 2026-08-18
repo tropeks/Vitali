@@ -78,8 +78,16 @@ services:
     command:
       - --path.rootfs=/host
       - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+|var/lib/containers/storage/.+)($|/)
+      # Textfile collector for out-of-band metrics that don't have a native
+      # exporter — currently just backup freshness (VitaliBackupStale in
+      # alerts.yml). Points at the `backups` volume, which db-backup
+      # (docker-compose.prod.yml) already mounts at /backups — no new mount
+      # was added to that file. See delivery report for the scripts/backup.sh
+      # change still needed to actually populate /backups/metrics/*.prom.
+      - --collector.textfile.directory=/backups/metrics
     volumes:
       - /:/host:ro,rslave
+      - backups:/backups:ro
     pid: host
     healthcheck:
       test: ["CMD", "/bin/node_exporter", "--version"]
@@ -87,6 +95,47 @@ services:
       timeout: 5s
       retries: 3
     mem_limit: 96m
+    cpus: 0.1
+
+  # ─── Alertmanager (1.4) ─────────────────────────────────────────────────
+  # Not pinned by digest like its neighbours: this task ran with no network
+  # access, so there was no way to resolve+verify a real manifest digest.
+  # Pinned by immutable version tag instead — before deploying, resolve and
+  # add the digest the same way the other services here were pinned
+  # (`docker pull prom/alertmanager:v0.28.1 && docker inspect --format
+  # '{{index .RepoDigests 0}}' prom/alertmanager:v0.28.1`), then update this
+  # line. Flagged again in the delivery report.
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    restart: always
+    environment:
+      # Empty by default — see .env.example for what this does and how to
+      # point it at a real destination. The service starts fine either way;
+      # see docker/observability/alertmanager.yml for why.
+      ALERTMANAGER_WEBHOOK_URL: ${ALERTMANAGER_WEBHOOK_URL:-}
+    volumes:
+      - ./docker/observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    tmpfs:
+      - /run/alertmanager:rw,size=1m,mode=1777
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        printf '%s' "$$ALERTMANAGER_WEBHOOK_URL" > /run/alertmanager/webhook_url &&
+        exec /bin/alertmanager
+        --config.file=/etc/alertmanager/alertmanager.yml
+        --storage.path=/alertmanager
+        --web.listen-address=:9093
+        --cluster.listen-address=
+    ports:
+      - "127.0.0.1:${ALERTMANAGER_PORT:-9093}:9093"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9093/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    mem_limit: 128m
     cpus: 0.1
 
   prometheus:
@@ -106,10 +155,22 @@ services:
     ports:
       - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
     depends_on:
-      - otel-collector
-      - postgres-exporter
-      - redis-exporter
-      - node-exporter
+      otel-collector:
+        condition: service_started
+      postgres-exporter:
+        condition: service_started
+      redis-exporter:
+        condition: service_started
+      node-exporter:
+        condition: service_started
+      # service_started, not service_healthy: Prometheus tolerates an
+      # unreachable Alertmanager (it logs the failure and retries delivery when
+      # it returns). Gating the boot on Alertmanager health would trade "alerts
+      # don't deliver" for "no metrics, no dashboards, no history at all" — a
+      # strictly worse failure mode, and inconsistent with every other
+      # dependency of this service.
+      alertmanager:
+        condition: service_started
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9090/-/ready"]
       interval: 30s
@@ -154,3 +215,12 @@ services:
 volumes:
   prometheus_data:
   grafana_data:
+  alertmanager_data:
+  # Same volume db-backup (docker-compose.prod.yml) writes dumps into. Declared
+  # here too (empty, same name) purely so Compose lets node-exporter mount it
+  # when this file is combined with docker-compose.prod.yml (see
+  # docs/OBSERVABILITY.md for the combined `-f ... -f ...` invocation). If this
+  # file is ever run standalone, Compose just creates a fresh empty volume of
+  # the same name — the textfile collector finds nothing and stays silent,
+  # same as the "metric doesn't exist yet" case.
+  backups:

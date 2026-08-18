@@ -261,6 +261,16 @@ CELERY_TASK_REJECT_ON_WORKER_LOST = env.bool("CELERY_TASK_REJECT_ON_WORKER_LOST"
 CELERY_WORKER_PREFETCH_MULTIPLIER = env.int("CELERY_WORKER_PREFETCH_MULTIPLIER", default=4)
 CELERY_TASK_SOFT_TIME_LIMIT = env.int("CELERY_TASK_SOFT_TIME_LIMIT", default=270)
 CELERY_TASK_TIME_LIMIT = env.int("CELERY_TASK_TIME_LIMIT", default=300)
+# Onda 1, item 1.7: kill switch for the tenant-schema propagation signal
+# handlers in vitali/celery.py (before_task_publish / task_prerun /
+# task_postrun). Default True because the propagation IS the fix for a
+# confirmed cross-tenant/data-invisibility bug — by-ID tasks (prescription
+# safety checks, SOAP generation, WhatsApp confirmations, waitlist cascades,
+# ...) execute in whatever schema the worker's DB connection was last left
+# in, not the tenant that enqueued them. Flip to False only to roll back to
+# today's (buggy) behaviour without a deploy — e.g. if the propagation itself
+# is suspected of causing an incident — while a fix or full rollback ships.
+CELERY_TENANT_PROPAGATION = env.bool("CELERY_TENANT_PROPAGATION", default=True)
 CELERY_TASK_ROUTES = {
     "apps.triage.tasks.*": {"queue": "critical"},
     "apps.emr.tasks_waitlist.*": {"queue": "critical"},

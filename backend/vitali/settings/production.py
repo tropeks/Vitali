@@ -40,6 +40,35 @@ assert_whatsapp_evolution_api_key(env("WHATSAPP_EVOLUTION_API_KEY", default=""))
 # Fail early if the all-zero dev placeholder from base.py is still in use.
 assert_field_encryption_key(FIELD_ENCRYPTION_KEY)  # noqa: F405
 
+# ─── Backup encryption — redundant, deploy-time guard ────────────────────────
+# scripts/backup.sh already refuses to write an unencrypted pg_dump on its own
+# (same BACKUP_ENCRYPTION_KEY / BACKUP_ALLOW_PLAINTEXT contract as below). That
+# is the PRIMARY guard, because it is the only one that can actually see this
+# misconfiguration: the db-backup service (docker-compose.prod.yml /
+# docker-compose.staging.yml) is a bare postgres:16-alpine container that never
+# loads Django settings, so this check cannot stop a bad nightly cron run by
+# itself. What it CAN do is stop `django` (and celery-worker/-beat, which share
+# the same secrets.env) from booting at all when the same misconfiguration is
+# present — turning a failure mode that would otherwise surface only in
+# db-backup's container logs at 02:00 UTC, unattended, into a loud failure at
+# deploy time, when a human is watching. Belt and suspenders on purpose: a
+# backup that silently never runs is exactly as much of a risk as one that
+# runs but writes plaintext.
+if not env.bool("BACKUP_ALLOW_PLAINTEXT", default=False) and not env(
+    "BACKUP_ENCRYPTION_KEY", default=""
+):
+    from django.core.exceptions import ImproperlyConfigured
+
+    raise ImproperlyConfigured(
+        "BACKUP_ENCRYPTION_KEY must be set. scripts/backup.sh dumps LGPD-regulated "
+        "clinical data (EMR — apps.emr); without this key the nightly dump is written "
+        "to disk in plaintext. Generate one with scripts/gen_secrets.sh and store it "
+        "in an offline vault — losing it makes every encrypted dump unrecoverable, "
+        "guard it like FIELD_ENCRYPTION_KEY. To explicitly run without backup "
+        "encryption (e.g. a throwaway pilot with no real patient data), set "
+        "BACKUP_ALLOW_PLAINTEXT=1 for both this process and the db-backup service."
+    )
+
 # ─── Optional integrations — reject placeholders, allow empty (= disabled) ───
 # A payments token left at 'change-me' fails confusingly at runtime; catch it now.
 assert_optional_secret_not_placeholder("MP_ACCESS_TOKEN", env("MP_ACCESS_TOKEN", default=""))

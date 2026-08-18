@@ -95,11 +95,24 @@ docker cp "${DUMP}" "${CONTAINER}:/tmp/restore.dump"
 # pg_restore returns non-zero on benign warnings; we judge success by the sanity
 # checks below, not by its exit code, but we still surface its stderr.
 docker exec -e PGPASSWORD="${PG_PASSWORD}" "${CONTAINER}" \
-  pg_restore --no-owner --no-privileges --dbname=vitali --username=vitali /tmp/restore.dump \
+  pg_restore --host=127.0.0.1 --port=5432 --no-owner --no-privileges --dbname=vitali --username=vitali /tmp/restore.dump \
   2>"${WORKDIR}/restore.err" || echo "[restore-test] (pg_restore reported warnings — validating by content)"
 
+# Explicit TCP (127.0.0.1:5432), matching the readiness probe above. The image
+# also exposes a Unix socket (unix_socket_directories is repointed at the
+# default PGDATA path in the `docker run` above, so it lands somewhere already
+# writable), but psql/pg_restore have their own compiled-in default socket
+# directory when no -h/--host is given, and it need not match the server's.
+# Forcing TCP everywhere removes that ambiguity instead of relying on both
+# sides agreeing by luck.
 q() { docker exec -e PGPASSWORD="${PG_PASSWORD}" "${CONTAINER}" \
-  psql -tAX -U vitali -d vitali -c "$1" 2>/dev/null | tr -d '[:space:]'; }
+  psql -h 127.0.0.1 -p 5432 -tAX -U vitali -d vitali -c "$1" 2>/dev/null | tr -d '[:space:]'; }
+
+# Like q() but preserves one row per line — for multi-row results (e.g. the
+# list of tenant schema names below). q() intentionally strips ALL whitespace
+# including newlines, which would concatenate rows into one unusable string.
+q_rows() { docker exec -e PGPASSWORD="${PG_PASSWORD}" "${CONTAINER}" \
+  psql -h 127.0.0.1 -p 5432 -tAX -U vitali -d vitali -c "$1" 2>/dev/null; }
 
 # ── 4. Sanity checks ────────────────────────────────────────────────────────
 echo "[restore-test] Running sanity checks…"
@@ -109,15 +122,57 @@ MIGRATIONS="$(q "SELECT count(*) FROM django_migrations;")"
   || fail "django_migrations empty or missing (got: '${MIGRATIONS:-none}')"
 echo "  ✓ django_migrations rows: ${MIGRATIONS}"
 
-# Tenants live in the public schema (django-tenants). Table name: tenants_tenant.
-TENANTS="$(q "SELECT count(*) FROM tenants_tenant;")"
+# Tenants live in the public schema — apps.core is in SHARED_APPS (see
+# vitali/settings/base.py). apps.core.models.Tenant declares no db_table, so
+# Django's default naming applies: <app_label>_<model_name> = core_tenant.
+TENANTS="$(q "SELECT count(*) FROM core_tenant;")"
 if [ -n "${TENANTS}" ] && [ "${TENANTS}" -ge 0 ] 2>/dev/null; then
-  echo "  ✓ tenants_tenant rows: ${TENANTS}"
+  echo "  ✓ core_tenant rows: ${TENANTS}"
 else
-  fail "tenants_tenant not restorable (got: '${TENANTS:-none}')"
+  fail "core_tenant not restorable (got: '${TENANTS:-none}')"
 fi
 
-# At least one tenant schema OR the public schema should hold core tables.
+# A restore that keeps the public schema (migrations ✓, core_tenant rows ✓)
+# can still have silently lost every patient in every clinic — django-tenants
+# isolates clinical data per tenant in its own Postgres schema, named after
+# Tenant.schema_name (== the clinic's slug; NOT a fixed/predictable value —
+# see Tenant.save() in apps/core/models.py). Discover the real schema names
+# from core_tenant and require at least one to actually contain emr_patient
+# rows (apps.emr is in TENANT_APPS — see vitali/settings/base.py — so
+# emr_patient lives inside each tenant schema, never in public).
+if [ "${TENANTS:-0}" != "0" ]; then
+  FOUND_CLINICAL_DATA=0
+  while IFS= read -r SCHEMA; do
+    [ -n "${SCHEMA}" ] || continue
+    case "${SCHEMA}" in
+      *[!A-Za-z0-9_-]*)
+        echo "  ! skipping schema with unexpected characters in name: '${SCHEMA}'" >&2
+        continue
+        ;;
+    esac
+    # Identifier is double-quoted (never string-interpolated as a literal), so
+    # a hyphenated schema name (SlugField allows '-') stays a safe, single
+    # identifier rather than SQL syntax.
+    PATIENTS="$(docker exec -e PGPASSWORD="${PG_PASSWORD}" "${CONTAINER}" \
+      psql -h 127.0.0.1 -p 5432 -tAX -U vitali -d vitali \
+      -c "SELECT count(*) FROM \"${SCHEMA}\".emr_patient;" 2>/dev/null | tr -d '[:space:]')"
+    if [ -n "${PATIENTS}" ] && [ "${PATIENTS}" -gt 0 ] 2>/dev/null; then
+      echo "  ✓ schema '${SCHEMA}' emr_patient rows: ${PATIENTS}"
+      FOUND_CLINICAL_DATA=1
+      break
+    else
+      echo "  · schema '${SCHEMA}' emr_patient rows: ${PATIENTS:-0} (table missing, or tenant has no patients yet)"
+    fi
+  done <<< "$(q_rows "SELECT schema_name FROM core_tenant;")"
+  [ "${FOUND_CLINICAL_DATA}" -eq 1 ] \
+    || fail "no tenant schema has emr_patient rows — clinical data is missing from the restore"
+else
+  echo "  · no tenants present — skipping clinical-data check (nothing to validate yet)"
+fi
+
+# Supplementary signal only (NOT authoritative on its own — a schema can exist
+# and still be empty of clinical data, which is exactly what the check above
+# catches). Total restored schema count, tenant + public + anything else.
 SCHEMAS="$(q "SELECT count(*) FROM information_schema.schemata WHERE schema_name NOT IN ('pg_catalog','information_schema','pg_toast');")"
 echo "  ✓ schemas present: ${SCHEMAS}"
 

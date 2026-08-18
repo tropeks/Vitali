@@ -240,16 +240,30 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       BACKUP_DIR: /backups
       KEEP_LAST: ${BACKUP_KEEP_LAST:-7}
+      # REQUIRED by scripts/backup.sh's encryption guard (and by
+      # vitali/settings/production.py's redundant boot-time check on the same
+      # variable) — dumps hold LGPD-regulated clinical data (EMR) and must not
+      # be written to disk in plaintext. Set BACKUP_ENCRYPTION_KEY in
+      # .env.staging (scripts/gen_secrets.sh). BACKUP_ALLOW_PLAINTEXT is the
+      # documented, explicit opt-out (docs/BACKUPS.md) for a throwaway
+      # environment with no real patient data — leave unset otherwise.
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:-}
+      BACKUP_ALLOW_PLAINTEXT: ${BACKUP_ALLOW_PLAINTEXT:-}
     volumes:
       - ./scripts/backup.sh:/usr/local/bin/backup.sh:ro
       - backups:/backups
     # Runs backup.sh at 02:00 UTC daily via busybox crond (built into alpine).
     # crond resets the process environment, so we snapshot the container env into
     # /etc/backup.env at startup; the cron job sources it before calling backup.sh.
+    # gnupg is installed here (not baked into the postgres:16-alpine image) so
+    # backup.sh's now-mandatory encryption step has `gpg` available — mirrors
+    # docker-compose.prod.yml's install step, minus aws-cli: staging does not
+    # (yet) wire BACKUP_S3_*, so there is nothing here that needs it.
     command: >
       sh -c '
+        apk add --no-cache gnupg >/dev/null 2>&1;
         cp /usr/local/bin/backup.sh /tmp/backup.sh && chmod +x /tmp/backup.sh &&
-        printenv | grep -E "^(POSTGRES_HOST|POSTGRES_PORT|POSTGRES_DB|POSTGRES_USER|POSTGRES_PASSWORD|BACKUP_DIR|KEEP_LAST)=" \
+        printenv | grep -E "^(POSTGRES_HOST|POSTGRES_PORT|POSTGRES_DB|POSTGRES_USER|POSTGRES_PASSWORD|BACKUP_DIR|KEEP_LAST|BACKUP_ENCRYPTION_KEY|BACKUP_ALLOW_PLAINTEXT)=" \
           > /etc/backup.env &&
         chmod 600 /etc/backup.env &&
         mkdir -p /var/spool/cron/crontabs &&
