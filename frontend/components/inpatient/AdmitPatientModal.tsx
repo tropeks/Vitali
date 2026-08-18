@@ -6,6 +6,9 @@ import { apiFetch, ApiError } from '@/lib/api'
 import RemoteCombobox from '@/components/shared/RemoteCombobox'
 import {
   ADMISSION_SOURCE_OPTIONS,
+  CARATER_ATENDIMENTO_OPTIONS,
+  REGIME_INTERNACAO_OPTIONS,
+  TIPO_INTERNACAO_OPTIONS,
   normalizeList,
   nowLocalInput,
   type BedOption,
@@ -24,7 +27,10 @@ interface Props {
  * Admit modal — creates an inpatient stay (`POST /admissions/`, gated
  * `adt.admit`). Picks admitting + attending professional (`/professionals/`),
  * an admission source, a FREE bed (`/beds/?status=livre`) and the admission
- * datetime (default now). A 409 (bed occupied) surfaces as an inline error.
+ * datetime (default now), plus the optional TISS taxonomies for the Resumo de
+ * Internação guide (caráter do atendimento, tipo e regime de internação — all
+ * `blank=True` on the backend, sent as `''` when left unset). A 409 (bed
+ * occupied) surfaces as an inline error.
  */
 export default function AdmitPatientModal({ patientId, onClose, onAdmitted }: Props) {
   const [beds, setBeds] = useState<BedOption[]>([])
@@ -34,6 +40,10 @@ export default function AdmitPatientModal({ patientId, onClose, onAdmitted }: Pr
   const [attending, setAttending] = useState<ProfessionalOption | null>(null)
   const [source, setSource] = useState('emergencia')
   const [datetime, setDatetime] = useState(() => nowLocalInput())
+  // Taxonomias TISS (Resumo de Internação) — todas opcionais, '' = não informado.
+  const [caraterAtendimento, setCaraterAtendimento] = useState('')
+  const [tipoInternacao, setTipoInternacao] = useState('')
+  const [regimeInternacao, setRegimeInternacao] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -73,6 +83,9 @@ export default function AdmitPatientModal({ patientId, onClose, onAdmitted }: Pr
       bed: bedId,
       admission_source: source,
       admission_datetime: new Date(datetime).toISOString(),
+      carater_atendimento: caraterAtendimento,
+      tipo_internacao: tipoInternacao,
+      regime_internacao: regimeInternacao,
     }
     try {
       await apiFetch('/api/v1/admissions/', {
@@ -159,6 +172,54 @@ export default function AdmitPatientModal({ patientId, onClose, onAdmitted }: Pr
                 onChange={(event) => setDatetime(event.target.value)}
                 className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
               />
+            </label>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <label className="block text-xs font-semibold text-slate-600">
+              Caráter do atendimento (TISS)
+              <select
+                value={caraterAtendimento}
+                onChange={(event) => setCaraterAtendimento(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              >
+                <option value="">Não informado</option>
+                {CARATER_ATENDIMENTO_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">
+              Tipo de internação (TISS)
+              <select
+                value={tipoInternacao}
+                onChange={(event) => setTipoInternacao(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              >
+                <option value="">Não informado</option>
+                {TIPO_INTERNACAO_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">
+              Regime de internação (TISS)
+              <select
+                value={regimeInternacao}
+                onChange={(event) => setRegimeInternacao(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              >
+                <option value="">Não informado</option>
+                {REGIME_INTERNACAO_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </label>
           </div>
 
