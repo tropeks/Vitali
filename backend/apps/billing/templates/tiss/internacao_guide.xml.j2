@@ -11,18 +11,25 @@
    (ct_guiaCabecalho = registroANS + numeroGuiaPrestador, mesmo de
    consulta_guide.xml.j2). O próximo elemento obrigatório na sequência,
    <numeroGuiaSolicitacaoInternacao> (referência textual a uma guia de
-   solicitação de internação anterior), não tem NENHUMA fonte de dado no
-   Vitali hoje — não modelamos essa guia como documento separado. O
-   candidato mais barato (autorreferenciar guide.guide_number) é uma decisão
-   de produto ainda não batida com o Capitão (ver
-   docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §3), não algo que esta
-   fatia (só template) possa inventar. Parando aqui: numeroGuiaSolicitacaoInternacao
-   em diante (dadosAutorizacao, dadosBeneficiario, dadosExecutante,
-   dadosInternacao, dadosSaidaInternacao, procedimentosExecutados, valorTotal)
-   é gap de DADO (Fatia 2+), não de forma — fora do escopo desta fatia. #}
+   solicitação de internação anterior), não tem fonte de dado separada no
+   Vitali — não modelamos essa guia como documento distinto. DECISÃO DO
+   CAPITÃO (Onda 4, aprovada — ver
+   docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §3): a guia de resumo
+   REFERENCIA A SI MESMA. Não é bug nem placeholder — é decisão de produto
+   deliberada de declarar à operadora que solicitação e resumo são o mesmo
+   documento, usando o próprio numeroGuiaPrestador da guia.
+
+   Restante da sequência (dadosAutorizacao, dadosBeneficiario,
+   dadosExecutante, dadosInternacao, dadosSaidaInternacao,
+   procedimentosExecutados, valorTotal) segue sendo gap de DADO (Fatia 2+),
+   não de forma — fora do escopo desta fatia. #}
 <ans:guiaResumoInternacao>
   <ans:cabecalhoGuia>
     <ans:registroANS>{{ guide.provider.ans_code }}</ans:registroANS>
     <ans:numeroGuiaPrestador>{{ guide.guide_number }}</ans:numeroGuiaPrestador>
   </ans:cabecalhoGuia>
+  {# Autorreferência deliberada (decisão do Capitão): a guia de resumo de
+     internação não tem "guia de solicitação" separada no Vitali, então
+     declara a si mesma como a solicitação. #}
+  <ans:numeroGuiaSolicitacaoInternacao>{{ guide.guide_number }}</ans:numeroGuiaSolicitacaoInternacao>
 </ans:guiaResumoInternacao>

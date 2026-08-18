@@ -255,42 +255,43 @@ class InternacaoGuideXMLConformanceTests(XMLEngineTestCase):
     conformance.
 
     Onda 4 Fatia 0 ported the proven cabecalhoGuia form from
-    consulta_guide.xml.j2 (the old template had the same malformed
-    <cabecalhoGuia> as sadt_guide.xml.j2 — see that class's docstring — and
-    then jumped straight to <procedimentosExecutados>, skipping every
-    mandatory element that precedes it in ctm_internacaoResumoGuia).
-    Measured before the fix: 2 form errors (unexpected numeroGuiaOperadora
-    inside cabecalhoGuia; unexpected procedimentosExecutados in place of
-    numeroGuiaSolicitacaoInternacao). Measured after: 1 residual error, and
-    it is a genuine DATA gap, not form —
+    consulta_guide.xml.j2. Onda 4 (this slice) resolved
+    numeroGuiaSolicitacaoInternacao per Capitão's product decision: the guia
+    de resumo has no separate "guia de solicitação" tracked in Vitali, so it
+    self-references its own numeroGuiaPrestador — declared inline in the
+    template, not a bug/placeholder. Measured before this slice: 1 residual
+    error (missing numeroGuiaSolicitacaoInternacao). Measured after: 1
+    residual error, now further into the sequence, and it is a genuine DATA
+    gap, not form —
 
-    - <numeroGuiaSolicitacaoInternacao> is the very next mandatory element
-      after cabecalhoGuia: a reference to the prior "guia de solicitação de
-      internação". No such document/number is tracked in Vitali, and the
-      cheapest candidate (self-referencing guide.guide_number) is a product
-      decision not yet signed off — see
-      docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §3 — so the template
-      stops right there instead of inventing the reference.
+    - <dadosAutorizacao> (ct_autorizacaoInternacao) is the next mandatory
+      element after numeroGuiaSolicitacaoInternacao. Its mandatory children
+      are dataAutorizacao (date) and senha (password/authorization number).
+      TISSGuide.authorization_number maps to senha, but there is no model
+      field for the authorization DATE — so the element cannot be rendered
+      without inventing data.
 
-    Everything after it in the schema (dadosAutorizacao, dadosBeneficiario,
-    dadosExecutante, dadosInternacao's caraterAtendimento/tipoFaturamento/
-    tipoInternacao/regimeInternacao, dadosSaidaInternacao.motivoEncerramento,
-    valorTotal breakdown) is unreached by the validator as a direct
-    consequence and remains real, separately itemized data gaps for Fatia
-    2+ — see docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §3.
+    Everything after it in the schema (dadosBeneficiario, dadosExecutante,
+    dadosInternacao's caraterAtendimento/tipoFaturamento/tipoInternacao/
+    regimeInternacao, dadosSaidaInternacao.motivoEncerramento, valorTotal
+    breakdown) is unreached by the validator as a direct consequence and
+    remains real, separately itemized data gaps for Fatia 2+ — see
+    docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §3.
     """
 
     @pytest.mark.xfail(
         strict=True,
         reason=(
-            "ctm_internacaoResumoGuia: cabecalhoGuia form fixed (Fatia 0). "
-            "Residual is a genuine data gap, not form: "
-            "numeroGuiaSolicitacaoInternacao (reference to a prior guia de "
-            "solicitação) has no model field and no signed-off mapping. "
-            "Everything after it in the schema (dadosAutorizacao, "
-            "dadosBeneficiario, dadosExecutante, dadosInternacao, "
-            "dadosSaidaInternacao, valorTotal breakdown) is unreached as a "
-            "consequence — see 2.4/Onda 4 Fatia 0 report."
+            "ctm_internacaoResumoGuia: cabecalhoGuia and "
+            "numeroGuiaSolicitacaoInternacao form fixed (Onda 4 — "
+            "self-reference is Capitão's product decision, not a gap). "
+            "Residual is a genuine data gap, not form: dadosAutorizacao "
+            "(ct_autorizacaoInternacao) requires dataAutorizacao (date), "
+            "which has no model field on TISSGuide (only "
+            "authorization_number, which maps to senha). Everything after "
+            "it in the schema (dadosBeneficiario, dadosExecutante, "
+            "dadosInternacao, dadosSaidaInternacao, valorTotal breakdown) "
+            "is unreached as a consequence — see 2.4/Onda 4 report."
         ),
     )
     def test_batch_envelope_with_internacao_guide_is_schema_valid(self):
