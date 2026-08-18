@@ -347,11 +347,12 @@ class SadtGuideXMLConformanceTests(XMLEngineTestCase):
         depois da Fatia 0  1 erro: falta dadosSolicitante
         depois desta fatia 1 erro: falta dadosSolicitacao  <- avançou um elemento
 
-    O residual atual é dadosSolicitacao, e é gap de dado de novo: dos quatro
-    filhos, só caraterAtendimento (dm_caraterAtendimento) é obrigatório, e não há
-    fonte para ele numa guia de laboratório — LabOrder não registra se o exame é
-    eletivo ou de urgência. Atrás dele seguem dadosExecutante, dadosAtendimento,
-    procedimentosExecutados e valorTotal, ainda inalcançados pelo validador.
+    ``dadosSolicitacao`` está fechado para guias cirúrgicas: ``SurgicalCase.priority``
+    mapeia para ``dm_caraterAtendimento`` (eletiva → ``1``; urgência/emergência →
+    ``2``). Para laboratório, a ausência de fonte continua sendo uma falha explícita;
+    ``LabOrder.status`` não é promovido a uma afirmação clínica de urgência. O
+    residual agora começa em ``dadosExecutante``, seguido de ``dadosAtendimento``,
+    ``procedimentosExecutados`` e ``valorTotal``, ainda inalcançados pelo validador.
     Ver docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §2.
     """
 
