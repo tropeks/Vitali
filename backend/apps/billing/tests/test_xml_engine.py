@@ -185,38 +185,43 @@ class HonorariosGuideXMLTests(XMLEngineTestCase):
 class SadtGuideXMLConformanceTests(XMLEngineTestCase):
     """guiaSP-SADT (ctm_sp-sadtGuia) — NOT brought to conformance.
 
-    Residual, itemized blockers found by walking tissGuiasV4_01_00.xsd (none
-    fixable inside apps/billing without new data this task's scope excludes):
+    Onda 4 Fatia 0 ported the proven cabecalhoGuia/dadosBeneficiario form
+    from consulta_guide.xml.j2 (the old template emitted fields inside
+    <cabecalhoGuia> — numeroGuiaOperadora, dataAutorizacao, senhaAutorizacao,
+    numeroCarteira, codigoCBO, CNES, dataInicioFaturamento,
+    dataFinalFaturamento — none of which belong to ct_guiaCabecalho, and a
+    <dadosSolicitacaoExame>/<procedimentosSolicitados> pair that doesn't
+    exist anywhere in ctm_sp-sadtGuia). Measured before the fix: 2 form
+    errors (unexpected numeroGuiaOperadora inside cabecalhoGuia; unexpected
+    dadosSolicitacaoExame in place of dadosSolicitante). Measured after: 1
+    residual error, and it is a genuine DATA gap, not form —
 
-    - <dadosSolicitante> is mandatory: contratadoSolicitante (CNPJ/CPF/
+    - <dadosSolicitante> is the very next mandatory element after
+      dadosBeneficiario: contratadoSolicitante (CNPJ/CPF/
       codigoPrestadorNaOperadora) + profissionalSolicitante (conselho/UF/CBOS
       of the REQUESTING professional). TISSGuide only tracks the executing
       professional (via encounter); nothing distinguishes solicitante from
-      executante.
-    - <dadosSolicitacao><caraterAtendimento> (eletivo/urgência, dm_caraterAtendimento)
-      has no model field.
-    - <valorTotal> is ct_guiaValorTotal — a breakdown (valorProcedimentos,
-      valorTaxasAlugueis, valorMateriais, valorMedicamentos, valorOPME,
-      valorGasesMedicinais, valorTotalGeral), not a single total_value.
-    - ct_procedimentoExecutadoSadt requires reducaoAcrescimo (mandatory %
-      discount/increase per item) — no TISSGuideItem field.
-    - <dadosAtendimento> (ctm_sp-sadtAtendimento) requires tipoAtendimento
-      and regimeAtendimento — no model field.
+      executante, so the template stops right there instead of misattributing
+      the executante as solicitante.
 
-    Fixing this needs new fields on TISSGuide/TISSGuideItem (solicitante
-    professional, caráter de atendimento, reducaoAcrescimo, valor breakdown)
-    — a product/data-model decision out of this task's scope
-    (backend/apps/billing/services/xml_engine.py + templates only).
+    Everything after dadosSolicitante in the schema (dadosSolicitacao.
+    caraterAtendimento, dadosAtendimento.tipoAtendimento/regimeAtendimento,
+    ct_guiaValorTotal breakdown, per-item reducaoAcrescimo) is unreached by
+    the validator as a direct consequence and remains real, separately
+    itemized data gaps for Fatia 2+ — see
+    docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §2.
     """
 
     @pytest.mark.xfail(
         strict=True,
         reason=(
-            "ctm_sp-sadtGuia requires dadosSolicitante (solicitante professional/"
-            "contratado — not tracked), caraterAtendimento, a ct_guiaValorTotal "
-            "breakdown, and per-item reducaoAcrescimo. None of these have a "
-            "model field; templates only cannot close this gap without new "
-            "TISSGuide/TISSGuideItem columns (out of scope — see 2.4 report)."
+            "ctm_sp-sadtGuia: cabecalhoGuia/dadosBeneficiario form fixed "
+            "(Fatia 0). Residual is a genuine data gap, not form: "
+            "dadosSolicitante (solicitante professional/contratado) has no "
+            "model field — TISSGuide only tracks the executante. Everything "
+            "after it in the schema (caraterAtendimento, dadosAtendimento, "
+            "valorTotal breakdown, reducaoAcrescimo) is unreached as a "
+            "consequence — see 2.4/Onda 4 Fatia 0 report."
         ),
     )
     def test_batch_envelope_with_sadt_guide_is_schema_valid(self):
@@ -249,37 +254,43 @@ class InternacaoGuideXMLConformanceTests(XMLEngineTestCase):
     """guiaResumoInternacao (ctm_internacaoResumoGuia) — NOT brought to
     conformance.
 
-    Residual, itemized blockers (none fixable inside apps/billing without new
-    data this task's scope excludes):
+    Onda 4 Fatia 0 ported the proven cabecalhoGuia form from
+    consulta_guide.xml.j2 (the old template had the same malformed
+    <cabecalhoGuia> as sadt_guide.xml.j2 — see that class's docstring — and
+    then jumped straight to <procedimentosExecutados>, skipping every
+    mandatory element that precedes it in ctm_internacaoResumoGuia).
+    Measured before the fix: 2 form errors (unexpected numeroGuiaOperadora
+    inside cabecalhoGuia; unexpected procedimentosExecutados in place of
+    numeroGuiaSolicitacaoInternacao). Measured after: 1 residual error, and
+    it is a genuine DATA gap, not form —
 
-    - <numeroGuiaSolicitacaoInternacao> references the prior "guia de
-      solicitação de internação" — no such document/number is tracked.
-    - <dadosAutorizacao> is ct_autorizacaoInternacao (senha, dataAutorizacao,
-      dataValidadeSenha) — partially covered by TISSGuide.authorization_number
-      but not structured to match.
-    - <dadosInternacao> (ctm_internacaoDados) requires caraterAtendimento,
-      tipoFaturamento, tipoInternacao, regimeInternacao — enumerated TISS
-      classifications with no equivalent on emr.Admission (which has
-      admission_source/disposition, a materially different taxonomy).
-    - <dadosSaidaInternacao> requires motivoEncerramento (dm_motivoSaida) —
-      Admission.disposition exists but uses a different, non-ANS vocabulary;
-      mapping it is a product decision, not a template fix.
-    - <valorTotal> is ct_guiaValorTotal (breakdown), not a single total_value.
+    - <numeroGuiaSolicitacaoInternacao> is the very next mandatory element
+      after cabecalhoGuia: a reference to the prior "guia de solicitação de
+      internação". No such document/number is tracked in Vitali, and the
+      cheapest candidate (self-referencing guide.guide_number) is a product
+      decision not yet signed off — see
+      docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §3 — so the template
+      stops right there instead of inventing the reference.
 
-    Fixing this needs new fields/mappings on TISSGuide (or a documented
-    Admission.disposition → dm_motivoSaida mapping) — out of this task's
-    scope (backend/apps/billing/services/xml_engine.py + templates only).
+    Everything after it in the schema (dadosAutorizacao, dadosBeneficiario,
+    dadosExecutante, dadosInternacao's caraterAtendimento/tipoFaturamento/
+    tipoInternacao/regimeInternacao, dadosSaidaInternacao.motivoEncerramento,
+    valorTotal breakdown) is unreached by the validator as a direct
+    consequence and remains real, separately itemized data gaps for Fatia
+    2+ — see docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §3.
     """
 
     @pytest.mark.xfail(
         strict=True,
         reason=(
-            "ctm_internacaoResumoGuia requires numeroGuiaSolicitacaoInternacao, "
-            "dadosInternacao (caraterAtendimento/tipoFaturamento/tipoInternacao/"
-            "regimeInternacao) and dadosSaidaInternacao (motivoEncerramento), "
-            "none of which have a model field or an unambiguous mapping from "
-            "emr.Admission. Templates only cannot close this gap (out of "
-            "scope — see 2.4 report)."
+            "ctm_internacaoResumoGuia: cabecalhoGuia form fixed (Fatia 0). "
+            "Residual is a genuine data gap, not form: "
+            "numeroGuiaSolicitacaoInternacao (reference to a prior guia de "
+            "solicitação) has no model field and no signed-off mapping. "
+            "Everything after it in the schema (dadosAutorizacao, "
+            "dadosBeneficiario, dadosExecutante, dadosInternacao, "
+            "dadosSaidaInternacao, valorTotal breakdown) is unreached as a "
+            "consequence — see 2.4/Onda 4 Fatia 0 report."
         ),
     )
     def test_batch_envelope_with_internacao_guide_is_schema_valid(self):

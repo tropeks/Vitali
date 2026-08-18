@@ -307,6 +307,9 @@ class AdmissionViewSet(
                 admission_datetime=data.get("admission_datetime"),
                 expected_discharge_datetime=data.get("expected_discharge_datetime"),
                 isolation_precaution=data.get("isolation_precaution", "nenhuma"),
+                carater_atendimento=data.get("carater_atendimento", ""),
+                tipo_internacao=data.get("tipo_internacao", ""),
+                regime_internacao=data.get("regime_internacao", ""),
                 encounter=data.get("encounter"),
                 actor=request.user,
             )
@@ -327,6 +330,7 @@ class AdmissionViewSet(
                 admission=admission,
                 disposition=payload.validated_data["disposition"],
                 actual_discharge_datetime=payload.validated_data.get("actual_discharge_datetime"),
+                disposition_ans_code=payload.validated_data.get("disposition_ans_code", ""),
                 actor=request.user,
                 reason=payload.validated_data.get("reason", ""),
             )

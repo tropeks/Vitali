@@ -71,12 +71,20 @@ def admit(
     admission_datetime: Any | None = None,
     expected_discharge_datetime: Any | None = None,
     isolation_precaution: str = Admission.IsolationPrecaution.NENHUMA,
+    carater_atendimento: str = "",
+    tipo_internacao: str = "",
+    regime_internacao: str = "",
     encounter: Any | None = None,
     actor: Any | None = None,
     reason: str = "",
 ) -> Admission:
     """Admit ``patient`` to ``bed``: create an active Admission, occupy the bed,
     and append an ``admit`` event — atomically.
+
+    ``carater_atendimento``/``tipo_internacao``/``regime_internacao`` are the
+    TISS 4.01.00 taxonomies (``dm_caraterAtendimento``/``dm_tipoInternacao``/
+    ``dm_regimeInternacao``) captured at admission time; all optional (blank
+    default), only needed when the admission ends up billed via TISS.
 
     Raises ``ValidationError`` if the bed is not ``livre``/``reservado``, or if an
     isolation precaution is required but the bed is not in an isolation room.
@@ -100,6 +108,9 @@ def admit(
         admission_datetime=admission_datetime or timezone.now(),
         expected_discharge_datetime=expected_discharge_datetime,
         isolation_precaution=isolation_precaution,
+        carater_atendimento=carater_atendimento,
+        tipo_internacao=tipo_internacao,
+        regime_internacao=regime_internacao,
         status=Admission.Status.ADMITTED,
     )
 
@@ -185,12 +196,17 @@ def discharge(
     admission: Admission,
     disposition: str,
     actual_discharge_datetime: Any | None = None,
+    disposition_ans_code: str = "",
     actor: Any | None = None,
     reason: str = "",
 ) -> Admission:
     """Discharge an active ``admission``: mark it discharged with a disposition,
     free its bed (→ ``higienizacao``), null ``current_bed``, and append a
     ``discharge`` event — atomically.
+
+    ``disposition_ans_code`` is the TISS ``dm_motivoSaida`` code for
+    ``<dadosSaidaInternacao><motivoEncerramento>`` — a sibling of ``disposition``
+    (clinical vocabulary), NOT a replacement; optional, blank default.
 
     Raises ``ValidationError`` if the admission is not active (status=admitted).
     """
@@ -213,11 +229,13 @@ def discharge(
     # diária só é resolvível a partir do tipo do leito atual.
     locked.status = Admission.Status.DISCHARGED
     locked.disposition = disposition
+    locked.disposition_ans_code = disposition_ans_code
     locked.actual_discharge_datetime = actual_discharge_datetime or timezone.now()
     locked.save(
         update_fields=[
             "status",
             "disposition",
+            "disposition_ans_code",
             "actual_discharge_datetime",
             "updated_at",
         ]

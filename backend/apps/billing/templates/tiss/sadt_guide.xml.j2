@@ -1,40 +1,36 @@
-{# SP/SADT Guide fragment — TISS 4.01.00 #}
+{# Guia SP/SADT — TISS 4.01.00 (ctm_sp-sadtGuia, tissGuiasV4_01_00.xsd).
+   Fatia 0 (Onda 4): reescrita contra o XSD real — a versão anterior emitia
+   <cabecalhoGuia> com numeroGuiaOperadora/dataAutorizacao/senhaAutorizacao/
+   numeroCarteira/codigoCBO/CNES/dataInicioFaturamento/dataFinalFaturamento
+   dentro do cabeçalho, nenhum dos quais existe em ct_guiaCabecalho (só
+   registroANS + numeroGuiaPrestador, ver ctm_consultaGuia/cabecalhoConsulta
+   já corrigido), e em seguida <dadosSolicitacaoExame>/<procedimentosSolicitados>,
+   elementos que não existem em ctm_sp-sadtGuia (o elemento real é
+   <procedimentosExecutados>/<procedimentoExecutado>, e só depois de
+   dadosSolicitante/dadosSolicitacao/dadosExecutante/dadosAtendimento).
+
+   Forma corrigida nesta fatia: cabecalhoGuia + dadosBeneficiario, no
+   formato real do XSD (mesmos filtros de consulta_guide.xml.j2). O próximo
+   elemento obrigatório na sequência, <dadosSolicitante>
+   (ct_contratadoDados do prestador solicitante + profissionalSolicitante
+   com conselho/UF/CBOS), não tem NENHUMA fonte de dado no Vitali hoje — não
+   existe conceito de "profissional solicitante" distinto do executante (ver
+   docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §2). Usar os dados do
+   profissional executante ali seria inventar quem pediu o exame, não um
+   placeholder honesto como o já aceito para codigoPrestadorNaOperadora.
+   Parando aqui: dadosSolicitante em diante (dadosSolicitacao, dadosExecutante,
+   dadosAtendimento, procedimentosExecutados, valorTotal) é gap de DADO
+   (Fatia 2+), não de forma — fora do escopo desta fatia (só template). #}
 <ans:guiaSP-SADT>
   <ans:cabecalhoGuia>
     <ans:registroANS>{{ guide.provider.ans_code }}</ans:registroANS>
     <ans:numeroGuiaPrestador>{{ guide.guide_number }}</ans:numeroGuiaPrestador>
-    <ans:numeroGuiaOperadora>{{ guide.guide_number }}</ans:numeroGuiaOperadora>
-    <ans:dataAutorizacao>{{ guide.created_at | format_date }}</ans:dataAutorizacao>
-    <ans:senhaAutorizacao>{{ guide.authorization_number or '' }}</ans:senhaAutorizacao>
-    <ans:dataValidadeSenha>{{ guide.created_at | format_date }}</ans:dataValidadeSenha>
-    <ans:numeroCarteira>{{ guide.insured_card_number }}</ans:numeroCarteira>
-    {# nomeBeneficiario/dataNascimentoBeneficiario: retirados na versão 4.00.00
-       (ver tissComplexTypesV4_01_00.xsd ct_beneficiarioDados) — removidos. #}
-    <ans:codigoCBO>{{ professional.cbo_code if professional else '225120' }}</ans:codigoCBO>
-    <ans:CNES>{{ professional.cnes_code if professional else '' }}</ans:CNES>
-    <ans:dataInicioFaturamento>{{ guide.created_at | format_date }}</ans:dataInicioFaturamento>
-    <ans:dataFinalFaturamento>{{ guide.created_at | format_date }}</ans:dataFinalFaturamento>
   </ans:cabecalhoGuia>
-  <ans:dadosSolicitacaoExame>
-{% for item in guide.items.all() %}
-    <ans:procedimentosSolicitados>
-      <ans:codigoTabela>22</ans:codigoTabela>
-      <ans:codigoProcedimento>{{ item.tuss_code.code }}</ans:codigoProcedimento>
-      <ans:descricaoProcedimento>{{ item.description | truncate(100, false, '') }}</ans:descricaoProcedimento>
-      <ans:quantidadeSolicitada>{{ item.quantity | format_decimal }}</ans:quantidadeSolicitada>
-    </ans:procedimentosSolicitados>
-{% endfor %}
-  </ans:dadosSolicitacaoExame>
-  <ans:dadosExecutante>
-    <ans:CNES>{{ professional.cnes_code if professional else '' }}</ans:CNES>
-  </ans:dadosExecutante>
-  <ans:valorTotal>
-    <ans:valorTotalGeral>{{ guide.total_value | format_currency }}</ans:valorTotalGeral>
-  </ans:valorTotal>
-{% for cid in guide.cid10_codes %}
-  <ans:diagnostico>
-    <ans:codigoDiagnostico>{{ cid.code }}</ans:codigoDiagnostico>
-    <ans:indicadorAcidente>N</ans:indicadorAcidente>
-  </ans:diagnostico>
-{% endfor %}
+  <ans:dadosBeneficiario>
+    <ans:numeroCarteira>{{ guide.insured_card_number }}</ans:numeroCarteira>
+    {# atendimentoRN: sem dado de origem no model — "N" é o default seguro,
+       mesmo usado em consulta_guide.xml.j2 (a maioria não é atendimento de
+       recém-nascido). #}
+    <ans:atendimentoRN>N</ans:atendimentoRN>
+  </ans:dadosBeneficiario>
 </ans:guiaSP-SADT>

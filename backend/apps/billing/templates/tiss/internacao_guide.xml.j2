@@ -1,42 +1,28 @@
-{# Resumo de Internação Guide fragment — TISS 4.01.00 #}
+{# Guia de Resumo de Internação — TISS 4.01.00 (ctm_internacaoResumoGuia,
+   tissGuiasV4_01_00.xsd).
+   Fatia 0 (Onda 4): reescrita contra o XSD real — a versão anterior emitia
+   os mesmos campos inválidos de cabecalhoGuia do sadt_guide.xml.j2 (ver
+   comentário lá) e depois <procedimentosExecutados> direto, pulando os
+   elementos obrigatórios que vêm antes na sequência real
+   (numeroGuiaSolicitacaoInternacao, dadosAutorizacao, dadosBeneficiario,
+   dadosExecutante, dadosInternacao, dadosSaidaInternacao).
+
+   Forma corrigida nesta fatia: só cabecalhoGuia, no formato real do XSD
+   (ct_guiaCabecalho = registroANS + numeroGuiaPrestador, mesmo de
+   consulta_guide.xml.j2). O próximo elemento obrigatório na sequência,
+   <numeroGuiaSolicitacaoInternacao> (referência textual a uma guia de
+   solicitação de internação anterior), não tem NENHUMA fonte de dado no
+   Vitali hoje — não modelamos essa guia como documento separado. O
+   candidato mais barato (autorreferenciar guide.guide_number) é uma decisão
+   de produto ainda não batida com o Capitão (ver
+   docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §3), não algo que esta
+   fatia (só template) possa inventar. Parando aqui: numeroGuiaSolicitacaoInternacao
+   em diante (dadosAutorizacao, dadosBeneficiario, dadosExecutante,
+   dadosInternacao, dadosSaidaInternacao, procedimentosExecutados, valorTotal)
+   é gap de DADO (Fatia 2+), não de forma — fora do escopo desta fatia. #}
 <ans:guiaResumoInternacao>
   <ans:cabecalhoGuia>
     <ans:registroANS>{{ guide.provider.ans_code }}</ans:registroANS>
     <ans:numeroGuiaPrestador>{{ guide.guide_number }}</ans:numeroGuiaPrestador>
-    <ans:numeroGuiaOperadora>{{ guide.guide_number }}</ans:numeroGuiaOperadora>
-    <ans:dataAutorizacao>{{ guide.created_at | format_date }}</ans:dataAutorizacao>
-    <ans:senhaAutorizacao>{{ guide.authorization_number or '' }}</ans:senhaAutorizacao>
-    <ans:dataValidadeSenha>{{ guide.created_at | format_date }}</ans:dataValidadeSenha>
-    <ans:numeroCarteira>{{ guide.insured_card_number }}</ans:numeroCarteira>
-    {# nomeBeneficiario/dataNascimentoBeneficiario: retirados na versão 4.00.00
-       (ver tissComplexTypesV4_01_00.xsd ct_beneficiarioDados) — removidos. #}
-    <ans:codigoCBO>{{ professional.cbo_code if professional else '225120' }}</ans:codigoCBO>
-    <ans:CNES>{{ professional.cnes_code if professional else '' }}</ans:CNES>
-    <ans:dataInicioFaturamento>{{ guide.created_at | format_date }}</ans:dataInicioFaturamento>
-    <ans:dataFinalFaturamento>{{ guide.created_at | format_date }}</ans:dataFinalFaturamento>
   </ans:cabecalhoGuia>
-  <ans:procedimentosExecutados>
-{% for item in guide.items.all() %}
-    <ans:procedimentoExecutado>
-      <ans:codigoTabela>22</ans:codigoTabela>
-      <ans:codigoProcedimento>{{ item.tuss_code.code }}</ans:codigoProcedimento>
-      <ans:descricaoProcedimento>{{ item.description | truncate(100, false, '') }}</ans:descricaoProcedimento>
-      <ans:quantidadeExecutada>{{ item.quantity | format_decimal }}</ans:quantidadeExecutada>
-      <ans:valorUnitario>{{ item.unit_value | format_currency }}</ans:valorUnitario>
-      <ans:valorTotal>{{ item.total_value | format_currency }}</ans:valorTotal>
-    </ans:procedimentoExecutado>
-{% endfor %}
-  </ans:procedimentosExecutados>
-  <ans:dadosExecutante>
-    <ans:CNES>{{ professional.cnes_code if professional else '' }}</ans:CNES>
-  </ans:dadosExecutante>
-  <ans:valorTotal>
-    <ans:valorTotalGeral>{{ guide.total_value | format_currency }}</ans:valorTotalGeral>
-  </ans:valorTotal>
-{% for cid in guide.cid10_codes %}
-  <ans:diagnostico>
-    <ans:codigoDiagnostico>{{ cid.code }}</ans:codigoDiagnostico>
-    <ans:indicadorAcidente>N</ans:indicadorAcidente>
-  </ans:diagnostico>
-{% endfor %}
 </ans:guiaResumoInternacao>
