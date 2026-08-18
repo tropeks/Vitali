@@ -19,10 +19,17 @@
    deliberada de declarar à operadora que solicitação e resumo são o mesmo
    documento, usando o próprio numeroGuiaPrestador da guia.
 
-   Restante da sequência (dadosAutorizacao, dadosBeneficiario,
-   dadosExecutante, dadosInternacao, dadosSaidaInternacao,
-   procedimentosExecutados, valorTotal) segue sendo gap de DADO (Fatia 2+),
-   não de forma — fora do escopo desta fatia. #}
+   dadosAutorizacao (ct_autorizacaoInternacao) resolvido nesta fatia a partir
+   de dado já existente — ver xml_engine._resolve_internacao_authorization:
+   senha vem de TISSGuide.authorization_number OU da Authorization aprovada
+   resolvida; dataAutorizacao vem SEMPRE de Authorization.valid_from (nunca
+   fabricada). generate_guide_xml falha alto (TISSXMLGenerationError) quando
+   não há fonte honesta para os dois — este template nunca é renderizado
+   nesse caso.
+
+   Restante da sequência (dadosBeneficiario, dadosExecutante, dadosInternacao,
+   dadosSaidaInternacao, procedimentosExecutados, valorTotal) segue sendo gap
+   de DADO (Fatia 2+), não de forma — fora do escopo desta fatia. #}
 <ans:guiaResumoInternacao>
   <ans:cabecalhoGuia>
     <ans:registroANS>{{ guide.provider.ans_code }}</ans:registroANS>
@@ -32,4 +39,8 @@
      internação não tem "guia de solicitação" separada no Vitali, então
      declara a si mesma como a solicitação. #}
   <ans:numeroGuiaSolicitacaoInternacao>{{ guide.guide_number }}</ans:numeroGuiaSolicitacaoInternacao>
+  <ans:dadosAutorizacao>
+    <ans:dataAutorizacao>{{ autorizacao_data | format_date }}</ans:dataAutorizacao>
+    <ans:senha>{{ autorizacao_senha }}</ans:senha>
+  </ans:dadosAutorizacao>
 </ans:guiaResumoInternacao>

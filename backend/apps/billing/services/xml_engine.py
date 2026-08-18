@@ -14,13 +14,17 @@ Design notes:
   crashing — useful in development before the schema file is added.
 """
 
+import datetime
 import hashlib
 import logging
 from decimal import Decimal
 from pathlib import Path
 
+from django.db.models import Q
 from django.utils import timezone
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+
+from apps.billing.models import Authorization
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +162,70 @@ def _uf_ibge_code(uf: str) -> str:
     return _UF_IBGE_CODE.get((uf or "").upper(), "")
 
 
+def _resolve_internacao_authorization(guide) -> tuple[str, datetime.date] | None:
+    """Resolve (senha, dataAutorizacao) for ctm_internacaoResumoGuia's mandatory
+    ``dadosAutorizacao`` (ct_autorizacaoInternacao — both ``dataAutorizacao`` and
+    ``senha`` are required children, no minOccurs="0"; see
+    tissComplexTypesV4_01_00.xsd:77-85).
+
+    REUSES the authorization-resolution rule the glosa-safety engine already
+    applies to decide whether a billed line is covered (glosa wedge G3d) —
+    same precedence, not a second divergent rule: an approved, in-window
+    ``Authorization`` row (patient + provider + status=APPROVED + valid_from
+    <= effective date <= valid_until-or-open) with either a matching
+    ``tuss_code`` or a generic (NULL) ``tuss_code`` "covers" the guide — see
+    ``GlosaSafetyService._approved_authorization_coverage``
+    (apps/billing/services/glosa_safety.py:401-432) and the rule as documented
+    on the models themselves (models.py:165-176 PriceTableItem.
+    requires_authorization docstring; models.py:196-199 Authorization
+    docstring). Effective date mirrors that service's primary branch
+    (``_guide_effective_date``, glosa_safety.py:338-351): the guide's own
+    ``created_at`` date (``auto_now_add`` — always set once saved).
+
+    Unlike the glosa engine (which only needs a yes/no "is this line
+    covered"), the XSD wants a concrete ``senha`` + ``dataAutorizacao`` pair,
+    so this picks ONE row: prefer a match on one of the guide's item TUSS
+    codes, else a generic row, else none. ``senha`` prefers the guide's own
+    ``authorization_number`` (TISSGuide.authorization_number, models.py:367)
+    when set — it IS the senha regardless of whether an Authorization row
+    also exists — and falls back to the resolved row's own
+    ``authorization_number``.
+
+    Returns None when no HONEST ``dataAutorizacao`` can be produced — in
+    particular, ``guide.authorization_number`` filled with NO matching
+    ``Authorization`` row gives a senha but no date, and inventing one would
+    put a false date on a document sent to the operadora. Callers must treat
+    None as "cannot render this guide type" and fail loud rather than
+    fabricate the date.
+    """
+    effective_date = guide.created_at.date()
+    guide_tuss_ids = {item.tuss_code_id for item in guide.items.all()}
+
+    rows = list(
+        Authorization.objects.filter(
+            patient_id=guide.patient_id,
+            provider_id=guide.provider_id,
+            status=Authorization.Status.APPROVED,
+            valid_from__lte=effective_date,
+        )
+        .filter(Q(valid_until__isnull=True) | Q(valid_until__gte=effective_date))
+        .order_by("-valid_from")
+    )
+
+    resolved = next((r for r in rows if r.tuss_code_id in guide_tuss_ids), None)
+    if resolved is None:
+        resolved = next((r for r in rows if r.tuss_code_id is None), None)
+
+    senha = (guide.authorization_number or "").strip() or (
+        resolved.authorization_number if resolved else ""
+    )
+    data_autorizacao = resolved.valid_from if resolved else None
+
+    if not senha or data_autorizacao is None:
+        return None
+    return senha, data_autorizacao
+
+
 # ─── Guide XML generation ─────────────────────────────────────────────────────
 
 
@@ -214,6 +282,26 @@ def generate_guide_xml(guide) -> str:
                 "<procedimento> por guia de consulta."
             )
         context["item"] = items[0]
+
+    if guide.guide_type == "internacao":
+        # dadosAutorizacao (ct_autorizacaoInternacao) is mandatory — see
+        # _resolve_internacao_authorization for the resolution rule reused
+        # from the glosa-safety engine. Fail loud rather than emit a guide
+        # with a fabricated date when no honest source resolves.
+        resolved_auth = _resolve_internacao_authorization(guide)
+        if resolved_auth is None:
+            raise TISSXMLGenerationError(
+                f"Guia de resumo de internação {guide.guide_number} não tem "
+                "autorização resolvível: ct_autorizacaoInternacao exige "
+                "dataAutorizacao E senha (tissComplexTypesV4_01_00.xsd, "
+                "ct_autorizacaoInternacao). guide.authorization_number "
+                "sozinho (sem uma Authorization aprovada correspondente, no "
+                "mesmo paciente/operadora, cobrindo a data efetiva da guia) "
+                "dá senha mas nenhuma dataAutorizacao honesta — nunca "
+                "inventada. Registre uma Authorization aprovada cobrindo "
+                "este paciente/operadora/janela (genérica ou por TUSS)."
+            )
+        context["autorizacao_senha"], context["autorizacao_data"] = resolved_auth
 
     return template.render(**context)
 

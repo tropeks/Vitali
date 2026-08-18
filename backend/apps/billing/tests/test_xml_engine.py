@@ -15,7 +15,13 @@ from decimal import Decimal
 
 import pytest
 
-from apps.billing.models import InsuranceProvider, TISSBatch, TISSGuide, TISSGuideItem
+from apps.billing.models import (
+    Authorization,
+    InsuranceProvider,
+    TISSBatch,
+    TISSGuide,
+    TISSGuideItem,
+)
 from apps.billing.services.xml_engine import (
     TISSXMLGenerationError,
     generate_batch_xml,
@@ -251,57 +257,49 @@ class SadtGuideXMLConformanceTests(XMLEngineTestCase):
 
 
 class InternacaoGuideXMLConformanceTests(XMLEngineTestCase):
-    """guiaResumoInternacao (ctm_internacaoResumoGuia) — NOT brought to
-    conformance.
+    """guiaResumoInternacao (ctm_internacaoResumoGuia) — NOT brought to full
+    conformance in this slice, but the dadosAutorizacao gap is CLOSED.
 
-    Onda 4 Fatia 0 ported the proven cabecalhoGuia form from
-    consulta_guide.xml.j2. Onda 4 (this slice) resolved
-    numeroGuiaSolicitacaoInternacao per Capitão's product decision: the guia
-    de resumo has no separate "guia de solicitação" tracked in Vitali, so it
-    self-references its own numeroGuiaPrestador — declared inline in the
-    template, not a bug/placeholder. Measured before this slice: 1 residual
-    error (missing numeroGuiaSolicitacaoInternacao). Measured after: 1
-    residual error, now further into the sequence, and it is a genuine DATA
-    gap, not form —
+    Onda 4 Fatia 0 ported cabecalhoGuia and resolved
+    numeroGuiaSolicitacaoInternacao (self-reference, Capitão's product
+    decision). This slice resolves <dadosAutorizacao> (ct_autorizacaoInternacao)
+    from data that already exists — no new model field:
 
-    - <dadosAutorizacao> (ct_autorizacaoInternacao) is the next mandatory
-      element after numeroGuiaSolicitacaoInternacao. Its mandatory children
-      are dataAutorizacao (date) and senha (password/authorization number).
-      TISSGuide.authorization_number maps to senha, but there is no model
-      field for the authorization DATE — so the element cannot be rendered
-      without inventing data.
+    - senha ← TISSGuide.authorization_number (models.py:367) when set, else
+      the resolved Authorization row's own authorization_number.
+    - dataAutorizacao ← the resolved Authorization.valid_from (models.py:241)
+      — NEVER fabricated.
+    - Resolution reuses the SAME rule the glosa-safety engine already applies
+      (G3d — glosa_safety.py:401-432 _approved_authorization_coverage /
+      models.py:165-176, :196-199): an APPROVED Authorization row for the
+      guide's patient+provider whose validity window contains the guide's
+      effective date, matching by TUSS or generic (tuss_code NULL). See
+      xml_engine._resolve_internacao_authorization for the adapted (one-row,
+      not just coverage-set) version.
+    - When guide.authorization_number is filled but NO Authorization row
+      resolves, there is a senha but no honest date source. We do NOT invent
+      one: generate_guide_xml raises TISSXMLGenerationError (fail loud),
+      matching the file's existing pattern for genuine data gaps (honorarios,
+      wrong item count, mixed-type batch) instead of emitting a guide with a
+      fabricated authorization date.
 
-    Everything after it in the schema (dadosBeneficiario, dadosExecutante,
-    dadosInternacao's caraterAtendimento/tipoFaturamento/tipoInternacao/
-    regimeInternacao, dadosSaidaInternacao.motivoEncerramento, valorTotal
-    breakdown) is unreached by the validator as a direct consequence and
-    remains real, separately itemized data gaps for Fatia 2+ — see
-    docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §3.
+    Measured before this slice: 1 residual error (missing dadosAutorizacao).
+    Measured after, with a resolvable Authorization: 1 residual error, now
+    further into the sequence — <dadosBeneficiario> is next, and it is a
+    genuine DATA gap, not form. Everything after it (dadosExecutante,
+    dadosInternacao, dadosSaidaInternacao, valorTotal breakdown) is unreached
+    as a consequence and remains real, separately itemized gaps for Fatia 2+
+    — see docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §3.
     """
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "ctm_internacaoResumoGuia: cabecalhoGuia and "
-            "numeroGuiaSolicitacaoInternacao form fixed (Onda 4 — "
-            "self-reference is Capitão's product decision, not a gap). "
-            "Residual is a genuine data gap, not form: dadosAutorizacao "
-            "(ct_autorizacaoInternacao) requires dataAutorizacao (date), "
-            "which has no model field on TISSGuide (only "
-            "authorization_number, which maps to senha). Everything after "
-            "it in the schema (dadosBeneficiario, dadosExecutante, "
-            "dadosInternacao, dadosSaidaInternacao, valorTotal breakdown) "
-            "is unreached as a consequence — see 2.4/Onda 4 report."
-        ),
-    )
-    def test_batch_envelope_with_internacao_guide_is_schema_valid(self):
+    def _make_internacao_guide(self, *, authorization_number="AUTH123"):
         guide = TISSGuide.objects.create(
             guide_type="internacao",
             encounter=self.encounter,
             patient=self.patient,
             provider=self.provider,
             insured_card_number="1234567890123456",
-            authorization_number="AUTH123",
+            authorization_number=authorization_number,
             competency="2026-08",
         )
         TISSGuideItem.objects.create(
@@ -311,6 +309,31 @@ class InternacaoGuideXMLConformanceTests(XMLEngineTestCase):
             quantity=Decimal("1"),
             unit_value=Decimal("150.00"),
         )
+        return guide
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "ctm_internacaoResumoGuia: cabecalhoGuia, "
+            "numeroGuiaSolicitacaoInternacao and dadosAutorizacao now form- "
+            "AND data-complete (Onda 4). Residual is a genuine data gap, not "
+            "form: <dadosBeneficiario> is the next mandatory element and is "
+            "out of this slice's scope. Everything after it (dadosExecutante, "
+            "dadosInternacao, dadosSaidaInternacao, valorTotal breakdown) is "
+            "unreached as a consequence — see Onda 4 report."
+        ),
+    )
+    def test_batch_envelope_with_internacao_guide_is_schema_valid(self):
+        """Guide WITH a resolvable Authorization (senha + honest date)."""
+        guide = self._make_internacao_guide()
+        Authorization.objects.create(
+            patient=self.patient,
+            provider=self.provider,
+            tuss_code=self.tuss_consulta,
+            status=Authorization.Status.APPROVED,
+            valid_from=datetime.date(2026, 8, 1),
+            authorization_number="AUTH123",
+        )
         batch = TISSBatch.objects.create(provider=self.provider)
         batch.guides.add(guide)
 
@@ -318,3 +341,14 @@ class InternacaoGuideXMLConformanceTests(XMLEngineTestCase):
         errors = validate_xml(xml)
 
         assert errors == [], errors
+
+    def test_generate_guide_xml_raises_when_authorization_number_has_no_matching_authorization(
+        self,
+    ):
+        """guide.authorization_number alone gives a senha but no honest
+        dataAutorizacao source (no matching approved Authorization row) —
+        must fail loud instead of fabricating a date."""
+        guide = self._make_internacao_guide()
+
+        with pytest.raises(TISSXMLGenerationError, match="autorização resolvível"):
+            generate_guide_xml(guide)
