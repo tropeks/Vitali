@@ -71,10 +71,47 @@ class MeImagingViewerAuthorizationView(APIView):
         if not original_uri.startswith(("/visualizador/", "/imagens-dicom/")):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
-        # Clinical users retain their tenant module + RBAC authorization.
+        parsed = urlsplit(original_uri)
+        params = parse_qs(parsed.query)
+        requested_uids = params.get("StudyInstanceUIDs", []) + params.get("StudyInstanceUID", [])
+        # Never authorize a multi-study QIDO query: validating one value while
+        # the archive honours another would be a classic confused-deputy IDOR.
+        if len(requested_uids) > 1:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        uid = requested_uids[0] if requested_uids else ""
+        path_match = self._STUDY_PATH_RE.search(parsed.path)
+        if not uid and path_match:
+            uid = unquote(path_match.group(1))
+
+        # OHIF JS/CSS/config assets contain no patient data. A viewer launch,
+        # however, is resource-scoped just like WADO/QIDO.
+        is_static_asset = parsed.path.startswith("/visualizador/") and "/viewer" not in parsed.path
+
+        # Clinical users retain their tenant module + RBAC authorization. The
+        # Orthanc archive is shared across every tenant, so module+RBAC alone
+        # is not resource-scoping: a resolved UID must also exist as a
+        # DicomStudy in the CURRENT tenant's schema (django-tenants scopes
+        # this queryset to the request's schema automatically), or QIDO/WADO
+        # becomes a cross-tenant catalog of every clinic's studies. A
+        # UID-less QIDO listing is denied outright for the same reason the
+        # per-patient listing API exists: /api/v1/imaging/studies/ is the
+        # tenant-scoped way to list studies, not DICOMweb.
         if self._STAFF_MODULE.has_permission(
             request, self
         ) and self._STAFF_PERMISSION.has_permission(request, self):
+            if is_static_asset:
+                return Response(status=status.HTTP_204_NO_CONTENT)
+            if not uid:
+                return Response(status=status.HTTP_403_FORBIDDEN)
+            study_in_tenant = DicomStudy.objects.filter(
+                study_instance_uid=uid,
+                orthanc_study_id__gt="",
+                dicom_identity_verified=True,
+            ).exists()
+            if not study_in_tenant:
+                # Same uniform 403 whether the UID doesn't exist or belongs
+                # to another tenant — no enumeration oracle.
+                return Response(status=status.HTTP_403_FORBIDDEN)
             return Response(status=status.HTTP_204_NO_CONTENT)
 
         # Patient users are confined to the active portal binding below.
@@ -90,21 +127,7 @@ class MeImagingViewerAuthorizationView(APIView):
             return Response(status=status.HTTP_403_FORBIDDEN)
         patient = access.patient
 
-        parsed = urlsplit(original_uri)
-        params = parse_qs(parsed.query)
-        requested_uids = params.get("StudyInstanceUIDs", []) + params.get("StudyInstanceUID", [])
-        # Never authorize a multi-study QIDO query: validating one value while
-        # the archive honours another would be a classic confused-deputy IDOR.
-        if len(requested_uids) > 1:
-            return Response(status=status.HTTP_403_FORBIDDEN)
-        uid = requested_uids[0] if requested_uids else ""
-        path_match = self._STUDY_PATH_RE.search(parsed.path)
-        if not uid and path_match:
-            uid = unquote(path_match.group(1))
-
-        # OHIF JS/CSS/config assets contain no patient data. A viewer launch,
-        # however, is resource-scoped just like WADO/QIDO.
-        if parsed.path.startswith("/visualizador/") and "/viewer" not in parsed.path:
+        if is_static_asset:
             return Response(status=status.HTTP_204_NO_CONTENT)
         if not uid:
             return Response(status=status.HTTP_403_FORBIDDEN)

@@ -58,6 +58,10 @@ services:
     environment:
       DJANGO_SETTINGS_MODULE: vitali.settings.production
       HEALTHCHECK_HOST: ${HEALTHCHECK_HOST:-localhost}
+      # Hardcoded (not left to secrets.env) so core.E002 cannot be silently
+      # bypassed by an incomplete secrets file. Run backfill_tenant_memberships
+      # BEFORE first deploy with this set — see .env.example.
+      ENFORCE_TENANT_MEMBERSHIP: "true"
     depends_on:
       postgres:
         condition: service_healthy
@@ -85,6 +89,8 @@ services:
       DJANGO_SETTINGS_MODULE: vitali.settings.production
       VITALI_ROLE: worker
       CELERY_DATABASE_URL: ${CELERY_DATABASE_URL}
+      # See django service: hardcoded so it can't be silently disabled.
+      ENFORCE_TENANT_MEMBERSHIP: "true"
     depends_on:
       postgres:
         condition: service_healthy
@@ -109,6 +115,8 @@ services:
       DJANGO_SETTINGS_MODULE: vitali.settings.production
       VITALI_ROLE: beat
       CELERY_DATABASE_URL: ${CELERY_DATABASE_URL}
+      # See django service: hardcoded so it can't be silently disabled.
+      ENFORCE_TENANT_MEMBERSHIP: "true"
     depends_on:
       postgres:
         condition: service_healthy

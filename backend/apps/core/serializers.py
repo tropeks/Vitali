@@ -19,11 +19,24 @@ class RoleSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "is_system")
 
 
+class TenantScopedRoleField(serializers.PrimaryKeyRelatedField):
+    """PrimaryKeyRelatedField restricted to Role.for_current_tenant() (0.4/0.5).
+
+    ``queryset=Role.objects.all()`` bound at class-definition time (module
+    import) is evaluated before any request/tenant context exists — it would
+    freeze the choice set to whatever schema was active at import, and worse,
+    let a tenant-A admin assign a role_id belonging to tenant B (the RBAC
+    namespace leak the audit found). Overriding ``get_queryset`` re-resolves
+    ``connection.tenant`` on every request/validation instead.
+    """
+
+    def get_queryset(self):
+        return Role.for_current_tenant()
+
+
 class UserSerializer(serializers.ModelSerializer):
     role = RoleSerializer(read_only=True)
-    role_id = serializers.PrimaryKeyRelatedField(
-        queryset=Role.objects.all(), source="role", write_only=True, required=False
-    )
+    role_id = TenantScopedRoleField(source="role", write_only=True, required=False)
 
     class Meta:
         model = User
@@ -42,9 +55,7 @@ class UserSerializer(serializers.ModelSerializer):
 
 class UserCreateSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
-    role_id = serializers.PrimaryKeyRelatedField(
-        queryset=Role.objects.all(), source="role", required=False
-    )
+    role_id = TenantScopedRoleField(source="role", required=False)
 
     class Meta:
         model = User

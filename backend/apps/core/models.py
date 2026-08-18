@@ -591,7 +591,18 @@ class TOTPDevice(models.Model):
 
 class Role(models.Model):
     """RBAC role with JSON permission list. Lives in the PUBLIC schema (apps.core is
-    SHARED_APPS) — a global table shared across tenants, not per-tenant."""
+    SHARED_APPS) — a global table shared across tenants, not per-tenant.
+
+    Onda 0 / 0.5: ``tenant`` is a nullable discriminator, not a hard per-tenant
+    split — the table itself keeps living in the public schema. ``tenant=None``
+    means a system role shared by every clinic (e.g. the seeded "admin" role);
+    ``tenant=<X>`` means a custom role a clinic created for itself. Without this,
+    the RBAC namespace was shared between competing clinics: any tenant admin
+    could list and assign roles another clinic created (see the audit finding
+    that motivated this field). Use :meth:`for_current_tenant` — never
+    ``Role.objects`` directly — on any read/validation path reachable by a
+    tenant user, mirroring ``AuditLog.for_current_tenant`` (SYS-1).
+    """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(
@@ -609,6 +620,18 @@ class Role(models.Model):
         default=False,
         help_text="Roles de sistema não podem ser excluídas.",
     )
+    # 0.5: tenant discriminator. Nullable so existing rows (and genuinely global
+    # system roles) keep working unchanged — see migration 0041 docstring for the
+    # (deliberately non-destructive) backfill this leaves pending.
+    tenant = models.ForeignKey(
+        "core.Tenant",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="roles",
+        verbose_name="Tenant",
+        help_text="Clínica dona do papel; null = role de sistema, compartilhada entre clínicas.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -620,6 +643,34 @@ class Role(models.Model):
 
     def has_permission(self, perm: str) -> bool:
         return perm in self.permissions
+
+    @classmethod
+    def for_current_tenant(cls):
+        """Roles visible from the CURRENT request context (0.4/0.5).
+
+        ``Role`` is a shared public-schema table, so a bare ``Role.objects``
+        query returns every clinic's roles — a tenant-A admin could list and
+        assign roles a competing tenant B created. Scope to the current tenant's
+        own roles plus system roles (``tenant=None``, shared by everyone).
+
+        In the PUBLIC schema (platform-admin surfaces, not reachable via the
+        tenant-scoped ``apps.core.urls``) this returns every role, preserving
+        the pre-existing platform-admin view. Checked via ``connection.schema_name``
+        (mirrors ``AuditLog.for_current_tenant``/SYS-1) rather than
+        ``connection.tenant is None``: django-tenants' ``TenantMainMiddleware``
+        always sets ``connection.tenant`` to a real object on a real request —
+        including a "public" ``FakeTenant``/``Tenant`` row for public-schema
+        requests — so ``is None`` would never actually trigger there.
+        """
+        from django.db import connection
+        from django.db.models import Q
+        from django_tenants.utils import get_public_schema_name
+
+        schema_name = getattr(connection, "schema_name", None)
+        if not schema_name or schema_name == get_public_schema_name():
+            return cls.objects.all()
+        tenant = getattr(connection, "tenant", None)
+        return cls.objects.filter(Q(tenant=tenant) | Q(tenant__isnull=True))
 
 
 class User(AbstractBaseUser, PermissionsMixin):
@@ -725,6 +776,37 @@ class User(AbstractBaseUser, PermissionsMixin):
             return True
         role = self.effective_role()
         return bool(role and role.has_permission(perm))
+
+    @classmethod
+    def for_current_tenant(cls):
+        """Users visible from the CURRENT request context (0.4 tenant scoping).
+
+        ``User`` is a shared public-schema table — a bare ``User.objects`` query
+        returns every clinic's staff, so any authenticated user could list every
+        user on the platform (name, e-mail, role) regardless of which clinic
+        they belong to. Scope to users holding an active
+        ``UserTenantMembership`` for the current tenant, mirroring
+        ``AuditLog.for_current_tenant`` (SYS-1).
+
+        In the PUBLIC schema (platform-admin surfaces, not reachable via the
+        tenant-scoped ``apps.core.urls``) this returns every user, preserving
+        the pre-existing platform-admin view. Checked via ``connection.schema_name``
+        (mirrors ``AuditLog.for_current_tenant``/SYS-1 and ``Role.for_current_tenant``)
+        rather than ``connection.tenant is None``: django-tenants'
+        ``TenantMainMiddleware`` always sets ``connection.tenant`` to a real
+        object on a real request — including for public-schema requests — so
+        ``is None`` would never actually trigger there.
+        """
+        from django.db import connection
+        from django_tenants.utils import get_public_schema_name
+
+        schema_name = getattr(connection, "schema_name", None)
+        if not schema_name or schema_name == get_public_schema_name():
+            return cls.objects.all()
+        tenant = getattr(connection, "tenant", None)
+        return cls.objects.filter(
+            tenant_memberships__tenant=tenant, tenant_memberships__is_active=True
+        )
 
 
 class UserTenantMembership(models.Model):

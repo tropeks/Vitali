@@ -63,6 +63,10 @@ services:
     environment:
       DJANGO_SETTINGS_MODULE: vitali.settings.production
       HEALTHCHECK_HOST: ${HEALTHCHECK_HOST:-vitali.qtec.me}
+      # Hardcoded (not left to .env.staging) so core.E002 cannot be silently
+      # bypassed by a stale env file. Run backfill_tenant_memberships BEFORE
+      # first deploy with this set — see .env.staging.example.
+      ENFORCE_TENANT_MEMBERSHIP: "true"
     depends_on:
       postgres:
         condition: service_healthy
@@ -88,6 +92,8 @@ services:
     env_file: ${STAGING_ENV_FILE:-.env.staging}
     environment:
       DJANGO_SETTINGS_MODULE: vitali.settings.production
+      # See django service: hardcoded so it can't be silently disabled.
+      ENFORCE_TENANT_MEMBERSHIP: "true"
     depends_on:
       postgres:
         condition: service_healthy
@@ -110,6 +116,8 @@ services:
     env_file: ${STAGING_ENV_FILE:-.env.staging}
     environment:
       DJANGO_SETTINGS_MODULE: vitali.settings.production
+      # See django service: hardcoded so it can't be silently disabled.
+      ENFORCE_TENANT_MEMBERSHIP: "true"
     depends_on:
       postgres:
         condition: service_healthy
