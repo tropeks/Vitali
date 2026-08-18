@@ -287,18 +287,40 @@ Um serviço ligado a `127.0.0.1` não aceita conexões chegando por `172.17.0.1`
 
 **2 — `deliver_chat_id`: PENDENTE.** Fica para depois, por decisão do Capitão.
 
+### 4b — Caminho de rede: DECIDIDO (Capitão, 2026-08-17) — proxy ZeroTier
+
+`ALERTMANAGER_WEBHOOK_URL` aponta para `http://172.29.147.53:9119/api/webhooks/<hook>`. Nenhuma
+alteração externa é necessária: o proxy já existe e já roda.
+
+**Análise do proxy** (`~/.hermes/scripts/hermes_dashboard_zerotier_proxy.py`, 52 linhas, lido em modo
+somente-leitura):
+
+| Aspecto | Constatação |
+|---|---|
+| Método | Não filtra — `POST` passa |
+| Caminho | Não filtra — `/api/webhooks` passa |
+| Host header | Reescrito para `127.0.0.1:9119` antes de repassar |
+| Corpo | Repassado por `Content-Length`; **não trata `chunked`** — ok, o Alertmanager envia `Content-Length` |
+| Conexão | Forçada a `close`; o Alertmanager reconecta por notificação |
+| **Autenticação** | **NENHUMA** |
+
+⚠️ **Consequência de segurança, pré-existente mas relevante para a decisão 3.** O proxy não autentica
+nada: qualquer coisa capaz de alcançar `172.29.147.53:9119` obtém acesso não autenticado à **API
+inteira do Hermes**, não apenas ao webhook. Isso já vale hoje para toda a rede ZeroTier e para qualquer
+container deste host — não é criado por esta mudança, e não é config deste repositório. Mas combinado
+com a decisão de não usar `secret`, significa que o canal de alerta não tem autenticação em nenhuma das
+duas pontas. Aceitável para um canal que carrega apenas rótulos de infraestrutura; **não** aceitável se
+algum dia passar a carregar dado clínico.
+
+O `extra_hosts` aplicado em `docker-compose.observability.yml` deixa de ser o caminho em uso. Foi
+mantido como escape hatch de custo zero, com o comentário corrigido para não sugerir que funciona.
+
 ### O que ainda falta para o alerta chegar em alguém
 
-1. **`deliver_chat_id`** — pendente.
-2. **Tornar a bridge alcançável a partir do container.** Dois caminhos, ambos exigindo decisão:
-   - **(a) Sem alteração externa:** apontar `ALERTMANAGER_WEBHOOK_URL` para o proxy ZeroTier já
-     existente, `172.29.147.53:9119`. O container consegue rotear para um IP de interface do host. Não
-     validado (docker indisponível), e desconheço a autenticação e o comportamento desse proxy.
-   - **(b) Com alteração externa:** fazer o `hermes` — ou um proxy análogo ao do ZeroTier — escutar
-     também em `172.17.0.1`. **Requer autorização explícita**, é config fora do repositório Vitali.
+**Apenas `deliver_chat_id`.** É o último item.
 
-**Nenhum `POST` deve ser emitido até (1) e (2) estarem resolvidas.** As decisões 1, 3 e 4 definem a
-forma do webhook; não autorizam sua criação.
+**Nenhum `POST` deve ser emitido até ele ser definido.** As decisões 1, 3, 4 e 4b definem a forma e o
+endereço do webhook; não autorizam sua criação.
 
 Enquanto não houver decisão, o Alertmanager sobe normalmente com `ALERTMANAGER_WEBHOOK_URL` vazio: as
 tentativas de notificação falham de forma visível (`alertmanager_notifications_failed_total`), sem

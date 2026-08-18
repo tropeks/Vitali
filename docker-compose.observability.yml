@@ -108,12 +108,11 @@ services:
   alertmanager:
     image: prom/alertmanager:v0.28.1
     restart: always
-    # Lets ALERTMANAGER_WEBHOOK_URL target a service running on the Docker host
-    # (127.0.0.1 inside this container is the container, not the host).
-    # NECESSARY BUT NOT SUFFICIENT: the host service must also listen on an
-    # interface the container can reach. Verified on the current box, the Hermes
-    # bridge binds 127.0.0.1:9119 only, and 172.17.0.1:9119 answers nothing —
-    # so host.docker.internal alone will not deliver there yet. See item 1.4b in
+    # Lets ALERTMANAGER_WEBHOOK_URL target a service on the Docker host by name.
+    # Kept as a zero-cost escape hatch; it is NOT the path in use on this box,
+    # where the host bridge binds loopback only and 172.17.0.1:9119 answers
+    # nothing — the working target there is the ZeroTier proxy, reached by plain
+    # IP and needing none of this. See item 1.4b in
     # docs/research/VITALI_HUMAN_APPLIED_GATES.md.
     extra_hosts:
       - "host.docker.internal:host-gateway"
