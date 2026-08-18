@@ -1,0 +1,15 @@
+# Perfil Maestro do Vitali.
+#
+# Stack medida em 2026-08-18 (git ls-files): Python/Django backend pesado,
+# TypeScript/TSX frontend e SQL/migrations relevantes. Projeto médico/multi-tenant:
+# mudanças em auth, tenant, TISS, permissões, migrations ou dados clínicos exigem
+# especialista Python/Postgres/QA conforme escopo.
+#
+# Formato simples lido pelo hook SessionStart do Maestro: chave em coluna 0 e
+# listas inline.
+version: 1
+project: vitali
+languages: [python, typescript, sql]
+experts: [dev-junior, dev-pleno, engenheiro, python-pro, typescript-pro, postgres-pro, qa, revisor]
+pipeline: default
+notes: "sistema clínico multi-tenant: preserve isolamento por clínica/tenant; TISS, auth, permissões, migrations e dados médicos passam por gates e testes"
