@@ -45,12 +45,13 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from apps.billing.models import InsuranceProvider, TISSGuide, TISSGuideItem
+from apps.billing.services.execution_dates import to_local_date
 from apps.billing.services.lab_order_billing import (
     _active_insurance,
     _active_price_table,
     _unit_value,
 )
-from apps.emr.models import SurgicalCase
+from apps.emr.models import SurgicalCase, SurgicalTime
 
 
 def generate_sadt_guide_for_surgical_case(case: SurgicalCase) -> TISSGuide:
@@ -97,6 +98,19 @@ def generate_sadt_guide_for_surgical_case(case: SurgicalCase) -> TISSGuide:
             competency=competency,
         )
 
+        # dataExecucao da cirurgia: a INCISÃO, que é o instante em que o
+        # procedimento de fato começou — não `scheduled_start`, que é agendamento
+        # e pode nunca ter acontecido no dia marcado (cirurgia remarcada,
+        # antecipada, feita de madrugada). `SurgicalTime` é append-only e o
+        # evento `incisao` é o mesmo que promove o caso a `em_andamento`
+        # (apps/emr/services/surgery_intraop.py), então é o registro clínico, não
+        # uma inferência. Caso sem incisão registrada nasce sem data e a emissão
+        # do XML falha alto.
+        incision = (
+            case.times.filter(event=SurgicalTime.Event.INCISAO).order_by("recorded_at").first()
+        )
+        execution_date = to_local_date(incision.recorded_at) if incision is not None else None
+
         for proc in case.procedures.select_related("tuss_code").all():
             tuss = proc.tuss_code
             if tuss is None:
@@ -107,6 +121,7 @@ def generate_sadt_guide_for_surgical_case(case: SurgicalCase) -> TISSGuide:
                 description=tuss.description or proc.tuss_code_value,
                 quantity=Decimal(proc.quantity),
                 unit_value=_unit_value(price_table, tuss),
+                execution_date=execution_date,
             )
 
         # No procedure resolved to a billable TUSS line — there is nothing to bill.

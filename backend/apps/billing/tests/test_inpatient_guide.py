@@ -139,6 +139,39 @@ class InpatientGuideTestCase(TenantTestCase):
         # total = 3 × 500 = 1500
         self.assertEqual(guide.total_value, Decimal("1500.00"))
 
+    def test_item_agregado_datado_pela_diaria_mais_antiga(self):
+        """``execution_date`` do item vem da ``service_date`` real das diárias, e
+        a agregação por TUSS declara a MAIS ANTIGA.
+
+        A agregação funde vários dias num item só, então "a data do item" não é
+        única e ``dataExecucao`` (ct_procedimentoExecutadoInt) é escalar. A mais
+        antiga é o dia em que a linha COMEÇOU a ser executada, e
+        ``quantidadeExecutada`` diz por quantos dias ela correu. Trava também o
+        que NÃO pode acontecer: a data não é ``now()`` — carimbar a data de
+        faturamento como se fosse data clínica é o erro que este teste existe
+        para impedir.
+        """
+        adm = self._admission(admit=self._dt(2026, 3, 1), discharge=self._dt(2026, 3, 4))
+        guide = generate_internacao_guide_for_admission(adm)
+
+        item = guide.items.first()
+        diarias = DailyCharge.objects.filter(admission=adm).order_by("service_date")
+
+        self.assertEqual(item.execution_date, diarias.first().service_date)
+        self.assertEqual(item.execution_date, datetime.date(2026, 3, 1))
+        self.assertNotEqual(item.execution_date, timezone.now().date())
+
+    def test_fator_de_reducao_nasce_neutro(self):
+        """1.00 = sem redução nem acréscimo. O default NÃO é 0: fator zero
+        declararia à operadora que a linha vale zero — ver o comentário do campo
+        em billing/models.py. Com o neutro, total_value não muda."""
+        adm = self._admission(admit=self._dt(2026, 3, 1), discharge=self._dt(2026, 3, 4))
+        guide = generate_internacao_guide_for_admission(adm)
+
+        item = guide.items.first()
+        self.assertEqual(item.reduction_increase_factor, Decimal("1.00"))
+        self.assertEqual(item.total_value, item.unit_value * item.quantity)
+
     def test_idempotent_no_duplicate_guide(self):
         adm = self._admission(admit=self._dt(2026, 3, 1), discharge=self._dt(2026, 3, 4))
         first = generate_internacao_guide_for_admission(adm)

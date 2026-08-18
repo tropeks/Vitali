@@ -20,6 +20,12 @@ kwargs:
     ``description``      — texto do medicamento no momento da dispensação.
     ``source_id``        — UUID da dispensação; é a chave de idempotência, para
                            reprocessar não cobrar duas vezes o mesmo remédio.
+    ``dispensed_at``     — datetime da dispensação. Vira ``dataExecucao`` do item
+                           TISS (obrigatório em ct_procedimentoExecutadoInt). É o
+                           motivo de trafegar aqui em vez de o billing ler
+                           ``Dispensation``: a data é dado da farmácia e o
+                           faturamento não pode importá-la. Ausente → item sem
+                           data, e a emissão do XML falha alto; nunca ``today()``.
 
 Como o receiver de alta do ADT, quem escuta trata as próprias exceções: uma falha
 de faturamento não pode impedir um medicamento de ser dispensado a um paciente.

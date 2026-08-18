@@ -89,6 +89,12 @@ class XMLEngineTestCase(TenantTestCase):
             description="Consulta em consultório",
             group="procedimento",
             version="2024-01",
+            # codigoTabela (ct_procedimentoDados) é dm_tabela, enum FECHADO.
+            # "22" é a tabela de procedimentos e materiais; sem isso o resolver
+            # de procedimentosExecutados falha alto, que é o comportamento certo
+            # para um TUSS importado sem tabela — ver
+            # xml_engine._resolve_internacao_procedimentos.
+            table_number="22",
         )
 
     def _make_consulta_guide(self, guide_number_suffix="1", n_items=1):
@@ -377,6 +383,7 @@ class SadtGuideXMLConformanceTests(XMLEngineTestCase):
             description="Consulta em consultório",
             quantity=Decimal("1"),
             unit_value=Decimal("150.00"),
+            execution_date=datetime.date(2026, 8, 10),
         )
         batch = TISSBatch.objects.create(provider=self.provider)
         batch.guides.add(guide)
@@ -465,6 +472,7 @@ class InternacaoFixtureMixin:
             description="Consulta em consultório",
             quantity=Decimal("1"),
             unit_value=Decimal("150.00"),
+            execution_date=datetime.date(2026, 8, 10),
         )
         return guide
 
@@ -766,6 +774,173 @@ class InternacaoDadosResolutionTests(InternacaoFixtureMixin, XMLEngineTestCase):
         assert errors == [], errors
 
     def _batch_with(self, guide):
+        batch = TISSBatch.objects.create(provider=self.provider)
+        batch.guides.add(guide)
+        return batch
+
+
+class InternacaoProcedimentosExecutadosTests(InternacaoFixtureMixin, XMLEngineTestCase):
+    """``<procedimentosExecutados>`` — a discriminação item a item.
+
+    O elemento é ``minOccurs="0"``: o XSD aceita a guia SEM nenhuma linha, e era
+    assim que ela saía. Schema-válida e comercialmente inútil — operadora nenhuma
+    paga uma internação sem itens. Estes testes travam as duas metades: que a
+    linha sai completa e correta, e que cada dado que faltar FALHA ALTO em vez de
+    ser inventado.
+    """
+
+    def setUp(self):
+        super().setUp()
+        # A autorização é pré-requisito de qualquer guia de internação (fatia
+        # anterior); sem ela a falha alta de dadosAutorizacao dispara antes de o
+        # resolver de procedimentos ser alcançado.
+        self._approve_authorization()
+
+    def _guide_with_item(self, **item_kwargs):
+        guide = self._make_internacao_guide()
+        item = guide.items.first()
+        for field, value in item_kwargs.items():
+            setattr(item, field, value)
+        item.save()
+        return guide
+
+    def test_item_sai_completo_e_a_guia_segue_schema_valida(self):
+        """Caminho feliz: todos os filhos obrigatórios de
+        ct_procedimentoExecutadoInt, na ordem do XSD, e o lote ainda valida."""
+        guide = self._make_internacao_guide()
+        batch = TISSBatch.objects.create(provider=self.provider)
+        batch.guides.add(guide)
+
+        xml = generate_batch_xml(batch)
+
+        assert validate_xml(xml) == []
+        assert "<ans:procedimentosExecutados>" in xml
+        assert "<ans:sequencialItem>1</ans:sequencialItem>" in xml
+        assert "<ans:dataExecucao>2026-08-10</ans:dataExecucao>" in xml
+        assert "<ans:codigoTabela>22</ans:codigoTabela>" in xml
+        assert "<ans:codigoProcedimento>10101012</ans:codigoProcedimento>" in xml
+        assert "<ans:quantidadeExecutada>1</ans:quantidadeExecutada>" in xml
+        # Fator NEUTRO: 1.00, nunca 0 — ver o comentário do campo em models.py.
+        assert "<ans:reducaoAcrescimo>1.00</ans:reducaoAcrescimo>" in xml
+        assert "<ans:valorUnitario>150.00</ans:valorUnitario>" in xml
+
+    def test_sequencial_numera_os_itens_a_partir_de_um(self):
+        """sequencialItem é a posição na guia — 1..N, sem buraco."""
+        guide = self._make_internacao_guide()
+        TISSGuideItem.objects.create(
+            guide=guide,
+            tuss_code=self.tuss_consulta,
+            description="Segundo item",
+            quantity=Decimal("2"),
+            unit_value=Decimal("80.00"),
+            execution_date=datetime.date(2026, 8, 11),
+        )
+
+        xml = generate_guide_xml(guide)
+
+        assert "<ans:sequencialItem>1</ans:sequencialItem>" in xml
+        assert "<ans:sequencialItem>2</ans:sequencialItem>" in xml
+        assert "<ans:sequencialItem>3</ans:sequencialItem>" not in xml
+
+    def test_item_sem_data_de_execucao_falha_alto(self):
+        """Toda linha faturada antes desta fatia está assim. Nenhuma fonte
+        honesta diz o dia — nem created_at (data do lançamento) nem o período da
+        internação (que só dá o intervalo). Falha em vez de carimbar."""
+        guide = self._guide_with_item(execution_date=None)
+
+        with pytest.raises(TISSXMLGenerationError, match="sem data de execução"):
+            generate_guide_xml(guide)
+
+    def test_quantidade_fracionaria_falha_em_vez_de_arredondar(self):
+        """quantidadeExecutada é st_numerico3, um INTEIRO. Arredondar 2,5 para 3
+        mudaria em silêncio o que se cobra da operadora."""
+        guide = self._guide_with_item(quantity=Decimal("2.50"))
+
+        with pytest.raises(TISSXMLGenerationError, match="quantidade fracionária"):
+            generate_guide_xml(guide)
+
+    def test_quantidade_inteira_com_casas_decimais_zeradas_passa(self):
+        """Não-regressão do teste acima: quantity é DecimalField(8,2), então o
+        caso NORMAL é 2.00 — que É inteiro e não pode ser recusado junto."""
+        guide = self._guide_with_item(quantity=Decimal("2.00"))
+
+        xml = generate_guide_xml(guide)
+
+        assert "<ans:quantidadeExecutada>2</ans:quantidadeExecutada>" in xml
+
+    def test_tabela_fora_de_dm_tabela_falha_com_o_tuss_na_mensagem(self):
+        """codigoTabela é enum FECHADO. Um TUSS importado com table_number fora
+        dele quebraria o XML no envio, e o erro do XSD não diria qual item foi."""
+        self.tuss_consulta.table_number = "77"
+        self.tuss_consulta.save(update_fields=["table_number"])
+        guide = self._make_internacao_guide()
+
+        with pytest.raises(TISSXMLGenerationError, match="dm_tabela"):
+            generate_guide_xml(guide)
+
+    def test_tabela_vazia_no_catalogo_tambem_falha(self):
+        """table_number é null=True no catálogo: TUSS sem tabela é caso real."""
+        self.tuss_consulta.table_number = None
+        self.tuss_consulta.save(update_fields=["table_number"])
+        guide = self._make_internacao_guide()
+
+        with pytest.raises(TISSXMLGenerationError, match="dm_tabela"):
+            generate_guide_xml(guide)
+
+    def test_fator_no_limite_superior_do_xsd_e_valido(self):
+        """st_decimal3-2 vai até 9,99, e o limite exato tem de passar.
+
+        MEDIÇÃO, e ela muda o que este teste pode afirmar: a coluna é
+        ``numeric(3,2)``, então o PRÓPRIO POSTGRES recusa 10.00 com
+        ``NumericValueOutOfRange`` — a checagem de faixa do fator em
+        ``_resolve_internacao_procedimentos`` nunca é alcançada por uma linha
+        persistida. Ela fica como defesa para instância não salva, mas seria
+        desonesto escrever um teste que finge exercitá-la: o guard de verdade,
+        aqui, é o schema do banco."""
+        guide = self._guide_with_item(reduction_increase_factor=Decimal("9.99"))
+
+        xml = generate_guide_xml(guide)
+
+        assert "<ans:reducaoAcrescimo>9.99</ans:reducaoAcrescimo>" in xml
+
+    def test_valor_total_acima_da_faixa_do_xsd_falha(self):
+        """total_value é DecimalField(12,2) no model e st_decimal8-2 no XSD (até
+        99.999.999,99) — a folga entre os dois É alcançável, ao contrário da do
+        fator, e sem esta checagem o XML sairia inválido no envio."""
+        guide = self._guide_with_item(quantity=Decimal("999"), unit_value=Decimal("999999.99"))
+
+        with pytest.raises(TISSXMLGenerationError, match="fora da faixa de st_decimal8-2"):
+            generate_guide_xml(guide)
+
+    def test_fator_multiplica_o_total_da_linha(self):
+        """A invariante que a operadora confere sozinha:
+        valorTotal = valorUnitario × quantidadeExecutada × reducaoAcrescimo."""
+        guide = self._guide_with_item(
+            quantity=Decimal("2"),
+            unit_value=Decimal("100.00"),
+            reduction_increase_factor=Decimal("0.50"),
+        )
+
+        item = guide.items.first()
+        assert item.total_value == Decimal("100.00")  # 100 × 2 × 0,50
+
+        xml = generate_guide_xml(guide)
+        assert "<ans:reducaoAcrescimo>0.50</ans:reducaoAcrescimo>" in xml
+        assert "<ans:valorTotal>100.00</ans:valorTotal>" in xml
+
+    def test_descricao_longa_e_truncada_em_150(self):
+        """descricaoProcedimento é st_texto150; description no model vai a 300.
+        Truncar perde texto, estourar o XSD perde a guia inteira — e o
+        codigoProcedimento segue identificando o item sem ambiguidade."""
+        guide = self._guide_with_item(description="X" * 300)
+
+        xml = generate_guide_xml(guide)
+
+        assert "X" * 150 in xml
+        assert "X" * 151 not in xml
+        assert validate_xml(generate_batch_xml(self._batch_for(guide))) == []
+
+    def _batch_for(self, guide):
         batch = TISSBatch.objects.create(provider=self.provider)
         batch.guides.add(guide)
         return batch

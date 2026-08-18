@@ -48,6 +48,7 @@ from apps.billing.models import (
     TISSGuide,
     TISSGuideItem,
 )
+from apps.billing.services.execution_dates import to_local_date
 from apps.core.models import TUSSCode
 from apps.emr.models import LabOrder, PatientInsurance
 
@@ -134,6 +135,12 @@ def generate_sadt_guide_for_lab_order(order: LabOrder) -> TISSGuide:
                 description=item.test_name or item.test.name,
                 quantity=Decimal("1"),
                 unit_value=_unit_value(price_table, tuss),
+                # dataExecucao do exame: quando ele foi RESULTADO, não quando foi
+                # pedido. `order.requested_at` existe e seria tentador, mas pedir
+                # não é executar — usá-lo seria carimbar a data do pedido como se
+                # fosse a da execução. Item ainda sem resultado nasce sem data e a
+                # emissão do XML falha alto (mesma regra das taxonomias vazias).
+                execution_date=to_local_date(item.resulted_at),
             )
 
         # No ordered test resolved to a payer-billable TUSS procedure — there is

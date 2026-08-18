@@ -27,6 +27,7 @@ from django.db import transaction
 from django.dispatch import receiver
 
 from apps.billing.models import InsuranceProvider, TISSGuide, TISSGuideItem
+from apps.billing.services.execution_dates import to_local_date
 from apps.billing.services.lab_order_billing import (
     _active_insurance,
     _active_price_table,
@@ -66,6 +67,7 @@ def _bill(
     quantity: Decimal = Decimal("0"),
     description: str = "",
     source_id=None,
+    dispensed_at=None,
     **_extra,
 ):
     if encounter_id is None or source_id is None:
@@ -136,4 +138,10 @@ def _bill(
             quantity=Decimal(quantity),
             unit_value=_unit_value(price_table, tuss),
             dispensation_source_id=source_id,
+            # dataExecucao do medicamento: o instante da dispensação, convertido
+            # para a data LOCAL da clínica. Chega pelo payload do sinal porque a
+            # fronteira de domínio impede ler `Dispensation` daqui. Emissor
+            # antigo (ou teste) que não mande o campo: fica sem data, e a emissão
+            # do XML falha alto — nunca `today()`.
+            execution_date=to_local_date(dispensed_at),
         )

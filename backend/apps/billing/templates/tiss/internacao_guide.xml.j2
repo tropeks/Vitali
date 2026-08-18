@@ -61,17 +61,19 @@
    começado no DIA SEGUINTE. A conversão vive no filtro, não neste template nem
    no resolver, porque é o único ponto por onde TODA data do TISS passa.
 
-   RESIDUAL NOVO (schema-válido, mas honesto declarar):
-   1. procedimentosExecutados é minOccurs="0" — o XSD aceita a guia sem
-      NENHUMA linha de procedimento, e é assim que ela sai hoje, mesmo com
-      TISSGuideItem preenchido. Não é omissão preguiçosa: ct_procedimentoExecutadoInt
-      exige reducaoAcrescimo (Fatia 1 do doc de pesquisa, ainda não landed —
-      TISSGuideItem não tem o campo) e dataExecucao por item (TISSGuideItem não
-      guarda data nenhuma). Emitir isso hoje seria inventar os dois. Operadora
-      nenhuma paga uma internação sem discriminação de itens: schema-válido NÃO
-      é aceite — ver o mesmo alerta no valorTotal abaixo.
-   2. valorTotal usa a Alternativa A do doc §4 (só valorTotalGeral).
-   Ambos estão em docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §4/§7. #}
+   FECHADO NESTA FATIA: procedimentosExecutados. Era o item 1 do residual —
+   a guia saía sem NENHUMA linha de procedimento, e nenhuma operadora paga isso.
+   TISSGuideItem ganhou execution_date e reduction_increase_factor (migration
+   0036) e as cinco pontes clínico→faturamento passaram a datar cada linha da
+   fonte clínica real, nunca de now(). Ver o bloco no corpo do template.
+
+   RESIDUAL QUE PERMANECE (schema-válido, mas honesto declarar):
+   1. valorTotal usa a Alternativa A do doc §4: só valorTotalGeral, os sete
+      breakdowns por categoria omitidos. Glosa por falta de breakdown é prática
+      real — ver o alerta longo no próprio <valorTotal> abaixo.
+   2. As linhas faturadas ANTES desta fatia não têm execution_date e não há como
+      backfillar honestamente: a emissão falha alto nelas, de propósito.
+   Ver docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §2/§4/§7. #}
 <ans:guiaResumoInternacao>
   <ans:cabecalhoGuia>
     <ans:registroANS>{{ guide.provider.ans_code }}</ans:registroANS>
@@ -125,9 +127,46 @@
     <ans:indicadorAcidente>9</ans:indicadorAcidente>
     <ans:motivoEncerramento>{{ internacao_motivo_encerramento }}</ans:motivoEncerramento>
   </ans:dadosSaidaInternacao>
-  {# <procedimentosExecutados> é minOccurs="0" e fica FORA daqui — ver o item 1
-     do RESIDUAL no cabeçalho: ct_procedimentoExecutadoInt exige reducaoAcrescimo
-     e dataExecucao por item, e TISSGuideItem não tem nenhum dos dois. #}
+  {# <procedimentosExecutados> (minOccurs="0", ct_procedimentoExecutadoInt).
+     É opcional no XSD e ERA omitido — a guia saía schema-válida com o total
+     geral e zero discriminação de itens, que nenhuma operadora paga. Agora é
+     emitido: TISSGuideItem ganhou execution_date e reduction_increase_factor, e
+     as cinco pontes clínico→faturamento passaram a datar cada linha da fonte
+     real (diária/taxa pela service_date, exame pelo resulted_at, cirurgia e
+     material pela incisão, medicamento pelo dispensed_at do sinal).
+
+     O bloco só aparece quando há itens — guia sem linha nenhuma continua válida
+     pelo minOccurs="0", e emitir <procedimentosExecutados/> vazio quebraria o
+     maxOccurs="unbounded" do filho, que exige ao menos um.
+
+     Toda a validação (data ausente, quantidade fracionária num campo inteiro,
+     codigoTabela fora de dm_tabela, valor/fator fora de faixa) mora em
+     xml_engine._resolve_internacao_procedimentos e FALHA ALTA antes de chegar
+     aqui — este template nunca é renderizado com item inválido, e por isso não
+     tem defesa nenhuma inline. #}
+  {% if procedimentos %}
+  <ans:procedimentosExecutados>
+    {% for p in procedimentos %}
+    <ans:procedimentoExecutado>
+      <ans:sequencialItem>{{ p.sequencial }}</ans:sequencialItem>
+      <ans:dataExecucao>{{ p.data_execucao | format_date }}</ans:dataExecucao>
+      <ans:procedimento>
+        <ans:codigoTabela>{{ p.tabela }}</ans:codigoTabela>
+        <ans:codigoProcedimento>{{ p.codigo }}</ans:codigoProcedimento>
+        <ans:descricaoProcedimento>{{ p.descricao }}</ans:descricaoProcedimento>
+      </ans:procedimento>
+      <ans:quantidadeExecutada>{{ p.quantidade }}</ans:quantidadeExecutada>
+      {# reducaoAcrescimo é FATOR multiplicativo, não valor: 1.00 = sem redução
+         nem acréscimo. Ver o comentário do campo em billing/models.py para a
+         evidência (o tipo irmão o chama de fatorReducaoAcrescimo e a faixa
+         st_decimal3-2 vai só até 9,99). #}
+      <ans:reducaoAcrescimo>{{ p.fator | format_currency }}</ans:reducaoAcrescimo>
+      <ans:valorUnitario>{{ p.valor_unitario | format_currency }}</ans:valorUnitario>
+      <ans:valorTotal>{{ p.valor_total | format_currency }}</ans:valorTotal>
+    </ans:procedimentoExecutado>
+    {% endfor %}
+  </ans:procedimentosExecutados>
+  {% endif %}
   <ans:valorTotal>
     {# ct_guiaValorTotal — Alternativa A do doc de pesquisa §4: dos oito filhos,
        só <valorTotalGeral> é obrigatório; os sete breakdowns

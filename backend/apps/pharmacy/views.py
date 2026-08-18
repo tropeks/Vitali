@@ -1297,6 +1297,13 @@ class DispenseView(APIView):
             quantity=requested_qty,
             description=getattr(drug, "name", "") or "",
             source_id=dispensation.id,
+            # Primitivo, como o resto do payload: o faturamento precisa da DATA
+            # em que o remédio saiu (dataExecucao do item TISS) e não pode
+            # importar `pharmacy.Dispensation` para lê-la — `apps.billing ->
+            # apps.pharmacy` é proibido pelo import-linter, na mesma direção que
+            # este envio evita. Mandar o datetime aqui é o que mantém a fronteira
+            # de pé sem o faturamento ter de adivinhar a data.
+            dispensed_at=dispensation.dispensed_at,
         )
 
         return dispensation

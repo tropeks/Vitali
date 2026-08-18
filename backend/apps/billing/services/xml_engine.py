@@ -440,6 +440,127 @@ def _resolve_internacao_dados(guide) -> dict:
     }
 
 
+DM_TABELA_VALIDOS = frozenset({"00", "18", "19", "20", "22", "90", "98"})
+
+
+def _resolve_internacao_procedimentos(guide) -> list[dict]:
+    """Resolve ``<procedimentosExecutados>`` (ct_procedimentoExecutadoInt).
+
+    POR QUE ISTO EXISTE. O elemento é ``minOccurs="0"`` — o XSD aceita a guia de
+    resumo de internação SEM nenhuma linha de procedimento, e era assim que ela
+    saía: schema-válida, com ``valorTotalGeral`` e zero discriminação de itens.
+    Nenhuma operadora paga um documento desses. Validade de schema nunca foi o
+    critério aqui; a guia tem de ser faturável.
+
+    Filhos obrigatórios, na ordem do XSD (medido com lxml sobre
+    ``schemas/tissComplexTypesV4_01_00.xsd``)::
+
+        sequencialItem      st_numerico4    posição na guia, 1..N
+        dataExecucao        st_data         item.execution_date
+        procedimento        ct_procedimentoDados  tabela + código + descrição
+        quantidadeExecutada st_numerico3    INTEIRO
+        reducaoAcrescimo    st_decimal3-2   item.reduction_increase_factor
+        valorUnitario       st_decimal8-2   item.unit_value
+        valorTotal          st_decimal8-2   item.total_value
+
+    ``horaInicial``/``horaFinal``, ``viaAcesso``, ``tecnicaUtilizada`` e
+    ``identEquipe`` são opcionais e NÃO são emitidos: não há fonte para nenhum
+    deles, e emitir opcional inventado é pior que omitir.
+
+    Falha alta (``TISSXMLGenerationError``) em vez de fabricar, em quatro casos
+    — todos com o número do item na mensagem, porque o faturista precisa saber
+    QUAL linha corrigir:
+
+    1. **Item sem ``execution_date``.** Toda linha faturada antes da Onda 4 está
+       assim, e nenhuma fonte honesta diz o dia: nem ``created_at`` (data do
+       lançamento, não da execução) nem o período da internação (que só dá o
+       intervalo). Carimbar qualquer uma delas seria declarar à operadora um fato
+       clínico inventado.
+    2. **Quantidade fracionária.** ``st_numerico3`` é ``integer``. Arredondar
+       silenciosamente muda o que se cobra — 2,5 diárias viram 3 e ninguém vê.
+       ``2.00`` é inteiro e passa; ``2.50`` falha.
+    3. **``codigoTabela`` fora de ``dm_tabela``.** Enum fechado; um TUSS
+       importado com ``table_number`` fora dele quebraria o XML no envio, e o
+       erro do XSD não diria qual código causou.
+    4. **Valor ou fator fora da faixa do XSD** (``st_decimal8-2`` até
+       99.999.999,99; ``st_decimal3-2`` até 9,99).
+    """
+    items = list(guide.items.select_related("tuss_code").order_by("id"))
+    if not items:
+        return []
+
+    procedimentos = []
+    for sequencial, item in enumerate(items, start=1):
+        if item.execution_date is None:
+            raise TISSXMLGenerationError(
+                f"Item {sequencial} da guia {guide.guide_number} "
+                f"({item.description or item.tuss_code.code}) está sem data de execução: "
+                "dataExecucao é obrigatório por item em ct_procedimentoExecutadoInt "
+                "(tissComplexTypesV4_01_00.xsd) e não há fonte honesta para deduzi-la — "
+                "nem a data do lançamento nem o período da internação dizem em que dia o "
+                "item foi executado. Linhas faturadas antes da Onda 4 nascem assim: "
+                "informe a data de execução do item antes de gerar o XML."
+            )
+
+        quantidade = Decimal(item.quantity)
+        if quantidade != quantidade.to_integral_value():
+            raise TISSXMLGenerationError(
+                f"Item {sequencial} da guia {guide.guide_number} tem quantidade "
+                f"fracionária ({quantidade}): quantidadeExecutada "
+                "(ct_procedimentoExecutadoInt) é st_numerico3, um INTEIRO. Arredondar "
+                "aqui mudaria em silêncio o que se cobra da operadora — ajuste a "
+                "quantidade do item ou desmembre a linha."
+            )
+        quantidade_int = int(quantidade)
+        if not (0 <= quantidade_int <= 999):
+            raise TISSXMLGenerationError(
+                f"Item {sequencial} da guia {guide.guide_number} tem quantidade "
+                f"{quantidade_int}, fora da faixa de st_numerico3 (0 a 999)."
+            )
+
+        tabela = (item.tuss_code.table_number or "").strip()
+        if tabela not in DM_TABELA_VALIDOS:
+            raise TISSXMLGenerationError(
+                f"Item {sequencial} da guia {guide.guide_number}: o TUSS "
+                f"{item.tuss_code.code} tem tabela {tabela!r}, que não está em "
+                f"dm_tabela ({', '.join(sorted(DM_TABELA_VALIDOS))}). codigoTabela é um "
+                "enum FECHADO do XSD; enviar assim seria rejeitado pela operadora sem "
+                "dizer qual item causou. Corrija o table_number do catálogo TUSS."
+            )
+
+        fator = Decimal(item.reduction_increase_factor)
+        if not (Decimal("0") <= fator < Decimal("10")):
+            raise TISSXMLGenerationError(
+                f"Item {sequencial} da guia {guide.guide_number} tem fator de "
+                f"redução/acréscimo {fator}, fora da faixa de st_decimal3-2 (0,00 a 9,99)."
+            )
+        for rotulo, valor in (("unitário", item.unit_value), ("total", item.total_value)):
+            if Decimal(valor) >= Decimal("100000000"):
+                raise TISSXMLGenerationError(
+                    f"Item {sequencial} da guia {guide.guide_number} tem valor {rotulo} "
+                    f"{valor}, fora da faixa de st_decimal8-2 (até 99.999.999,99)."
+                )
+
+        procedimentos.append(
+            {
+                "sequencial": sequencial,
+                "data_execucao": item.execution_date,
+                # st_texto150: a descrição do model vai a 300. Truncar perde texto,
+                # estourar o XSD perde a guia inteira — trunca, e o código TUSS
+                # (codigoProcedimento) segue identificando o item sem ambiguidade.
+                "descricao": (item.description or item.tuss_code.description or "")[:150],
+                "tabela": tabela,
+                "codigo": item.tuss_code.code,
+                "quantidade": quantidade_int,
+                "fator": fator,
+                "valor_unitario": item.unit_value,
+                "valor_total": item.total_value,
+            }
+        )
+
+    return procedimentos
+
+
 # ─── Guide XML generation ─────────────────────────────────────────────────────
 
 
@@ -524,6 +645,9 @@ def generate_guide_xml(guide) -> str:
         # depois de dadosExecutante na sequência. Mesma política do bloco de
         # autorização: falha alta e acionável em vez de XML com dado inventado.
         context.update(_resolve_internacao_dados(guide))
+        # <procedimentosExecutados>: a discriminação item a item. Ver o docstring
+        # do resolver para por que a guia não pode mais sair sem ela.
+        context["procedimentos"] = _resolve_internacao_procedimentos(guide)
 
     return template.render(**context)
 

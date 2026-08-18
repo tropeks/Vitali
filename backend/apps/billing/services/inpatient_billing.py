@@ -85,6 +85,21 @@ from apps.emr.models import Admission
 logger = logging.getLogger(__name__)
 
 
+def _earliest(current: date | None, candidate: date | None) -> date | None:
+    """Menor das duas datas, tolerando ``None`` dos dois lados.
+
+    Usada na agregação por TUSS: o item que funde vários dias declara como
+    ``dataExecucao`` o dia em que aquela linha começou. ``None`` é ausência, não
+    "infinito" — se nenhuma das fontes tiver data, o item nasce sem data e a
+    emissão do XML falha alto em vez de carimbar uma.
+    """
+    if candidate is None:
+        return current
+    if current is None:
+        return candidate
+    return min(current, candidate)
+
+
 def _billable_window_end(admission: Admission, *, today: date) -> date:
     """Último ``service_date` faturável (inclusivo) da janela de diárias.
 
@@ -367,21 +382,37 @@ def generate_internacao_guide_for_admission(admission: Admission) -> TISSGuide:
         # Agrega as diárias por TUSS (transferência entre tipos de leito → 1 item
         # por TUSS distinto, quantidade = nº de diárias). Agregado em Python para
         # não esbarrar no gotcha do mypy com .values().annotate().
+        # `execution_date` do item agregado: a MAIS ANTIGA `service_date` do grupo.
+        # A agregação por TUSS funde vários dias num item só, então "a data do
+        # item" não é única — `dataExecucao` (ct_procedimentoExecutadoInt) é um
+        # campo escalar e alguma data tem de sair. A mais antiga é a única com
+        # significado defensável: é o dia em que aquela linha COMEÇOU a ser
+        # executada, e `quantidadeExecutada` diz por quantos dias/horas ela
+        # correu. A guia declara o período completo em dataInicioFaturamento/
+        # dataFinalFaturamento, então a operadora não perde o intervalo.
+        # TRADE-OFF EXPLÍCITO: se uma operadora exigir uma linha por dia, o fix é
+        # PARAR de agregar aqui (1 item por DailyCharge), não trocar a data
+        # escolhida — desagregar é mudança de forma, não de dado, porque
+        # DailyCharge/InpatientFee continuam existindo linha a linha.
         aggregated: dict[int, dict] = {}
         for charge in charges:
             entry = aggregated.setdefault(
-                charge.tuss_code_id, {"tuss": charge.tuss_code, "quantity": Decimal(0)}
+                charge.tuss_code_id,
+                {"tuss": charge.tuss_code, "quantity": Decimal(0), "execution_date": None},
             )
             entry["quantity"] += Decimal(charge.quantity)
+            entry["execution_date"] = _earliest(entry["execution_date"], charge.service_date)
 
         # B6 — as taxas entram na mesma agregação por TUSS. Dois lançamentos do
         # mesmo gás em dias diferentes viram UM item com a soma das horas, que é
         # como a operadora espera receber.
         for fee in fees:
             entry = aggregated.setdefault(
-                fee.tuss_code_id, {"tuss": fee.tuss_code, "quantity": Decimal(0)}
+                fee.tuss_code_id,
+                {"tuss": fee.tuss_code, "quantity": Decimal(0), "execution_date": None},
             )
             entry["quantity"] += Decimal(fee.quantity)
+            entry["execution_date"] = _earliest(entry["execution_date"], fee.service_date)
 
         for entry in aggregated.values():
             tuss = entry["tuss"]
@@ -391,6 +422,7 @@ def generate_internacao_guide_for_admission(admission: Admission) -> TISSGuide:
                 description=tuss.description or "",
                 quantity=entry["quantity"],
                 unit_value=_unit_value(price_table, tuss),
+                execution_date=entry["execution_date"],
             )
 
         return guide

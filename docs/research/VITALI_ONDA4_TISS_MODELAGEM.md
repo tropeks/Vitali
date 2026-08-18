@@ -25,6 +25,17 @@
    → 3 (taxonomias internação) → 4 (referência+senha) → 5 (`valorTotal` simples) → 6
    condicional (`valorTotal` completo)**.
 
+> **ESTADO EM 18/08/2026 — leia antes do resto.** A guia de Resumo de Internação está
+> em conformidade total (`validate_xml == []`) e **com discriminação de itens**:
+> `procedimentosExecutados` passou a ser emitido. O que este documento chamava de
+> "campo novo trivial, default `0`" para `reducaoAcrescimo` **estava errado e foi
+> corrigido** — é fator multiplicativo, neutro `1.00` (§2). Residual real que
+> permanece: (a) `valorTotal` ainda é a Alternativa A (só `valorTotalGeral`, sem
+> breakdown por categoria — glosa por isso é prática real de mercado); (b) linhas
+> faturadas antes da migration `0036` não têm `execution_date` e a emissão falha
+> alto nelas, de propósito, porque não há fonte honesta para backfill; (c) a SP/SADT
+> segue em `xfail`, parada em `dadosSolicitante`.
+
 **3 decisões do Capitão**: (a) aprovar Fatia 0 como pré-requisito; (b) taxonomias de
 internação moram em `Admission` ou só em `TISSGuide`? (§5); (c) `ct_guiaValorTotal` aceita
 total único ou exige classificação por item? (§4).
@@ -61,7 +72,7 @@ tabelas abaixo são a leitura orientada a "de onde vem o dado".
 | `dadosAtendimento.tipoAtendimento` | sim | ❌ | — | taxonomia ANS de 9 valores sem equivalente — **decisão de produto**: provavelmente sempre "SADT" (código a confirmar no manual ANS), pode ser default fixo documentado em vez de campo por guia |
 | `dadosAtendimento.indicacaoAcidente` | sim | ❌ | — | já tem default seguro `"9"` (não acidente) usado no `consulta_guide.xml.j2`; portar |
 | `dadosAtendimento.regimeAtendimento` | sim | ❌ | — | 5 valores; SADT ambulatorial = "01" cobre a maioria; internado precisaria saber se a guia SADT nasceu durante uma internação (`guide.admission_id` já existe como sinal) |
-| `procedimentosExecutados[].reducaoAcrescimo` | sim, por item | ❌ | — | **campo novo trivial** em `TISSGuideItem`, default `0` — nunca existiu no domínio, `0` é verdade histórica, não chute |
+| `procedimentosExecutados[].reducaoAcrescimo` | sim, por item | ✅ **(resolvido)** | `TISSGuideItem.reduction_increase_factor` (migration `0036`) | **CORREÇÃO — o `default 0` proposto aqui estava ERRADO.** É um FATOR multiplicativo, não um valor: o tipo irmão `ct_procedimentoExecutado` chama o mesmo conceito de `fatorReducaoAcrescimo`, e `st_decimal3-2` (totalDigits 3, fractionDigits 2 → máx **9,99**) é faixa de multiplicador, não de reais nem de percentual. O neutro é **`1.00`**; `0.00` declararia à operadora que a linha vale zero e ainda cobraria `valorTotal`. Precedente do próprio repo, anterior a este doc: `docs/DATA_MODEL.md` já especificava `reduction_factor DECIMAL DEFAULT 1.0`. O rótulo ANS segue não conferido — 1.00 é o neutro por consistência aritmética (`valorTotal = valorUnitario × quantidadeExecutada × fator`), não por manual lido |
 | `valorTotal` (`ct_guiaValorTotal`) | sim | parcial | `guide.total_value` (total único) | seção própria §4 |
 
 ## 3. Inventário — Resumo de Internação (`ctm_internacaoResumoGuia`)
@@ -86,8 +97,8 @@ placeholder existente).
 | `dadosSaidaInternacao.indicadorAcidente` | sim | ✅ (default) | — | `"9"` (não acidente), mesmo default já documentado em `consulta_guide.xml.j2` |
 | `dadosSaidaInternacao.motivoEncerramento` (`dm_motivoSaida`, 28 valores) | sim | ✅ **(ligado)** | `Admission.disposition_ans_code` (Fatia 3, já landed — campo TISS-specific dedicado, NÃO reaproveita `Admission.disposition`) | resolveu a ressalva de granularidade abaixo: em vez de mapear `Disposition` (6 valores clínicos), ganhou campo próprio com os 28 códigos ANS; ligação feita nesta fatia — vazio na internação → falha alta apontando a tela de alta |
 | `valorTotal` (`ct_guiaValorTotal`) | sim | ✅ **(Alternativa A)** | `valorTotalGeral = guide.total_value`, sete breakdowns omitidos | §4. Fecha o schema, NÃO fecha o aceite: o breakdown diária × taxa × gás medicinal continua ausente e `DailyCharge`/`InpatientFee` seguem fundidos em `TISSGuideItem` sem proveniência (Alternativa B, aberta) |
-| `procedimentosExecutados` (bloco) | **não** (`minOccurs="0"`) | ❌ não emitido | — | medição corrige o pressuposto: o bloco inteiro é OPCIONAL, então sua ausência não bloqueia o schema. Não é emitido porque `ct_procedimentoExecutadoInt` exige `reducaoAcrescimo` (campo inexistente em `TISSGuideItem` — Fatia 1) e `dataExecucao` por item (também inexistente): emitir hoje seria fabricar os dois |
-| `procedimentosExecutados[].reducaoAcrescimo` | sim, por item (se o bloco for emitido) | ❌ | — | mesmo campo novo trivial do SADT (é o mesmo `TISSGuideItem`) |
+| `procedimentosExecutados` (bloco) | **não** (`minOccurs="0"`) | ✅ **EMITIDO (fatia final)** | `xml_engine._resolve_internacao_procedimentos` + `internacao_guide.xml.j2` | o bloco é opcional no schema, e era omitido — a guia saía **schema-válida com o total geral e zero discriminação de itens, que nenhuma operadora paga**. Destravado com os dois campos novos em `TISSGuideItem` (`execution_date`, `reduction_increase_factor`, migration `0036`) e com as CINCO pontes clínico→faturamento passando a datar cada linha da fonte real: diária/taxa pela `service_date`, exame pelo `resulted_at`, cirurgia e material pela **incisão** (`SurgicalTime.INCISAO`, não `scheduled_start` — agendar não é executar), medicamento pelo `dispensed_at` que agora trafega no payload do sinal (a fronteira `billing ⇸ pharmacy` do import-linter impede ler `Dispensation` do faturamento). Nenhuma usa `now()`: data de faturamento não é data clínica |
+| `procedimentosExecutados[].reducaoAcrescimo` | sim, por item | ✅ **(resolvido)** | `TISSGuideItem.reduction_increase_factor` | mesmo campo do SADT (é o mesmo `TISSGuideItem`) — ver a correção do `default 0` na linha correspondente do §2 |
 
 ## 4. `ct_guiaValorTotal` — seção própria
 
@@ -226,7 +237,7 @@ repo (`import_tuss.py`, `inpatient_models.py`) tratam como linha vermelha.
   (mesma-schema, nome sugerido `solicitante`, mirror de `executor`), nullable. Resolvido
   automaticamente de `lab_order.requested_by.professional` quando a guia nasce de um pedido
   de exame; capturado manualmente quando não.
-- **`reducaoAcrescimo`**: novo `DecimalField` em `TISSGuideItem`, default `0`.
+- **`reducaoAcrescimo`**: `TISSGuideItem.reduction_increase_factor`, `DecimalField(max_digits=3, decimal_places=2)`, default **`1.00`** (o NEUTRO — ver a correção no §2; `0` estava errado).
 
 ### Migrations e ordem
 

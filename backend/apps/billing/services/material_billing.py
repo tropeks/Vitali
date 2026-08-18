@@ -34,9 +34,10 @@ from rest_framework.exceptions import ValidationError
 
 from apps.billing.material_models import MaterialPriceItem
 from apps.billing.models import GlosaSafetyAlert, PriceTable, TISSGuide, TISSGuideItem
+from apps.billing.services.execution_dates import to_local_date
 from apps.billing.services.surgery_billing import generate_sadt_guide_for_surgical_case
 from apps.core.simpro_models import SimproMaterial
-from apps.emr.models import SurgicalCase
+from apps.emr.models import SurgicalCase, SurgicalTime
 
 
 def material_unit_value(price_table: PriceTable | None, simpro: SimproMaterial) -> Decimal:
@@ -104,6 +105,18 @@ def bill_surgical_materials_for_case(case: SurgicalCase) -> MaterialBillingResul
 
         result = MaterialBillingResult(guide_id=guide.id)
 
+        # dataExecucao do material: a mesma INCISÃO do procedimento que o
+        # consumiu. Material de OPME não tem carimbo próprio de consumo em
+        # `SurgicalMaterial`; o fato clínico que o gastou é a cirurgia, e a guia
+        # de material é a MESMA guia SP/SADT do caso (generate_sadt_guide_for_
+        # surgical_case acima) — datar as duas pelo mesmo instante mantém a guia
+        # internamente coerente. Caso sem incisão registrada: sem data, e a
+        # emissão do XML falha alto.
+        incision = (
+            case.times.filter(event=SurgicalTime.Event.INCISAO).order_by("recorded_at").first()
+        )
+        execution_date = to_local_date(incision.recorded_at) if incision is not None else None
+
         materials = case.materials.select_related("simpro", "simpro__tuss_code").filter(
             quantity_consumed__gt=0
         )
@@ -131,6 +144,7 @@ def bill_surgical_materials_for_case(case: SurgicalCase) -> MaterialBillingResul
                     quantity=Decimal(material.quantity_consumed),
                     unit_value=unit_value,
                     surgical_material=material,
+                    execution_date=execution_date,
                 )
                 result.items_created += 1
             else:

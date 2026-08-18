@@ -10,7 +10,7 @@ apps/core/signals.py) compensates by checking live references.
 """
 
 import uuid
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
@@ -918,6 +918,70 @@ class TISSGuideItem(models.Model):
     quantity = models.DecimalField("Quantidade", max_digits=8, decimal_places=2, default=1)
     unit_value = models.DecimalField("Valor unitário (R$)", max_digits=10, decimal_places=2)
     total_value = models.DecimalField("Valor total (R$)", max_digits=12, decimal_places=2)
+    # ─── TISS: os dois campos que faltavam para <procedimentosExecutados> ──────
+    #
+    # dataExecucao (ct_procedimentoExecutadoInt, tissComplexTypesV4_01_00.xsd) é
+    # OBRIGATÓRIO por item. A guia já declara o PERÍODO de faturamento
+    # (dataInicioFaturamento/dataFinalFaturamento, em ctm_internacaoDados), mas a
+    # operadora confere item a item: uma diária no dia 12 e um gás no dia 14 são
+    # dois fatos com datas diferentes dentro do mesmo período.
+    #
+    # null=True porque toda linha faturada ANTES desta migration é, por definição,
+    # uma linha sem data — as cinco pontes clínico→faturamento não gravavam nada
+    # aqui. Backfill não existe: nem `created_at` nem o período da internação
+    # dizem em que dia o item foi executado, e escrever `now()` seria carimbar a
+    # data de FATURAMENTO como se fosse data clínica. A consequência é
+    # deliberada: `generate_guide_xml` FALHA ALTO num item sem data (ver
+    # `xml_engine._resolve_internacao_procedimentos`), do mesmo jeito que já
+    # falha para as taxonomias vazias de internações antigas.
+    execution_date = models.DateField(
+        "Data de execução",
+        null=True,
+        blank=True,
+        help_text=(
+            "dataExecucao (ct_procedimentoExecutadoInt) — dia em que ESTE item foi "
+            "executado, na data local da clínica. Vazio só em linhas anteriores à "
+            "Onda 4; sem ela a guia de resumo de internação não gera XML."
+        ),
+    )
+    # reducaoAcrescimo (ct_procedimentoExecutadoInt) é um FATOR MULTIPLICATIVO, e
+    # o neutro é 1.00 — não 0. A evidência, medida com lxml sobre os XSDs deste
+    # repo (docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §2 propunha `default 0`,
+    # e está corrigido lá):
+    #
+    #   1. o tipo IRMÃO `ct_procedimentoExecutado` (usado em <outrasDespesas>)
+    #      chama o mesmo conceito, na mesma posição da sequência e com o MESMO
+    #      tipo, de `fatorReducaoAcrescimo` — a palavra "fator" é da ANS;
+    #   2. `st_decimal3-2` = totalDigits 3 + fractionDigits 2 → faixa 0,00–9,99.
+    #      Isso é faixa de multiplicador. Percentual precisaria chegar a 100
+    #      (0–9,99% não descreve nem uma redução de 10%); valor em reais usaria
+    #      `st_decimal8-2`, o mesmo de valorUnitario/valorTotal, e não usa;
+    #   3. no tipo irmão o campo é `minOccurs="0"` — omitir significa "não mexe
+    #      no valor", que é exatamente o que 1.00 faz e 0.00 não faz;
+    #   4. precedente do próprio repo, anterior ao doc de pesquisa:
+    #      docs/DATA_MODEL.md já especificava
+    #      `TISSGuideItem.reduction_factor: DECIMAL(5,4) DEFAULT 1.0`;
+    #   5. com 1.00 fecha a aritmética que a operadora confere sozinha —
+    #      valorTotal = valorUnitario × quantidadeExecutada × fator. Com 0.00 a
+    #      guia declararia, item a item, que a linha vale ZERO e mesmo assim
+    #      cobraria valorTotal: convite a glosa.
+    #
+    # O que NÃO está conferido: o rótulo ANS. O XSD não traz `xs:documentation`
+    # e o manual de tabelas de domínio não está versionado aqui — 1.00 é o neutro
+    # por CONSISTÊNCIA ARITMÉTICA, não por rótulo conferido. Mesma disciplina dos
+    # "(rótulo a confirmar no manual ANS)" de TISSGuide.TipoFaturamento.
+    reduction_increase_factor = models.DecimalField(
+        "Fator de redução/acréscimo (TISS)",
+        max_digits=3,
+        decimal_places=2,
+        default=Decimal("1.00"),
+        help_text=(
+            "reducaoAcrescimo (ct_procedimentoExecutadoInt) / fatorReducaoAcrescimo "
+            "(ct_procedimentoExecutado) — multiplicador aplicado ao valor da linha. "
+            "1.00 = sem redução nem acréscimo; 0.50 = metade; 1.30 = 30% a mais. "
+            "Faixa do XSD: 0,00 a 9,99."
+        ),
+    )
     # Optional back-link to the SurgicalMaterial that produced this line (B4b OPME/
     # material bridge). Same-schema (TENANT) FK, so a normal FK — SET_NULL so a
     # deleted material does not cascade-remove a billed line. It is the idempotency
@@ -960,7 +1024,20 @@ class TISSGuideItem(models.Model):
         self.guide.save(update_fields=["total_value", "updated_at"])
 
     def save(self, *args, **kwargs):
-        self.total_value = self.unit_value * self.quantity
+        # O fator entra AQUI, e não só no XML, para a invariante que a operadora
+        # confere (valorTotal = valorUnitario × quantidadeExecutada ×
+        # reducaoAcrescimo) valer por construção, em vez de depender de o
+        # template lembrar de multiplicar. Com o default 1.00 o resultado é
+        # idêntico ao de antes desta fatia — nenhuma linha existente muda de
+        # valor. `quantize` é explícito para o valor em memória ser o MESMO que
+        # o Postgres grava em numeric(12,2): sem ele, `unit_value * quantity`
+        # pode ter 4 casas e o XML sairia de um número que o banco arredondou.
+        factor = self.reduction_increase_factor
+        if factor is None:  # defesa: alguém escreveu None por update() direto
+            factor = Decimal("1.00")
+        self.total_value = (self.unit_value * self.quantity * factor).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
         super().save(*args, **kwargs)
         self._recalc_guide_total()
 
