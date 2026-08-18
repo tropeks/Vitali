@@ -283,6 +283,50 @@ class BillingTestCase(TenantTestCase):
         self.assertIn(guide_resp.json()["id"], ids)
         self.assertNotIn(str(other_guide.id), ids)
 
+    # ── Tipo de faturamento (dm_tipoFaturamento) ──────────────────────────────
+
+    def test_tipo_faturamento_options_endpoint_is_the_single_source(self):
+        """A lista de códigos vem do endpoint — e SÓ dele.
+
+        As duas telas que precisam das opções são a de guia nova (que monta o
+        select antes de existir guia) e a de detalhe da guia. Um campo de lista no
+        ``TISSGuideSerializer`` não serviria à primeira e repetiria a mesma lista
+        estática em toda resposta de guia; por isso ``tipo_faturamento_options``
+        saiu do serializer e este teste trava as duas metades do contrato de uma
+        vez: o endpoint responde a lista completa e a guia NÃO a devolve.
+        """
+        client = self._auth(self.fat_token)
+        resp = client.get("/api/v1/billing/guides/tipo-faturamento-options/")
+
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(
+            resp.json(),
+            [
+                {"value": value, "label": label}
+                for value, label in TISSGuide.TipoFaturamento.choices
+            ],
+        )
+        # Os rótulos declaram a pendência em vez de inventar o texto da ANS.
+        self.assertEqual([opt["value"] for opt in resp.json()], ["1", "2", "3", "4"])
+        for opt in resp.json():
+            self.assertIn("a confirmar no manual ANS", opt["label"])
+
+        guide_payload = self._create_guide(client).json()
+        self.assertNotIn("tipo_faturamento_options", guide_payload)
+        self.assertIn("tipo_faturamento", guide_payload)
+        self.assertIn("tipo_faturamento_display", guide_payload)
+
+    def test_tipo_faturamento_options_requires_authentication(self):
+        """O endpoint herda as permissões do viewset (IsAuthenticated + módulo +
+        IsFaturistaOrAdmin) — lista de domínio TISS não é rota pública."""
+        resp = self.client.get("/api/v1/billing/guides/tipo-faturamento-options/")
+        self.assertEqual(resp.status_code, 401)
+
+        resp_enf = self._auth(self.enf_token).get(
+            "/api/v1/billing/guides/tipo-faturamento-options/"
+        )
+        self.assertEqual(resp_enf.status_code, 403)
+
     # ── Guide Status ──────────────────────────────────────────────────────────
 
     def test_guide_status_patch_ignored(self):

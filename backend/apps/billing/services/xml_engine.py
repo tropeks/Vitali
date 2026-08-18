@@ -77,8 +77,54 @@ def _env() -> Environment:
 # ─── Jinja2 filters ───────────────────────────────────────────────────────────
 
 
+def _to_local(value):
+    """Converte um datetime AWARE para o fuso da clínica (``settings.TIME_ZONE``).
+
+    Este é o ponto de estrangulamento de fuso do TISS: todo ``st_data``/``st_hora``
+    do padrão é data e hora LOCAIS, sem offset (``xs:date``/``xs:time`` emitidos
+    como ``YYYY-MM-DD``/``HH:MM:SS``), e o Django guarda todo ``DateTimeField`` em
+    UTC (``USE_TZ=True``, ``TIME_ZONE="America/Sao_Paulo"``). Formatar o valor
+    aware direto emite o horário UTC — um atendimento das 21:30 de São Paulo vira
+    ``2026-08-11 00:30:00`` no documento enviado à operadora: **um dia inteiro à
+    frente**. Nenhum gate pega isso, porque o XML continua schema-válido; aparece
+    como glosa, meses depois, ou como divergência de competência.
+
+    MORA AQUI, e não em cada resolver, de propósito. Uma correção no resolver
+    conserta um caminho; esta função está no caminho de TODA data que chega ao
+    XML (``_format_date``/``_format_time``), então fecha os três casos medidos de
+    uma vez — ``dadosInternacao`` (período de faturamento),
+    ``consulta_guide/dataAtendimento`` (``Encounter.encounter_date``, o de maior
+    volume) e ``batch_envelope/data-horaRegistroTransacao`` (``timezone.now()``) —
+    e impede que um template ou contexto futuro reintroduza o bug sem ninguém
+    perceber.
+
+    O que NÃO converte, e por quê:
+
+    * ``datetime.date`` puro (ex.: ``Authorization.valid_from``,
+      ``TISSGuide.authorization_date``) — data sem hora não tem fuso a converter,
+      e ``timezone.localtime`` sobre ela levanta ``AttributeError``. O teste de
+      ``isinstance(datetime.datetime)`` vem ANTES do de aware justamente por
+      isso: ``datetime`` é subclasse de ``date``, a checagem inversa passaria
+      um ``date`` para ``is_aware`` e estouraria.
+    * datetime naive — já está em hora de parede; converter suporia um fuso de
+      origem que ninguém declarou. Passa intacto.
+
+    Idempotente: ``localtime`` sobre um valor já local devolve o mesmo instante
+    no mesmo fuso, então aplicar duas vezes não dobra o deslocamento.
+    """
+    if isinstance(value, datetime.datetime) and timezone.is_aware(value):
+        return timezone.localtime(value)
+    return value
+
+
 def _format_date(value) -> str:
-    """Convert date/datetime to TISS format YYYY-MM-DD."""
+    """Convert date/datetime to TISS format YYYY-MM-DD.
+
+    A conversão de fuso (``_to_local``) acontece ANTES da redução
+    ``datetime``→``date``: reduzir primeiro congelaria o dia em UTC e a conversão
+    depois seria no-op sobre um ``date`` — exatamente o dia errado.
+    """
+    value = _to_local(value)
     if hasattr(value, "date"):
         value = value.date()
     return value.strftime("%Y-%m-%d") if value else ""
@@ -86,6 +132,7 @@ def _format_date(value) -> str:
 
 def _format_time(value) -> str:
     """Convert datetime to TISS format HH:MM:SS."""
+    value = _to_local(value)
     if hasattr(value, "strftime"):
         return value.strftime("%H:%M:%S")
     return "00:00:00"
@@ -249,26 +296,6 @@ def _resolve_internacao_authorization(guide) -> tuple[str, datetime.date] | None
     return senha, data_autorizacao
 
 
-def _local_datetime(value: datetime.datetime) -> datetime.datetime:
-    """Converte um datetime aware para o fuso da clínica (``settings.TIME_ZONE``).
-
-    Os campos ``st_data``/``st_hora`` do TISS são data e hora LOCAIS, sem offset
-    (``xs:date``/``xs:time`` emitidos como ``YYYY-MM-DD``/``HH:MM:SS``). Django
-    guarda ``DateTimeField`` em UTC (``USE_TZ=True``); formatar direto o valor
-    aware faz uma internação das 21h de São Paulo virar ``00:00:00`` do DIA
-    SEGUINTE no documento enviado à operadora — deslocamento silencioso de um
-    dia inteiro de estada, que só apareceria como glosa. Mesmo cuidado que o
-    commit 8a32034 tomou com ``authorization_date`` no frontend.
-
-    Mesma forma dos precedentes do repo (``apps/hr/roster_integration.py``,
-    ``apps/emr/rh_models.py``): valores naive passam intactos, porque não há de
-    que converter.
-    """
-    if timezone.is_aware(value):
-        return timezone.localtime(value)
-    return value
-
-
 def _resolve_internacao_dados(guide) -> dict:
     """Resolve ``dadosInternacao`` (ctm_internacaoDados) e ``dadosSaidaInternacao``
     (ctm_internacaoDadosSaida) da guia de resumo de internação.
@@ -396,13 +423,17 @@ def _resolve_internacao_dados(guide) -> dict:
             "operadora é pior que não enviar a guia."
         )
 
-    inicio = _local_datetime(admission.admission_datetime)
-    fim = _local_datetime(admission.actual_discharge_datetime)
+    # Datetimes saem daqui CRUS, como vieram do banco (aware/UTC). A conversão
+    # para o fuso da clínica é do filtro ``_to_local``, por onde toda data do TISS
+    # passa — havia uma segunda conversão aqui e ela foi REMOVIDA de propósito:
+    # ``localtime`` é idempotente, então não dobrava o deslocamento, mas duas
+    # fontes da mesma regra é o jeito de alguém "limpar" uma delas achando que a
+    # outra cobre. Uma regra, um lugar.
     return {
         "internacao_carater_atendimento": admission.carater_atendimento,
         "internacao_tipo_faturamento": guide.tipo_faturamento,
-        "internacao_inicio": inicio,
-        "internacao_fim": fim,
+        "internacao_inicio": admission.admission_datetime,
+        "internacao_fim": admission.actual_discharge_datetime,
         "internacao_tipo": admission.tipo_internacao,
         "internacao_regime": admission.regime_internacao,
         "internacao_motivo_encerramento": admission.disposition_ans_code,

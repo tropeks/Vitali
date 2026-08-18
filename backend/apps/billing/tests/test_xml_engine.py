@@ -12,6 +12,7 @@ Run: python manage.py test apps.billing.tests.test_xml_engine
 
 import datetime
 from decimal import Decimal
+from unittest import mock
 
 import pytest
 from django.utils import timezone
@@ -25,6 +26,8 @@ from apps.billing.models import (
 )
 from apps.billing.services.xml_engine import (
     TISSXMLGenerationError,
+    _format_date,
+    _format_time,
     _resolve_internacao_authorization,
     generate_batch_xml,
     generate_guide_xml,
@@ -113,6 +116,83 @@ class XMLEngineTestCase(TenantTestCase):
         return guide
 
 
+class TISSDateTimeFilterTests(XMLEngineTestCase):
+    """``format_date``/``format_time`` — conversão de fuso no ponto de
+    estrangulamento (``_to_local``).
+
+    POR QUE 21:30, E NÃO MEIO-DIA. Todo teste aqui está ancorado em 2026-08-10
+    21:30 America/Sao_Paulo = 2026-08-11 00:30 UTC, o horário que CRUZA A
+    MEIA-NOITE UTC. Um teste ao meio-dia passa com o bug presente (12:00 local e
+    15:00 UTC caem no mesmo dia, e a asserção de data não vê diferença) — ele
+    provaria nada. Só um horário noturno separa "a data está certa" de "a data
+    está certa por sorte".
+
+    O BUG QUE ESTES TESTES TRAVAM. ``st_data``/``st_hora`` do TISS são locais e
+    sem offset; o Django guarda ``DateTimeField`` em UTC. Sem ``_to_local``, um
+    atendimento das 21:30 é declarado à operadora como tendo ocorrido no dia
+    seguinte, às 00:30 — e o XML continua schema-válido, então NENHUM gate pega.
+    Foi assim que ``consulta_guide/dataAtendimento`` (a guia de maior volume, e
+    que já passava conformance) esteve errada até esta correção.
+    """
+
+    #: 21:30 em America/Sao_Paulo. O ``.astimezone(UTC)`` correspondente é
+    #: 2026-08-11 00:30 — dia seguinte.
+    LOCAL_NIGHT = datetime.datetime(2026, 8, 10, 21, 30, 0)
+
+    def _aware_utc(self):
+        """O MESMO instante, com tzinfo=UTC — é assim que o valor volta do banco
+        e é assim que ``timezone.now()`` devolve. Construir o aware em horário
+        local e não normalizar para UTC mascararia o bug: ``strftime`` usa o
+        tzinfo do próprio valor, então um aware já em -03:00 imprimiria a hora
+        certa mesmo sem conversão nenhuma."""
+        return timezone.make_aware(self.LOCAL_NIGHT).astimezone(datetime.UTC)
+
+    def test_format_date_converte_aware_utc_para_o_dia_local(self):
+        assert _format_date(self._aware_utc()) == "2026-08-10"
+
+    def test_format_time_converte_aware_utc_para_a_hora_local(self):
+        assert _format_time(self._aware_utc()) == "21:30:00"
+
+    def test_conversao_acontece_antes_da_reducao_datetime_para_date(self):
+        """``_format_date`` reduz ``datetime``→``date``; se a conversão de fuso
+        viesse DEPOIS dessa redução, o dia já estaria congelado em UTC e
+        ``localtime`` sobre um ``date`` não teria o que corrigir (e estouraria).
+        A ordem é a correção — este teste é o guarda dela."""
+        utc_value = self._aware_utc()
+        assert utc_value.date() == datetime.date(2026, 8, 11), "premissa: em UTC é dia 11"
+        assert _format_date(utc_value) == "2026-08-10"
+
+    def test_date_puro_passa_intacto(self):
+        """``datetime.date`` não tem fuso a converter — e ``localtime`` sobre ele
+        levanta ``AttributeError``. Guarda de não-regressão dos campos que são
+        ``DateField`` de verdade (``Authorization.valid_from``,
+        ``TISSGuide.authorization_date``), que passam por este mesmo filtro."""
+        assert _format_date(datetime.date(2026, 8, 10)) == "2026-08-10"
+
+    def test_datetime_naive_passa_intacto(self):
+        """Naive já é hora de parede; converter suporia um fuso de origem que
+        ninguém declarou. Sai exatamente como entrou, sem deslocamento."""
+        naive = datetime.datetime(2026, 8, 10, 21, 30, 0)
+        assert _format_date(naive) == "2026-08-10"
+        assert _format_time(naive) == "21:30:00"
+
+    def test_contrato_de_string_dos_vazios_nao_mudou(self):
+        """A assinatura e o contrato de saída são os de antes: ``""`` para data
+        vazia, ``"00:00:00"`` para hora sem ``strftime``. A correção de fuso não
+        podia mexer nisso — templates já renderizados dependem desses vazios."""
+        assert _format_date(None) == ""
+        assert _format_time(None) == "00:00:00"
+
+    def test_conversao_e_idempotente(self):
+        """``localtime`` sobre um valor já local devolve o mesmo instante — é o
+        que garante que a remoção do ``_local_datetime`` do resolver não era
+        obrigatória por risco de deslocamento dobrado (foi por clareza), e que
+        um futuro resolver que já converta não quebra nada."""
+        ja_local = timezone.localtime(self._aware_utc())
+        assert _format_date(ja_local) == "2026-08-10"
+        assert _format_time(ja_local) == "21:30:00"
+
+
 class ConsultaGuideXMLConformanceTests(XMLEngineTestCase):
     """guiaConsulta — brought to full TISS 4.01.00 conformance (see 2.4)."""
 
@@ -125,6 +205,50 @@ class ConsultaGuideXMLConformanceTests(XMLEngineTestCase):
         errors = validate_xml(xml)
 
         assert errors == [], errors
+
+    def test_data_atendimento_sai_com_o_dia_local_do_encounter(self):
+        """``dataAtendimento`` ← ``Encounter.encounter_date``, que é
+        ``DateTimeField`` (apps/emr/models.py) e portanto vem do banco em UTC.
+
+        Esta era a pior instância do bug de fuso: a guia de CONSULTA é a de maior
+        volume e já passava conformance de schema, então declarava à operadora,
+        sem nenhum sinal de erro, que um atendimento das 21:30 aconteceu no dia
+        seguinte. Medido antes da correção: ``<ans:dataAtendimento>2026-08-11``.
+        A competência/data de atendimento errada é exatamente o tipo de
+        divergência que só volta como glosa."""
+        local_night = timezone.make_aware(datetime.datetime(2026, 8, 10, 21, 30))
+        self.encounter.encounter_date = local_night
+        self.encounter.save(update_fields=["encounter_date"])
+        guide = self._make_consulta_guide()
+
+        xml = generate_guide_xml(guide)
+
+        assert "<ans:dataAtendimento>2026-08-10</ans:dataAtendimento>" in xml
+        assert "2026-08-11" not in xml, "dataAtendimento saiu em UTC (dia seguinte)"
+
+    def test_batch_envelope_registra_transacao_em_hora_local(self):
+        """``dataRegistroTransacao``/``horaRegistroTransacao`` ← ``timezone.now()``,
+        que devolve aware em UTC — o terceiro caso da mesma classe.
+
+        ``timezone.now`` é mockado no módulo consumidor (mesmo idioma de
+        ``apps/core/tests/test_user_invitations.py:28``), e o valor injetado é
+        normalizado para ``UTC`` de propósito: é assim que ``now()`` devolve de
+        verdade. Injetar um aware já em -03:00 faria o teste passar mesmo com o
+        bug presente, porque ``strftime`` usa o tzinfo do próprio valor. Medido
+        antes da correção: ``2026-08-11`` / ``00:30:00``."""
+        utc_now = timezone.make_aware(datetime.datetime(2026, 8, 10, 21, 30)).astimezone(
+            datetime.UTC
+        )
+        guide = self._make_consulta_guide()
+        batch = TISSBatch.objects.create(provider=self.provider)
+        batch.guides.add(guide)
+
+        with mock.patch("apps.billing.services.xml_engine.timezone.now", return_value=utc_now):
+            xml = generate_batch_xml(batch)
+
+        assert "<ans:dataRegistroTransacao>2026-08-10</ans:dataRegistroTransacao>" in xml
+        assert "<ans:horaRegistroTransacao>21:30:00</ans:horaRegistroTransacao>" in xml
+        assert validate_xml(xml) == [], "a correção de fuso não pode quebrar o schema"
 
     def test_batch_envelope_with_multiple_consulta_guides_is_schema_valid(self):
         """ctm_guiaLote allows guiaConsulta to repeat (maxOccurs=100) within
@@ -422,8 +546,11 @@ class InternacaoGuideXMLConformanceTests(InternacaoFixtureMixin, XMLEngineTestCa
         aware direto (o que ``format_date``/``format_time`` fazem sozinhos)
         empurraria o início do faturamento para o DIA SEGUINTE: um dia inteiro de
         estada some do documento enviado à operadora, e só reaparece como glosa.
-        Por isso a conversão mora no resolver (``_local_datetime``), antes do
-        template. Este teste é o guarda dessa conversão."""
+        Por isso a conversão mora nos próprios filtros (``_to_local``, chamado
+        por ``format_date``/``format_time``) — ponto por onde toda data do TISS
+        passa, e não no resolver, que cobriria só este caminho. Este teste é o
+        guarda de ponta a ponta dessa conversão para ``dadosInternacao``; os
+        guardas unitários dos filtros estão em ``TISSDateTimeFilterTests``."""
         guide = self._make_internacao_guide()
         self._approve_authorization()
 

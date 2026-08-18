@@ -55,7 +55,13 @@ export default function GuideDetailPage() {
   const [authSaved, setAuthSaved] = useState(false);
   const [tipoFaturamento, setTipoFaturamento] = useState('');
   const [tipoFaturamentoOptions, setTipoFaturamentoOptions] = useState<TipoFaturamentoOption[]>([]);
+  const [tipoFaturamentoOptionsError, setTipoFaturamentoOptionsError] = useState('');
   const [savingTipoFaturamento, setSavingTipoFaturamento] = useState(false);
+  // Erro e confirmação PRÓPRIOS do bloco de tipo de faturamento. Reaproveitar
+  // authError/authSaved fazia a falha de um painel aparecer dentro de outro
+  // ("Autorização TISS"), longe do botão que o faturista acabou de clicar.
+  const [tipoFaturamentoError, setTipoFaturamentoError] = useState('');
+  const [tipoFaturamentoSaved, setTipoFaturamentoSaved] = useState(false);
 
   useEffect(() => {
     fetch(`/api/v1/billing/guides/${id}/`, {
@@ -64,10 +70,26 @@ export default function GuideDetailPage() {
       .then(setGuide)
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
-    fetch('/api/v1/billing/guides/tipo-faturamento-options/')
-      .then(r => r.ok ? r.json() : Promise.reject(new Error(`${r.status}`)))
-      .then((data) => setTipoFaturamentoOptions(Array.isArray(data) ? data : []))
-      .catch(() => setTipoFaturamentoOptions([]));
+    // Única fonte dos códigos de dm_tipoFaturamento (o serializer da guia não
+    // repete mais a lista). Mesma chamada same-origin da guia acima: o cookie
+    // httpOnly de sessão vai por padrão e o proxy /api do Next injeta o
+    // Authorization — o endpoint exige autenticação e perfil de faturamento.
+    // A falha é EXIBIDA: engolir o erro deixava o select vazio, e um select
+    // vazio é indistinguível de "esta guia não tem tipo de faturamento".
+    fetch('/api/v1/billing/guides/tipo-faturamento-options/', {})
+      .then(r => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); })
+      .then((data) => {
+        if (!Array.isArray(data)) throw new Error('resposta inesperada da API');
+        setTipoFaturamentoOptions(data);
+        setTipoFaturamentoOptionsError('');
+      })
+      .catch((e) => {
+        setTipoFaturamentoOptions([]);
+        setTipoFaturamentoOptionsError(
+          `Não foi possível carregar os códigos de tipo de faturamento (${e.message}). `
+          + 'Recarregue a página — sem a lista este campo não pode ser preenchido.'
+        );
+      });
   }, [id]);
 
   useEffect(() => {
@@ -77,10 +99,7 @@ export default function GuideDetailPage() {
     // sem passar por Date/toISOString, para não arriscar deslocar o dia por fuso.
     setAuthDate(guide.authorization_date ?? '');
     setTipoFaturamento(guide.tipo_faturamento ?? '');
-    if (tipoFaturamentoOptions.length === 0 && Array.isArray(guide.tipo_faturamento_options)) {
-      setTipoFaturamentoOptions(guide.tipo_faturamento_options);
-    }
-  }, [guide, tipoFaturamentoOptions.length]);
+  }, [guide]);
 
   const isDraft = guide?.status === 'draft';
 
@@ -131,16 +150,25 @@ export default function GuideDetailPage() {
 
   const saveTipoFaturamento = async () => {
     setSavingTipoFaturamento(true);
-    setAuthError('');
+    setTipoFaturamentoError('');
+    setTipoFaturamentoSaved(false);
     try {
       const res = await fetch(`/api/v1/billing/guides/${id}/`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tipo_faturamento: tipoFaturamento }),
       });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail ?? `${res.status}`);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail ?? JSON.stringify(data) ?? `${res.status}`);
+      }
       setGuide(await res.json());
-    } catch (e: any) { setAuthError(e.message || 'Não foi possível salvar o tipo de faturamento.'); }
-    finally { setSavingTipoFaturamento(false); }
+      setTipoFaturamentoSaved(true);
+    } catch (e: any) {
+      setTipoFaturamentoError(e.message || 'Não foi possível salvar o tipo de faturamento.');
+    } finally {
+      setSavingTipoFaturamento(false);
+    }
   };
 
   if (loading) {
@@ -206,14 +234,63 @@ export default function GuideDetailPage() {
         </dl>
       </div>
 
+      {/* Tipo de faturamento (TISS) — painel próprio, com erro e confirmação
+          próprios: quem clica "Salvar tipo de faturamento" precisa ver a
+          resposta aqui, não no painel de autorização logo abaixo. */}
       <div className="bg-neu-panel rounded-lg border border-slate-200 p-4">
         <h2 className="font-semibold text-neu-ink mb-1">Tipo de faturamento (TISS)</h2>
-        <p className="text-xs text-neu-inkMuted mb-3">Códigos e rótulos vêm da API; o significado ANS não é inventado na tela.</p>
-        <select aria-label="Tipo de faturamento (TISS)" value={tipoFaturamento} onChange={(e) => setTipoFaturamento(e.target.value)} disabled={!isDraft} className="w-full max-w-xl rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:opacity-50">
-          <option value="">Não informado</option>
-          {tipoFaturamentoOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-        </select>
-        {isDraft && <button type="button" onClick={saveTipoFaturamento} disabled={savingTipoFaturamento} className="mt-3 bg-gradient-to-b from-neu-brand to-neu-brandDeep text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50">{savingTipoFaturamento ? 'Salvando...' : 'Salvar tipo de faturamento'}</button>}
+        <p className="text-xs text-neu-inkMuted mb-4">
+          dm_tipoFaturamento da guia de resumo de internação. Os códigos e rótulos vêm da API; o
+          manual de tabelas de domínio da ANS ainda não está no sistema, então o rótulo aparece como
+          &quot;a confirmar&quot; em vez de um significado inventado aqui.
+        </p>
+
+        {!isDraft && (
+          <p className="mb-3 text-xs text-neu-inkMuted bg-neu-app rounded-lg px-3 py-2">
+            Guia com status &quot;{STATUS_LABEL[guide.status] ?? guide.status}&quot;: o tipo de
+            faturamento só muda enquanto a guia é rascunho, porque trocá-lo depois do envio mudaria
+            o significado do documento já transmitido à operadora.
+          </p>
+        )}
+
+        <div className="max-w-xl">
+          <label htmlFor="guide-tipo-faturamento" className="block text-xs font-medium text-neu-inkMuted uppercase tracking-wide mb-1">
+            Tipo de faturamento (TISS)
+          </label>
+          <select
+            id="guide-tipo-faturamento"
+            value={tipoFaturamento}
+            onChange={(e) => setTipoFaturamento(e.target.value)}
+            disabled={!isDraft}
+            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <option value="">Não informado</option>
+            {tipoFaturamentoOptions.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {tipoFaturamentoOptionsError && (
+          <div className="mt-3 bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">{tipoFaturamentoOptionsError}</div>
+        )}
+        {tipoFaturamentoError && (
+          <div className="mt-3 bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">{tipoFaturamentoError}</div>
+        )}
+        {tipoFaturamentoSaved && (
+          <div className="mt-3 bg-green-50 border border-green-200 text-green-700 rounded-lg px-4 py-3 text-sm">Tipo de faturamento salvo.</div>
+        )}
+
+        {isDraft && (
+          <button
+            type="button"
+            onClick={saveTipoFaturamento}
+            disabled={savingTipoFaturamento}
+            className="mt-4 bg-gradient-to-b from-neu-brand to-neu-brandDeep border-t border-neu-brandEdge shadow-neu-btn-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:shadow-neu-btn-primary-hover disabled:opacity-50"
+          >
+            {savingTipoFaturamento ? 'Salvando...' : 'Salvar tipo de faturamento'}
+          </button>
+        )}
       </div>
 
       {/* Autorização TISS */}

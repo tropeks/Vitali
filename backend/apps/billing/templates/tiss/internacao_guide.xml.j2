@@ -54,9 +54,12 @@
    qualquer um falta — este template nunca renderiza com dado fabricado, e por
    isso não tem nenhum `if`/default aqui dentro.
 
-   Datas/horas chegam JÁ CONVERTIDAS para o fuso da clínica (_local_datetime no
-   resolver): st_data/st_hora são locais e sem offset, e formatar o valor UTC
-   do banco deslocaria uma internação da noite para o dia seguinte.
+   Datas/horas chegam CRUAS (aware/UTC, como no banco) e são convertidas para o
+   fuso da clínica pelos próprios filtros format_date/format_time (_to_local em
+   xml_engine.py). st_data/st_hora são locais e sem offset: sem essa conversão,
+   uma internação das 21:30 de São Paulo seria declarada à operadora como tendo
+   começado no DIA SEGUINTE. A conversão vive no filtro, não neste template nem
+   no resolver, porque é o único ponto por onde TODA data do TISS passa.
 
    RESIDUAL NOVO (schema-válido, mas honesto declarar):
    1. procedimentosExecutados é minOccurs="0" — o XSD aceita a guia sem
@@ -101,7 +104,8 @@
     <ans:caraterAtendimento>{{ internacao_carater_atendimento }}</ans:caraterAtendimento>
     <ans:tipoFaturamento>{{ internacao_tipo_faturamento }}</ans:tipoFaturamento>
     {# Período de faturamento: início = internação, fim = alta efetiva. As
-       quatro linhas saem do MESMO par de datetimes, já em hora local. #}
+       quatro linhas saem do MESMO par de datetimes; format_date/format_time
+       fazem a conversão de fuso. #}
     <ans:dataInicioFaturamento>{{ internacao_inicio | format_date }}</ans:dataInicioFaturamento>
     <ans:horaInicioFaturamento>{{ internacao_inicio | format_time }}</ans:horaInicioFaturamento>
     <ans:dataFinalFaturamento>{{ internacao_fim | format_date }}</ans:dataFinalFaturamento>

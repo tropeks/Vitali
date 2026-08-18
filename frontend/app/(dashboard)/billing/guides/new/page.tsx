@@ -144,6 +144,10 @@ export default function NewGuidePage() {
   const [items, setItems] = useState<GuideItem[]>([emptyItem()]);
   const [glosaPredictionIds, setGlosaPredictionIds] = useState<Record<number, string | null>>({});
   const [tipoFaturamentoOptions, setTipoFaturamentoOptions] = useState<TipoFaturamentoOption[]>([]);
+  // Erro próprio da lista auxiliar: falhar ao buscar os códigos de
+  // dm_tipoFaturamento não é motivo para ocupar o banner de erro da página, que
+  // é onde aparecem as pendências de criação da guia e a recusa do POST.
+  const [tipoFaturamentoError, setTipoFaturamentoError] = useState('');
 
   useEffect(() => {
     apiFetch<ProviderOption[] | { results?: ProviderOption[] }>('/billing/providers/')
@@ -152,9 +156,16 @@ export default function NewGuidePage() {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoadingOptions(false));
+    // Endpoint é a única fonte destes códigos — esta tela monta o select antes
+    // de existir guia, então não há serializer de guia de onde tirá-los.
     apiFetch<TipoFaturamentoOption[]>('/billing/guides/tipo-faturamento-options/')
-      .then(setTipoFaturamentoOptions)
-      .catch((e) => setError(e.message));
+      .then((data) => {
+        setTipoFaturamentoOptions(Array.isArray(data) ? data : []);
+        setTipoFaturamentoError(Array.isArray(data) ? '' : 'Resposta inesperada da API.');
+      })
+      .catch((e) => setTipoFaturamentoError(
+        `Não foi possível carregar os códigos de tipo de faturamento (${e.message}).`
+      ));
   }, []);
 
   useEffect(() => {
@@ -451,7 +462,13 @@ export default function NewGuidePage() {
                       <option value="">Não informado</option>
                       {tipoFaturamentoOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                     </select>
-                    <p className="mt-1 text-xs text-neu-inkMuted">Códigos e rótulos fornecidos pela API; sem inventar significado ANS.</p>
+                    {tipoFaturamentoError ? (
+                      <p className="mt-1 text-xs text-red-700">
+                        {tipoFaturamentoError} Recarregue a página — sem a lista este campo não pode ser preenchido.
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-xs text-neu-inkMuted">Códigos e rótulos fornecidos pela API; sem inventar significado ANS.</p>
+                    )}
                   </div>
                   <div>
                     <label htmlFor="guide-encounter" className="mb-1 block text-xs font-medium text-neu-inkSoft">Atendimento vinculado</label>

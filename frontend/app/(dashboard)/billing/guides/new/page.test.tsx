@@ -167,4 +167,35 @@ describe('NewGuidePage', () => {
       ],
     });
   });
+
+  it('keeps a failed tipo de faturamento lookup out of the page-level error banner', async () => {
+    // A lista de códigos é auxiliar: se ela falhar, a tela continua utilizável e
+    // o aviso fica ao lado do campo. Antes, o erro ia para o banner da página —
+    // o mesmo lugar onde aparecem as pendências de criação e a recusa do POST —
+    // e um "401" solto no topo sugeria que a guia inteira estava bloqueada.
+    const user = userEvent.setup();
+    mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/api/v1/billing/guides/tipo-faturamento-options/')) {
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}) } as Response);
+      }
+      if (url.includes('/api/v1/billing/providers/')) {
+        return okJson({ results: [{ id: 'prov-1', name: 'SulAmérica Saúde', ans_code: '006246' }] });
+      }
+      return okJson({ results: [] });
+    });
+
+    render(<NewGuidePage />);
+
+    expect(
+      await screen.findByText(/Não foi possível carregar os códigos de tipo de faturamento/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Pendências antes de criar a guia/)).not.toBeInTheDocument();
+
+    // O banner da página segue livre para o que é dele: as pendências do submit.
+    await user.click(screen.getByRole('button', { name: 'Criar guia TISS' }));
+    expect(await screen.findByText(/Pendências antes de criar a guia/)).toHaveTextContent(
+      'Selecionar operadora',
+    );
+  });
 });

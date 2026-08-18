@@ -32,7 +32,6 @@ const draftGuide = {
   guide_type_display: 'SADT',
   tipo_faturamento: '2',
   tipo_faturamento_display: 'Código 2 (rótulo a confirmar no manual ANS)',
-  tipo_faturamento_options: [{ value: '2', label: 'Código 2 (rótulo a confirmar no manual ANS)' }],
   competency: '2026-08',
   insured_card_number: '123456',
   total_value: '150.00',
@@ -43,6 +42,16 @@ const draftGuide = {
 
 const submittedGuide = { ...draftGuide, status: 'submitted', authorization_number: 'AUTH-9', authorization_date: '2026-08-01' };
 
+// A lista de códigos dm_tipoFaturamento tem UMA fonte: o endpoint de choices.
+// O serializer da guia não a devolve mais (não havia como servir a tela de guia
+// nova a partir dele), então o mock precisa ser explícito — antes o teste
+// passava pelo fallback do payload da guia e o caminho real ficava sem cobertura.
+const TIPO_FATURAMENTO_OPTIONS_URL = '/api/v1/billing/guides/tipo-faturamento-options/';
+const tipoFaturamentoOptions = [
+  { value: '1', label: 'Código 1 (rótulo a confirmar no manual ANS)' },
+  { value: '2', label: 'Código 2 (rótulo a confirmar no manual ANS)' },
+];
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -51,6 +60,7 @@ describe('GuideDetailPage — authorization_date', () => {
   it('shows the authorization number and date fields for a draft guide', async () => {
     mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.endsWith(TIPO_FATURAMENTO_OPTIONS_URL)) return okJson(tipoFaturamentoOptions);
       if (url.endsWith('/api/v1/billing/guides/guide-1/') && init?.method !== 'PATCH') {
         return okJson(draftGuide);
       }
@@ -72,6 +82,7 @@ describe('GuideDetailPage — authorization_date', () => {
     const user = userEvent.setup();
     mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.endsWith(TIPO_FATURAMENTO_OPTIONS_URL)) return okJson(tipoFaturamentoOptions);
       if (url.endsWith('/api/v1/billing/guides/guide-1/') && init?.method === 'PATCH') {
         return okJson({ ...draftGuide, authorization_number: 'AUTH-1', authorization_date: '2026-08-31' });
       }
@@ -110,6 +121,7 @@ describe('GuideDetailPage — authorization_date', () => {
     const user = userEvent.setup();
     mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.endsWith(TIPO_FATURAMENTO_OPTIONS_URL)) return okJson(tipoFaturamentoOptions);
       if (url.endsWith('/api/v1/billing/guides/guide-1/') && init?.method === 'PATCH') {
         return okJson({ ...draftGuide, authorization_number: 'AUTH-2', authorization_date: null });
       }
@@ -144,6 +156,7 @@ describe('GuideDetailPage — authorization_date', () => {
   it('disables both fields and explains why once the guide leaves draft', async () => {
     mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.endsWith(TIPO_FATURAMENTO_OPTIONS_URL)) return okJson(tipoFaturamentoOptions);
       if (url.endsWith('/api/v1/billing/guides/guide-1/') && init?.method !== 'PATCH') {
         return okJson(submittedGuide);
       }
@@ -166,6 +179,7 @@ describe('GuideDetailPage — authorization_date', () => {
     // Simulates the race where the guide leaves draft between load and save.
     mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.endsWith(TIPO_FATURAMENTO_OPTIONS_URL)) return okJson(tipoFaturamentoOptions);
       if (url.endsWith('/api/v1/billing/guides/guide-1/') && init?.method === 'PATCH') {
         return statusJson(400, {
           detail: "Guia 'GUIA-001' está com status 'pending' e não pode mais ser editada.",
@@ -190,5 +204,130 @@ describe('GuideDetailPage — authorization_date', () => {
     await waitFor(() => {
       expect(screen.getByText(/não pode mais ser editada/)).toBeInTheDocument();
     });
+  });
+});
+
+describe('GuideDetailPage — tipo de faturamento (TISS)', () => {
+  it('fills the select from the choices endpoint, not from the guide payload', async () => {
+    mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith(TIPO_FATURAMENTO_OPTIONS_URL)) return okJson(tipoFaturamentoOptions);
+      if (url.endsWith('/api/v1/billing/guides/guide-1/') && init?.method !== 'PATCH') {
+        return okJson(draftGuide);
+      }
+      return okJson({});
+    });
+
+    render(<GuideDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Tipo de faturamento (TISS)')).toHaveValue('2');
+    });
+    // Os quatro códigos ANS vêm do endpoint; a guia devolve só o valor gravado.
+    expect(screen.getByRole('option', { name: /Código 1/ })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Código 2/ })).toBeInTheDocument();
+    expect(mockFetch.mock.calls.some(([url]) => String(url).endsWith(TIPO_FATURAMENTO_OPTIONS_URL))).toBe(true);
+  });
+
+  it('warns in place when the choices endpoint fails instead of leaving an empty select', async () => {
+    // 401/500 no endpoint deixava o select vazio e silencioso — indistinguível
+    // de "esta guia não tem tipo de faturamento".
+    mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith(TIPO_FATURAMENTO_OPTIONS_URL)) return statusJson(401, { detail: 'unauth' });
+      if (url.endsWith('/api/v1/billing/guides/guide-1/') && init?.method !== 'PATCH') {
+        return okJson(draftGuide);
+      }
+      return okJson({});
+    });
+
+    render(<GuideDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Não foi possível carregar os códigos de tipo de faturamento/)).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('option', { name: /Código 1/ })).not.toBeInTheDocument();
+  });
+
+  it('saves the picked code with a PATCH and confirms in its own panel', async () => {
+    const user = userEvent.setup();
+    mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith(TIPO_FATURAMENTO_OPTIONS_URL)) return okJson(tipoFaturamentoOptions);
+      if (url.endsWith('/api/v1/billing/guides/guide-1/') && init?.method === 'PATCH') {
+        return okJson({ ...draftGuide, tipo_faturamento: '1' });
+      }
+      if (url.endsWith('/api/v1/billing/guides/guide-1/')) return okJson(draftGuide);
+      return okJson({});
+    });
+
+    render(<GuideDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: /Código 1/ })).toBeInTheDocument();
+    });
+
+    await user.selectOptions(screen.getByLabelText('Tipo de faturamento (TISS)'), '1');
+    await user.click(screen.getByRole('button', { name: 'Salvar tipo de faturamento' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Tipo de faturamento salvo.')).toBeInTheDocument();
+    });
+    const patchCall = mockFetch.mock.calls.find(([url, init]) => (
+      String(url).endsWith('/api/v1/billing/guides/guide-1/') && (init as RequestInit | undefined)?.method === 'PATCH'
+    ));
+    expect(JSON.parse((patchCall![1] as RequestInit).body as string)).toEqual({ tipo_faturamento: '1' });
+  });
+
+  it('shows a failed save inside the tipo de faturamento panel, never in the authorization panel', async () => {
+    const user = userEvent.setup();
+    mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith(TIPO_FATURAMENTO_OPTIONS_URL)) return okJson(tipoFaturamentoOptions);
+      if (url.endsWith('/api/v1/billing/guides/guide-1/') && init?.method === 'PATCH') {
+        return statusJson(400, {
+          detail: "Guia 'GUIA-001' está com status 'pending' e não pode mais ser editada.",
+        });
+      }
+      if (url.endsWith('/api/v1/billing/guides/guide-1/')) return okJson(draftGuide);
+      return okJson({});
+    });
+
+    render(<GuideDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Salvar tipo de faturamento' })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Salvar tipo de faturamento' }));
+
+    const message = await screen.findByText(/não pode mais ser editada\./);
+    // O erro tem que estar no painel de quem clicou. Antes ele era escrito em
+    // authError e saía dentro de "Autorização TISS", num painel diferente.
+    const tipoPanel = screen.getByRole('heading', { name: 'Tipo de faturamento (TISS)' }).closest('div');
+    const authPanel = screen.getByRole('heading', { name: 'Autorização TISS' }).closest('div');
+    expect(tipoPanel).toContainElement(message);
+    expect(authPanel).not.toContainElement(message);
+  });
+
+  it('disables the select once the guide leaves draft — the backend locks it there', async () => {
+    mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith(TIPO_FATURAMENTO_OPTIONS_URL)) return okJson(tipoFaturamentoOptions);
+      if (url.endsWith('/api/v1/billing/guides/guide-1/') && init?.method !== 'PATCH') {
+        return okJson(submittedGuide);
+      }
+      return okJson({});
+    });
+
+    render(<GuideDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Tipo de faturamento (TISS)')).toBeInTheDocument();
+    });
+
+    expect(screen.getByLabelText('Tipo de faturamento (TISS)')).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Salvar tipo de faturamento' })).not.toBeInTheDocument();
+    expect(screen.getByText(/o tipo de faturamento só muda enquanto a guia é rascunho/)).toBeInTheDocument();
   });
 });

@@ -164,17 +164,26 @@ class TISSGuideItemSerializer(serializers.ModelSerializer):
 class TISSGuideSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     guide_type_display = serializers.CharField(source="get_guide_type_display", read_only=True)
-    # Rótulo legível de dm_tipoFaturamento — mesmo par valor/`_display` que
-    # `status`/`guide_type` já expõem, em vez de um endpoint de choices novo (não
-    # existe esse padrão neste app). Vale notar o que a UI vai mostrar: os rótulos
-    # de TISSGuide.TipoFaturamento são "Código N (rótulo a confirmar no manual
-    # ANS)" enquanto o manual de tabelas de domínio não estiver no repo — a
-    # pendência aparece na tela de propósito, para ninguém escolher achando que
-    # sabe o que escolheu.
+    # Rótulo legível do dm_tipoFaturamento DESTA guia — mesmo par valor/`_display`
+    # que `status`/`guide_type` já expõem. É só o valor gravado; a LISTA de
+    # códigos disponíveis não sai daqui, sai de
+    # GET /api/v1/billing/guides/tipo-faturamento-options/
+    # (TISSGuideViewSet.tipo_faturamento_options).
+    #
+    # POR QUE O ENDPOINT, E NÃO UM CAMPO DE LISTA NO SERIALIZER: são duas telas
+    # que precisam das opções e uma delas não tem guia nenhuma. A tela de guia
+    # nova (frontend .../billing/guides/new) monta o select ANTES de existir
+    # objeto para serializar — um campo em TISSGuideSerializer é estruturalmente
+    # incapaz de atendê-la. O endpoint atende as duas, e não repete a mesma lista
+    # estática de quatro itens em toda resposta de guia (inclusive nas listagens).
+    #
+    # Vale notar o que a UI vai mostrar: os rótulos de TISSGuide.TipoFaturamento
+    # são "Código N (rótulo a confirmar no manual ANS)" enquanto o manual de
+    # tabelas de domínio não estiver no repo — a pendência aparece na tela de
+    # propósito, para ninguém escolher achando que sabe o que escolheu.
     tipo_faturamento_display = serializers.CharField(
         source="get_tipo_faturamento_display", read_only=True
     )
-    tipo_faturamento_options = serializers.SerializerMethodField(read_only=True)
     patient_name = serializers.CharField(source="patient.full_name", read_only=True)
     provider_name = serializers.CharField(source="provider.name", read_only=True)
     items = TISSGuideItemSerializer(many=True, read_only=True)
@@ -186,11 +195,6 @@ class TISSGuideSerializer(serializers.ModelSerializer):
         required=False,
         default=list,
     )
-
-    def get_tipo_faturamento_options(self, obj):
-        return [
-            {"value": value, "label": label} for value, label in TISSGuide.TipoFaturamento.choices
-        ]
 
     class Meta:
         model = TISSGuide
@@ -212,7 +216,6 @@ class TISSGuideSerializer(serializers.ModelSerializer):
             "authorization_date",
             "tipo_faturamento",
             "tipo_faturamento_display",
-            "tipo_faturamento_options",
             "competency",
             "cid10_codes",
             "total_value",

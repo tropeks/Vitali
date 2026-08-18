@@ -939,7 +939,28 @@ class TISSGuideViewSet(AuditReadMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="tipo-faturamento-options")
     def tipo_faturamento_options(self, request):
-        """Expose ANS codes and their authoritative current labels to the UI."""
+        """Lista os códigos de ``dm_tipoFaturamento`` para os selects do frontend.
+
+        FONTE ÚNICA da lista, de propósito. O ``TISSGuideSerializer`` expõe só o
+        valor da guia e seu ``tipo_faturamento_display`` — a lista de opções não
+        sai de lá, porque a tela de guia NOVA precisa dela antes de existir guia
+        para serializar. Um endpoint atende as duas telas (nova e detalhe); um
+        campo no serializer atenderia só uma, e repetiria a mesma lista estática
+        em toda resposta de guia.
+
+        OS RÓTULOS NÃO SÃO AUTORITATIVOS, e é isso que vai para a tela: cada
+        ``label`` é ``"Código N (rótulo a confirmar no manual ANS)"``. Os
+        ``xs:enumeration`` de ``dm_tipoFaturamento`` no
+        ``tissSimpleTypesV4_01_00.xsd`` não trazem ``xs:documentation`` e o manual
+        de tabelas de domínio da ANS não está versionado neste repo — só o CÓDIGO
+        é confiável hoje. Inventar o texto ("parcial", "final", "complementar")
+        seria fazer o faturista escolher errado com confiança numa tela de
+        faturamento hospitalar; é a mesma linha vermelha aplicada aos códigos
+        41–67 de ``emr.Admission.MotivoEncerramento``. A pendência fica VISÍVEL na
+        interface justamente para não virar certeza falsa, e some sozinha quando o
+        manual entrar no repo: muda ``TISSGuide.TipoFaturamento.choices``, não este
+        endpoint nem dado gravado.
+        """
         return Response(
             [{"value": value, "label": label} for value, label in TISSGuide.TipoFaturamento.choices]
         )
