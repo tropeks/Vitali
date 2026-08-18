@@ -26,8 +26,10 @@
    dm_CBOS, CNES presente) mora em xml_engine._resolve_sadt_solicitante e falha
    ALTO antes daqui, então este bloco não tem defesa inline.
 
-   RESIDUAL: dadosSolicitacao em diante (dadosExecutante, dadosAtendimento,
-   procedimentosExecutados, valorTotal) — ver docs/research/
+   dadosSolicitacao.caraterAtendimento is sourced from SurgicalCase.priority;
+   optional children are omitted because no equivalent clinical source exists.
+   The remaining residual (dadosExecutante, dadosAtendimento,
+   procedimentosExecutados, valorTotal) is documented in
    VITALI_ONDA4_TISS_MODELAGEM.md §2. #}
 <ans:guiaSP-SADT>
   <ans:cabecalhoGuia>
@@ -58,4 +60,7 @@
       <ans:CBOS>{{ solicitante_cbos }}</ans:CBOS>
     </ans:profissionalSolicitante>
   </ans:dadosSolicitante>
+  <ans:dadosSolicitacao>
+    <ans:caraterAtendimento>{{ sadt_carater_atendimento }}</ans:caraterAtendimento>
+  </ans:dadosSolicitacao>
 </ans:guiaSP-SADT>

@@ -35,6 +35,7 @@ from apps.billing.services.xml_engine import (
 )
 from apps.core.models import Role, TUSSCode, User
 from apps.emr.models import Admission, Encounter, Patient, Professional
+from apps.emr.surgery_models import SurgicalCase
 from apps.test_utils import TenantTestCase
 
 #: Sentinela para distinguir "internação omitida" (cria uma completa) de
@@ -357,13 +358,11 @@ class SadtGuideXMLConformanceTests(XMLEngineTestCase):
     @pytest.mark.xfail(
         strict=True,
         reason=(
-            "ctm_sp-sadtGuia: dadosSolicitante FECHADO nesta fatia "
-            "(TISSGuide.requesting_professional, migration 0038) — o "
-            "validador avançou um elemento e agora acusa dadosSolicitacao. "
-            "Residual segue sendo gap de DADO, não de forma: dos quatro "
-            "filhos de dadosSolicitacao só caraterAtendimento "
-            "(dm_caraterAtendimento) é obrigatório, e LabOrder não registra "
-            "se o exame é eletivo ou de urgência. dadosExecutante, "
+            "ctm_sp-sadtGuia: dadosSolicitante e dadosSolicitacao são emitidos "
+            "para guias cirúrgicas (requesting_professional + SurgicalCase.priority); "
+            "o validador avança e acusa agora dadosExecutante. Para guias de laboratório, "
+            "dadosSolicitacao continua sendo um gap de DADO porque LabOrder não registra "
+            "caráter eletivo/urgente. dadosExecutante, "
             "dadosAtendimento, procedimentosExecutados e valorTotal seguem "
             "inalcançados como consequência — ver Onda 4 §2."
         ),
@@ -414,6 +413,11 @@ class SadtSolicitanteResolutionTests(XMLEngineTestCase):
             provider=self.provider,
             insured_card_number="1234567890123456",
             competency="2026-08",
+            surgical_case=SurgicalCase.objects.create(
+                patient=self.patient,
+                surgeon=self.professional,
+                priority=SurgicalCase.Priority.ELETIVA,
+            ),
             **kwargs,
         )
         TISSGuideItem.objects.create(
@@ -467,6 +471,8 @@ class SadtSolicitanteResolutionTests(XMLEngineTestCase):
         assert "<ans:UF>33</ans:UF>" in xml
         assert "<ans:CBOS>225120</ans:CBOS>" in xml
         assert "<ans:nomeProfissional>Dra. Solicitante</ans:nomeProfissional>" in xml
+        assert "<ans:dadosSolicitacao>" in xml
+        assert "<ans:caraterAtendimento>1</ans:caraterAtendimento>" in xml
 
     def test_solicitante_e_distinto_do_executante_no_xml(self):
         """Prova o ponto inteiro da fatia: os dois papéis saem com dados

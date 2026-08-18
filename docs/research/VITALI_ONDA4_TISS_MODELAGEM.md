@@ -34,8 +34,9 @@
 > faturadas antes das migrations `0036`/`0037` não têm `execution_date` nem
 > `billing_category`: a emissão falha alto na primeira e omite o breakdown na
 > segunda, de propósito, porque não há backfill honesto; (b) a SP/SADT segue em
-> `xfail`, agora parada em **`dadosSolicitacao`** — `dadosSolicitante` foi
-> fechado em 18/08 (§2). **`valorTotal` com breakdown por
+> `xfail`, agora parada em **`dadosExecutante`** depois de fechar `dadosSolicitante`
+> e `dadosSolicitacao` para guias cirúrgicas; para laboratório, sem fonte de caráter,
+> a emissão continua falhando alto. **`valorTotal` com breakdown por
 > categoria está FECHADO** (§4) — e por fato de origem, não por classificação de
 > TUSS, que a medição provou ser impossível.
 

@@ -769,6 +769,32 @@ def _resolve_sadt_solicitante(guide) -> dict:
     }
 
 
+def _resolve_sadt_solicitacao(guide) -> dict:
+    """Resolve mandatory ``dadosSolicitacao.caraterAtendimento`` honestly.
+
+    LabOrder has no urgency field, so its status cannot be promoted into a
+    clinical assertion. SurgicalCase.priority is the governed source available
+    today: elective maps to ANS ``1`` and urgent/emergency to ``2``.
+    """
+    surgical_case = getattr(guide, "surgical_case", None)
+    if surgical_case is None:
+        raise TISSXMLGenerationError(
+            f"Guia SP/SADT {guide.guide_number} não tem fonte honesta para "
+            "dadosSolicitacao.caraterAtendimento: LabOrder não registra caráter "
+            "eletivo/urgente. Vincule um caso cirúrgico com prioridade governada "
+            "ou informe uma fonte antes de gerar o XML; não é permitido assumir "
+            "um valor padrão."
+        )
+    mapping = {"eletiva": "1", "urgencia": "2", "emergencia": "2"}
+    carater = mapping.get(surgical_case.priority)
+    if carater is None:
+        raise TISSXMLGenerationError(
+            f"Guia SP/SADT {guide.guide_number}: prioridade cirúrgica "
+            f"{surgical_case.priority!r} não mapeia para dm_caraterAtendimento (1/2)."
+        )
+    return {"sadt_carater_atendimento": carater}
+
+
 # ─── Guide XML generation ─────────────────────────────────────────────────────
 
 
@@ -830,6 +856,7 @@ def generate_guide_xml(guide) -> str:
         # dadosSolicitante — quem PEDIU, distinto de quem executou. Falha alta e
         # acionável quando não há fonte honesta; nunca cai no executante.
         context.update(_resolve_sadt_solicitante(guide))
+        context.update(_resolve_sadt_solicitacao(guide))
 
     if guide.guide_type == "internacao":
         # dadosAutorizacao (ct_autorizacaoInternacao) is mandatory — see
