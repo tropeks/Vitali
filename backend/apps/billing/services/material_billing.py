@@ -37,7 +37,7 @@ from apps.billing.models import GlosaSafetyAlert, PriceTable, TISSGuide, TISSGui
 from apps.billing.services.execution_dates import to_local_date
 from apps.billing.services.surgery_billing import generate_sadt_guide_for_surgical_case
 from apps.core.simpro_models import SimproMaterial
-from apps.emr.models import SurgicalCase, SurgicalTime
+from apps.emr.models import SurgicalCase, SurgicalMaterial, SurgicalTime
 
 
 def material_unit_value(price_table: PriceTable | None, simpro: SimproMaterial) -> Decimal:
@@ -77,6 +77,15 @@ class MaterialBillingResult:
             "items_existing": self.items_existing,
             "alerts": self.alerts,
         }
+
+
+_CATEGORIA_POR_KIND: dict[str, str] = {
+    SurgicalMaterial.Kind.OPME: TISSGuideItem.BillingCategory.OPME,
+    SurgicalMaterial.Kind.MATERIAL: TISSGuideItem.BillingCategory.MATERIAIS,
+    SurgicalMaterial.Kind.MEDICAMENTO: TISSGuideItem.BillingCategory.MEDICAMENTOS,
+    # Kind.OUTRO ausente de propósito: ct_guiaValorTotal não tem "outros", e
+    # empurrar para valorMateriais seria inventar a classificação.
+}
 
 
 def bill_surgical_materials_for_case(case: SurgicalCase) -> MaterialBillingResult:
@@ -145,6 +154,13 @@ def bill_surgical_materials_for_case(case: SurgicalCase) -> MaterialBillingResul
                     unit_value=unit_value,
                     surgical_material=material,
                     execution_date=execution_date,
+                    # SurgicalMaterial.Kind é o fato registrado por quem consumiu
+                    # o material na sala; ct_guiaValorTotal separa OPME de
+                    # material comum e de medicamento em três campos distintos.
+                    # Kind.OUTRO não tem campo correspondente no XSD e fica SEM
+                    # categoria de propósito — a guia então sai sem breakdown, em
+                    # vez de o material cair num campo escolhido a esmo.
+                    billing_category=_CATEGORIA_POR_KIND.get(material.kind, ""),
                 )
                 result.items_created += 1
             else:

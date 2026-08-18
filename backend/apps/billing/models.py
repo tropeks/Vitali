@@ -996,6 +996,52 @@ class TISSGuideItem(models.Model):
         related_name="guide_items",
         verbose_name="Material cirúrgico de origem",
     )
+
+    # ─── Categoria do breakdown de ct_guiaValorTotal ──────────────────────────
+    #
+    # `<valorTotal>` tem SETE campos opcionais de breakdown além do total geral
+    # obrigatório. A operadora confere por eles (glosa por breakdown ausente é
+    # prática real de mercado), e a soma dos sete tem de bater com
+    # `valorTotalGeral`.
+    #
+    # POR QUE UM CAMPO, E NÃO CLASSIFICAÇÃO POR TUSS. O doc de pesquisa §4 já
+    # media isso e o repo confirma: `TUSSCode.table_number` (dm_tabela) é grosso
+    # demais — a tabela 18 contém diárias, taxas E gases medicinais, que são três
+    # campos TISS distintos, e `TUSSCode.group` idem. Classificar por eles é
+    # adivinhar. Aqui a categoria é FATO DE ORIGEM: cada ponte clínico→
+    # faturamento sabe exatamente o que está criando (uma DailyCharge é diária,
+    # um SurgicalMaterial.Kind.OPME é OPME, uma dispensação é medicamento) e
+    # grava o que sabe, no momento em que sabe.
+    #
+    # `blank=True` porque nenhuma linha anterior a esta fatia tem categoria e não
+    # há backfill honesto. A consequência é deliberada e está em
+    # `xml_engine._resolve_valor_total`: **breakdown é tudo-ou-nada**. Se um item
+    # da guia estiver sem categoria, sai só `valorTotalGeral` — um breakdown
+    # parcial, que não soma o total, é PIOR que nenhum: a operadora vê uma conta
+    # que não fecha e glosa a guia inteira.
+    class BillingCategory(models.TextChoices):
+        PROCEDIMENTOS = "procedimentos", "Procedimentos"
+        DIARIAS = "diarias", "Diárias"
+        TAXAS_ALUGUEIS = "taxas_alugueis", "Taxas e aluguéis"
+        MATERIAIS = "materiais", "Materiais"
+        MEDICAMENTOS = "medicamentos", "Medicamentos"
+        OPME = "opme", "OPME"
+        GASES_MEDICINAIS = "gases_medicinais", "Gases medicinais"
+
+    billing_category = models.CharField(  # noqa: DJ001
+        "Categoria no valorTotal (TISS)",
+        max_length=20,
+        choices=BillingCategory.choices,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text=(
+            "Campo de ct_guiaValorTotal em que esta linha entra. Gravado pela ponte "
+            "que criou o item, nunca inferido do TUSS. Vazio = linha anterior à Onda 4; "
+            "uma única assim faz a guia sair sem breakdown."
+        ),
+    )
+
     # Idempotência da dispensação de medicamento: UUID solto, NÃO FK.
     #
     # O par natural seria uma FK para ``pharmacy.Dispensation``, como

@@ -921,6 +921,7 @@ class InpatientFeeViewSet(
             unit=data.get("unit", InpatientFee.Unit.UNIDADE),
             service_date=data.get("service_date"),
             notes=data.get("notes", ""),
+            category=data.get("category", ""),
             actor=request.user,
         )
         serializer.instance = instance

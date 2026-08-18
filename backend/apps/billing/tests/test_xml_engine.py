@@ -946,6 +946,115 @@ class InternacaoProcedimentosExecutadosTests(InternacaoFixtureMixin, XMLEngineTe
         return batch
 
 
+class ValorTotalBreakdownTests(InternacaoFixtureMixin, XMLEngineTestCase):
+    """``<valorTotal>`` com breakdown por categoria (ct_guiaValorTotal).
+
+    Os sete campos de categoria são opcionais e só ``valorTotalGeral`` é
+    obrigatório — o schema aceita a guia sem nenhum, e era assim que ela saía
+    (Alternativa A do doc §4). O motivo de fechar isto nunca foi o schema: glosa
+    por breakdown ausente é prática real, principalmente em internação.
+
+    A regra que estes testes existem para travar é o TUDO-OU-NADA. Breakdown
+    parcial é pior que nenhum: a operadora soma os campos, não fecha com o total,
+    e glosa a guia inteira.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self._approve_authorization()
+
+    def _categorize(self, guide, categoria):
+        guide.items.update(billing_category=categoria)
+        return guide
+
+    def test_guia_toda_categorizada_emite_o_breakdown_na_ordem_do_xsd(self):
+        guide = self._categorize(
+            self._make_internacao_guide(), TISSGuideItem.BillingCategory.DIARIAS
+        )
+        batch = TISSBatch.objects.create(provider=self.provider)
+        batch.guides.add(guide)
+
+        xml = generate_batch_xml(batch)
+
+        assert validate_xml(xml) == []
+        assert "<ans:valorDiarias>150.00</ans:valorDiarias>" in xml
+        assert "<ans:valorTotalGeral>150.00</ans:valorTotalGeral>" in xml
+
+    def test_um_item_sem_categoria_derruba_o_breakdown_inteiro(self):
+        """A regra central. Toda linha faturada antes desta fatia está sem
+        categoria, e não há backfill honesto — a guia então sai exatamente como
+        saía antes: só o total geral, nunca uma conta que não fecha."""
+        guide = self._categorize(
+            self._make_internacao_guide(), TISSGuideItem.BillingCategory.DIARIAS
+        )
+        TISSGuideItem.objects.create(
+            guide=guide,
+            tuss_code=self.tuss_consulta,
+            description="Linha legada, sem categoria",
+            quantity=Decimal("1"),
+            unit_value=Decimal("50.00"),
+            execution_date=datetime.date(2026, 8, 11),
+        )
+        batch = TISSBatch.objects.create(provider=self.provider)
+        batch.guides.add(guide)
+
+        xml = generate_batch_xml(batch)
+
+        assert validate_xml(xml) == []
+        assert "<ans:valorDiarias>" not in xml
+        assert "<ans:valorTotalGeral>200.00</ans:valorTotalGeral>" in xml
+
+    def test_categoria_zerada_nao_e_emitida(self):
+        """<valorOPME>0.00</valorOPME> AFIRMA que a guia tem zero de OPME. O fato
+        é que ela não tem OPME nenhum — são coisas diferentes."""
+        guide = self._categorize(
+            self._make_internacao_guide(), TISSGuideItem.BillingCategory.DIARIAS
+        )
+
+        xml = generate_guide_xml(guide)
+
+        assert "<ans:valorOPME>" not in xml
+        assert "<ans:valorMedicamentos>" not in xml
+
+    def test_categorias_somam_o_total_geral(self):
+        """A invariante que a operadora confere: a soma dos campos de categoria
+        tem de bater com valorTotalGeral."""
+        guide = self._make_internacao_guide()
+        guide.items.update(billing_category=TISSGuideItem.BillingCategory.DIARIAS)
+        TISSGuideItem.objects.create(
+            guide=guide,
+            tuss_code=self.tuss_consulta,
+            description="Gás medicinal",
+            quantity=Decimal("2"),
+            unit_value=Decimal("25.00"),
+            execution_date=datetime.date(2026, 8, 11),
+            billing_category=TISSGuideItem.BillingCategory.GASES_MEDICINAIS,
+        )
+        batch = TISSBatch.objects.create(provider=self.provider)
+        batch.guides.add(guide)
+
+        xml = generate_batch_xml(batch)
+
+        assert validate_xml(xml) == []
+        assert "<ans:valorDiarias>150.00</ans:valorDiarias>" in xml
+        assert "<ans:valorGasesMedicinais>50.00</ans:valorGasesMedicinais>" in xml
+        assert "<ans:valorTotalGeral>200.00</ans:valorTotalGeral>" in xml
+
+    def test_soma_divergente_do_total_omite_o_breakdown(self):
+        """Defesa contra total_value editado por fora do save() dos itens: sem
+        breakdown a guia é válida; com um que não fecha, ela é glosa."""
+        guide = self._categorize(
+            self._make_internacao_guide(), TISSGuideItem.BillingCategory.DIARIAS
+        )
+        TISSGuide.objects.filter(pk=guide.pk).update(total_value=Decimal("999.00"))
+        guide.refresh_from_db()
+
+        xml = generate_guide_xml(guide)
+
+        assert "<ans:valorDiarias>" not in xml
+        assert "<ans:valorTotalGeral>999.00</ans:valorTotalGeral>" in xml
+
+
 class InternacaoAuthorizationPrecedenceTests(InternacaoFixtureMixin, XMLEngineTestCase):
     """B10 — ``TISSGuide.authorization_date`` (digitação manual) as the
     LAST-RESORT fallback source for ``dataAutorizacao``, used ONLY when no

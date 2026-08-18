@@ -475,6 +475,7 @@ class InpatientFeeSerializer(serializers.ModelSerializer):
             "description",
             "quantity",
             "unit",
+            "category",
             "notes",
             "created_by",
             "created_by_name",

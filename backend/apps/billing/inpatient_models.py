@@ -168,6 +168,28 @@ class InpatientFee(models.Model):
     termo pode mudar debaixo de um lançamento já feito.
     """
 
+    class Category(models.TextChoices):
+        """Taxa × gás medicinal — a distinção que a tabela TUSS 18 NÃO carrega.
+
+        `ct_guiaValorTotal` tem `valorTaxasAlugueis` e `valorGasesMedicinais`
+        como campos SEPARADOS, mas as duas coisas moram na mesma tabela 18 do
+        TUSS (das 3.595 linhas, ~1.590 são taxa e ~890 são gás). Nem
+        `table_number` nem `TUSSCode.group` separam — classificar por eles seria
+        adivinhar em ~25% do volume, e é dinheiro real.
+
+        Então a distinção é capturada na ORIGEM, por quem lança: quem está à
+        beira do leito sabe se está lançando oxigênio ou incubadora. Mesmo
+        movimento de `TISSGuide.tipo_faturamento` — a decisão vai para quem tem
+        o fato, em vez de o sistema inferir.
+
+        `blank=True` porque lançamentos anteriores a esta fatia não têm a
+        distinção e não há como backfillar: o texto do termo TUSS não é fonte
+        confiável para reclassificar 890 códigos automaticamente.
+        """
+
+        TAXA = "taxa", "Taxa / aluguel"
+        GAS_MEDICINAL = "gas_medicinal", "Gás medicinal"
+
     class Unit(models.TextChoices):
         DIA = "dia", "Por dia"
         HORA = "hora", "Por hora"
@@ -208,6 +230,18 @@ class InpatientFee(models.Model):
         choices=Unit.choices,
         default=Unit.UNIDADE,
         help_text="Unidade de cobrança do termo TUSS (por dia / por hora / por unidade).",
+    )
+    category = models.CharField(  # noqa: DJ001
+        "Categoria (TISS)",
+        max_length=16,
+        choices=Category.choices,
+        blank=True,
+        default="",
+        help_text=(
+            "Separa valorTaxasAlugueis de valorGasesMedicinais no breakdown de "
+            "ct_guiaValorTotal. Vazio em lançamentos anteriores à Onda 4 — sem ele a "
+            "guia sai só com valorTotalGeral, nunca com um breakdown que não fecha."
+        ),
     )
     notes = models.CharField("Observação", max_length=500, blank=True, default="")
     created_by = models.ForeignKey(

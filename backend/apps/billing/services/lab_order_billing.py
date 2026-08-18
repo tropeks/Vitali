@@ -141,6 +141,8 @@ def generate_sadt_guide_for_lab_order(order: LabOrder) -> TISSGuide:
                 # fosse a da execução. Item ainda sem resultado nasce sem data e a
                 # emissão do XML falha alto (mesma regra das taxonomias vazias).
                 execution_date=to_local_date(item.resulted_at),
+                # Exame laboratorial é procedimento — entra em valorProcedimentos.
+                billing_category=TISSGuideItem.BillingCategory.PROCEDIMENTOS,
             )
 
         # No ordered test resolved to a payer-billable TUSS procedure — there is

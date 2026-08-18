@@ -122,6 +122,9 @@ def generate_sadt_guide_for_surgical_case(case: SurgicalCase) -> TISSGuide:
                 quantity=Decimal(proc.quantity),
                 unit_value=_unit_value(price_table, tuss),
                 execution_date=execution_date,
+                # Procedimento cirúrgico entra em valorProcedimentos (material e OPME do
+                # mesmo caso vão por material_billing, com categoria própria).
+                billing_category=TISSGuideItem.BillingCategory.PROCEDIMENTOS,
             )
 
         # No procedure resolved to a billable TUSS line — there is nothing to bill.

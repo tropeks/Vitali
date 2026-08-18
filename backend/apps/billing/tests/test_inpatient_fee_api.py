@@ -197,6 +197,62 @@ class InpatientFeeApiTestCase(TenantTestCase):
         self.assertEqual(item.quantity, Decimal("1"))
         self.assertEqual(item.total_value, Decimal("42.00"))
 
+    def test_categoria_gas_medicinal_atravessa_ate_o_item_faturado(self):
+        """A distinção taxa × gás medicinal é capturada por quem LANÇA, e chega
+        até a categoria do item na guia.
+
+        Existe porque nenhuma inferência resolveria: ct_guiaValorTotal tem
+        valorTaxasAlugueis e valorGasesMedicinais como campos separados, mas as
+        duas coisas moram na tabela 18 do TUSS (~1.590 taxas e ~890 gases). Nem
+        table_number nem TUSSCode.group separam — classificar por eles erraria
+        em ~25% do volume, e é dinheiro.
+        """
+        client = self._auth(self.fat_token)
+
+        resp = client.post(
+            "/api/v1/billing/inpatient-fees/",
+            self._payload(category=InpatientFee.Category.GAS_MEDICINAL),
+            format="json",
+        )
+
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(resp.json()["category"], "gas_medicinal")
+
+        encounter = Encounter.objects.create(
+            patient=self.patient, professional=self.prof, encounter_type="inpatient"
+        )
+        self.admission.encounter = encounter
+        self.admission.save()
+        provider = InsuranceProvider.objects.create(name="Operadora Gás", ans_code="99201")
+        PatientInsurance.objects.create(
+            patient=self.patient,
+            provider_ans_code="99201",
+            provider_name="Operadora Gás",
+            card_number="C-GAS",
+            is_active=True,
+        )
+        table = PriceTable.objects.create(
+            provider=provider, name="Tab Gás", valid_from=timezone.now().date()
+        )
+        PriceTableItem.objects.create(
+            table=table, tuss_code=self.tuss_taxa, negotiated_value=Decimal("42.00")
+        )
+
+        guide = generate_internacao_guide_for_admission(self.admission)
+        item = guide.items.get(tuss_code=self.tuss_taxa)
+
+        self.assertEqual(item.billing_category, "gases_medicinais")
+
+    def test_taxa_sem_categoria_fica_sem_categoria_no_item(self):
+        """Omitir é legítimo e NÃO vira um palpite: o item nasce sem categoria e
+        a guia sai só com valorTotalGeral — nunca um breakdown que não fecha."""
+        client = self._auth(self.fat_token)
+
+        resp = client.post("/api/v1/billing/inpatient-fees/", self._payload(), format="json")
+
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(resp.json()["category"], "")
+
     def test_launching_same_fee_twice_does_not_duplicate(self):
         """A prova de 2.2: dois POSTs idênticos não geram duas linhas."""
         client = self._auth(self.fat_token)

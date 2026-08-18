@@ -561,6 +561,83 @@ def _resolve_internacao_procedimentos(guide) -> list[dict]:
     return procedimentos
 
 
+# Ordem dos campos em ct_guiaValorTotal (tissComplexTypesV4_01_00.xsd). É uma
+# <sequence>, então a ordem NÃO é cosmética: emitir fora dela invalida o XML.
+_VALOR_TOTAL_CAMPOS = (
+    ("valorProcedimentos", "procedimentos"),
+    ("valorDiarias", "diarias"),
+    ("valorTaxasAlugueis", "taxas_alugueis"),
+    ("valorMateriais", "materiais"),
+    ("valorMedicamentos", "medicamentos"),
+    ("valorOPME", "opme"),
+    ("valorGasesMedicinais", "gases_medicinais"),
+)
+
+
+def _resolve_valor_total(guide) -> list[dict]:
+    """Breakdown por categoria de ``<valorTotal>`` (ct_guiaValorTotal).
+
+    Os sete campos de categoria são ``minOccurs="0"`` e só ``valorTotalGeral`` é
+    obrigatório — dá para emitir só o total e o XSD aceita. Era o que se fazia
+    (Alternativa A do doc §4). O problema nunca foi o schema: **glosa por
+    breakdown ausente é prática real de mercado**, principalmente em internação,
+    onde a operadora quer ver diária separada de taxa e de gás.
+
+    TUDO-OU-NADA, e esta é a regra que governa a função. O breakdown só é emitido
+    quando **todo** item da guia tem categoria E a soma bate com
+    ``guide.total_value``. Faltando qualquer uma das duas coisas, devolve lista
+    vazia e o template emite só ``valorTotalGeral``.
+
+    Por que não emitir o que dá: um breakdown parcial é PIOR que nenhum. A
+    operadora soma os campos, não fecha com o total geral, e glosa a guia
+    inteira — trocamos "faltou detalhe" por "a conta está errada". Guia com
+    qualquer linha anterior a esta fatia (sem ``billing_category``) cai aqui, de
+    propósito, e continua saindo exatamente como saía antes.
+
+    A categoria NUNCA é inferida do TUSS. ``dm_tabela`` não serve: a tabela 18
+    contém diárias, taxas e gases medicinais, que são três campos TISS
+    diferentes, e ``TUSSCode.group`` é igualmente grosso. Cada ponte clínico→
+    faturamento grava o que sabe quando cria o item (ver
+    ``TISSGuideItem.billing_category``); o que a origem não sabe distinguir —
+    taxa × gás — foi capturado na origem também (``InpatientFee.category``).
+
+    Devolve a lista de ``{"tag", "valor"}`` na ordem da ``<sequence>`` do XSD,
+    já sem as categorias zeradas (emitir ``0.00`` para uma categoria inexistente
+    afirmaria que a guia tem zero de OPME, quando na verdade não tem OPME).
+    """
+    items = list(guide.items.all())
+    if not items:
+        return []
+
+    somas: dict[str, Decimal] = {}
+    for item in items:
+        categoria = item.billing_category or ""
+        if not categoria:
+            # Uma linha sem categoria já basta: o breakdown não fecharia.
+            return []
+        somas[categoria] = somas.get(categoria, Decimal("0")) + Decimal(item.total_value)
+
+    if sum(somas.values()) != Decimal(guide.total_value):
+        # Defesa contra divergência silenciosa entre a soma das linhas e o total
+        # gravado na guia (ex.: total_value editado por update() direto, sem
+        # passar por TISSGuideItem.save/_recalc_guide_total). Sem breakdown a
+        # guia continua válida; com um que não fecha, ela vira glosa.
+        logger.warning(
+            "Guia %s: soma das categorias (%s) diverge de total_value (%s) — "
+            "breakdown omitido para não emitir uma conta que não fecha.",
+            guide.guide_number,
+            sum(somas.values()),
+            guide.total_value,
+        )
+        return []
+
+    return [
+        {"tag": tag, "valor": somas[chave]}
+        for tag, chave in _VALOR_TOTAL_CAMPOS
+        if somas.get(chave)
+    ]
+
+
 # ─── Guide XML generation ─────────────────────────────────────────────────────
 
 
@@ -648,6 +725,8 @@ def generate_guide_xml(guide) -> str:
         # <procedimentosExecutados>: a discriminação item a item. Ver o docstring
         # do resolver para por que a guia não pode mais sair sem ela.
         context["procedimentos"] = _resolve_internacao_procedimentos(guide)
+        # Breakdown de ct_guiaValorTotal — vazio quando não fecha (ver resolver).
+        context["valor_total_breakdown"] = _resolve_valor_total(guide)
 
     return template.render(**context)
 

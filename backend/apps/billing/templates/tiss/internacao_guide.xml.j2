@@ -168,20 +168,29 @@
   </ans:procedimentosExecutados>
   {% endif %}
   <ans:valorTotal>
-    {# ct_guiaValorTotal — Alternativa A do doc de pesquisa §4: dos oito filhos,
-       só <valorTotalGeral> é obrigatório; os sete breakdowns
-       (valorProcedimentos/valorDiarias/valorTaxasAlugueis/valorMateriais/
-       valorMedicamentos/valorOPME/valorGasesMedicinais) são minOccurs="0" e
-       ficam omitidos. Zero migration, zero classificação de item.
+    {# ct_guiaValorTotal: sete campos de categoria (minOccurs="0") + o
+       valorTotalGeral obrigatório, NESTA ORDEM — é uma <sequence>, então emitir
+       fora de ordem invalida o XML.
 
-       ATENÇÃO, e isto não é ressalva de estilo: SCHEMA-VÁLIDO NÃO É ACEITE DA
-       OPERADORA. Glosar internação por falta de breakdown (principalmente a
-       separação diária × taxa × gás medicinal) é prática real de mercado, e
-       este XML sai sem nenhum deles. Fechar isso é a Alternativa B do §4, que
-       depende de medir a correspondência TUSSCode.table_number→categoria
-       contra o catálogo importado de verdade (não supor) e de decidir se
-       TISSGuideItem passa a guardar a proveniência DailyCharge × InpatientFee,
-       hoje fundida na agregação de generate_internacao_guide_for_admission. #}
+       O breakdown é TUDO-OU-NADA, decidido em xml_engine._resolve_valor_total:
+       só sai quando TODO item tem billing_category e a soma bate com
+       total_value. Guia com qualquer linha anterior à Onda 4 sai só com o total
+       geral, exatamente como saía antes desta fatia.
+
+       Um breakdown parcial seria PIOR que nenhum: a operadora soma os campos,
+       não fecha com o total geral, e glosa a guia inteira — trocaríamos "faltou
+       detalhe" por "a conta está errada". Categoria zerada também não sai: um
+       <valorOPME>0.00</valorOPME> AFIRMA que a guia tem zero de OPME, quando o
+       fato é que ela não tem OPME nenhum.
+
+       A categoria nunca é inferida do TUSS: dm_tabela não serve, porque a
+       tabela 18 contém diárias, taxas E gases medicinais — três campos TISS
+       distintos. Cada ponte grava o que sabe ao criar o item, e a distinção que
+       nenhuma sabia (taxa × gás) passou a ser capturada em InpatientFee.category
+       por quem lança. #}
+    {% for campo in valor_total_breakdown %}
+    <ans:{{ campo.tag }}>{{ campo.valor | format_currency }}</ans:{{ campo.tag }}>
+    {% endfor %}
     <ans:valorTotalGeral>{{ guide.total_value | format_currency }}</ans:valorTotalGeral>
   </ans:valorTotal>
 </ans:guiaResumoInternacao>

@@ -144,4 +144,6 @@ def _bill(
             # antigo (ou teste) que não mande o campo: fica sem data, e a emissão
             # do XML falha alto — nunca `today()`.
             execution_date=to_local_date(dispensed_at),
+            # Dispensação de farmácia é medicamento por definição do fluxo.
+            billing_category=TISSGuideItem.BillingCategory.MEDICAMENTOS,
         )

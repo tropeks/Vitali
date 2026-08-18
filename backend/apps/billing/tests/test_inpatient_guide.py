@@ -19,6 +19,7 @@ from apps.billing.models import (
     PriceTable,
     PriceTableItem,
     TISSGuide,
+    TISSGuideItem,
 )
 from apps.billing.services.inpatient_billing import (
     generate_internacao_guide_for_admission,
@@ -171,6 +172,18 @@ class InpatientGuideTestCase(TenantTestCase):
         item = guide.items.first()
         self.assertEqual(item.reduction_increase_factor, Decimal("1.00"))
         self.assertEqual(item.total_value, item.unit_value * item.quantity)
+
+    def test_categoria_da_diaria_e_fato_de_origem(self):
+        """``billing_category`` vem da ponte que criou o item, nunca inferida do
+        TUSS: uma ``DailyCharge`` É a diária de leito. Inferir por
+        ``table_number`` seria impossível — a tabela 18 do TUSS contém diárias,
+        taxas E gases medicinais, que são três campos distintos em
+        ct_guiaValorTotal."""
+        adm = self._admission(admit=self._dt(2026, 3, 1), discharge=self._dt(2026, 3, 4))
+        guide = generate_internacao_guide_for_admission(adm)
+
+        item = guide.items.first()
+        self.assertEqual(item.billing_category, TISSGuideItem.BillingCategory.DIARIAS)
 
     def test_idempotent_no_duplicate_guide(self):
         adm = self._admission(admit=self._dt(2026, 3, 1), discharge=self._dt(2026, 3, 4))

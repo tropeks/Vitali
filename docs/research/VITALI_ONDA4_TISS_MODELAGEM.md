@@ -30,11 +30,13 @@
 > `procedimentosExecutados` passou a ser emitido. O que este documento chamava de
 > "campo novo trivial, default `0`" para `reducaoAcrescimo` **estava errado e foi
 > corrigido** — é fator multiplicativo, neutro `1.00` (§2). Residual real que
-> permanece: (a) `valorTotal` ainda é a Alternativa A (só `valorTotalGeral`, sem
-> breakdown por categoria — glosa por isso é prática real de mercado); (b) linhas
-> faturadas antes da migration `0036` não têm `execution_date` e a emissão falha
-> alto nelas, de propósito, porque não há fonte honesta para backfill; (c) a SP/SADT
-> segue em `xfail`, parada em `dadosSolicitante`.
+> permanece: (a) linhas
+> faturadas antes das migrations `0036`/`0037` não têm `execution_date` nem
+> `billing_category`: a emissão falha alto na primeira e omite o breakdown na
+> segunda, de propósito, porque não há backfill honesto; (b) a SP/SADT segue em
+> `xfail`, parada em `dadosSolicitante`. **`valorTotal` com breakdown por
+> categoria está FECHADO** (§4) — e por fato de origem, não por classificação de
+> TUSS, que a medição provou ser impossível.
 
 **3 decisões do Capitão**: (a) aprovar Fatia 0 como pré-requisito; (b) taxonomias de
 internação moram em `Admission` ou só em `TISSGuide`? (§5); (c) `ct_guiaValorTotal` aceita
@@ -171,6 +173,42 @@ garantida para sempre).
 tratar B como uma fatia separada, condicionada a (a) confirmar a correspondência
 tabela→categoria contra dado real e (b) o Capitão decidir se a operadora-alvo do MVP exige
 breakdown de fato ou se `valorTotalGeral` sozinho já resolve o caso de uso imediato.
+
+### RESOLVIDO em 18/08/2026 — e por um caminho que esta seção não previa
+
+A Alternativa B foi feita, mas **não** por classificação de item: a condição (a) acima é
+insatisfazível. A medição contra o XSD confirma o que o §4 já suspeitava e fecha a questão —
+`dm_tabela` é `{00,18,19,20,22,90,98}` e a **tabela 18 contém diárias, taxas E gases
+medicinais**, que são três campos distintos de `ct_guiaValorTotal`. Não existe correspondência
+tabela→categoria a "confirmar": ela não é uma função. `TUSSCode.group` idem. Qualquer
+classificação por esses eixos erraria em ~25% do volume da tabela 18 (das 3.595 linhas, ~890
+são gás — número que o próprio docstring de `InpatientFee` já registrava).
+
+O caminho que funcionou é o oposto de inferir: **a categoria é fato de origem**. Cada ponte
+clínico→faturamento sabe exatamente o que está criando e grava
+`TISSGuideItem.billing_category` no momento em que sabe — `DailyCharge` é diária,
+`SurgicalMaterial.Kind` já separa OPME de material e de medicamento, dispensação é
+medicamento, exame e cirurgia são procedimento. A única distinção que nenhuma ponte sabia
+(taxa × gás) passou a ser **capturada na origem** por quem lança, em `InpatientFee.category` —
+mesmo movimento de `TISSGuide.tipo_faturamento`: a decisão vai para quem tem o fato.
+
+Isso também dissolve a preocupação de proveniência levantada acima. `TISSGuideItem` não
+precisa "lembrar" se veio de `DailyCharge` ou de `InpatientFee`, nem depende de esses
+registros continuarem existindo para reconstrução: a categoria está gravada na própria linha
+faturada, no momento da criação. A fragilidade que o §4 apontava ("se algum dia esses
+registros passarem a ser podados, a reconstrução quebra silenciosamente") deixa de existir.
+
+**Regra que governa a emissão — tudo-ou-nada** (`xml_engine._resolve_valor_total`): o
+breakdown só sai quando TODO item tem categoria E a soma bate com `total_value`. Guia com
+qualquer linha anterior a esta fatia sai só com `valorTotalGeral`, como antes. Breakdown
+parcial é pior que nenhum: a operadora soma os campos, não fecha com o total e glosa a guia
+inteira — trocaria "faltou detalhe" por "a conta está errada". Categoria zerada também não é
+emitida: `<valorOPME>0.00</valorOPME>` afirma que a guia tem zero de OPME, quando o fato é que
+ela não tem OPME.
+
+**Retroatividade**: guias geradas antes de `0037` não têm categoria e não há backfill honesto.
+Elas continuam saindo exatamente como saíam. Só o que for faturado a partir daqui tem
+breakdown — e tem por fato registrado, não por reclassificação.
 
 ## 5. Proposta de modelagem — taxonomias fechadas
 

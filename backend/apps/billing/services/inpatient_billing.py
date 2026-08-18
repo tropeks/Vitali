@@ -85,6 +85,15 @@ from apps.emr.models import Admission
 logger = logging.getLogger(__name__)
 
 
+# InpatientFee.Category -> campo de ct_guiaValorTotal. Tradução explícita, e não
+# reúso do mesmo valor de string nos dois enums, porque são vocabulários de
+# camadas diferentes: um é o que o hospital lança, o outro é o que a ANS pede.
+_CATEGORIA_POR_TAXA: dict[str, str] = {
+    InpatientFee.Category.TAXA: TISSGuideItem.BillingCategory.TAXAS_ALUGUEIS,
+    InpatientFee.Category.GAS_MEDICINAL: TISSGuideItem.BillingCategory.GASES_MEDICINAIS,
+}
+
+
 def _earliest(current: date | None, candidate: date | None) -> date | None:
     """Menor das duas datas, tolerando ``None`` dos dois lados.
 
@@ -198,6 +207,7 @@ def record_inpatient_fee(
     unit: str = InpatientFee.Unit.UNIDADE,
     service_date: date | None = None,
     notes: str = "",
+    category: str = "",
     actor=None,
 ) -> InpatientFee:
     """B6/Onda2 2.2 — Lança uma taxa/gás medicinal numa internação ativa.
@@ -288,6 +298,12 @@ def record_inpatient_fee(
             description=(tuss_code.description or "")[:500],
             quantity=quantity,
             unit=unit,
+            # Taxa × gás medicinal: a tabela 18 do TUSS não separa, e
+            # ct_guiaValorTotal tem um campo para cada. Quem lança à beira do
+            # leito sabe qual é — informar aqui é o que permite o breakdown do
+            # valorTotal fechar. Omitido: a linha fica sem categoria e a guia sai
+            # só com valorTotalGeral, sem breakdown (nunca um que não fecha).
+            category=category,
             notes=notes,
             created_by=actor,
         )
@@ -398,10 +414,17 @@ def generate_internacao_guide_for_admission(admission: Admission) -> TISSGuide:
         for charge in charges:
             entry = aggregated.setdefault(
                 charge.tuss_code_id,
-                {"tuss": charge.tuss_code, "quantity": Decimal(0), "execution_date": None},
+                {
+                    "tuss": charge.tuss_code,
+                    "quantity": Decimal(0),
+                    "execution_date": None,
+                    "category": "",
+                },
             )
             entry["quantity"] += Decimal(charge.quantity)
             entry["execution_date"] = _earliest(entry["execution_date"], charge.service_date)
+            # DailyCharge É a diária de leito — categoria é fato, não inferência.
+            entry["category"] = TISSGuideItem.BillingCategory.DIARIAS
 
         # B6 — as taxas entram na mesma agregação por TUSS. Dois lançamentos do
         # mesmo gás em dias diferentes viram UM item com a soma das horas, que é
@@ -409,10 +432,20 @@ def generate_internacao_guide_for_admission(admission: Admission) -> TISSGuide:
         for fee in fees:
             entry = aggregated.setdefault(
                 fee.tuss_code_id,
-                {"tuss": fee.tuss_code, "quantity": Decimal(0), "execution_date": None},
+                {
+                    "tuss": fee.tuss_code,
+                    "quantity": Decimal(0),
+                    "execution_date": None,
+                    "category": "",
+                },
             )
             entry["quantity"] += Decimal(fee.quantity)
             entry["execution_date"] = _earliest(entry["execution_date"], fee.service_date)
+            # Taxa × gás medicinal são campos SEPARADOS em ct_guiaValorTotal e a
+            # tabela 18 do TUSS não os separa — a distinção vem de InpatientFee.
+            # category, capturada por quem lançou. Lançamento antigo (sem
+            # categoria) deixa o item sem categoria, e a guia sai sem breakdown.
+            entry["category"] = _CATEGORIA_POR_TAXA.get(fee.category, "")
 
         for entry in aggregated.values():
             tuss = entry["tuss"]
@@ -423,6 +456,7 @@ def generate_internacao_guide_for_admission(admission: Admission) -> TISSGuide:
                 quantity=entry["quantity"],
                 unit_value=_unit_value(price_table, tuss),
                 execution_date=entry["execution_date"],
+                billing_category=entry["category"],
             )
 
         return guide
