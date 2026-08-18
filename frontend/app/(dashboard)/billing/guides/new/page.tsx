@@ -55,9 +55,15 @@ interface FormState {
   competency: string;
   guide_type: string;
   tipo_faturamento: string;
+  tipo_atendimento: string;
+  regime_atendimento: string;
 }
 
 interface TipoFaturamentoOption { value: string; label: string }
+interface AtendimentoOptions {
+  tipo_atendimento: TipoFaturamentoOption[]
+  regime_atendimento: TipoFaturamentoOption[]
+}
 
 const emptyItem = (): GuideItem => ({ tuss_code: null, description: '', quantity: 1, unit_value: '' });
 
@@ -139,11 +145,18 @@ export default function NewGuidePage() {
     competency: new Date().toISOString().slice(0, 7),
     guide_type: 'sadt',
     tipo_faturamento: '',
+    tipo_atendimento: '',
+    regime_atendimento: '',
   });
 
   const [items, setItems] = useState<GuideItem[]>([emptyItem()]);
   const [glosaPredictionIds, setGlosaPredictionIds] = useState<Record<number, string | null>>({});
   const [tipoFaturamentoOptions, setTipoFaturamentoOptions] = useState<TipoFaturamentoOption[]>([]);
+  const [atendimentoOptions, setAtendimentoOptions] = useState<AtendimentoOptions>({
+    tipo_atendimento: [],
+    regime_atendimento: [],
+  });
+  const [atendimentoError, setAtendimentoError] = useState('');
   // Erro próprio da lista auxiliar: falhar ao buscar os códigos de
   // dm_tipoFaturamento não é motivo para ocupar o banner de erro da página, que
   // é onde aparecem as pendências de criação da guia e a recusa do POST.
@@ -153,6 +166,9 @@ export default function NewGuidePage() {
   // único template TISS que carrega o campo. Nas demais o valor não chega a
   // XML nenhum, então o campo não é oferecido nem enviado.
   const usesTipoFaturamento = form.guide_type === 'internacao';
+  // dadosAtendimento existe SÓ em ctm_sp-sadtGuia, e a SP/SADT É criável nesta
+  // tela — sem tipo e regime a guia nasce incapaz de gerar XML.
+  const usesAtendimento = form.guide_type === 'sadt';
 
   useEffect(() => {
     apiFetch<ProviderOption[] | { results?: ProviderOption[] }>('/billing/providers/')
@@ -181,6 +197,18 @@ export default function NewGuidePage() {
         `Não foi possível carregar os códigos de tipo de faturamento (${e.message}).`
       ));
   }, [usesTipoFaturamento]);
+
+  useEffect(() => {
+    if (!usesAtendimento) return;
+    apiFetch<AtendimentoOptions>('/billing/guides/sadt-atendimento-options/')
+      .then((data) => setAtendimentoOptions({
+        tipo_atendimento: Array.isArray(data?.tipo_atendimento) ? data.tipo_atendimento : [],
+        regime_atendimento: Array.isArray(data?.regime_atendimento) ? data.regime_atendimento : [],
+      }))
+      .catch((e) => setAtendimentoError(
+        `Não foi possível carregar os códigos de atendimento (${e.message}).`
+      ));
+  }, [usesAtendimento]);
 
   useEffect(() => {
     if (!prefillEncounter) return;
@@ -294,6 +322,11 @@ export default function NewGuidePage() {
       // o serializer aceita a omissão (blank=True, default="") e o model já
       // grava "" sozinho.
       if (usesTipoFaturamento) body.tipo_faturamento = form.tipo_faturamento;
+      // Mesma regra: a chave só entra no corpo para o tipo de guia que a usa.
+      if (usesAtendimento) {
+        body.tipo_atendimento = form.tipo_atendimento;
+        body.regime_atendimento = form.regime_atendimento;
+      }
 
       const res = await fetch('/api/v1/billing/guides/', {
         method: 'POST',
@@ -470,6 +503,39 @@ export default function NewGuidePage() {
                       <option value="consulta">Consulta</option>
                     </select>
                   </div>
+                  {usesAtendimento && (
+                    <div>
+                      <label htmlFor="guide-tipo-atendimento" className="mb-1 block text-xs font-medium text-neu-inkSoft">Tipo de atendimento (TISS) *</label>
+                      <select
+                        id="guide-tipo-atendimento"
+                        value={form.tipo_atendimento}
+                        onChange={(e) => setField('tipo_atendimento', e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 bg-neu-panel px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Selecione...</option>
+                        {atendimentoOptions.tipo_atendimento.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                      </select>
+                    </div>
+                  )}
+                  {usesAtendimento && (
+                    <div>
+                      <label htmlFor="guide-regime-atendimento" className="mb-1 block text-xs font-medium text-neu-inkSoft">Regime de atendimento (TISS) *</label>
+                      <select
+                        id="guide-regime-atendimento"
+                        value={form.regime_atendimento}
+                        onChange={(e) => setField('regime_atendimento', e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 bg-neu-panel px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Selecione...</option>
+                        {atendimentoOptions.regime_atendimento.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                      </select>
+                      {atendimentoError ? (
+                        <p className="mt-1 text-xs text-red-700">{atendimentoError} Recarregue a página — sem a lista estes campos não podem ser preenchidos.</p>
+                      ) : (
+                        <p className="mt-1 text-xs text-neu-inkMuted">Sem tipo e regime a guia SP/SADT não gera XML. Nenhum dos dois é deduzido pelo sistema.</p>
+                      )}
+                    </div>
+                  )}
                   {usesTipoFaturamento && (
                     <div>
                       <label htmlFor="guide-tipo-faturamento" className="mb-1 block text-xs font-medium text-neu-inkSoft">Tipo de faturamento (TISS)</label>

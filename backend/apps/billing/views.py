@@ -938,6 +938,47 @@ class TISSGuideViewSet(AuditReadMixin, viewsets.ModelViewSet):
     ordering_fields = ["created_at", "updated_at", "total_value", "competency"]
     ordering = ["-updated_at"]
 
+    @action(detail=False, methods=["get"], url_path="sadt-atendimento-options")
+    def sadt_atendimento_options(self, request):
+        """Códigos de ``dm_tipoAtendimento`` e ``dm_regimeAtendimento`` para os selects.
+
+        UM endpoint para os DOIS campos, e não um por campo: eles são exigidos
+        juntos por ``ctm_sp-sadtAtendimento`` (a guia não emite XML sem os dois),
+        sempre aparecem no mesmo bloco da tela e nunca fazem sentido sozinhos.
+        Dois endpoints seriam duas idas ao servidor para preencher um formulário
+        só.
+
+        Mesma razão de o endpoint existir em vez de o serializer carregar a
+        lista, já documentada em ``tipo_faturamento_options``: a tela de guia
+        NOVA precisa das opções antes de existir guia para serializar.
+
+        RÓTULOS NÃO AUTORITATIVOS, e é isso que chega à tela: cada ``label`` é
+        ``"Código NN (rótulo a confirmar no manual ANS)"``. Os
+        ``xs:enumeration`` dessas duas tabelas no ``tissSimpleTypesV4_01_00.xsd``
+        não trazem ``xs:documentation``, e o manual de domínio da ANS não está
+        versionado aqui — só o CÓDIGO é confiável. Inventar "ambulatorial",
+        "internação", "urgência" faria o faturista escolher errado com
+        confiança, numa tela de faturamento hospitalar. Mesma linha vermelha dos
+        códigos 41–67 de ``emr.Admission.MotivoEncerramento``.
+
+        NENHUM VALOR VEM PRÉ-SELECIONADO. A tela abre vazia de propósito: não há
+        fonte no Vitali para tipo e regime do atendimento, e sugerir um default
+        plausível é exatamente a inferência clínica que
+        ``_resolve_sadt_atendimento`` recusa.
+        """
+        return Response(
+            {
+                "tipo_atendimento": [
+                    {"value": value, "label": label}
+                    for value, label in TISSGuide.TipoAtendimento.choices
+                ],
+                "regime_atendimento": [
+                    {"value": value, "label": label}
+                    for value, label in TISSGuide.RegimeAtendimento.choices
+                ],
+            }
+        )
+
     @action(detail=False, methods=["get"], url_path="tipo-faturamento-options")
     def tipo_faturamento_options(self, request):
         """Lista os códigos de ``dm_tipoFaturamento`` para os selects do frontend.

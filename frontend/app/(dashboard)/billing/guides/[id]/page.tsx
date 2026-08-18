@@ -37,6 +37,7 @@ function Field({ label, value }: { label: string; value: any }) {
 }
 
 type TipoFaturamentoOption = { value: string; label: string };
+type AtendimentoOptions = { tipo_atendimento: TipoFaturamentoOption[]; regime_atendimento: TipoFaturamentoOption[] };
 
 /** Espelha o que `ProfessionalSerializer` expõe e o combobox precisa. */
 type ProfessionalOption = { id: string; user_name?: string | null; council_number?: string | null };
@@ -69,6 +70,16 @@ export default function GuideDetailPage() {
   // ("Autorização TISS"), longe do botão que o faturista acabou de clicar.
   const [tipoFaturamentoError, setTipoFaturamentoError] = useState('');
   const [tipoFaturamentoSaved, setTipoFaturamentoSaved] = useState(false);
+  const [atendimentoOptions, setAtendimentoOptions] = useState<AtendimentoOptions>({
+    tipo_atendimento: [],
+    regime_atendimento: [],
+  });
+  const [tipoAtendimento, setTipoAtendimento] = useState('');
+  const [regimeAtendimento, setRegimeAtendimento] = useState('');
+  const [savingAtendimento, setSavingAtendimento] = useState(false);
+  const [atendimentoError, setAtendimentoError] = useState('');
+  const [atendimentoOptionsError, setAtendimentoOptionsError] = useState('');
+  const [atendimentoSaved, setAtendimentoSaved] = useState(false);
   const [solicitante, setSolicitante] = useState<ProfessionalOption | null>(null);
   const [savingSolicitante, setSavingSolicitante] = useState(false);
   const [solicitanteError, setSolicitanteError] = useState('');
@@ -174,6 +185,54 @@ export default function GuideDetailPage() {
       setError(e.message);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  useEffect(() => {
+    // Só a guia SP/SADT tem dadosAtendimento; buscar em outras seria request
+    // por dados que nenhuma parte da tela teria onde mostrar.
+    if (!isSadt) return;
+    fetch('/api/v1/billing/guides/sadt-atendimento-options/', {})
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`${r.status}`)))
+      // Normaliza em vez de confiar na forma: uma resposta inesperada (proxy,
+      // 302 para HTML, contrato mudado) deixaria os arrays undefined e o .map
+      // do select derrubaria a PÁGINA INTEIRA — um select vazio é ruim, uma
+      // tela em branco é pior.
+      .then((data) => setAtendimentoOptions({
+        tipo_atendimento: Array.isArray(data?.tipo_atendimento) ? data.tipo_atendimento : [],
+        regime_atendimento: Array.isArray(data?.regime_atendimento) ? data.regime_atendimento : [],
+      }))
+      .catch(e => setAtendimentoOptionsError(
+        `Não foi possível carregar os códigos de atendimento (${e.message}). Recarregue a página — sem a lista estes campos não podem ser preenchidos.`
+      ));
+  }, [isSadt]);
+
+  useEffect(() => {
+    if (!guide) return;
+    setTipoAtendimento(guide.tipo_atendimento ?? '');
+    setRegimeAtendimento(guide.regime_atendimento ?? '');
+  }, [guide]);
+
+  const saveAtendimento = async () => {
+    setSavingAtendimento(true);
+    setAtendimentoError('');
+    setAtendimentoSaved(false);
+    try {
+      const res = await fetch(`/api/v1/billing/guides/${id}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tipo_atendimento: tipoAtendimento,
+          regime_atendimento: regimeAtendimento,
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail ?? `${res.status}`);
+      setGuide(await res.json());
+      setAtendimentoSaved(true);
+    } catch (e: any) {
+      setAtendimentoError(e.message || 'Não foi possível salvar os dados de atendimento.');
+    } finally {
+      setSavingAtendimento(false);
     }
   };
 
@@ -295,6 +354,100 @@ export default function GuideDetailPage() {
       {/* dadosSolicitante (SP/SADT) — quem PEDIU, distinto de quem executou.
           Guia nascida de pedido de exame já vem preenchida; as demais precisam
           disto, senão a emissão do XML falha alto. */}
+      {/* dadosAtendimento (ctm_sp-sadtAtendimento) — tipo e regime do
+          atendimento. NENHUM dos dois tem fonte no Vitali: não são deduzidos do
+          tipo de guia, do atendimento nem do caso cirúrgico, porque isso seria
+          declarar à operadora um fato clínico que ninguém afirmou. Sem os dois a
+          guia não gera XML. */}
+      {isSadt && (
+        <div className="bg-neu-panel rounded-lg border border-slate-200 p-4">
+          <h2 className="font-semibold text-neu-ink mb-1">Atendimento (TISS)</h2>
+          <p className="text-xs text-neu-inkMuted mb-4">
+            <code>dadosAtendimento</code> exige tipo e regime do atendimento. O sistema não
+            deduz nenhum dos dois — quem atendeu é quem sabe. Os códigos vêm da API; o manual
+            de tabelas de domínio da ANS ainda não está no sistema, então o rótulo aparece como
+            &quot;a confirmar&quot; em vez de um significado inventado aqui.
+          </p>
+
+          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 mb-3">
+            <Field
+              label="Tipo de atendimento (TISS)"
+              value={guide?.tipo_atendimento_display ?? guide?.tipo_atendimento}
+            />
+            <Field
+              label="Regime de atendimento (TISS)"
+              value={guide?.regime_atendimento_display ?? guide?.regime_atendimento}
+            />
+          </dl>
+
+          {!isDraft && (
+            <p className="mb-3 text-xs text-neu-inkMuted bg-neu-app rounded-lg px-3 py-2">
+              Guia com status &quot;{STATUS_LABEL[guide.status] ?? guide.status}&quot;: tipo e
+              regime só mudam enquanto a guia é rascunho.
+            </p>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-3xl">
+            <div>
+              <label htmlFor="guide-tipo-atendimento" className="block text-xs font-medium text-neu-inkMuted uppercase tracking-wide mb-1">
+                Tipo de atendimento (TISS)
+              </label>
+              <select
+                id="guide-tipo-atendimento"
+                value={tipoAtendimento}
+                onChange={(e) => setTipoAtendimento(e.target.value)}
+                disabled={!isDraft}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <option value="">Selecione...</option>
+                {atendimentoOptions.tipo_atendimento.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="guide-regime-atendimento" className="block text-xs font-medium text-neu-inkMuted uppercase tracking-wide mb-1">
+                Regime de atendimento (TISS)
+              </label>
+              <select
+                id="guide-regime-atendimento"
+                value={regimeAtendimento}
+                onChange={(e) => setRegimeAtendimento(e.target.value)}
+                disabled={!isDraft}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <option value="">Selecione...</option>
+                {atendimentoOptions.regime_atendimento.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {atendimentoOptionsError && (
+            <div className="mt-3 bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">{atendimentoOptionsError}</div>
+          )}
+          {atendimentoError && (
+            <div className="mt-3 bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">{atendimentoError}</div>
+          )}
+          {atendimentoSaved && (
+            <div className="mt-3 bg-green-50 border border-green-200 text-green-700 rounded-lg px-4 py-3 text-sm">Dados de atendimento salvos.</div>
+          )}
+
+          {isDraft && (
+            <button
+              type="button"
+              onClick={saveAtendimento}
+              disabled={savingAtendimento || !tipoAtendimento || !regimeAtendimento}
+              className="mt-4 bg-gradient-to-b from-neu-brand to-neu-brandDeep border-t border-neu-brandEdge shadow-neu-btn-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:shadow-neu-btn-primary-hover disabled:opacity-50"
+            >
+              {savingAtendimento ? 'Salvando...' : 'Salvar atendimento'}
+            </button>
+          )}
+        </div>
+      )}
+
+
       {isSadt && (
         <div className="bg-neu-panel rounded-lg border border-slate-200 p-4">
           <h2 className="font-semibold text-neu-ink mb-1">Profissional solicitante (TISS)</h2>

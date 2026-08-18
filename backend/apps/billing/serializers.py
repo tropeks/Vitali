@@ -181,6 +181,15 @@ class TISSGuideSerializer(serializers.ModelSerializer):
     # são "Código N (rótulo a confirmar no manual ANS)" enquanto o manual de
     # tabelas de domínio não estiver no repo — a pendência aparece na tela de
     # propósito, para ninguém escolher achando que sabe o que escolheu.
+    # Par valor/`_display` dos dois campos de ctm_sp-sadtAtendimento, como
+    # `status`/`guide_type` já fazem. A LISTA de opções não sai daqui — vem do
+    # endpoint sadt-atendimento-options, pelo mesmo motivo do tipo de faturamento.
+    tipo_atendimento_display = serializers.CharField(
+        source="get_tipo_atendimento_display", read_only=True
+    )
+    regime_atendimento_display = serializers.CharField(
+        source="get_regime_atendimento_display", read_only=True
+    )
     tipo_faturamento_display = serializers.CharField(
         source="get_tipo_faturamento_display", read_only=True
     )
@@ -216,7 +225,9 @@ class TISSGuideSerializer(serializers.ModelSerializer):
             "authorization_date",
             "requesting_professional",
             "tipo_atendimento",
+            "tipo_atendimento_display",
             "regime_atendimento",
+            "regime_atendimento_display",
             "tipo_faturamento",
             "tipo_faturamento_display",
             "competency",

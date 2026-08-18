@@ -70,6 +70,12 @@ beforeEach(() => {
         ],
       });
     }
+    if (url.includes('/api/v1/billing/guides/sadt-atendimento-options/')) {
+      return okJson({
+        tipo_atendimento: [{ value: '04', label: 'Código 04 (rótulo a confirmar no manual ANS)' }],
+        regime_atendimento: [{ value: '01', label: 'Código 01 (rótulo a confirmar no manual ANS)' }],
+      });
+    }
     if (url.includes('/api/v1/billing/guides/tipo-faturamento-options/')) {
       return okJson([{ value: '2', label: 'Código 2 (rótulo a confirmar no manual ANS)' }]);
     }
@@ -132,6 +138,10 @@ describe('NewGuidePage', () => {
     });
 
     await user.selectOptions(screen.getByLabelText('Operadora *'), 'prov-1');
+    // guide_type default é 'sadt', então dadosAtendimento se aplica: sem tipo e
+    // regime a guia nasceria incapaz de gerar XML.
+    await user.selectOptions(screen.getByLabelText('Tipo de atendimento (TISS) *'), '04');
+    await user.selectOptions(screen.getByLabelText('Regime de atendimento (TISS) *'), '01');
     await user.click(screen.getByRole('button', { name: 'Selecionar TUSS mock' }));
     await user.type(screen.getByLabelText('Valor unitário'), '120.5');
 
@@ -154,6 +164,8 @@ describe('NewGuidePage', () => {
       provider: 'prov-1',
       encounter: 'enc-1',
       guide_type: 'sadt',
+      tipo_atendimento: '04',
+      regime_atendimento: '01',
       items: [
         {
           tuss_code: 101,
@@ -190,6 +202,24 @@ describe('NewGuidePage', () => {
     expect(mockFetch.mock.calls.some(
       ([url]) => String(url).includes('/api/v1/billing/guides/tipo-faturamento-options/'),
     )).toBe(false);
+  });
+
+  it('offers atendimento fields for SADT and drops them for a guide type without the block', async () => {
+    // SP/SADT é criável NESTA tela, e ctm_sp-sadtAtendimento é obrigatório —
+    // sem os dois campos a guia nasceria incapaz de gerar XML. Consulta não tem
+    // o bloco: oferecê-lo ali convidaria a preencher o que nunca vira XML.
+    const user = userEvent.setup();
+    render(<NewGuidePage />);
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('Tipo de atendimento (TISS) *')).toBeInTheDocument(),
+    );
+    expect(screen.getByLabelText('Regime de atendimento (TISS) *')).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('Tipo de guia'), 'consulta');
+
+    expect(screen.queryByLabelText('Tipo de atendimento (TISS) *')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Regime de atendimento (TISS) *')).not.toBeInTheDocument();
   });
 
   it('lets the page-level error banner keep to the submit blockers', async () => {

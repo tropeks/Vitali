@@ -61,6 +61,11 @@ const internacaoSubmittedGuide = { ...internacaoDraftGuide, ...submittedGuide, g
 // nova a partir dele), então o mock precisa ser explícito — antes o teste
 // passava pelo fallback do payload da guia e o caminho real ficava sem cobertura.
 const TIPO_FATURAMENTO_OPTIONS_URL = '/api/v1/billing/guides/tipo-faturamento-options/';
+const ATENDIMENTO_OPTIONS_URL = '/api/v1/billing/guides/sadt-atendimento-options/';
+const atendimentoOptions = {
+  tipo_atendimento: [{ value: '04', label: 'Código 04 (rótulo a confirmar no manual ANS)' }],
+  regime_atendimento: [{ value: '01', label: 'Código 01 (rótulo a confirmar no manual ANS)' }],
+};
 const tipoFaturamentoOptions = [
   { value: '1', label: 'Código 1 (rótulo a confirmar no manual ANS)' },
   { value: '2', label: 'Código 2 (rótulo a confirmar no manual ANS)' },
@@ -231,6 +236,133 @@ describe('GuideDetailPage — authorization_date', () => {
     await waitFor(() => {
       expect(screen.getByText(/não pode mais ser editada/)).toBeInTheDocument();
     });
+  });
+});
+
+describe('GuideDetailPage — atendimento (SP/SADT)', () => {
+  const sadtCompleta = {
+    ...draftGuide,
+    tipo_atendimento: '04',
+    tipo_atendimento_display: 'Código 04 (rótulo a confirmar no manual ANS)',
+    regime_atendimento: '01',
+    regime_atendimento_display: 'Código 01 (rótulo a confirmar no manual ANS)',
+  };
+
+  it('fills both selects from the choices endpoint', async () => {
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith(TIPO_FATURAMENTO_OPTIONS_URL)) return okJson(tipoFaturamentoOptions);
+      if (url.endsWith(ATENDIMENTO_OPTIONS_URL)) return okJson(atendimentoOptions);
+      return okJson(sadtCompleta);
+    });
+
+    render(<GuideDetailPage />);
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('Tipo de atendimento (TISS)')).toHaveValue('04'),
+    );
+    expect(screen.getByLabelText('Regime de atendimento (TISS)')).toHaveValue('01');
+  });
+
+  it('survives a malformed options response instead of blanking the page', async () => {
+    // Uma resposta fora do contrato (proxy, 302 para HTML) deixaria os arrays
+    // undefined e o .map do select derrubaria a PÁGINA INTEIRA. Select vazio é
+    // ruim; tela em branco é pior — e foi o que aconteceu antes da normalização.
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith(TIPO_FATURAMENTO_OPTIONS_URL)) return okJson(tipoFaturamentoOptions);
+      if (url.endsWith(ATENDIMENTO_OPTIONS_URL)) return okJson({ inesperado: true });
+      return okJson(sadtCompleta);
+    });
+
+    render(<GuideDetailPage />);
+
+    await waitFor(() => expect(screen.getByText('Atendimento (TISS)')).toBeInTheDocument());
+    expect(screen.getByLabelText('Tipo de atendimento (TISS)')).toBeInTheDocument();
+  });
+
+  it('saves both fields in one PATCH', async () => {
+    const calls: Array<[string, RequestInit | undefined]> = [];
+    mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      calls.push([url, init]);
+      if (url.endsWith(TIPO_FATURAMENTO_OPTIONS_URL)) return okJson(tipoFaturamentoOptions);
+      if (url.endsWith(ATENDIMENTO_OPTIONS_URL)) return okJson(atendimentoOptions);
+      if (init?.method === 'PATCH') return okJson(sadtCompleta);
+      return okJson(draftGuide);
+    });
+
+    render(<GuideDetailPage />);
+    await waitFor(() => expect(screen.getByText('Atendimento (TISS)')).toBeInTheDocument());
+
+    await userEvent.selectOptions(screen.getByLabelText('Tipo de atendimento (TISS)'), '04');
+    await userEvent.selectOptions(screen.getByLabelText('Regime de atendimento (TISS)'), '01');
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar atendimento' }));
+
+    await waitFor(() =>
+      expect(screen.getByText('Dados de atendimento salvos.')).toBeInTheDocument(),
+    );
+    const patch = calls.find(([, init]) => init?.method === 'PATCH');
+    expect(JSON.parse((patch![1] as RequestInit).body as string)).toEqual({
+      tipo_atendimento: '04',
+      regime_atendimento: '01',
+    });
+  });
+
+  it('blocks the save until BOTH fields are chosen', async () => {
+    // ctm_sp-sadtAtendimento exige os dois; salvar só um deixaria a guia
+    // igualmente incapaz de gerar XML, com a falsa sensação de resolvido.
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith(TIPO_FATURAMENTO_OPTIONS_URL)) return okJson(tipoFaturamentoOptions);
+      if (url.endsWith(ATENDIMENTO_OPTIONS_URL)) return okJson(atendimentoOptions);
+      return okJson(draftGuide);
+    });
+
+    render(<GuideDetailPage />);
+    await waitFor(() => expect(screen.getByText('Atendimento (TISS)')).toBeInTheDocument());
+
+    expect(screen.getByRole('button', { name: 'Salvar atendimento' })).toBeDisabled();
+
+    await userEvent.selectOptions(screen.getByLabelText('Tipo de atendimento (TISS)'), '04');
+    expect(screen.getByRole('button', { name: 'Salvar atendimento' })).toBeDisabled();
+
+    await userEvent.selectOptions(screen.getByLabelText('Regime de atendimento (TISS)'), '01');
+    expect(screen.getByRole('button', { name: 'Salvar atendimento' })).not.toBeDisabled();
+  });
+
+  it('hides the panel for a guide type without dadosAtendimento', async () => {
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith(TIPO_FATURAMENTO_OPTIONS_URL)) return okJson(tipoFaturamentoOptions);
+      if (url.endsWith(ATENDIMENTO_OPTIONS_URL)) return okJson(atendimentoOptions);
+      return okJson(internacaoDraftGuide);
+    });
+
+    render(<GuideDetailPage />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('heading', { name: 'Tipo de faturamento (TISS)' }),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.queryByText('Atendimento (TISS)')).not.toBeInTheDocument();
+  });
+
+  it('locks both selects once the guide leaves draft', async () => {
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith(TIPO_FATURAMENTO_OPTIONS_URL)) return okJson(tipoFaturamentoOptions);
+      if (url.endsWith(ATENDIMENTO_OPTIONS_URL)) return okJson(atendimentoOptions);
+      return okJson({ ...sadtCompleta, status: 'submitted' });
+    });
+
+    render(<GuideDetailPage />);
+    await waitFor(() => expect(screen.getByText('Atendimento (TISS)')).toBeInTheDocument());
+
+    expect(screen.getByLabelText('Tipo de atendimento (TISS)')).toBeDisabled();
+    expect(screen.getByLabelText('Regime de atendimento (TISS)')).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Salvar atendimento' })).not.toBeInTheDocument();
   });
 });
 

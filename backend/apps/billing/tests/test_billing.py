@@ -285,6 +285,53 @@ class BillingTestCase(TenantTestCase):
 
     # ── Tipo de faturamento (dm_tipoFaturamento) ──────────────────────────────
 
+    def test_sadt_atendimento_options_traz_os_dois_campos_num_endpoint_so(self):
+        """UM endpoint para os DOIS campos, porque ctm_sp-sadtAtendimento exige os
+        dois juntos — a guia não emite XML sem ambos, e eles nunca fazem sentido
+        sozinhos. Dois endpoints seriam duas idas ao servidor por um formulário
+        só."""
+        client = self._auth(self.fat_token)
+
+        resp = client.get("/api/v1/billing/guides/sadt-atendimento-options/")
+
+        self.assertEqual(resp.status_code, 200, resp.content)
+        body = resp.json()
+        self.assertEqual(
+            [opt["value"] for opt in body["tipo_atendimento"]],
+            ["01", "02", "03", "04", "08", "09", "10", "13", "23"],
+        )
+        self.assertEqual(
+            [opt["value"] for opt in body["regime_atendimento"]],
+            ["01", "02", "03", "04", "05"],
+        )
+        # A pendência de rótulo é declarada, não escondida: inventar
+        # "ambulatorial"/"urgência" faria o faturista escolher errado com
+        # confiança numa tela de faturamento hospitalar.
+        for campo in ("tipo_atendimento", "regime_atendimento"):
+            for opt in body[campo]:
+                self.assertIn("a confirmar no manual ANS", opt["label"])
+
+    def test_sadt_atendimento_options_exige_autenticacao_e_perfil(self):
+        """A rota herda o gate do viewset (billing) — não é pública."""
+        anon = APIClient()
+        anon.defaults["SERVER_NAME"] = self.__class__.domain.domain
+
+        self.assertEqual(
+            anon.get("/api/v1/billing/guides/sadt-atendimento-options/").status_code, 401
+        )
+
+    def test_guia_devolve_valor_e_display_mas_nao_a_lista_de_opcoes(self):
+        """Mesmo contrato do tipo de faturamento: o serializer carrega o valor
+        gravado e seu rótulo; a LISTA mora só no endpoint."""
+        client = self._auth(self.fat_token)
+
+        payload = self._create_guide(client).json()
+
+        for campo in ("tipo_atendimento", "regime_atendimento"):
+            self.assertIn(campo, payload)
+            self.assertIn(f"{campo}_display", payload)
+            self.assertNotIn(f"{campo}_options", payload)
+
     def test_tipo_faturamento_options_endpoint_is_the_single_source(self):
         """A lista de códigos vem do endpoint — e SÓ dele.
 

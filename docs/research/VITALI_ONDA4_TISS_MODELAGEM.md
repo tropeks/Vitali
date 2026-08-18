@@ -81,6 +81,37 @@ tabelas abaixo são a leitura orientada a "de onde vem o dado".
 | `procedimentosExecutados[].reducaoAcrescimo` | sim, por item | ✅ **(resolvido)** | `TISSGuideItem.reduction_increase_factor` (migration `0036`) | **CORREÇÃO — o `default 0` proposto aqui estava ERRADO.** É um FATOR multiplicativo, não um valor: o tipo irmão `ct_procedimentoExecutado` chama o mesmo conceito de `fatorReducaoAcrescimo`, e `st_decimal3-2` (totalDigits 3, fractionDigits 2 → máx **9,99**) é faixa de multiplicador, não de reais nem de percentual. O neutro é **`1.00`**; `0.00` declararia à operadora que a linha vale zero e ainda cobraria `valorTotal`. Precedente do próprio repo, anterior a este doc: `docs/DATA_MODEL.md` já especificava `reduction_factor DECIMAL DEFAULT 1.0`. O rótulo ANS segue não conferido — 1.00 é o neutro por consistência aritmética (`valorTotal = valorUnitario × quantidadeExecutada × fator`), não por manual lido |
 | `valorTotal` (`ct_guiaValorTotal`) | sim | parcial | `guide.total_value` (total único) | seção própria §4 |
 
+### Captura na tela dos campos sem fonte (18/08/2026)
+
+`tipo_atendimento` e `regime_atendimento` ganharam UI nas DUAS telas de guia, no
+molde já consolidado de `tipo_faturamento`:
+
+* **Detalhe da guia** — painel "Atendimento (TISS)", só para `guide_type == "sadt"`
+  (as outras guias não têm o bloco), editável só em rascunho, com erro e
+  confirmação próprios. O botão **exige os dois** campos: `ctm_sp-sadtAtendimento`
+  pede ambos, e salvar só um deixaria a guia igualmente incapaz de gerar XML, com
+  a falsa sensação de resolvido.
+* **Guia nova** — a SP/SADT **é criável ali**, então sem os dois campos a guia
+  nasceria incapaz de emitir. Aparecem só quando o tipo é `sadt`, e as chaves só
+  entram no corpo do POST nesse caso.
+
+As opções vêm de `GET /api/v1/billing/guides/sadt-atendimento-options/`, **um**
+endpoint para os **dois** campos: eles são exigidos juntos, sempre aparecem no
+mesmo bloco e nunca fazem sentido sozinhos. Mesma razão de o endpoint existir em
+vez de o serializer carregar a lista, já documentada em `tipo_faturamento_options`.
+
+**Nenhum valor vem pré-selecionado**, de propósito: a tela abre vazia porque não há
+fonte no Vitali para tipo e regime, e sugerir um default plausível é exatamente a
+inferência clínica que `_resolve_sadt_atendimento` recusa. Os rótulos chegam como
+`"Código NN (rótulo a confirmar no manual ANS)"` — inventar "ambulatorial" ou
+"urgência" faria o faturista escolher errado com confiança.
+
+**Defeito real encontrado ao cobrir isso com teste**: a resposta do endpoint era
+consumida sem normalização. Uma resposta fora do contrato (proxy, 302 para HTML)
+deixaria os arrays `undefined` e o `.map` do `<select>` derrubaria a **página
+inteira** — select vazio é ruim, tela em branco é pior. Corrigido nas duas telas,
+com teste dedicado.
+
 ## 3. Inventário — Resumo de Internação (`ctm_internacaoResumoGuia`)
 
 **Correção ao escopo do pedido**: este guide type **não tem** `dadosSolicitante`. Tem
