@@ -70,6 +70,20 @@ export default function GuideDetailPage() {
       .then(setGuide)
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
+  }, [id]);
+
+  // dm_tipoFaturamento existe SÓ na guia de resumo de internação: é o único
+  // template TISS que emite o campo (internacao_guide.xml.j2) e o único tipo
+  // para o qual o gerador resolve ctm_internacaoDados. Em consulta, SADT e
+  // honorários o valor não vai a lugar nenhum, então a tela não o mostra —
+  // pedir ao faturista um código ANS que nenhum XML carrega é prometer
+  // significado que o sistema não tem.
+  const isInternacao = guide?.guide_type === 'internacao';
+
+  useEffect(() => {
+    // Só busca a lista quando o painel pode aparecer: para os outros tipos de
+    // guia esta request voltaria para uma tela que não tem onde exibi-la.
+    if (!isInternacao) return;
     // Única fonte dos códigos de dm_tipoFaturamento (o serializer da guia não
     // repete mais a lista). Mesma chamada same-origin da guia acima: o cookie
     // httpOnly de sessão vai por padrão e o proxy /api do Next injeta o
@@ -90,7 +104,7 @@ export default function GuideDetailPage() {
           + 'Recarregue a página — sem a lista este campo não pode ser preenchido.'
         );
       });
-  }, [id]);
+  }, [isInternacao]);
 
   useEffect(() => {
     if (!guide) return;
@@ -225,7 +239,12 @@ export default function GuideDetailPage() {
           <Field label="Paciente" value={guide?.patient_name ?? guide?.patient} />
           <Field label="Operadora" value={guide?.provider_name ?? guide?.provider} />
           <Field label="Tipo de Guia" value={guide?.guide_type_display ?? guide?.guide_type} />
-          <Field label="Tipo de faturamento (TISS)" value={guide?.tipo_faturamento_display ?? guide?.tipo_faturamento} />
+          {/* Só a guia de internação carrega dm_tipoFaturamento; nas demais a
+              linha não existe — nem em branco, porque o campo não pertence
+              àquele documento. */}
+          {isInternacao && (
+            <Field label="Tipo de faturamento (TISS)" value={guide?.tipo_faturamento_display ?? guide?.tipo_faturamento} />
+          )}
           <Field label="Competência" value={guide?.competency} />
           <Field label="Nº Carteirinha" value={guide?.insured_card_number} />
           <Field label="Valor Total" value={fmtCurrency(guide?.total_value)} />
@@ -236,62 +255,65 @@ export default function GuideDetailPage() {
 
       {/* Tipo de faturamento (TISS) — painel próprio, com erro e confirmação
           próprios: quem clica "Salvar tipo de faturamento" precisa ver a
-          resposta aqui, não no painel de autorização logo abaixo. */}
-      <div className="bg-neu-panel rounded-lg border border-slate-200 p-4">
-        <h2 className="font-semibold text-neu-ink mb-1">Tipo de faturamento (TISS)</h2>
-        <p className="text-xs text-neu-inkMuted mb-4">
-          dm_tipoFaturamento da guia de resumo de internação. Os códigos e rótulos vêm da API; o
-          manual de tabelas de domínio da ANS ainda não está no sistema, então o rótulo aparece como
-          &quot;a confirmar&quot; em vez de um significado inventado aqui.
-        </p>
-
-        {!isDraft && (
-          <p className="mb-3 text-xs text-neu-inkMuted bg-neu-app rounded-lg px-3 py-2">
-            Guia com status &quot;{STATUS_LABEL[guide.status] ?? guide.status}&quot;: o tipo de
-            faturamento só muda enquanto a guia é rascunho, porque trocá-lo depois do envio mudaria
-            o significado do documento já transmitido à operadora.
+          resposta aqui, não no painel de autorização logo abaixo. Só aparece na
+          guia de internação, a única que emite o campo no XML. */}
+      {isInternacao && (
+        <div className="bg-neu-panel rounded-lg border border-slate-200 p-4">
+          <h2 className="font-semibold text-neu-ink mb-1">Tipo de faturamento (TISS)</h2>
+          <p className="text-xs text-neu-inkMuted mb-4">
+            dm_tipoFaturamento da guia de resumo de internação. Os códigos e rótulos vêm da API; o
+            manual de tabelas de domínio da ANS ainda não está no sistema, então o rótulo aparece como
+            &quot;a confirmar&quot; em vez de um significado inventado aqui.
           </p>
-        )}
 
-        <div className="max-w-xl">
-          <label htmlFor="guide-tipo-faturamento" className="block text-xs font-medium text-neu-inkMuted uppercase tracking-wide mb-1">
-            Tipo de faturamento (TISS)
-          </label>
-          <select
-            id="guide-tipo-faturamento"
-            value={tipoFaturamento}
-            onChange={(e) => setTipoFaturamento(e.target.value)}
-            disabled={!isDraft}
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <option value="">Não informado</option>
-            {tipoFaturamentoOptions.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
+          {!isDraft && (
+            <p className="mb-3 text-xs text-neu-inkMuted bg-neu-app rounded-lg px-3 py-2">
+              Guia com status &quot;{STATUS_LABEL[guide.status] ?? guide.status}&quot;: o tipo de
+              faturamento só muda enquanto a guia é rascunho, porque trocá-lo depois do envio mudaria
+              o significado do documento já transmitido à operadora.
+            </p>
+          )}
+
+          <div className="max-w-xl">
+            <label htmlFor="guide-tipo-faturamento" className="block text-xs font-medium text-neu-inkMuted uppercase tracking-wide mb-1">
+              Tipo de faturamento (TISS)
+            </label>
+            <select
+              id="guide-tipo-faturamento"
+              value={tipoFaturamento}
+              onChange={(e) => setTipoFaturamento(e.target.value)}
+              disabled={!isDraft}
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <option value="">Não informado</option>
+              {tipoFaturamentoOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {tipoFaturamentoOptionsError && (
+            <div className="mt-3 bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">{tipoFaturamentoOptionsError}</div>
+          )}
+          {tipoFaturamentoError && (
+            <div className="mt-3 bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">{tipoFaturamentoError}</div>
+          )}
+          {tipoFaturamentoSaved && (
+            <div className="mt-3 bg-green-50 border border-green-200 text-green-700 rounded-lg px-4 py-3 text-sm">Tipo de faturamento salvo.</div>
+          )}
+
+          {isDraft && (
+            <button
+              type="button"
+              onClick={saveTipoFaturamento}
+              disabled={savingTipoFaturamento}
+              className="mt-4 bg-gradient-to-b from-neu-brand to-neu-brandDeep border-t border-neu-brandEdge shadow-neu-btn-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:shadow-neu-btn-primary-hover disabled:opacity-50"
+            >
+              {savingTipoFaturamento ? 'Salvando...' : 'Salvar tipo de faturamento'}
+            </button>
+          )}
         </div>
-
-        {tipoFaturamentoOptionsError && (
-          <div className="mt-3 bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">{tipoFaturamentoOptionsError}</div>
-        )}
-        {tipoFaturamentoError && (
-          <div className="mt-3 bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">{tipoFaturamentoError}</div>
-        )}
-        {tipoFaturamentoSaved && (
-          <div className="mt-3 bg-green-50 border border-green-200 text-green-700 rounded-lg px-4 py-3 text-sm">Tipo de faturamento salvo.</div>
-        )}
-
-        {isDraft && (
-          <button
-            type="button"
-            onClick={saveTipoFaturamento}
-            disabled={savingTipoFaturamento}
-            className="mt-4 bg-gradient-to-b from-neu-brand to-neu-brandDeep border-t border-neu-brandEdge shadow-neu-btn-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:shadow-neu-btn-primary-hover disabled:opacity-50"
-          >
-            {savingTipoFaturamento ? 'Salvando...' : 'Salvar tipo de faturamento'}
-          </button>
-        )}
-      </div>
+      )}
 
       {/* Autorização TISS */}
       <div className="bg-neu-panel rounded-lg border border-slate-200 p-4">

@@ -149,6 +149,11 @@ export default function NewGuidePage() {
   // é onde aparecem as pendências de criação da guia e a recusa do POST.
   const [tipoFaturamentoError, setTipoFaturamentoError] = useState('');
 
+  // dm_tipoFaturamento é emitido só pela guia de resumo de internação — é o
+  // único template TISS que carrega o campo. Nas demais o valor não chega a
+  // XML nenhum, então o campo não é oferecido nem enviado.
+  const usesTipoFaturamento = form.guide_type === 'internacao';
+
   useEffect(() => {
     apiFetch<ProviderOption[] | { results?: ProviderOption[] }>('/billing/providers/')
       .then((providerData) => {
@@ -156,6 +161,15 @@ export default function NewGuidePage() {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoadingOptions(false));
+  }, []);
+
+  useEffect(() => {
+    // A lista só é buscada quando o campo pode aparecer. Hoje o seletor de tipo
+    // de guia desta tela oferece apenas SADT e consulta, então nenhuma request
+    // sai daqui — e é o certo: seria uma ida ao servidor por dados que nenhuma
+    // parte da tela teria onde mostrar. No dia em que "internacao" entrar no
+    // seletor, a seleção dispara a busca e o campo aparece já preenchido.
+    if (!usesTipoFaturamento) return;
     // Endpoint é a única fonte destes códigos — esta tela monta o select antes
     // de existir guia, então não há serializer de guia de onde tirá-los.
     apiFetch<TipoFaturamentoOption[]>('/billing/guides/tipo-faturamento-options/')
@@ -166,7 +180,7 @@ export default function NewGuidePage() {
       .catch((e) => setTipoFaturamentoError(
         `Não foi possível carregar os códigos de tipo de faturamento (${e.message}).`
       ));
-  }, []);
+  }, [usesTipoFaturamento]);
 
   useEffect(() => {
     if (!prefillEncounter) return;
@@ -265,7 +279,6 @@ export default function NewGuidePage() {
         insured_card_number: form.insured_card_number,
         competency: form.competency,
         guide_type: form.guide_type,
-        tipo_faturamento: form.tipo_faturamento,
         glosa_prediction_ids: predictionIds,
         items: items.map((item) => ({
           tuss_code: item.tuss_code!.id,
@@ -275,6 +288,12 @@ export default function NewGuidePage() {
         })),
       };
       if (form.encounter_id) body.encounter = form.encounter_id;
+      // Mesma regra do campo na tela: a chave só entra no corpo quando a guia é
+      // de internação. Mandar `tipo_faturamento: ''` em guia de consulta/SADT
+      // seria declarar à API algo sobre um campo que aquele documento não tem —
+      // o serializer aceita a omissão (blank=True, default="") e o model já
+      // grava "" sozinho.
+      if (usesTipoFaturamento) body.tipo_faturamento = form.tipo_faturamento;
 
       const res = await fetch('/api/v1/billing/guides/', {
         method: 'POST',
@@ -451,25 +470,27 @@ export default function NewGuidePage() {
                       <option value="consulta">Consulta</option>
                     </select>
                   </div>
-                  <div>
-                    <label htmlFor="guide-tipo-faturamento" className="mb-1 block text-xs font-medium text-neu-inkSoft">Tipo de faturamento (TISS)</label>
-                    <select
-                      id="guide-tipo-faturamento"
-                      value={form.tipo_faturamento}
-                      onChange={(e) => setField('tipo_faturamento', e.target.value)}
-                      className="w-full rounded-lg border border-slate-200 bg-neu-panel px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">Não informado</option>
-                      {tipoFaturamentoOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                    </select>
-                    {tipoFaturamentoError ? (
-                      <p className="mt-1 text-xs text-red-700">
-                        {tipoFaturamentoError} Recarregue a página — sem a lista este campo não pode ser preenchido.
-                      </p>
-                    ) : (
-                      <p className="mt-1 text-xs text-neu-inkMuted">Códigos e rótulos fornecidos pela API; sem inventar significado ANS.</p>
-                    )}
-                  </div>
+                  {usesTipoFaturamento && (
+                    <div>
+                      <label htmlFor="guide-tipo-faturamento" className="mb-1 block text-xs font-medium text-neu-inkSoft">Tipo de faturamento (TISS)</label>
+                      <select
+                        id="guide-tipo-faturamento"
+                        value={form.tipo_faturamento}
+                        onChange={(e) => setField('tipo_faturamento', e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 bg-neu-panel px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Não informado</option>
+                        {tipoFaturamentoOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                      </select>
+                      {tipoFaturamentoError ? (
+                        <p className="mt-1 text-xs text-red-700">
+                          {tipoFaturamentoError} Recarregue a página — sem a lista este campo não pode ser preenchido.
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-xs text-neu-inkMuted">Códigos e rótulos fornecidos pela API; sem inventar significado ANS.</p>
+                      )}
+                    </div>
+                  )}
                   <div>
                     <label htmlFor="guide-encounter" className="mb-1 block text-xs font-medium text-neu-inkSoft">Atendimento vinculado</label>
                     <input

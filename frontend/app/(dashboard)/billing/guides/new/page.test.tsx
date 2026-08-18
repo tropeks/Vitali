@@ -105,7 +105,6 @@ describe('NewGuidePage', () => {
     expect(screen.getAllByText('MRN-123').length).toBeGreaterThan(0);
     expect(screen.getByText('Atendimento em aberto')).toBeInTheDocument();
     expect(screen.getByText('3 pendência(s)')).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /Código 2/ })).toBeInTheDocument();
   });
 
   it('blocks creation with explicit readiness blockers', async () => {
@@ -133,7 +132,6 @@ describe('NewGuidePage', () => {
     });
 
     await user.selectOptions(screen.getByLabelText('Operadora *'), 'prov-1');
-    await user.selectOptions(screen.getByLabelText('Tipo de faturamento (TISS)'), '2');
     await user.click(screen.getByRole('button', { name: 'Selecionar TUSS mock' }));
     await user.type(screen.getByLabelText('Valor unitário'), '120.5');
 
@@ -156,7 +154,6 @@ describe('NewGuidePage', () => {
       provider: 'prov-1',
       encounter: 'enc-1',
       guide_type: 'sadt',
-      tipo_faturamento: '2',
       items: [
         {
           tuss_code: 101,
@@ -166,19 +163,41 @@ describe('NewGuidePage', () => {
         },
       ],
     });
+    // SADT não emite dm_tipoFaturamento: a chave não entra no corpo. Antes o
+    // POST carregava um valor que nenhum XML leria — e o `toMatchObject` acima
+    // não pega chave a mais, por isso a asserção explícita.
+    expect(JSON.parse(createCall![1].body as string)).not.toHaveProperty('tipo_faturamento');
   });
 
-  it('keeps a failed tipo de faturamento lookup out of the page-level error banner', async () => {
-    // A lista de códigos é auxiliar: se ela falhar, a tela continua utilizável e
-    // o aviso fica ao lado do campo. Antes, o erro ia para o banner da página —
-    // o mesmo lugar onde aparecem as pendências de criação e a recusa do POST —
-    // e um "401" solto no topo sugeria que a guia inteira estava bloqueada.
+  it('neither shows nor fetches tipo de faturamento for the guide types this screen creates', async () => {
+    // dm_tipoFaturamento sai só na guia de resumo de internação, e o seletor
+    // desta tela oferece apenas SADT e consulta. O campo era, por construção,
+    // UI morta: nada do que fosse escolhido ali chegaria a um XML. Enquanto o
+    // seletor não oferecer "internacao", nem o campo aparece nem a lista de
+    // códigos é buscada.
     const user = userEvent.setup();
-    mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+    render(<NewGuidePage />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Tipo de guia')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByLabelText('Tipo de faturamento (TISS)')).not.toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('Tipo de guia'), 'consulta');
+    expect(screen.queryByLabelText('Tipo de faturamento (TISS)')).not.toBeInTheDocument();
+
+    expect(mockFetch.mock.calls.some(
+      ([url]) => String(url).includes('/api/v1/billing/guides/tipo-faturamento-options/'),
+    )).toBe(false);
+  });
+
+  it('lets the page-level error banner keep to the submit blockers', async () => {
+    // O banner do topo é das pendências de criação e da recusa do POST. A lista
+    // auxiliar de códigos não escreve nele (o aviso dela vive ao lado do campo).
+    const user = userEvent.setup();
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.includes('/api/v1/billing/guides/tipo-faturamento-options/')) {
-        return Promise.resolve({ ok: false, status: 500, json: async () => ({}) } as Response);
-      }
       if (url.includes('/api/v1/billing/providers/')) {
         return okJson({ results: [{ id: 'prov-1', name: 'SulAmérica Saúde', ans_code: '006246' }] });
       }
@@ -187,12 +206,11 @@ describe('NewGuidePage', () => {
 
     render(<NewGuidePage />);
 
-    expect(
-      await screen.findByText(/Não foi possível carregar os códigos de tipo de faturamento/),
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByLabelText('Operadora *')).toBeInTheDocument();
+    });
     expect(screen.queryByText(/Pendências antes de criar a guia/)).not.toBeInTheDocument();
 
-    // O banner da página segue livre para o que é dele: as pendências do submit.
     await user.click(screen.getByRole('button', { name: 'Criar guia TISS' }));
     expect(await screen.findByText(/Pendências antes de criar a guia/)).toHaveTextContent(
       'Selecionar operadora',

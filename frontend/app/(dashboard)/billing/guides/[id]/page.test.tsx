@@ -23,12 +23,16 @@ function statusJson(status: number, data: unknown) {
   } as Response);
 }
 
+// Guia de SADT: o tipo mais comum da tela e o que NÃO tem tipo de faturamento.
+// O `guide_type` agora é significativo — a UI de dm_tipoFaturamento depende
+// dele —, então a fixture declara o código, não só o rótulo.
 const draftGuide = {
   id: 'guide-1',
   guide_number: 'GUIA-001',
   status: 'draft',
   patient_name: 'Maria Souza',
   provider_name: 'SulAmérica Saúde',
+  guide_type: 'sadt',
   guide_type_display: 'SADT',
   tipo_faturamento: '2',
   tipo_faturamento_display: 'Código 2 (rótulo a confirmar no manual ANS)',
@@ -41,6 +45,16 @@ const draftGuide = {
 };
 
 const submittedGuide = { ...draftGuide, status: 'submitted', authorization_number: 'AUTH-9', authorization_date: '2026-08-01' };
+
+// Resumo de internação: o ÚNICO tipo de guia que emite dm_tipoFaturamento no
+// XML e, por isso, o único em que o campo aparece na tela.
+const internacaoDraftGuide = {
+  ...draftGuide,
+  guide_type: 'internacao',
+  guide_type_display: 'Resumo de Internação',
+};
+
+const internacaoSubmittedGuide = { ...internacaoDraftGuide, ...submittedGuide, guide_type: 'internacao', guide_type_display: 'Resumo de Internação' };
 
 // A lista de códigos dm_tipoFaturamento tem UMA fonte: o endpoint de choices.
 // O serializer da guia não a devolve mais (não havia como servir a tela de guia
@@ -75,7 +89,6 @@ describe('GuideDetailPage — authorization_date', () => {
 
     expect(screen.getByLabelText('Data da autorização')).not.toBeDisabled();
     expect(screen.getByLabelText('Senha de autorização')).not.toBeDisabled();
-    await waitFor(() => expect(screen.getByLabelText('Tipo de faturamento (TISS)')).toHaveValue('2'));
   });
 
   it('sends the picked date as plain YYYY-MM-DD, with no timezone shift', async () => {
@@ -208,12 +221,61 @@ describe('GuideDetailPage — authorization_date', () => {
 });
 
 describe('GuideDetailPage — tipo de faturamento (TISS)', () => {
-  it('fills the select from the choices endpoint, not from the guide payload', async () => {
+  it('shows the panel and the summary row for an internação guide', async () => {
+    mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith(TIPO_FATURAMENTO_OPTIONS_URL)) return okJson(tipoFaturamentoOptions);
+      if (url.endsWith('/api/v1/billing/guides/guide-1/') && init?.method !== 'PATCH') {
+        return okJson(internacaoDraftGuide);
+      }
+      return okJson({});
+    });
+
+    render(<GuideDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Tipo de faturamento (TISS)' })).toBeInTheDocument();
+    });
+
+    // A linha do resumo mostra o código gravado na guia.
+    const summaryTerm = screen.getAllByText('Tipo de faturamento (TISS)').find((el) => el.tagName === 'DT');
+    expect(summaryTerm).toBeDefined();
+    expect(summaryTerm!.parentElement).toHaveTextContent('Código 2 (rótulo a confirmar no manual ANS)');
+    expect(screen.getByLabelText('Tipo de faturamento (TISS)')).toHaveValue('2');
+  });
+
+  it('hides panel, summary row and the choices request for a guide that never emits the field', async () => {
+    // dm_tipoFaturamento sai só no XML de resumo de internação. Numa guia de
+    // SADT o campo aparecia mesmo assim, convidando o faturista a declarar um
+    // código ANS que nenhum documento carregaria.
     mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith(TIPO_FATURAMENTO_OPTIONS_URL)) return okJson(tipoFaturamentoOptions);
       if (url.endsWith('/api/v1/billing/guides/guide-1/') && init?.method !== 'PATCH') {
         return okJson(draftGuide);
+      }
+      return okJson({});
+    });
+
+    render(<GuideDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Senha de autorização')).toBeInTheDocument();
+    });
+
+    // Um único queryByText cobre o título do painel, o rótulo do select e o
+    // <dt> do resumo — nenhum dos três pertence a esta guia.
+    expect(screen.queryByText('Tipo de faturamento (TISS)')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Salvar tipo de faturamento' })).not.toBeInTheDocument();
+    expect(mockFetch.mock.calls.some(([url]) => String(url).endsWith(TIPO_FATURAMENTO_OPTIONS_URL))).toBe(false);
+  });
+
+  it('fills the select from the choices endpoint, not from the guide payload', async () => {
+    mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith(TIPO_FATURAMENTO_OPTIONS_URL)) return okJson(tipoFaturamentoOptions);
+      if (url.endsWith('/api/v1/billing/guides/guide-1/') && init?.method !== 'PATCH') {
+        return okJson(internacaoDraftGuide);
       }
       return okJson({});
     });
@@ -236,7 +298,7 @@ describe('GuideDetailPage — tipo de faturamento (TISS)', () => {
       const url = String(input);
       if (url.endsWith(TIPO_FATURAMENTO_OPTIONS_URL)) return statusJson(401, { detail: 'unauth' });
       if (url.endsWith('/api/v1/billing/guides/guide-1/') && init?.method !== 'PATCH') {
-        return okJson(draftGuide);
+        return okJson(internacaoDraftGuide);
       }
       return okJson({});
     });
@@ -255,9 +317,9 @@ describe('GuideDetailPage — tipo de faturamento (TISS)', () => {
       const url = String(input);
       if (url.endsWith(TIPO_FATURAMENTO_OPTIONS_URL)) return okJson(tipoFaturamentoOptions);
       if (url.endsWith('/api/v1/billing/guides/guide-1/') && init?.method === 'PATCH') {
-        return okJson({ ...draftGuide, tipo_faturamento: '1' });
+        return okJson({ ...internacaoDraftGuide, tipo_faturamento: '1' });
       }
-      if (url.endsWith('/api/v1/billing/guides/guide-1/')) return okJson(draftGuide);
+      if (url.endsWith('/api/v1/billing/guides/guide-1/')) return okJson(internacaoDraftGuide);
       return okJson({});
     });
 
@@ -289,7 +351,7 @@ describe('GuideDetailPage — tipo de faturamento (TISS)', () => {
           detail: "Guia 'GUIA-001' está com status 'pending' e não pode mais ser editada.",
         });
       }
-      if (url.endsWith('/api/v1/billing/guides/guide-1/')) return okJson(draftGuide);
+      if (url.endsWith('/api/v1/billing/guides/guide-1/')) return okJson(internacaoDraftGuide);
       return okJson({});
     });
 
@@ -315,7 +377,7 @@ describe('GuideDetailPage — tipo de faturamento (TISS)', () => {
       const url = String(input);
       if (url.endsWith(TIPO_FATURAMENTO_OPTIONS_URL)) return okJson(tipoFaturamentoOptions);
       if (url.endsWith('/api/v1/billing/guides/guide-1/') && init?.method !== 'PATCH') {
-        return okJson(submittedGuide);
+        return okJson(internacaoSubmittedGuide);
       }
       return okJson({});
     });
