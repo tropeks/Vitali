@@ -7,7 +7,8 @@
    (numeroGuiaSolicitacaoInternacao, dadosAutorizacao, dadosBeneficiario,
    dadosExecutante, dadosInternacao, dadosSaidaInternacao).
 
-   Forma corrigida nesta fatia: só cabecalhoGuia, no formato real do XSD
+   Forma corrigida NAQUELA fatia (a lista abaixo é histórica, não o estado
+   de hoje): cabecalhoGuia no formato real do XSD
    (ct_guiaCabecalho = registroANS + numeroGuiaPrestador, mesmo de
    consulta_guide.xml.j2). O próximo elemento obrigatório na sequência,
    <numeroGuiaSolicitacaoInternacao> (referência textual a uma guia de
@@ -19,7 +20,7 @@
    deliberada de declarar à operadora que solicitação e resumo são o mesmo
    documento, usando o próprio numeroGuiaPrestador da guia.
 
-   dadosAutorizacao (ct_autorizacaoInternacao) resolvido nesta fatia a partir
+   dadosAutorizacao (ct_autorizacaoInternacao) resolvido em fatia seguinte, a partir
    de dado já existente — ver xml_engine._resolve_internacao_authorization:
    senha vem de TISSGuide.authorization_number OU da Authorization aprovada
    resolvida; dataAutorizacao vem SEMPRE de Authorization.valid_from (nunca
@@ -27,7 +28,7 @@
    não há fonte honesta para os dois — este template nunca é renderizado
    nesse caso.
 
-   Fatia seguinte (mesma leva): dadosBeneficiario (ct_beneficiarioDados) é o
+   Fatia anterior (mesma leva): dadosBeneficiario (ct_beneficiarioDados) é o
    MESMO tipo já usado em consulta_guide.xml.j2/sadt_guide.xml.j2 —
    numeroCarteira + atendimentoRN="N" (default, sem dado de recém-nascido no
    model). dadosExecutante é forma nova (contratadoExecutante/ct_contratadoDados
@@ -37,15 +38,37 @@
    de codigoPrestadorNaOperadora usado no cabeçalho do lote — ver comentário em
    batch_envelope.xml.j2.
 
-   Restante da sequência (dadosInternacao, dadosSaidaInternacao,
-   procedimentosExecutados, valorTotal) é gap de DADO real, não de forma:
-   dadosInternacao.tipoFaturacao (dm_tipoFaturamento) não tem NENHUMA fonte no
-   Vitali hoje (nem em TISSGuide nem em emr.Admission) — é uma decisão de
-   produto sobre o momento do faturamento (parcial/final/complementar), fora
-   do escopo desta fatia. emr.Admission já tem carater_atendimento/
-   tipo_internacao/regime_internacao/disposition_ans_code (Fatia 3 anterior),
-   mas TISSGuide.admission é opcional e não é resolvido aqui — ver
-   docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §3/§7 Fatia 4+. #}
+   ESTA FATIA fecha dadosInternacao, dadosSaidaInternacao e valorTotal — os
+   três últimos elementos obrigatórios da sequência. Com eles, a guia de resumo
+   de internação passa a ser XSD-VÁLIDA de ponta a ponta (o xfail do teste caiu).
+
+   dadosInternacao (ctm_internacaoDados) tem OITO filhos obrigatórios, não os
+   quatro que o doc de pesquisa §3 listava — medido com lxml sobre
+   tissGuiasV4_01_00.xsd. Seis vêm da internação vinculada
+   (carater_atendimento/tipo_internacao/regime_internacao + admission_datetime
+   e actual_discharge_datetime, que dão os quatro campos de data/hora do
+   período de faturamento) e um da guia (tipo_faturamento, campo novo desta
+   fatia — o período faturado é atributo do DOCUMENTO, não da estada: ver
+   TISSGuide.TipoFaturamento em models.py). Todos resolvidos em
+   xml_engine._resolve_internacao_dados, que falha alto e acionável quando
+   qualquer um falta — este template nunca renderiza com dado fabricado, e por
+   isso não tem nenhum `if`/default aqui dentro.
+
+   Datas/horas chegam JÁ CONVERTIDAS para o fuso da clínica (_local_datetime no
+   resolver): st_data/st_hora são locais e sem offset, e formatar o valor UTC
+   do banco deslocaria uma internação da noite para o dia seguinte.
+
+   RESIDUAL NOVO (schema-válido, mas honesto declarar):
+   1. procedimentosExecutados é minOccurs="0" — o XSD aceita a guia sem
+      NENHUMA linha de procedimento, e é assim que ela sai hoje, mesmo com
+      TISSGuideItem preenchido. Não é omissão preguiçosa: ct_procedimentoExecutadoInt
+      exige reducaoAcrescimo (Fatia 1 do doc de pesquisa, ainda não landed —
+      TISSGuideItem não tem o campo) e dataExecucao por item (TISSGuideItem não
+      guarda data nenhuma). Emitir isso hoje seria inventar os dois. Operadora
+      nenhuma paga uma internação sem discriminação de itens: schema-válido NÃO
+      é aceite — ver o mesmo alerta no valorTotal abaixo.
+   2. valorTotal usa a Alternativa A do doc §4 (só valorTotalGeral).
+   Ambos estão em docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §4/§7. #}
 <ans:guiaResumoInternacao>
   <ans:cabecalhoGuia>
     <ans:registroANS>{{ guide.provider.ans_code }}</ans:registroANS>
@@ -74,4 +97,48 @@
     </ans:contratadoExecutante>
     <ans:CNES>{{ professional.cnes_code if professional else '' }}</ans:CNES>
   </ans:dadosExecutante>
+  <ans:dadosInternacao>
+    <ans:caraterAtendimento>{{ internacao_carater_atendimento }}</ans:caraterAtendimento>
+    <ans:tipoFaturamento>{{ internacao_tipo_faturamento }}</ans:tipoFaturamento>
+    {# Período de faturamento: início = internação, fim = alta efetiva. As
+       quatro linhas saem do MESMO par de datetimes, já em hora local. #}
+    <ans:dataInicioFaturamento>{{ internacao_inicio | format_date }}</ans:dataInicioFaturamento>
+    <ans:horaInicioFaturamento>{{ internacao_inicio | format_time }}</ans:horaInicioFaturamento>
+    <ans:dataFinalFaturamento>{{ internacao_fim | format_date }}</ans:dataFinalFaturamento>
+    <ans:horaFinalFaturamento>{{ internacao_fim | format_time }}</ans:horaFinalFaturamento>
+    <ans:tipoInternacao>{{ internacao_tipo }}</ans:tipoInternacao>
+    <ans:regimeInternacao>{{ internacao_regime }}</ans:regimeInternacao>
+    {# <declaracoes> (nascido/óbito/DORN) é minOccurs="0" e o Vitali não modela
+       declaração de nascido vivo nem de óbito — omitido, não fabricado. #}
+  </ans:dadosInternacao>
+  <ans:dadosSaidaInternacao>
+    {# <diagnostico> (CID de saída) é minOccurs="0"/maxOccurs="4". guide.cid10_codes
+       existe, mas é o CID do atendimento, não o diagnóstico de ENCERRAMENTO da
+       internação — não são o mesmo campo semântico. Omitido por ser opcional. #}
+    {# indicadorAcidente (dm_indicadorAcidente): obrigatório, sem dado de origem
+       no model — "9" (não acidente) é o mesmo default seguro já documentado e
+       usado em consulta_guide.xml.j2/<indicacaoAcidente>. #}
+    <ans:indicadorAcidente>9</ans:indicadorAcidente>
+    <ans:motivoEncerramento>{{ internacao_motivo_encerramento }}</ans:motivoEncerramento>
+  </ans:dadosSaidaInternacao>
+  {# <procedimentosExecutados> é minOccurs="0" e fica FORA daqui — ver o item 1
+     do RESIDUAL no cabeçalho: ct_procedimentoExecutadoInt exige reducaoAcrescimo
+     e dataExecucao por item, e TISSGuideItem não tem nenhum dos dois. #}
+  <ans:valorTotal>
+    {# ct_guiaValorTotal — Alternativa A do doc de pesquisa §4: dos oito filhos,
+       só <valorTotalGeral> é obrigatório; os sete breakdowns
+       (valorProcedimentos/valorDiarias/valorTaxasAlugueis/valorMateriais/
+       valorMedicamentos/valorOPME/valorGasesMedicinais) são minOccurs="0" e
+       ficam omitidos. Zero migration, zero classificação de item.
+
+       ATENÇÃO, e isto não é ressalva de estilo: SCHEMA-VÁLIDO NÃO É ACEITE DA
+       OPERADORA. Glosar internação por falta de breakdown (principalmente a
+       separação diária × taxa × gás medicinal) é prática real de mercado, e
+       este XML sai sem nenhum deles. Fechar isso é a Alternativa B do §4, que
+       depende de medir a correspondência TUSSCode.table_number→categoria
+       contra o catálogo importado de verdade (não supor) e de decidir se
+       TISSGuideItem passa a guardar a proveniência DailyCharge × InpatientFee,
+       hoje fundida na agregação de generate_internacao_guide_for_admission. #}
+    <ans:valorTotalGeral>{{ guide.total_value | format_currency }}</ans:valorTotalGeral>
+  </ans:valorTotal>
 </ans:guiaResumoInternacao>

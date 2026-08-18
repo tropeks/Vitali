@@ -195,6 +195,52 @@ class GuideImmutabilityTestCase(TenantTestCase):
         guide = TISSGuide.objects.get(id=guide_id)
         self.assertEqual(guide.authorization_date, datetime.date(2026, 8, 15))
 
+    # ── Onda 4: tipo_faturamento herda a mesma trava ─────────────────────────
+
+    def test_tipo_faturamento_is_writable_in_draft(self):
+        """Contrato da API: tipo_faturamento (dm_tipoFaturamento, obrigatório na
+        guia de resumo de internação) é editável por PATCH enquanto a guia é
+        draft. É o único dos cinco campos de <dadosInternacao> que mora na guia e
+        não na internação — logo é aqui, e só aqui, que o faturista o preenche."""
+        guide_id = self._create_guide().json()["id"]
+        client = self._auth(self.fat_token)
+        resp = client.patch(
+            f"/api/v1/billing/guides/{guide_id}/",
+            {"tipo_faturamento": "2"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()["tipo_faturamento"], "2")
+        # O par valor/_display segue o padrão de status/guide_type. O rótulo é
+        # deliberadamente "a confirmar no manual ANS" enquanto o manual não
+        # estiver no repo — ver TISSGuide.TipoFaturamento.
+        self.assertEqual(
+            resp.json()["tipo_faturamento_display"],
+            "Código 2 (rótulo a confirmar no manual ANS)",
+        )
+        guide = TISSGuide.objects.get(id=guide_id)
+        self.assertEqual(guide.tipo_faturamento, "2")
+
+    def test_tipo_faturamento_is_blocked_after_draft(self):
+        """Depois do envio, trocar o tipo de faturamento muda o SIGNIFICADO do
+        documento já transmitido: a guia declarada à operadora como parcial
+        passaria a constar como de encerramento (ou o inverso), sem nenhum rastro
+        no lote exportado. Mesma trava dos demais campos (Onda2 2.3)."""
+        client = self._auth(self.fat_token)
+        guide_id = self._create_guide(client).json()["id"]
+        submit_resp = client.post(f"/api/v1/billing/guides/{guide_id}/submit/")
+        self.assertEqual(submit_resp.status_code, 200, submit_resp.content)
+
+        patch_resp = client.patch(
+            f"/api/v1/billing/guides/{guide_id}/",
+            {"tipo_faturamento": "3"},
+            format="json",
+        )
+        self.assertEqual(patch_resp.status_code, 400, patch_resp.content)
+
+        guide = TISSGuide.objects.get(id=guide_id)
+        self.assertEqual(guide.tipo_faturamento, "")
+
     def test_authorization_date_is_blocked_after_draft(self):
         """A digitação da data de autorização só é possível antes do envio —
         depois disso a guia entra na mesma trava de imutabilidade de

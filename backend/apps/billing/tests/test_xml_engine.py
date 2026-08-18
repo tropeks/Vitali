@@ -14,6 +14,7 @@ import datetime
 from decimal import Decimal
 
 import pytest
+from django.utils import timezone
 
 from apps.billing.models import (
     Authorization,
@@ -30,8 +31,13 @@ from apps.billing.services.xml_engine import (
     validate_xml,
 )
 from apps.core.models import Role, TUSSCode, User
-from apps.emr.models import Encounter, Patient, Professional
+from apps.emr.models import Admission, Encounter, Patient, Professional
 from apps.test_utils import TenantTestCase
+
+#: Sentinela para distinguir "internação omitida" (cria uma completa) de
+#: ``admission=None`` (guia sem vínculo — ramo de falha estrutural). ``None``
+#: é um valor de teste legítimo aqui, então não serve como default.
+_UNSET = object()
 
 
 class XMLEngineTestCase(TenantTestCase):
@@ -257,71 +263,76 @@ class SadtGuideXMLConformanceTests(XMLEngineTestCase):
         assert errors == [], errors
 
 
-class InternacaoGuideXMLConformanceTests(XMLEngineTestCase):
-    """guiaResumoInternacao (ctm_internacaoResumoGuia) — NOT brought to full
-    conformance in this slice, but the dadosAutorizacao, dadosBeneficiario
-    AND dadosExecutante gaps are CLOSED.
+class InternacaoFixtureMixin:
+    """Fixtures compartilhadas pelas três classes de internação abaixo.
 
-    Onda 4 Fatia 0 ported cabecalhoGuia and resolved
-    numeroGuiaSolicitacaoInternacao (self-reference, Capitão's product
-    decision). A later slice resolved <dadosAutorizacao> (ct_autorizacaoInternacao)
-    from data that already exists — no new model field:
-
-    - senha ← TISSGuide.authorization_number (models.py:367) when set, else
-      the resolved Authorization row's own authorization_number.
-    - dataAutorizacao ← the resolved Authorization.valid_from (models.py:241)
-      — NEVER fabricated.
-    - Resolution reuses the SAME rule the glosa-safety engine already applies
-      (G3d — glosa_safety.py:401-432 _approved_authorization_coverage /
-      models.py:165-176, :196-199): an APPROVED Authorization row for the
-      guide's patient+provider whose validity window contains the guide's
-      effective date, matching by TUSS or generic (tuss_code NULL). See
-      xml_engine._resolve_internacao_authorization for the adapted (one-row,
-      not just coverage-set) version.
-    - When guide.authorization_number is filled but NO Authorization row
-      resolves, there is a senha but no honest date source. We do NOT invent
-      one: generate_guide_xml raises TISSXMLGenerationError (fail loud),
-      matching the file's existing pattern for genuine data gaps (honorarios,
-      wrong item count, mixed-type batch) instead of emitting a guide with a
-      fabricated authorization date.
-
-    This slice closes the next two elements, BOTH pure form (ligação, no new
-    model field, no migration):
-
-    - <dadosBeneficiario> is ct_beneficiarioDados — the EXACT SAME type
-      consulta_guide.xml.j2/sadt_guide.xml.j2 already emit correctly
-      (numeroCarteira ← guide.insured_card_number; atendimentoRN ← "N"
-      default, same as those two templates — no RN signal in the model).
-    - <dadosExecutante> wraps contratadoExecutante (ct_contratadoDados,
-      codigoPrestadorNaOperadora choice) + a sibling CNES — new SHAPE (not
-      the contratadoExecutante+profissionalExecutante pair guiaConsulta
-      uses), but the same DATA every other template already resolves:
-      professional.cnes_code from the encounter's professional (already in
-      generate_guide_xml's context dict for every guide type).
-
-    Measured before this slice: 1 residual error (missing dadosBeneficiario).
-    Measured after: 1 residual error, now further into the sequence —
-    <dadosInternacao> is next, and it IS a genuine DATA gap: its
-    tipoFaturamento (dm_tipoFaturamento) child has NO source anywhere in the
-    Vitali model (not TISSGuide, not emr.Admission) — it is a product
-    decision about billing-moment (partial/final/complementary), not a
-    ligação. emr.Admission does already carry carater_atendimento/
-    tipo_internacao/regime_internacao/disposition_ans_code (a prior Onda 4
-    slice — "Fatia 3" in the research doc), but TISSGuide.admission is
-    optional and unresolved here; wiring it plus deciding tipoFaturamento is
-    real, separately itemized modeling work. Everything after dadosInternacao
-    (dadosSaidaInternacao, valorTotal breakdown) is unreached as a
-    consequence — see docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §3/§7.
+    Antes desta fatia cada classe repetia seu próprio ``_make_internacao_guide``
+    e nenhuma criava ``Admission``, porque nada no template lia a internação.
+    Agora ``dadosInternacao`` depende dela — e a duplicação viraria três lugares
+    para esquecer de preencher um dos campos novos.
     """
 
-    def _make_internacao_guide(self, *, authorization_number="AUTH123"):
+    #: Internação de 2026-08-10 21:30 a 2026-08-14 09:15, HORA LOCAL da clínica.
+    #: 21:30 em America/Sao_Paulo é 00:30 UTC do DIA SEGUINTE — escolhido de
+    #: propósito: é o horário que denuncia formatação em UTC (ver
+    #: test_periodo_de_faturamento_sai_em_hora_local_da_clinica).
+    ADMISSION_LOCAL = datetime.datetime(2026, 8, 10, 21, 30)
+    DISCHARGE_LOCAL = datetime.datetime(2026, 8, 14, 9, 15)
+
+    def _make_admission(
+        self,
+        *,
+        admit=None,
+        discharge=None,
+        carater_atendimento="1",
+        tipo_internacao="1",
+        regime_internacao="1",
+        disposition_ans_code="11",
+    ):
+        return Admission.objects.create(
+            patient=self.patient,
+            admitting_professional=self.professional,
+            attending_professional=self.professional,
+            encounter=self.encounter,
+            admission_datetime=timezone.make_aware(admit or self.ADMISSION_LOCAL),
+            actual_discharge_datetime=(
+                None
+                if discharge is False
+                else timezone.make_aware(discharge or self.DISCHARGE_LOCAL)
+            ),
+            status=(
+                Admission.Status.ADMITTED if discharge is False else Admission.Status.DISCHARGED
+            ),
+            carater_atendimento=carater_atendimento,
+            tipo_internacao=tipo_internacao,
+            regime_internacao=regime_internacao,
+            disposition_ans_code=disposition_ans_code,
+        )
+
+    def _make_internacao_guide(
+        self,
+        *,
+        authorization_number="AUTH123",
+        admission=_UNSET,
+        tipo_faturamento="1",
+    ):
+        """Guia de internação COMPLETA por padrão (internação com alta + todas as
+        taxonomias + tipo_faturamento).
+
+        ``admission`` aceita três coisas: omitido → cria uma internação completa;
+        ``None`` → guia sem vínculo (branch de falha estrutural); uma instância →
+        usa aquela (branches de campo faltando)."""
+        if admission is _UNSET:
+            admission = self._make_admission()
         guide = TISSGuide.objects.create(
             guide_type="internacao",
             encounter=self.encounter,
             patient=self.patient,
             provider=self.provider,
+            admission=admission,
             insured_card_number="1234567890123456",
             authorization_number=authorization_number,
+            tipo_faturamento=tipo_faturamento,
             competency="2026-08",
         )
         TISSGuideItem.objects.create(
@@ -333,24 +344,8 @@ class InternacaoGuideXMLConformanceTests(XMLEngineTestCase):
         )
         return guide
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "ctm_internacaoResumoGuia: cabecalhoGuia, "
-            "numeroGuiaSolicitacaoInternacao, dadosAutorizacao, "
-            "dadosBeneficiario AND dadosExecutante are now form- AND "
-            "data-complete (Onda 4). Residual is a genuine data gap, not "
-            "form: <dadosInternacao> is next, and its tipoFaturamento child "
-            "has no model source (not TISSGuide, not emr.Admission) — a "
-            "product decision about billing-moment, out of this slice's "
-            "scope. Everything after it (dadosSaidaInternacao, valorTotal "
-            "breakdown) is unreached as a consequence — see Onda 4 report."
-        ),
-    )
-    def test_batch_envelope_with_internacao_guide_is_schema_valid(self):
-        """Guide WITH a resolvable Authorization (senha + honest date)."""
-        guide = self._make_internacao_guide()
-        Authorization.objects.create(
+    def _approve_authorization(self):
+        return Authorization.objects.create(
             patient=self.patient,
             provider=self.provider,
             tuss_code=self.tuss_consulta,
@@ -358,6 +353,58 @@ class InternacaoGuideXMLConformanceTests(XMLEngineTestCase):
             valid_from=datetime.date(2026, 8, 1),
             authorization_number="AUTH123",
         )
+
+
+class InternacaoGuideXMLConformanceTests(InternacaoFixtureMixin, XMLEngineTestCase):
+    """guiaResumoInternacao (ctm_internacaoResumoGuia) — AGORA EM CONFORMIDADE
+    TOTAL. O ``xfail(strict=True)`` que este arquivo carregava desde a Onda 2
+    caiu nesta fatia; ``validate_xml`` devolve lista vazia.
+
+    Histórico da sequência, elemento a elemento (cada linha foi uma medição,
+    não uma estimativa — é assim que esta onda vem funcionando):
+
+    - ``cabecalhoGuia`` + ``numeroGuiaSolicitacaoInternacao`` — Onda 4 Fatia 0
+      (forma portada de ``consulta_guide.xml.j2``; a autorreferência ao próprio
+      ``guide_number`` é decisão de produto do Capitão).
+    - ``dadosAutorizacao`` — resolvido de dado existente
+      (``_resolve_internacao_authorization``): ``senha`` de
+      ``TISSGuide.authorization_number`` ou da ``Authorization`` aprovada,
+      ``dataAutorizacao`` SEMPRE de fonte real (``Authorization.valid_from`` ou
+      a digitação ``authorization_date``), nunca fabricada.
+    - ``dadosBeneficiario`` + ``dadosExecutante`` — pura ligação, mesmo dado que
+      os outros templates da pasta já resolviam.
+    - ``dadosInternacao`` + ``dadosSaidaInternacao`` + ``valorTotal`` — ESTA
+      FATIA (ver ``InternacaoDadosResolutionTests`` para os ramos de falha).
+
+    O QUE A MEDIÇÃO DO XSD CORRIGIU NO PLANO. O doc de pesquisa §3 listava
+    quatro filhos de ``ctm_internacaoDados``; o XSD tem OITO obrigatórios. Os
+    quatro que faltavam na lista são o período de faturamento
+    (``dataInicioFaturamento``/``horaInicioFaturamento``/``dataFinalFaturamento``/
+    ``horaFinalFaturamento``) — e são justamente eles que provam que este bloco
+    descreve a GUIA, não a estada, que é por que ``tipo_faturamento`` nasceu em
+    ``TISSGuide`` e não em ``Admission`` (o §5 sugeria ``Admission``).
+
+    O QUE AINDA NÃO É VERDADE, apesar do XML válido:
+
+    - ``procedimentosExecutados`` é ``minOccurs="0"`` e NÃO é emitido, mesmo com
+      ``TISSGuideItem`` preenchido: ``ct_procedimentoExecutadoInt`` exige
+      ``reducaoAcrescimo`` (campo que ``TISSGuideItem`` não tem — Fatia 1 do doc,
+      não landed) e ``dataExecucao`` por item (que ``TISSGuideItem`` também não
+      guarda). Emitir seria fabricar os dois.
+    - ``valorTotal`` sai pela Alternativa A do doc §4 (só ``valorTotalGeral``,
+      sete breakdowns omitidos).
+
+    Ou seja: **XSD-válido não é aceite da operadora**. Uma internação enviada sem
+    discriminação de itens e sem separação diária × taxa × gás medicinal é
+    candidata natural a glosa. Fechar isso é a Alternativa B do §4 + a Fatia 1,
+    e depende de decisão de produto — não de mais uma medição de schema.
+    """
+
+    def test_batch_envelope_with_internacao_guide_is_schema_valid(self):
+        """Caminho feliz completo: internação com alta, taxonomias preenchidas,
+        tipo_faturamento declarado e Authorization aprovada resolvível."""
+        guide = self._make_internacao_guide()
+        self._approve_authorization()
         batch = TISSBatch.objects.create(provider=self.provider)
         batch.guides.add(guide)
 
@@ -365,6 +412,74 @@ class InternacaoGuideXMLConformanceTests(XMLEngineTestCase):
         errors = validate_xml(xml)
 
         assert errors == [], errors
+
+    def test_periodo_de_faturamento_sai_em_hora_local_da_clinica(self):
+        """``st_data``/``st_hora`` são data e hora LOCAIS, sem offset — e o banco
+        guarda ``DateTimeField`` em UTC.
+
+        A internação da fixture começa às 21:30 de 2026-08-10 em
+        America/Sao_Paulo, que é 00:30 de 2026-08-11 em UTC. Formatar o valor
+        aware direto (o que ``format_date``/``format_time`` fazem sozinhos)
+        empurraria o início do faturamento para o DIA SEGUINTE: um dia inteiro de
+        estada some do documento enviado à operadora, e só reaparece como glosa.
+        Por isso a conversão mora no resolver (``_local_datetime``), antes do
+        template. Este teste é o guarda dessa conversão."""
+        guide = self._make_internacao_guide()
+        self._approve_authorization()
+
+        xml = generate_guide_xml(guide)
+
+        assert "<ans:dataInicioFaturamento>2026-08-10</ans:dataInicioFaturamento>" in xml
+        assert "<ans:horaInicioFaturamento>21:30:00</ans:horaInicioFaturamento>" in xml
+        assert "<ans:dataFinalFaturamento>2026-08-14</ans:dataFinalFaturamento>" in xml
+        assert "<ans:horaFinalFaturamento>09:15:00</ans:horaFinalFaturamento>" in xml
+        # O erro que este teste existe para pegar, dito explicitamente.
+        assert "2026-08-11" not in xml, "período de faturamento saiu em UTC, não em hora local"
+
+    def test_dados_internacao_e_saida_saem_das_fontes_reais(self):
+        """Cada filho obrigatório vem do campo que o resolver documenta — e
+        ``indicadorAcidente`` sai com o default seguro "9" (não acidente), o
+        mesmo já documentado em ``consulta_guide.xml.j2``, porque não existe
+        fonte de acidente no model."""
+        admission = self._make_admission(
+            carater_atendimento="2",
+            tipo_internacao="3",
+            regime_internacao="2",
+            disposition_ans_code="27",
+        )
+        guide = self._make_internacao_guide(admission=admission, tipo_faturamento="4")
+        self._approve_authorization()
+
+        xml = generate_guide_xml(guide)
+
+        assert "<ans:caraterAtendimento>2</ans:caraterAtendimento>" in xml
+        assert "<ans:tipoFaturamento>4</ans:tipoFaturamento>" in xml
+        assert "<ans:tipoInternacao>3</ans:tipoInternacao>" in xml
+        assert "<ans:regimeInternacao>2</ans:regimeInternacao>" in xml
+        assert "<ans:indicadorAcidente>9</ans:indicadorAcidente>" in xml
+        assert "<ans:motivoEncerramento>27</ans:motivoEncerramento>" in xml
+
+    def test_valor_total_emite_so_o_total_geral_sem_breakdown(self):
+        """Alternativa A do doc §4, explicitada em teste para que uma futura
+        Fatia 6 (breakdown real) tenha de mexer AQUI e reler o trade-off: os sete
+        campos de breakdown são opcionais no XSD e saem ausentes de propósito,
+        não por esquecimento."""
+        guide = self._make_internacao_guide()
+        self._approve_authorization()
+
+        xml = generate_guide_xml(guide)
+
+        assert "<ans:valorTotalGeral>150.00</ans:valorTotalGeral>" in xml
+        for breakdown in (
+            "valorProcedimentos",
+            "valorDiarias",
+            "valorTaxasAlugueis",
+            "valorMateriais",
+            "valorMedicamentos",
+            "valorOPME",
+            "valorGasesMedicinais",
+        ):
+            assert breakdown not in xml
 
     def test_generate_guide_xml_raises_when_authorization_number_has_no_matching_authorization(
         self,
@@ -379,7 +494,157 @@ class InternacaoGuideXMLConformanceTests(XMLEngineTestCase):
             generate_guide_xml(guide)
 
 
-class InternacaoAuthorizationPrecedenceTests(XMLEngineTestCase):
+class InternacaoDadosResolutionTests(InternacaoFixtureMixin, XMLEngineTestCase):
+    """Um teste por ramo de falha de ``_resolve_internacao_dados``.
+
+    Todos os ramos existem porque ``ctm_internacaoDados``/
+    ``ctm_internacaoDadosSaida`` pedem dado que pode legitimamente não existir
+    (campos ``blank=True``, internações abertas, guias sem vínculo), e a política
+    do módulo é falhar alto com mensagem acionável em vez de emitir XML com
+    default inventado. O que cada teste verifica não é só "levantou": é que a
+    mensagem diz ao FATURISTA o que preencher e onde — a mensagem É o produto
+    aqui, do mesmo jeito que em ``InternacaoAuthorizationPrecedenceTests``.
+
+    Todos os testes registram uma ``Authorization`` aprovada no setUp para que a
+    falha medida seja a de ``dadosInternacao``, e não a de ``dadosAutorizacao``,
+    que é resolvida antes e mascararia o ramo sob teste.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self._approve_authorization()
+
+    def test_guia_sem_internacao_vinculada_falha_alto(self):
+        """``TISSGuide.admission`` é ``null=True`` (guia de internação avulsa é
+        criável pela API) — mas sem ela não há NADA do bloco: nem taxonomia, nem
+        período. É falha estrutural, com mensagem própria apontando a ponte que
+        cria a guia do jeito certo."""
+        guide = self._make_internacao_guide(admission=None)
+
+        with pytest.raises(TISSXMLGenerationError) as exc_info:
+            generate_guide_xml(guide)
+
+        message = str(exc_info.value)
+        assert "não está vinculada a nenhuma internação" in message
+        assert "from-admission" in message
+
+    def test_internacao_ainda_aberta_falha_alto_explicando_a_alta(self):
+        """``dataFinalFaturamento``/``horaFinalFaturamento`` só têm fonte honesta
+        depois da alta. A mensagem precisa dizer que a guia de resumo fecha
+        DEPOIS da alta — e que faturamento parcial não existe no fluxo atual, que
+        é a verdade e não uma limitação escondida."""
+        admission = self._make_admission(discharge=False)
+        guide = self._make_internacao_guide(admission=admission)
+
+        with pytest.raises(TISSXMLGenerationError) as exc_info:
+            generate_guide_xml(guide)
+
+        message = str(exc_info.value)
+        assert "ainda ABERTA" in message
+        assert "só fecha depois da alta" in message
+        assert "dataFinalFaturamento" in message
+
+    def test_carater_atendimento_vazio_falha_alto_apontando_a_admissao(self):
+        admission = self._make_admission(carater_atendimento="")
+        guide = self._make_internacao_guide(admission=admission)
+
+        with pytest.raises(TISSXMLGenerationError) as exc_info:
+            generate_guide_xml(guide)
+
+        message = str(exc_info.value)
+        assert "carater_atendimento (dm_caraterAtendimento)" in message
+        assert "tela de admissão" in message
+
+    def test_tipo_internacao_vazio_falha_alto_apontando_a_admissao(self):
+        admission = self._make_admission(tipo_internacao="")
+        guide = self._make_internacao_guide(admission=admission)
+
+        with pytest.raises(TISSXMLGenerationError) as exc_info:
+            generate_guide_xml(guide)
+
+        assert "tipo_internacao (dm_tipoInternacao)" in str(exc_info.value)
+
+    def test_regime_internacao_vazio_falha_alto_apontando_a_admissao(self):
+        admission = self._make_admission(regime_internacao="")
+        guide = self._make_internacao_guide(admission=admission)
+
+        with pytest.raises(TISSXMLGenerationError) as exc_info:
+            generate_guide_xml(guide)
+
+        assert "regime_internacao (dm_regimeInternacao)" in str(exc_info.value)
+
+    def test_motivo_encerramento_vazio_falha_alto_apontando_a_tela_de_alta(self):
+        """``disposition_ans_code`` é o único dos quatro que se preenche na ALTA,
+        não na admissão — a mensagem tem de mandar o faturista para a tela certa,
+        senão ele procura no lugar errado."""
+        admission = self._make_admission(disposition_ans_code="")
+        guide = self._make_internacao_guide(admission=admission)
+
+        with pytest.raises(TISSXMLGenerationError) as exc_info:
+            generate_guide_xml(guide)
+
+        message = str(exc_info.value)
+        assert "disposition_ans_code (dm_motivoSaida)" in message
+        assert "tela de alta" in message
+
+    def test_tipo_faturamento_vazio_falha_alto_apontando_a_propria_guia(self):
+        """Único dos cinco que mora na GUIA, não na internação — e a mensagem tem
+        de dizer isso, incluindo a janela em que ainda dá para preencher
+        (rascunho; depois disso a trava de imutabilidade fecha o campo)."""
+        guide = self._make_internacao_guide(tipo_faturamento="")
+
+        with pytest.raises(TISSXMLGenerationError) as exc_info:
+            generate_guide_xml(guide)
+
+        message = str(exc_info.value)
+        assert "tipo_faturamento (dm_tipoFaturamento)" in message
+        assert "nesta guia, enquanto ainda estiver em rascunho" in message
+
+    def test_campos_faltando_sao_relatados_todos_de_uma_vez(self):
+        """Deliberadamente diferente de ``_resolve_internacao_authorization``,
+        que tem um único modo de falha: aqui são cinco fontes independentes, e
+        uma exceção por campo faria o faturista descobrir os buracos um a um, em
+        cinco tentativas de gerar o XML. Uma exceção, a lista inteira."""
+        admission = self._make_admission(
+            carater_atendimento="",
+            tipo_internacao="",
+            regime_internacao="",
+            disposition_ans_code="",
+        )
+        guide = self._make_internacao_guide(admission=admission, tipo_faturamento="")
+
+        with pytest.raises(TISSXMLGenerationError) as exc_info:
+            generate_guide_xml(guide)
+
+        message = str(exc_info.value)
+        for campo in (
+            "carater_atendimento",
+            "tipo_faturamento",
+            "tipo_internacao",
+            "regime_internacao",
+            "disposition_ans_code",
+        ):
+            assert campo in message, campo
+
+    def test_internacao_antiga_sem_taxonomias_nao_quebra_outros_tipos_de_guia(self):
+        """Guarda da migration aditiva: o campo novo tem ``default=""`` e nada
+        fora da guia de internação o lê. Uma guia de consulta continua válida com
+        ``tipo_faturamento`` vazio — o resolver só roda para
+        ``guide_type='internacao'``."""
+        guide = self._make_consulta_guide()
+        assert guide.tipo_faturamento == ""
+
+        errors = validate_xml(generate_batch_xml(self._batch_with(guide)))
+
+        assert errors == [], errors
+
+    def _batch_with(self, guide):
+        batch = TISSBatch.objects.create(provider=self.provider)
+        batch.guides.add(guide)
+        return batch
+
+
+class InternacaoAuthorizationPrecedenceTests(InternacaoFixtureMixin, XMLEngineTestCase):
     """B10 — ``TISSGuide.authorization_date`` (digitação manual) as the
     LAST-RESORT fallback source for ``dataAutorizacao``, used ONLY when no
     approved ``Authorization`` resolves. One test per branch of the
@@ -389,25 +654,6 @@ class InternacaoAuthorizationPrecedenceTests(XMLEngineTestCase):
     resolvable Authorization) is not enough — fail loud with an actionable
     message telling the faturista what to do.
     """
-
-    def _make_internacao_guide(self, *, authorization_number="AUTH123"):
-        guide = TISSGuide.objects.create(
-            guide_type="internacao",
-            encounter=self.encounter,
-            patient=self.patient,
-            provider=self.provider,
-            insured_card_number="1234567890123456",
-            authorization_number=authorization_number,
-            competency="2026-08",
-        )
-        TISSGuideItem.objects.create(
-            guide=guide,
-            tuss_code=self.tuss_consulta,
-            description="Consulta em consultório",
-            quantity=Decimal("1"),
-            unit_value=Decimal("150.00"),
-        )
-        return guide
 
     def test_resolved_authorization_wins_over_typed_date(self):
         """A resolvable Authorization row wins even when the guide ALSO
@@ -490,12 +736,15 @@ class InternacaoAuthorizationPrecedenceTests(XMLEngineTestCase):
         assert resolved == ("AUTH123", datetime.date(2026, 8, 1))
 
     def test_typed_date_fallback_renders_dadosautorizacao_without_error(self):
-        """Sanity: the typed-date fallback path is wired all the way through
-        generate_batch_xml (not just the resolver in isolation) — same
-        residual gap (dadosBeneficiario, out of this slice's scope) as the
-        Authorization-row path, confirming dataAutorizacao/senha themselves
-        render and are schema-accepted from digitação alone, with no
-        autorização-related error in the residual."""
+        """Sanity: o caminho da data digitada está ligado de ponta a ponta em
+        generate_batch_xml, não só no resolver isolado.
+
+        MUDOU NESTA FATIA, e a mudança é o ponto: antes este teste só podia
+        afirmar "sobrou o residual pré-existente de dadosBeneficiario, mas
+        nenhum erro é de autorização", porque a guia ainda não fechava. Agora a
+        guia fecha inteira — então a asserção honesta passou a ser XML
+        totalmente válido pelo caminho da digitação, exatamente como pelo
+        caminho da Authorization registrada."""
         guide = self._make_internacao_guide(authorization_number="AUTH-TYPED")
         guide.authorization_date = datetime.date(2026, 8, 1)
         guide.save(update_fields=["authorization_date"])
@@ -505,7 +754,4 @@ class InternacaoAuthorizationPrecedenceTests(XMLEngineTestCase):
         xml = generate_batch_xml(batch)
         errors = validate_xml(xml)
 
-        assert errors, "expected the pre-existing dadosBeneficiario residual, got fully valid XML"
-        assert not any(
-            "autorizacao" in error.lower() or "senha" in error.lower() for error in errors
-        )
+        assert errors == [], errors

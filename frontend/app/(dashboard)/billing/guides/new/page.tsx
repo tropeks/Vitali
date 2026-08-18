@@ -54,7 +54,10 @@ interface FormState {
   insured_card_number: string;
   competency: string;
   guide_type: string;
+  tipo_faturamento: string;
 }
+
+interface TipoFaturamentoOption { value: string; label: string }
 
 const emptyItem = (): GuideItem => ({ tuss_code: null, description: '', quantity: 1, unit_value: '' });
 
@@ -135,10 +138,12 @@ export default function NewGuidePage() {
     insured_card_number: '',
     competency: new Date().toISOString().slice(0, 7),
     guide_type: 'sadt',
+    tipo_faturamento: '',
   });
 
   const [items, setItems] = useState<GuideItem[]>([emptyItem()]);
   const [glosaPredictionIds, setGlosaPredictionIds] = useState<Record<number, string | null>>({});
+  const [tipoFaturamentoOptions, setTipoFaturamentoOptions] = useState<TipoFaturamentoOption[]>([]);
 
   useEffect(() => {
     apiFetch<ProviderOption[] | { results?: ProviderOption[] }>('/billing/providers/')
@@ -147,6 +152,9 @@ export default function NewGuidePage() {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoadingOptions(false));
+    apiFetch<TipoFaturamentoOption[]>('/billing/guides/tipo-faturamento-options/')
+      .then(setTipoFaturamentoOptions)
+      .catch((e) => setError(e.message));
   }, []);
 
   useEffect(() => {
@@ -246,6 +254,7 @@ export default function NewGuidePage() {
         insured_card_number: form.insured_card_number,
         competency: form.competency,
         guide_type: form.guide_type,
+        tipo_faturamento: form.tipo_faturamento,
         glosa_prediction_ids: predictionIds,
         items: items.map((item) => ({
           tuss_code: item.tuss_code!.id,
@@ -430,6 +439,19 @@ export default function NewGuidePage() {
                       <option value="sadt">SADT</option>
                       <option value="consulta">Consulta</option>
                     </select>
+                  </div>
+                  <div>
+                    <label htmlFor="guide-tipo-faturamento" className="mb-1 block text-xs font-medium text-neu-inkSoft">Tipo de faturamento (TISS)</label>
+                    <select
+                      id="guide-tipo-faturamento"
+                      value={form.tipo_faturamento}
+                      onChange={(e) => setField('tipo_faturamento', e.target.value)}
+                      className="w-full rounded-lg border border-slate-200 bg-neu-panel px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Não informado</option>
+                      {tipoFaturamentoOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                    <p className="mt-1 text-xs text-neu-inkMuted">Códigos e rótulos fornecidos pela API; sem inventar significado ANS.</p>
                   </div>
                   <div>
                     <label htmlFor="guide-encounter" className="mb-1 block text-xs font-medium text-neu-inkSoft">Atendimento vinculado</label>

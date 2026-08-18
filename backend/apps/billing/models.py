@@ -270,6 +270,40 @@ class TISSGuide(models.Model):
     plaintext anyway.
     """
 
+    class TipoFaturamento(models.TextChoices):
+        """TISS ``dm_tipoFaturamento`` — filho obrigatório de ``ctm_internacaoDados``
+        (``dadosInternacao.tipoFaturamento``), enum fechado ``['1','2','3','4']``
+        extraído programaticamente (lxml) de
+        ``apps/billing/schemas/tissSimpleTypesV4_01_00.xsd``.
+
+        MORA AQUI, NÃO EM ``emr.Admission`` (diverge de
+        docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §5, escrito antes da medição
+        do XSD): os irmãos de sequência ``dataInicioFaturamento``/
+        ``dataFinalFaturamento`` provam que ``ctm_internacaoDados`` descreve o
+        PERÍODO DE FATURAMENTO daquela guia, não a estada. Uma internação longa
+        pode render uma guia parcial e depois uma final — e ``tipoFaturamento`` é
+        justamente o que as distingue. Se o campo morasse na ``Admission``, as
+        duas guias da MESMA internação teriam de compartilhar um único valor, o
+        que é uma contradição. É atributo do documento, não do paciente.
+
+        RÓTULOS PENDENTES, DE PROPÓSITO. Os ``xs:enumeration`` do XSD não trazem
+        ``xs:documentation`` (zero ocorrências em tissSimpleTypesV4_01_00.xsd e
+        tissGuiasV4_01_00.xsd — só ``tissComplexTypesV4_01_00.xsd`` tem 13, todas
+        de estruturas de recurso de glosa/protocolo, nenhuma de domínio) e não há
+        manual de tabelas de domínio da ANS versionado neste repo. Então só o
+        CÓDIGO é confiável. Mesmo tratamento dado aos códigos 41–67 de
+        ``emr.Admission.MotivoEncerramento`` e mesma linha vermelha registrada em
+        ``import_tuss.py``/``inpatient_models.py``: um rótulo financeiro inventado
+        numa tela de faturamento hospitalar é pior que rótulo ausente — quem
+        preenche escolhe errado com confiança. Substituir por texto real assim que
+        o manual ANS entrar no repo, sem migration de dado (só ``choices``).
+        """
+
+        CODIGO_1 = "1", "Código 1 (rótulo a confirmar no manual ANS)"
+        CODIGO_2 = "2", "Código 2 (rótulo a confirmar no manual ANS)"
+        CODIGO_3 = "3", "Código 3 (rótulo a confirmar no manual ANS)"
+        CODIGO_4 = "4", "Código 4 (rótulo a confirmar no manual ANS)"
+
     guide_number = models.CharField("Número da guia", max_length=20, unique=True, blank=True)
     guide_type = models.CharField(
         "Tipo",
@@ -382,6 +416,36 @@ class TISSGuide(models.Model):
             "aprovada correspondente (paciente/operadora/janela/TUSS) — o "
             "registro de autorização, quando existe, sempre tem prioridade "
             "sobre esta digitação."
+        ),
+    )
+    # ``dadosInternacao.tipoFaturamento`` da guia de resumo de internação. Só a
+    # guia sabe se ela é o faturamento parcial ou o de fechamento da estada — ver
+    # o docstring de ``TipoFaturamento`` acima para por que NÃO mora na Admission.
+    #
+    # ``blank=True, default=""`` (e não ``null``): guias já gravadas continuam
+    # válidas sem backfill, exatamente como os campos irmãos de taxonomia TISS em
+    # ``emr.Admission`` (carater_atendimento/tipo_internacao/regime_internacao/
+    # disposition_ans_code). Não há valor default honesto a atribuir
+    # retroativamente — nenhuma guia existente foi emitida declarando um tipo de
+    # faturamento, e escolher um por elas seria inventar o que foi transmitido.
+    # Vazio significa "ainda não declarado", e o gerador de XML falha alto nesse
+    # caso (xml_engine._resolve_internacao_dados) em vez de chutar "1".
+    #
+    # A ponte automática ``generate_internacao_guide_for_admission`` deliberadamente
+    # NÃO preenche este campo: ela roda na alta, mas o endpoint que a chama não é
+    # exclusivo da alta e nada no fluxo prova qual dos quatro códigos se aplica.
+    # É digitação do faturista, na guia, enquanto rascunho.
+    tipo_faturamento = models.CharField(
+        "Tipo de faturamento (TISS)",
+        max_length=1,
+        choices=TipoFaturamento.choices,
+        blank=True,
+        default="",
+        help_text=(
+            "dm_tipoFaturamento — declara à operadora se esta guia de resumo de "
+            "internação é o faturamento parcial ou o de encerramento da estada. "
+            "Obrigatório no XML (ctm_internacaoDados); sem ele a guia de "
+            "internação não gera XML."
         ),
     )
     competency = models.CharField("Competência (AAAA-MM)", max_length=7, help_text="Ex: 2026-03")

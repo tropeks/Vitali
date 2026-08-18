@@ -35,6 +35,8 @@ function Field({ label, value }: { label: string; value: any }) {
   );
 }
 
+type TipoFaturamentoOption = { value: string; label: string };
+
 export default function GuideDetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -51,6 +53,9 @@ export default function GuideDetailPage() {
   const [savingAuth, setSavingAuth] = useState(false);
   const [authError, setAuthError] = useState('');
   const [authSaved, setAuthSaved] = useState(false);
+  const [tipoFaturamento, setTipoFaturamento] = useState('');
+  const [tipoFaturamentoOptions, setTipoFaturamentoOptions] = useState<TipoFaturamentoOption[]>([]);
+  const [savingTipoFaturamento, setSavingTipoFaturamento] = useState(false);
 
   useEffect(() => {
     fetch(`/api/v1/billing/guides/${id}/`, {
@@ -59,6 +64,10 @@ export default function GuideDetailPage() {
       .then(setGuide)
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
+    fetch('/api/v1/billing/guides/tipo-faturamento-options/')
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`${r.status}`)))
+      .then((data) => setTipoFaturamentoOptions(Array.isArray(data) ? data : []))
+      .catch(() => setTipoFaturamentoOptions([]));
   }, [id]);
 
   useEffect(() => {
@@ -67,6 +76,10 @@ export default function GuideDetailPage() {
     // DRF DateField serializa como "YYYY-MM-DD" puro — usamos a string direto,
     // sem passar por Date/toISOString, para não arriscar deslocar o dia por fuso.
     setAuthDate(guide.authorization_date ?? '');
+    setTipoFaturamento(guide.tipo_faturamento ?? '');
+    if (tipoFaturamentoOptions.length === 0 && Array.isArray(guide.tipo_faturamento_options)) {
+      setTipoFaturamentoOptions(guide.tipo_faturamento_options);
+    }
   }, [guide]);
 
   const isDraft = guide?.status === 'draft';
@@ -114,6 +127,20 @@ export default function GuideDetailPage() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const saveTipoFaturamento = async () => {
+    setSavingTipoFaturamento(true);
+    setAuthError('');
+    try {
+      const res = await fetch(`/api/v1/billing/guides/${id}/`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tipo_faturamento: tipoFaturamento }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail ?? `${res.status}`);
+      setGuide(await res.json());
+    } catch (e: any) { setAuthError(e.message || 'Não foi possível salvar o tipo de faturamento.'); }
+    finally { setSavingTipoFaturamento(false); }
   };
 
   if (loading) {
@@ -170,12 +197,23 @@ export default function GuideDetailPage() {
           <Field label="Paciente" value={guide?.patient_name ?? guide?.patient} />
           <Field label="Operadora" value={guide?.provider_name ?? guide?.provider} />
           <Field label="Tipo de Guia" value={guide?.guide_type_display ?? guide?.guide_type} />
+          <Field label="Tipo de faturamento (TISS)" value={guide?.tipo_faturamento_display ?? guide?.tipo_faturamento} />
           <Field label="Competência" value={guide?.competency} />
           <Field label="Nº Carteirinha" value={guide?.insured_card_number} />
           <Field label="Valor Total" value={fmtCurrency(guide?.total_value)} />
           <Field label="Criado em" value={guide?.created_at ? new Date(guide.created_at).toLocaleString('pt-BR') : null} />
           <Field label="Encontro" value={guide?.encounter} />
         </dl>
+      </div>
+
+      <div className="bg-neu-panel rounded-lg border border-slate-200 p-4">
+        <h2 className="font-semibold text-neu-ink mb-1">Tipo de faturamento (TISS)</h2>
+        <p className="text-xs text-neu-inkMuted mb-3">Códigos e rótulos vêm da API; o significado ANS não é inventado na tela.</p>
+        <select aria-label="Tipo de faturamento (TISS)" value={tipoFaturamento} onChange={(e) => setTipoFaturamento(e.target.value)} disabled={!isDraft} className="w-full max-w-xl rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:opacity-50">
+          <option value="">Não informado</option>
+          {tipoFaturamentoOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+        {isDraft && <button type="button" onClick={saveTipoFaturamento} disabled={savingTipoFaturamento} className="mt-3 bg-gradient-to-b from-neu-brand to-neu-brandDeep text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50">{savingTipoFaturamento ? 'Salvando...' : 'Salvar tipo de faturamento'}</button>}
       </div>
 
       {/* Autorização TISS */}

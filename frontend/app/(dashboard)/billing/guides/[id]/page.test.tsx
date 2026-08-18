@@ -30,6 +30,9 @@ const draftGuide = {
   patient_name: 'Maria Souza',
   provider_name: 'SulAmérica Saúde',
   guide_type_display: 'SADT',
+  tipo_faturamento: '2',
+  tipo_faturamento_display: 'Código 2 (rótulo a confirmar no manual ANS)',
+  tipo_faturamento_options: [{ value: '2', label: 'Código 2 (rótulo a confirmar no manual ANS)' }],
   competency: '2026-08',
   insured_card_number: '123456',
   total_value: '150.00',
@@ -62,6 +65,7 @@ describe('GuideDetailPage — authorization_date', () => {
 
     expect(screen.getByLabelText('Data da autorização')).not.toBeDisabled();
     expect(screen.getByLabelText('Senha de autorização')).not.toBeDisabled();
+    expect(screen.getByLabelText('Tipo de faturamento (TISS)')).toHaveValue('2');
   });
 
   it('sends the picked date as plain YYYY-MM-DD, with no timezone shift', async () => {

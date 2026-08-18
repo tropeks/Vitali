@@ -70,6 +70,9 @@ beforeEach(() => {
         ],
       });
     }
+    if (url.includes('/api/v1/billing/guides/tipo-faturamento-options/')) {
+      return okJson([{ value: '2', label: 'Código 2 (rótulo a confirmar no manual ANS)' }]);
+    }
     if (url.includes('/api/v1/encounters/enc-1/')) {
       return okJson({
         id: 'enc-1',
@@ -102,6 +105,7 @@ describe('NewGuidePage', () => {
     expect(screen.getAllByText('MRN-123').length).toBeGreaterThan(0);
     expect(screen.getByText('Atendimento em aberto')).toBeInTheDocument();
     expect(screen.getByText('3 pendência(s)')).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Código 2/ })).toBeInTheDocument();
   });
 
   it('blocks creation with explicit readiness blockers', async () => {
@@ -129,6 +133,7 @@ describe('NewGuidePage', () => {
     });
 
     await user.selectOptions(screen.getByLabelText('Operadora *'), 'prov-1');
+    await user.selectOptions(screen.getByLabelText('Tipo de faturamento (TISS)'), '2');
     await user.click(screen.getByRole('button', { name: 'Selecionar TUSS mock' }));
     await user.type(screen.getByLabelText('Valor unitário'), '120.5');
 
@@ -151,6 +156,7 @@ describe('NewGuidePage', () => {
       provider: 'prov-1',
       encounter: 'enc-1',
       guide_type: 'sadt',
+      tipo_faturamento: '2',
       items: [
         {
           tuss_code: 101,

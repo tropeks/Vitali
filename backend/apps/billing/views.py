@@ -937,6 +937,14 @@ class TISSGuideViewSet(AuditReadMixin, viewsets.ModelViewSet):
     ordering_fields = ["created_at", "updated_at", "total_value", "competency"]
     ordering = ["-updated_at"]
 
+    @action(detail=False, methods=["get"], url_path="tipo-faturamento-options")
+    def tipo_faturamento_options(self, request):
+        """Expose ANS codes and their authoritative current labels to the UI."""
+        return Response([
+            {"value": value, "label": label}
+            for value, label in TISSGuide.TipoFaturamento.choices
+        ])
+
     def get_queryset(self):
         qs = TISSGuide.objects.select_related("patient", "provider", "price_table", "encounter")
         status_filter = self.request.query_params.get("status")
@@ -992,12 +1000,12 @@ class TISSGuideViewSet(AuditReadMixin, viewsets.ModelViewSet):
         Só ``status == "draft"`` é editável. ``pending``/``submitted``/``paid``/
         ``denied``/``appeal`` são todos travados: a guia já está a caminho da
         operadora (ou já voltou) e ``provider``, ``competency``,
-        ``authorization_number``, ``authorization_date``, ``cid10_codes``,
-        ``price_table`` e ``insured_card_number`` deixarem de bater com o que
-        foi transmitido é exatamente o jeito de o lote exportado divergir do
-        que a operadora recebeu. Não há hoje nenhum campo "observação interna"
-        no model/serializer para deixar de fora da trava (ver relatório da
-        tarefa); se o negócio precisar de uma nota pós-envio, isso é campo
+        ``authorization_number``, ``authorization_date``, ``tipo_faturamento``,
+        ``cid10_codes``, ``price_table`` e ``insured_card_number`` deixarem de
+        bater com o que foi transmitido é exatamente o jeito de o lote exportado
+        divergir do que a operadora recebeu. Não há hoje nenhum campo
+        "observação interna" no model/serializer para deixar de fora da trava
+        (ver relatório da tarefa); se o negócio precisar de uma nota pós-envio, isso é campo
         novo em ``models.py`` — fora do escopo aqui.
 
         ``authorization_date`` (B10, digitação manual de ``dataAutorizacao``
@@ -1015,6 +1023,16 @@ class TISSGuideViewSet(AuditReadMixin, viewsets.ModelViewSet):
         recorrente na operação, a solução é um fluxo de correção explícito
         (novo estado ou endpoint dedicado), não abrir o PATCH geral para guias
         não-draft — decisão de produto fora do escopo desta tarefa.
+
+        ``tipo_faturamento`` (dm_tipoFaturamento da guia de resumo de
+        internação) entra na MESMA trava, e aqui ela é ainda menos discutível
+        que nos campos de autorização: o tipo de faturamento é a declaração à
+        operadora de que ESTA guia é o faturamento parcial ou o de encerramento
+        da estada. Trocá-la depois do envio muda o significado do documento já
+        transmitido — duas guias parciais viram duas finais, ou vice-versa.
+        Diferente da senha/data de autorização, este campo não depende de a
+        operadora responder nada: quem fatura já sabe qual é no momento de
+        montar a guia, então a trava não aperta nenhum cenário legítimo.
         """
         from apps.core.signals import _write_audit
 

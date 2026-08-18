@@ -77,13 +77,17 @@ placeholder existente).
 | `dadosAutorizacao.senha` + `dadosAutorizacao.dataAutorizacao` | **sim** (obrigatório aqui, opcional no SADT) | ✅ **(B10, resolvido)** | `guide.authorization_number` (senha) + `TISSGuide.authorization_date` (fallback de digitação) ou `Authorization` aprovada resolvida (fonte preferida — vence sempre que resolve) | `generate_guide_xml` falha alto (`TISSXMLGenerationError`, mensagem acionável) quando nem a `Authorization` resolve nem o par digitado está completo — nunca fabrica a data; ver `xml_engine._resolve_internacao_authorization` |
 | `dadosBeneficiario` | sim | ✅ **(resolvido, esta fatia)** | `guide.insured_card_number` + `atendimentoRN="N"` default | `ct_beneficiarioDados` — MESMO tipo já emitido por `consulta_guide.xml.j2`/`sadt_guide.xml.j2`; pura ligação, sem campo novo |
 | `dadosExecutante` | sim | ✅ **(resolvido, esta fatia)** | `professional.cnes_code` (encounter.professional) | forma nova (`contratadoExecutante`/`ct_contratadoDados` + `CNES` irmão, diferente do par `contratadoExecutante`+`profissionalExecutante` de `guiaConsulta`), mas dado já resolvido em todo template desta pasta — mesmo placeholder de `codigoPrestadorNaOperadora` do cabeçalho do lote |
-| `dadosInternacao.caraterAtendimento` | sim | ✅ dado existe | `Admission.carater_atendimento` (Fatia 3, já landed) | campo existe no model mas é opcional (`blank=True`) e `TISSGuide.admission` não é resolvido pelo template hoje — ligação ainda não feita |
-| `dadosInternacao.tipoFaturamento` | sim | ❌ | — | 4 valores (parcial/final/complementar/...); é sobre o MOMENTO do faturamento (internação em andamento vs. encerrada), não é dado clínico — **ainda sem nenhum campo fonte**, nem em `TISSGuide` nem em `Admission`; provável default fixo por enquanto (só há geração de guia na alta hoje, ver `generate_internacao_guide_for_admission`), mas o ciclo de vida "parcial" fica bloqueado sem campo — bloqueador real de `dadosInternacao` |
-| `dadosInternacao.tipoInternacao` | sim | ✅ dado existe | `Admission.tipo_internacao` (Fatia 3, já landed) | mesma ressalva de ligação de `caraterAtendimento` acima |
-| `dadosInternacao.regimeInternacao` | sim | ✅ dado existe | `Admission.regime_internacao` (Fatia 3, já landed) | mesma ressalva de ligação de `caraterAtendimento` acima |
-| `dadosSaidaInternacao.motivoEncerramento` (`dm_motivoSaida`, 28 valores) | sim | ✅ dado existe | `Admission.disposition_ans_code` (Fatia 3, já landed — campo TISS-specific dedicado, NÃO reaproveita `Admission.disposition`) | resolveu a ressalva de granularidade abaixo: em vez de mapear `Disposition` (6 valores clínicos), ganhou campo próprio com os 28 códigos ANS; mesma ressalva de ligação — opcional (`blank=True`) e `TISSGuide.admission` ainda não é resolvido pelo template |
-| `valorTotal` (`ct_guiaValorTotal`) | sim | parcial | soma de `TISSGuideItem` (que já mistura diária+taxa agregados por TUSS, ver `generate_internacao_guide_for_admission`) | seção própria §4 — internação é o caso MAIS difícil porque `DailyCharge`/`InpatientFee` já se fundem em `TISSGuideItem` sem manter proveniência |
-| `procedimentosExecutados[].reducaoAcrescimo` | sim, por item | ❌ | — | mesmo campo novo trivial do SADT (é o mesmo `TISSGuideItem`) |
+| `dadosInternacao.caraterAtendimento` | sim | ✅ **(ligado)** | `Admission.carater_atendimento` via `TISSGuide.admission` | `xml_engine._resolve_internacao_dados` resolve a internação vinculada e falha alto (`TISSXMLGenerationError` acionável) quando o campo está vazio — nunca default silencioso |
+| `dadosInternacao.tipoFaturamento` | sim | ✅ **(resolvido)** | `TISSGuide.tipo_faturamento` (`TextChoices`, migration `0035_guide_tipo_faturamento`) | **CORREÇÃO ao §5 abaixo**: mora em `TISSGuide`, NÃO em `Admission`. A medição do XSD (feita depois deste doc) mostrou que `ctm_internacaoDados` tem OITO filhos obrigatórios, não quatro — os quatro que faltavam nesta tabela são `dataInicioFaturamento`/`horaInicioFaturamento`/`dataFinalFaturamento`/`horaFinalFaturamento`, que provam que o bloco descreve o PERÍODO DE FATURAMENTO da guia, não a estada. Rótulos deliberadamente pendentes ("Código N (rótulo a confirmar no manual ANS)") — o XSD não tem `xs:documentation` e o manual ANS não está no repo |
+| `dadosInternacao.tipoInternacao` | sim | ✅ **(ligado)** | `Admission.tipo_internacao` | idem `caraterAtendimento` |
+| `dadosInternacao.regimeInternacao` | sim | ✅ **(ligado)** | `Admission.regime_internacao` | idem `caraterAtendimento` |
+| `dadosInternacao.data/horaInicioFaturamento` | sim | ✅ **(ligado)** | `Admission.admission_datetime` | NÃO estava nesta tabela até a medição do XSD. Convertido para o fuso da clínica antes de formatar (`_local_datetime`): `st_data`/`st_hora` são locais, o banco guarda UTC |
+| `dadosInternacao.data/horaFinalFaturamento` | sim | ✅ **(ligado)** | `Admission.actual_discharge_datetime` | idem. Internação ainda aberta → falha alta: a guia de resumo só fecha depois da alta |
+| `dadosSaidaInternacao.indicadorAcidente` | sim | ✅ (default) | — | `"9"` (não acidente), mesmo default já documentado em `consulta_guide.xml.j2` |
+| `dadosSaidaInternacao.motivoEncerramento` (`dm_motivoSaida`, 28 valores) | sim | ✅ **(ligado)** | `Admission.disposition_ans_code` (Fatia 3, já landed — campo TISS-specific dedicado, NÃO reaproveita `Admission.disposition`) | resolveu a ressalva de granularidade abaixo: em vez de mapear `Disposition` (6 valores clínicos), ganhou campo próprio com os 28 códigos ANS; ligação feita nesta fatia — vazio na internação → falha alta apontando a tela de alta |
+| `valorTotal` (`ct_guiaValorTotal`) | sim | ✅ **(Alternativa A)** | `valorTotalGeral = guide.total_value`, sete breakdowns omitidos | §4. Fecha o schema, NÃO fecha o aceite: o breakdown diária × taxa × gás medicinal continua ausente e `DailyCharge`/`InpatientFee` seguem fundidos em `TISSGuideItem` sem proveniência (Alternativa B, aberta) |
+| `procedimentosExecutados` (bloco) | **não** (`minOccurs="0"`) | ❌ não emitido | — | medição corrige o pressuposto: o bloco inteiro é OPCIONAL, então sua ausência não bloqueia o schema. Não é emitido porque `ct_procedimentoExecutadoInt` exige `reducaoAcrescimo` (campo inexistente em `TISSGuideItem` — Fatia 1) e `dataExecucao` por item (também inexistente): emitir hoje seria fabricar os dois |
+| `procedimentosExecutados[].reducaoAcrescimo` | sim, por item (se o bloco for emitido) | ❌ | — | mesmo campo novo trivial do SADT (é o mesmo `TISSGuideItem`) |
 
 ## 4. `ct_guiaValorTotal` — seção própria
 
@@ -206,9 +210,13 @@ repo (`import_tuss.py`, `inpatient_models.py`) tratam como linha vermelha.
   ambulatório — precisa de campo próprio em `TISSGuide` (ou em `Encounter`, se o Capitão
   decidir que é dado clínico do atendimento e não do faturamento — ver trade-off (b) do
   resumo executivo).
-- **`tipoInternacao`/`regimeInternacao`/`tipoFaturamento`**: `emr.Admission` — mesma lógica,
-  são atributos da internação, não da guia (a guia é derivada, `generate_internacao_guide_
-  for_admission` já lê `admission.*` para outros campos).
+- **`tipoInternacao`/`regimeInternacao`**: `emr.Admission` — mesma lógica, são atributos da
+  internação, não da guia (a guia é derivada, `generate_internacao_guide_for_admission` já lê
+  `admission.*` para outros campos). **`tipoFaturamento` NÃO** — ver a correção na linha
+  correspondente do §3: ele é atributo do DOCUMENTO (a mesma internação pode render uma guia
+  parcial e uma final, e é `tipoFaturamento` que as distingue), então mora em `TISSGuide`.
+  Este parágrafo foi escrito antes da medição do XSD que trouxe os quatro campos de período
+  de faturamento à luz.
 - **`motivoEncerramento`**: **não** sobrescrever `Admission.disposition` (a UI de alta já
   usa esses 6 valores, mudar quebra o fluxo clínico existente). Adicionar um campo TISS-
   specific separado (`Admission.disposition_ans_code` ou similar) preenchido **junto** com
@@ -292,10 +300,16 @@ Pequena: autorreferência ao `guide_number` (decisão de produto simples, baixo 
 validação de negócio bloqueando geração de guia de internação sem `authorization_number`
 preenchido. **Agente: `dev-pleno`.**
 
-**Fatia 5 — `ct_guiaValorTotal`, Alternativa A (total único).**
-`valorTotalGeral = guide.total_value`, sem breakdown. Fecha o `xfail` se a Alternativa A for
-aceita como suficiente para o MVP (decisão (c) do resumo executivo). **Agente:
-`dev-pleno`.**
+**Fatia 5 — `ct_guiaValorTotal`, Alternativa A (total único).** ✅ **LANDED** (junto com
+`dadosInternacao`/`dadosSaidaInternacao`). `valorTotalGeral = guide.total_value`, sem
+breakdown, zero migration. O `xfail` de `InternacaoGuideXMLConformanceTests` CAIU:
+`validate_xml` devolve `[]` para a guia de resumo de internação.
+**Ressalva que precisa sobreviver a este check verde**: `procedimentosExecutados` é
+`minOccurs="0"` e NÃO é emitido — `ct_procedimentoExecutadoInt` exige `reducaoAcrescimo`
+(Fatia 1, não landed) e `dataExecucao` por item, e `TISSGuideItem` não tem nenhum dos dois.
+Ou seja, a guia sai XSD-válida com o total geral e SEM nenhuma linha de procedimento e sem
+breakdown. Schema-válido ≠ aceite: internação sem discriminação de itens é candidata natural
+a glosa. Fatia 1 + Alternativa B (§4) continuam abertas.
 
 **Fatia 6 (condicional) — `ct_guiaValorTotal`, Alternativa B (breakdown real).**
 Só se o Capitão decidir que a Alternativa A não basta. Primeiro passo obrigatório: medir a

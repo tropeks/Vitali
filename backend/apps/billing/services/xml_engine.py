@@ -249,6 +249,166 @@ def _resolve_internacao_authorization(guide) -> tuple[str, datetime.date] | None
     return senha, data_autorizacao
 
 
+def _local_datetime(value: datetime.datetime) -> datetime.datetime:
+    """Converte um datetime aware para o fuso da clínica (``settings.TIME_ZONE``).
+
+    Os campos ``st_data``/``st_hora`` do TISS são data e hora LOCAIS, sem offset
+    (``xs:date``/``xs:time`` emitidos como ``YYYY-MM-DD``/``HH:MM:SS``). Django
+    guarda ``DateTimeField`` em UTC (``USE_TZ=True``); formatar direto o valor
+    aware faz uma internação das 21h de São Paulo virar ``00:00:00`` do DIA
+    SEGUINTE no documento enviado à operadora — deslocamento silencioso de um
+    dia inteiro de estada, que só apareceria como glosa. Mesmo cuidado que o
+    commit 8a32034 tomou com ``authorization_date`` no frontend.
+
+    Mesma forma dos precedentes do repo (``apps/hr/roster_integration.py``,
+    ``apps/emr/rh_models.py``): valores naive passam intactos, porque não há de
+    que converter.
+    """
+    if timezone.is_aware(value):
+        return timezone.localtime(value)
+    return value
+
+
+def _resolve_internacao_dados(guide) -> dict:
+    """Resolve ``dadosInternacao`` (ctm_internacaoDados) e ``dadosSaidaInternacao``
+    (ctm_internacaoDadosSaida) da guia de resumo de internação.
+
+    MEDIÇÃO (lxml sobre ``apps/billing/schemas/tissGuiasV4_01_00.xsd``, não
+    leitura a olho — o arquivo é ISO-8859-1 com linhas de dezenas de KB e grep
+    mente por omissão). ``ctm_internacaoDados`` tem OITO filhos obrigatórios em
+    sequência, não quatro como o doc de pesquisa §3 listava::
+
+        caraterAtendimento     dm_caraterAtendimento  <- admission.carater_atendimento
+        tipoFaturamento        dm_tipoFaturamento     <- guide.tipo_faturamento
+        dataInicioFaturamento  st_data                <- admission.admission_datetime
+        horaInicioFaturamento  st_hora                <- admission.admission_datetime
+        dataFinalFaturamento   st_data                <- admission.actual_discharge_datetime
+        horaFinalFaturamento   st_hora                <- admission.actual_discharge_datetime
+        tipoInternacao         dm_tipoInternacao      <- admission.tipo_internacao
+        regimeInternacao       dm_regimeInternacao    <- admission.regime_internacao
+        declaracoes            minOccurs=0            (opcional — não emitido)
+
+    e ``ctm_internacaoDadosSaida`` pede ``diagnostico`` (opcional, não emitido),
+    ``indicadorAcidente`` (obrigatório, sem fonte no model — default documentado
+    ``"9"`` = não acidente, o mesmo já usado em ``consulta_guide.xml.j2``) e
+    ``motivoEncerramento`` (<- ``admission.disposition_ans_code``).
+
+    DIVERGE de ``_resolve_internacao_authorization`` num ponto, de propósito:
+    aquele resolver devolve ``None`` e deixa o chamador levantar, porque tem UM
+    único modo de falha ("não há par senha+data honesto"). Aqui há SEIS fontes
+    independentes que podem faltar, em TRÊS telas diferentes (admissão, alta,
+    guia) — devolver ``None`` apagaria justamente a informação que o faturista
+    precisa. Então este levanta ``TISSXMLGenerationError`` direto, com a
+    mensagem já apontando o que preencher e onde. A regra de fundo é a mesma:
+    **nunca fabricar dado**; nenhum destes campos ganha default silencioso.
+
+    Falhas, em ordem de precedência (a primeira que bate interrompe):
+
+    1. ``guide.admission`` vazio. A guia de resumo de internação DESCREVE uma
+       estada; sem o vínculo não há nem data de início. É estrutural, não é
+       campo em branco — por isso vem antes de tudo e tem mensagem própria.
+    2. Internação ainda sem alta (``actual_discharge_datetime`` nulo).
+       ``dataFinalFaturamento``/``horaFinalFaturamento`` são obrigatórios; a
+       única fonte honesta é a alta efetiva. Isso é a verdade do fluxo atual —
+       ``generate_internacao_guide_for_admission`` fatura a estada inteira de
+       uma vez — e não um limite artificial: faturar "até agora" uma internação
+       aberta exigiria um ciclo parcial que o Vitali não tem (ver o risco aberto
+       registrado em docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §8).
+    3. Taxonomias em branco. Todas são ``blank=True`` (internações e guias
+       anteriores à Onda 4 não as têm), então a checagem é campo a campo — mas
+       relatadas TODAS DE UMA VEZ numa só exceção, com o nome do campo e a tela
+       que o preenche. Uma exceção por campo faria o faturista descobrir os
+       quatro buracos em quatro tentativas.
+
+    ISOLAMENTO MULTI-TENANT: ``guide.admission`` é FK mesma-schema
+    (``apps.billing`` e ``apps.emr`` são ambos ``TENANT_APPS``, settings/base.py)
+    — a travessia resolve pelo ``search_path`` do schema do tenant corrente, o
+    mesmo caminho que ``guide.patient``/``guide.encounter`` já usam neste módulo.
+    Não há query nova por ``Admission.objects`` (que também seria escopada, mas
+    abriria a porta para um filtro esquecido), não há UUID solto e não há import
+    de ``apps.emr`` — só leitura de atributo no FK já existente.
+    """
+    admission = guide.admission
+    if admission is None:
+        raise TISSXMLGenerationError(
+            f"Guia de resumo de internação {guide.guide_number} não está vinculada "
+            "a nenhuma internação: dadosInternacao (ctm_internacaoDados, "
+            "tissGuiasV4_01_00.xsd) exige caráter, tipo e regime da internação e o "
+            "período de faturamento (datas/horas de início e fim), que só existem "
+            "na internação. Gere a guia pela ponte internação→faturamento "
+            "(POST /api/v1/billing/guides/from-admission/, que preenche o vínculo) "
+            "em vez de criar uma guia de internação avulsa."
+        )
+
+    if admission.actual_discharge_datetime is None:
+        raise TISSXMLGenerationError(
+            f"Guia de resumo de internação {guide.guide_number} é de uma internação "
+            "ainda ABERTA (sem alta efetiva registrada): dataFinalFaturamento e "
+            "horaFinalFaturamento (ctm_internacaoDados) são obrigatórios e a única "
+            "fonte honesta deles é a alta. A guia de resumo só fecha depois da alta "
+            "— dê a alta do paciente (tela de internação) e gere o XML em seguida. "
+            "Faturamento parcial de internação em andamento não existe no fluxo "
+            "atual; se o negócio precisar dele, é ciclo de vida novo, não um campo."
+        )
+
+    # (valor, nome do campo, onde se preenche) — ordem = ordem da sequência no XSD.
+    required = [
+        (
+            admission.carater_atendimento,
+            "carater_atendimento (dm_caraterAtendimento)",
+            "na internação, tela de admissão do paciente",
+        ),
+        (
+            guide.tipo_faturamento,
+            "tipo_faturamento (dm_tipoFaturamento)",
+            "nesta guia, enquanto ainda estiver em rascunho",
+        ),
+        (
+            admission.tipo_internacao,
+            "tipo_internacao (dm_tipoInternacao)",
+            "na internação, tela de admissão do paciente",
+        ),
+        (
+            admission.regime_internacao,
+            "regime_internacao (dm_regimeInternacao)",
+            "na internação, tela de admissão do paciente",
+        ),
+        (
+            admission.disposition_ans_code,
+            "disposition_ans_code (dm_motivoSaida)",
+            "na internação, tela de alta — é o motivo de encerramento ANS, "
+            "ao lado do desfecho clínico",
+        ),
+    ]
+    faltando = [
+        f"- {campo}: preencha {onde}."
+        for valor, campo, onde in required
+        if not (valor or "").strip()
+    ]
+    if faltando:
+        raise TISSXMLGenerationError(
+            f"Guia de resumo de internação {guide.guide_number} não tem os dados "
+            "obrigatórios de internação/saída (ctm_internacaoDados e "
+            "ctm_internacaoDadosSaida, tissGuiasV4_01_00.xsd). Falta(m):\n"
+            + "\n".join(faltando)
+            + "\nNenhum destes tem default seguro — declarar um caráter, tipo, "
+            "regime, motivo de encerramento ou tipo de faturamento errado à "
+            "operadora é pior que não enviar a guia."
+        )
+
+    inicio = _local_datetime(admission.admission_datetime)
+    fim = _local_datetime(admission.actual_discharge_datetime)
+    return {
+        "internacao_carater_atendimento": admission.carater_atendimento,
+        "internacao_tipo_faturamento": guide.tipo_faturamento,
+        "internacao_inicio": inicio,
+        "internacao_fim": fim,
+        "internacao_tipo": admission.tipo_internacao,
+        "internacao_regime": admission.regime_internacao,
+        "internacao_motivo_encerramento": admission.disposition_ans_code,
+    }
+
+
 # ─── Guide XML generation ─────────────────────────────────────────────────────
 
 
@@ -327,6 +487,12 @@ def generate_guide_xml(guide) -> str:
                 "os dois campos juntos, um sozinho não basta."
             )
         context["autorizacao_senha"], context["autorizacao_data"] = resolved_auth
+
+        # dadosInternacao (ctm_internacaoDados) + dadosSaidaInternacao
+        # (ctm_internacaoDadosSaida) — os dois blocos obrigatórios que vêm logo
+        # depois de dadosExecutante na sequência. Mesma política do bloco de
+        # autorização: falha alta e acionável em vez de XML com dado inventado.
+        context.update(_resolve_internacao_dados(guide))
 
     return template.render(**context)
 
