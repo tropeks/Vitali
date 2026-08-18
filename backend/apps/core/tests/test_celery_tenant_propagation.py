@@ -73,10 +73,43 @@ class CeleryTenantPropagationTests(SimpleTestCase):
         self._env_patch.start()
         self._orig_eager = celery_app.conf.task_always_eager
         celery_app.conf.task_always_eager = False
+        # Patching the env alone is not enough once anything has already made the
+        # app resolve a broker: Celery caches the resolved URL on app.conf and
+        # pools the connection, so apply_async would keep publishing to the
+        # ORIGINAL broker while _drain() opens a fresh memory:// one and finds an
+        # empty queue. Running this file alone hid the problem — nothing had
+        # connected yet — and it only surfaced inside the full suite. Pin the URL
+        # on conf too, and drop the cached pool so the next publish reconnects.
+        self._orig_broker = celery_app.conf.broker_url
+        celery_app.conf.broker_url = "memory://"
+        celery_app.close()
+        # celery_app.pool / amqp.producer_pool are cached_property-style:
+        # once any earlier code in this test process published a task under
+        # the *ambient* CELERY_BROKER_URL (the project default is
+        # CELERY_TASK_ALWAYS_EAGER=False, so any stray .delay()/apply_async()
+        # anywhere in the suite is enough), Celery keeps reusing pooled
+        # connections bound to that original broker forever — our env-var
+        # swap above is invisible to it. _after_fork() is Celery's own hook
+        # for "the broker identity may have changed, drop cached
+        # connections" (normally used after os.fork() in the prefork pool);
+        # reusing it here forces apply_async() to re-resolve broker_url
+        # (now memory://) on next use. Confirmed by reproduction: without
+        # this call, running this file after any other test that publishes
+        # a task under the real broker makes _drain() find an empty queue
+        # (the message went to the real, pre-warmed connection instead).
+        celery_app._after_fork()
 
     def tearDown(self):
         celery_app.conf.task_always_eager = self._orig_eager
+        celery_app.conf.broker_url = self._orig_broker
+        # Drop the memory:// pool too, so the next test in the suite does not
+        # inherit this file's broker.
+        celery_app.close()
         self._env_patch.stop()
+        # Symmetric reset: drop the memory://-bound pool so later tests in
+        # the same process reconnect to the real (ambient) broker instead
+        # of silently inheriting our in-memory transport.
+        celery_app._after_fork()
         # Defensive: never let one test's unpaired prerun leak a schema
         # context into the next test via the module-level tracking dict.
         _leak_tracker.clear()

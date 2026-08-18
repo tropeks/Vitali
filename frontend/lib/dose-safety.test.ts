@@ -7,10 +7,6 @@ import {
   type DoseAlert,
 } from './dose-safety'
 
-vi.mock('./auth', () => ({
-  getAccessToken: vi.fn(() => 'test-token'),
-}))
-
 function makeAlert(overrides: Partial<DoseAlert> = {}): DoseAlert {
   return {
     id: 'alert-1',

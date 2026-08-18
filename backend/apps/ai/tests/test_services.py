@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 from django.core.cache import cache
 from django.test import override_settings
 
+from apps.ai.consent import ConsentResult
 from apps.ai.models import AIPromptTemplate, AIUsageLog, TUSSAISuggestion
 from apps.core.models import TenantAIConfig
 from apps.test_utils import TenantTestCase
@@ -49,6 +50,14 @@ class TUSSCoderTest(TenantTestCase):
         )
         self.template = _make_template(None)
         self.tenant_schema = self.tenant.schema_name
+        # Onda 3 / 3.2: requires_ai_consent() now also requires a signed DPA.
+        # These tests are about retrieval/caching/validation, not consent —
+        # consent.py has its own dedicated tests (test_consent.py).
+        self._consent_patch = patch(
+            "apps.ai.services.requires_ai_consent", return_value=ConsentResult(True)
+        )
+        self._consent_patch.start()
+        self.addCleanup(self._consent_patch.stop)
 
     def tearDown(self):
         self._override.disable()

@@ -257,6 +257,28 @@ class AuthTestCase(TenantTestCase):
         )
         self.assertEqual(resp.status_code, 400)
 
+    def test_change_password_rejects_password_similar_to_user_attributes(self):
+        """3.5: AUTH_PASSWORD_VALIDATORS (UserAttributeSimilarityValidator
+        included) was configured in settings but never invoked — a password
+        built straight from the user's own e-mail passed the old regex-only
+        check (has upper/lower/digit/special) despite being a textbook weak
+        password. "Testvitalicom1!" is derived from "test@vitali.com" and
+        satisfies the length/case/digit/special regex, but Django's
+        similarity check (ratio ~0.87, threshold 0.7) must still reject it."""
+        login = self.client.post(
+            self.login_url,
+            {"email": "test@vitali.com", "password": "Str0ng!Pass#2024"},
+            format="json",
+        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {login.json()['access']}")
+
+        resp = self.client.put(
+            self.password_url,
+            {"current_password": "Str0ng!Pass#2024", "new_password": "Testvitalicom1!"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 400)
+
     def test_change_password_creates_audit_log(self):
         login = self.client.post(
             self.login_url,

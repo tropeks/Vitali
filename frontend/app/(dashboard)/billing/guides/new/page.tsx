@@ -14,7 +14,6 @@ import {
   ShieldCheck,
   Trash2,
 } from 'lucide-react';
-import { getAccessToken } from '@/lib/auth';
 import { PageShell, ReadinessPanel } from '@/components/shared';
 import TUSSCodeSearch, { TUSSOption } from '@/components/billing/TUSSCodeSearch';
 import TUSSSuggestionInline, { TUSSSuggestion } from '@/components/billing/TUSSSuggestionInline';
@@ -60,11 +59,8 @@ interface FormState {
 const emptyItem = (): GuideItem => ({ tuss_code: null, description: '', quantity: 1, unit_value: '' });
 
 function apiFetch<T>(path: string): Promise<T> {
-  const token = getAccessToken();
-  if (!token) return Promise.reject(new Error('Sessão expirada'));
   return fetch(`/api/v1${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  }).then((r) => {
+      }).then((r) => {
     if (!r.ok) throw new Error(`${r.status}`);
     return r.json();
   });
@@ -239,11 +235,6 @@ export default function NewGuidePage() {
       return;
     }
 
-    const token = getAccessToken();
-    if (!token) {
-      setError('Sessão expirada');
-      return;
-    }
 
     setSaving(true);
     setError('');
@@ -268,7 +259,6 @@ export default function NewGuidePage() {
       const res = await fetch('/api/v1/billing/guides/', {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(body),

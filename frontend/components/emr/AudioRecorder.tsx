@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Mic, MicOff, Loader2 } from 'lucide-react';
-import { getAccessToken } from '@/lib/auth';
 
 interface AudioRecorderProps {
   onTranscription: (text: string) => void;
@@ -105,12 +104,8 @@ export function AudioRecorder({ onTranscription, encounterId }: AudioRecorderPro
     formData.append('audio', blob, `audio.${ext}`);
 
     try {
-      const token = getAccessToken();
       const res = await fetch(`/api/v1/encounters/${encounterId}/scribe/transcribe/`, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
         body: formData,
       });
 

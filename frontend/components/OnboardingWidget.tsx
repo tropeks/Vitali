@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getAccessToken } from '@/lib/auth';
 import { CheckCircle, Circle } from 'lucide-react';
 
 interface OnboardingStep {
@@ -23,15 +22,8 @@ export default function OnboardingWidget() {
 
   useEffect(() => {
     async function load() {
-      const token = getAccessToken();
-      if (!token) {
-        setLoading(false);
-        return;
-      }
       try {
-        const res = await fetch('/api/v1/onboarding/', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await fetch('/api/v1/onboarding/');
         if (!res.ok) return;
         const json = await res.json();
         setData(json);

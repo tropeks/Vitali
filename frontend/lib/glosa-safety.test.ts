@@ -6,10 +6,6 @@ import {
   acknowledgeGlosaAlert,
 } from './glosa-safety'
 
-vi.mock('./auth', () => ({
-  getAccessToken: () => 'test-token',
-}))
-
 const blockBody = {
   code: 'glosa_safety_block',
   detail: 'Risco de glosa em uma ou mais guias.',

@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { getAccessToken } from '@/lib/auth';
 import PatientAutocomplete, { type PatientOption } from '@/components/patients/PatientAutocomplete';
 
 interface Encounter {
@@ -33,19 +32,16 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 async function apiFetch(path: string) {
-  const token = getAccessToken();
   const res = await fetch(`/api/v1${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+      });
   if (!res.ok) throw new Error(`${res.status}`);
   return res.json();
 }
 
 async function apiPost(path: string, body: Record<string, unknown>) {
-  const token = getAccessToken();
   const res = await fetch(`/api/v1${path}`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`${res.status}`);

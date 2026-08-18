@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { ShieldCheck, ShieldOff, Loader2, Download, QrCode } from "lucide-react";
-import { getAccessToken } from "@/lib/auth";
 import { Button, PageShell, SectionState, StatusBadge } from "@/components/shared";
 import { getMfaStatusMeta } from "@/lib/operational-ui";
 
@@ -19,11 +18,9 @@ interface MFAStatus {
 }
 
 async function apiFetch(path: string, options?: RequestInit) {
-  const token = getAccessToken();
   const res = await fetch(`/api/v1${path}`, {
     ...options,
     headers: {
-      Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
       ...(options?.headers ?? {}),
     },

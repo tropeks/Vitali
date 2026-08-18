@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { Bot } from 'lucide-react';
-import { getAccessToken } from '@/lib/auth';
 import { DPASignModal } from '@/components/settings/DPASignModal';
 import { Button, PageShell, StatusBadge, ReadinessPanel } from '@/components/shared';
 import { getDpaStatusMeta } from '@/lib/operational-ui';
@@ -41,11 +40,8 @@ export default function AISettingsPage() {
   const canSign = status?.current_user_can_sign ?? false;
 
   async function fetchStatus() {
-    const token = getAccessToken();
     try {
-      const res = await fetch('/api/v1/settings/dpa/', {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await fetch('/api/v1/settings/dpa/');
       if (res.ok) {
         const data: DPAStatus = await res.json();
         setStatus(data);
@@ -58,11 +54,8 @@ export default function AISettingsPage() {
   }
 
   async function fetchReadiness() {
-    const token = getAccessToken();
     try {
-      const res = await fetch('/api/v1/pharmacy/curation/readiness/', {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await fetch('/api/v1/pharmacy/curation/readiness/');
       if (res.ok) {
         const data: { wedges: ReadinessWedge[] } = await res.json();
         setWedges(data.wedges ?? []);
@@ -80,12 +73,8 @@ export default function AISettingsPage() {
   async function handleSign() {
     setSigning(true);
     setError(null);
-    const token = getAccessToken();
     try {
-      const res = await fetch('/api/v1/settings/dpa/sign/', {
-        method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await fetch('/api/v1/settings/dpa/sign/', { method: 'POST' });
       if (res.ok) {
         const data: DPAStatus = await res.json();
         setStatus(data);

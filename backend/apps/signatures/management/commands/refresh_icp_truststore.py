@@ -106,7 +106,15 @@ class Command(BaseCommand):
         try:
             import requests
 
-            resp = requests.get(url, timeout=options["timeout"], verify=False)
+            # 3.6: was verify=False (no comment/justification in history — see
+            # git blame). That disables TLS certificate validation on the
+            # download itself: a network MITM could serve a forged bundle and
+            # have its own fake root CA end up trusted, silently marking
+            # attacker-issued signatures as is_icp_brasil=True downstream.
+            # Verifying against the standard CA bundle (requests/certifi
+            # default) is correct here — this endpoint is a normal public
+            # HTTPS site, not a case needing a pinned bundle.
+            resp = requests.get(url, timeout=options["timeout"])
             resp.raise_for_status()
         except Exception as exc:  # noqa: BLE001 — best-effort ops tool, any failure is fatal-but-clear.
             raise CommandError(

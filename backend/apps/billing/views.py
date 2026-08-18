@@ -26,6 +26,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.mixins import AuditReadMixin
 from apps.core.models import TUSSCode
 from apps.core.permissions import ModuleRequiredPermission
 
@@ -928,7 +929,8 @@ class InpatientFeeViewSet(
         return Response(serializer.data, status=http_status, headers=headers)
 
 
-class TISSGuideViewSet(viewsets.ModelViewSet):
+class TISSGuideViewSet(AuditReadMixin, viewsets.ModelViewSet):
+    audit_resource_type = "TISSGuide"
     permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["guide_number", "patient__full_name", "provider__name"]
@@ -1514,13 +1516,14 @@ class TISSBatchViewSet(viewsets.ModelViewSet):
         return Response(result, status=http_status)
 
 
-class GlosaViewSet(viewsets.ReadOnlyModelViewSet):
+class GlosaViewSet(AuditReadMixin, viewsets.ReadOnlyModelViewSet):
     """
     Glosas are created only by the retorno parser (system), not by API clients.
     Use GET to list/retrieve and POST /appeal/ to file an appeal.
     """
 
     serializer_class = GlosaSerializer
+    audit_resource_type = "Glosa"
     permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
     filter_backends = [filters.OrderingFilter]
     ordering = ["-created_at"]

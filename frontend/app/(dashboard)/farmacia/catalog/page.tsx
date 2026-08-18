@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { getAccessToken } from '@/lib/auth'
 
 function extractError(err: any): string {
   if (typeof err === 'string') return err
@@ -64,10 +63,8 @@ export default function CatalogPage() {
   const fetchDrugsNow = useCallback(async (q: string) => {
     setLoading(true)
     try {
-      const token = getAccessToken()
       const res = await fetch(`/api/v1/pharmacy/drugs/?search=${encodeURIComponent(q)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+              })
       const data = await res.json()
       setDrugs(data.results ?? data ?? [])
     } finally { setLoading(false) }
@@ -76,10 +73,8 @@ export default function CatalogPage() {
   const fetchMaterialsNow = useCallback(async (q: string) => {
     setLoading(true)
     try {
-      const token = getAccessToken()
       const res = await fetch(`/api/v1/pharmacy/materials/?search=${encodeURIComponent(q)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+              })
       const data = await res.json()
       setMaterials(data.results ?? data ?? [])
     } finally { setLoading(false) }
@@ -112,12 +107,10 @@ export default function CatalogPage() {
     setSaving(true)
     setError('')
     try {
-      const token = getAccessToken()
-      if (!token) { setError('Sessão expirada'); setSaving(false); return }
       const endpoint = tab === 'drugs' ? '/api/v1/pharmacy/drugs/' : '/api/v1/pharmacy/materials/'
       const res = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
       })
       if (!res.ok) {

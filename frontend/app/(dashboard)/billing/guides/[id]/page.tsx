@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { getAccessToken } from '@/lib/auth';
 
 const STATUS_BADGE: Record<string, string> = {
   draft: 'bg-neu-app text-neu-inkSoft',
@@ -48,11 +47,8 @@ export default function GuideDetailPage() {
   const [actionMsg, setActionMsg] = useState('');
 
   useEffect(() => {
-    const token = getAccessToken();
-    if (!token) { setError('Sessão expirada'); setLoading(false); return; }
     fetch(`/api/v1/billing/guides/${id}/`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+          })
       .then(r => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); })
       .then(setGuide)
       .catch(e => setError(e.message))
@@ -60,15 +56,12 @@ export default function GuideDetailPage() {
   }, [id]);
 
   const submitGuide = async () => {
-    const token = getAccessToken();
-    if (!token) { setError('Sessão expirada'); return; }
     setSubmitting(true);
     setActionMsg('');
     try {
       const res = await fetch(`/api/v1/billing/guides/${id}/submit/`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
+              });
       if (!res.ok) throw new Error(`${res.status}`);
       const data = await res.json();
       setGuide(data);

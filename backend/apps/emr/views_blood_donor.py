@@ -20,6 +20,8 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.response import Response
 
+from apps.core.mixins import AuditReadMixin
+
 from .blood_donor_models import BloodBagSerology, BloodDonor
 from .serializers_blood_donor import BloodBagSerologySerializer, BloodDonorSerializer
 from .services.blood_serology import registrar_sorologia
@@ -35,11 +37,12 @@ _BAG_PARAM = OpenApiParameter(
     list=extend_schema(tags=["hemoterapia"], summary="Lista doadores de sangue"),
     create=extend_schema(tags=["hemoterapia"], summary="Cadastra doador de sangue"),
 )
-class BloodDonorViewSet(_HemoterapiaPermissionMixin, viewsets.ModelViewSet):
+class BloodDonorViewSet(AuditReadMixin, _HemoterapiaPermissionMixin, viewsets.ModelViewSet):
     """Doadores de sangue. Read=hemoterapia.read / write=hemoterapia.manage."""
 
     serializer_class = BloodDonorSerializer
     queryset = BloodDonor.objects.all()
+    audit_resource_type = "BloodDonor"
 
     def perform_create(self, serializer):
         obj = serializer.save()
@@ -63,6 +66,7 @@ class BloodDonorViewSet(_HemoterapiaPermissionMixin, viewsets.ModelViewSet):
     ),
 )
 class BloodBagSerologyViewSet(
+    AuditReadMixin,
     _HemoterapiaPermissionMixin,
     mixins.CreateModelMixin,
     mixins.ListModelMixin,
@@ -72,6 +76,7 @@ class BloodBagSerologyViewSet(
     """Triagem sorológica de bolsas. Create routes through registrar_sorologia."""
 
     serializer_class = BloodBagSerologySerializer
+    audit_resource_type = "BloodBagSerology"
 
     def get_queryset(self):
         qs = BloodBagSerology.objects.select_related("bag", "tested_by")

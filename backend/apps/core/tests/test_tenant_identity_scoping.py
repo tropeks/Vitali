@@ -255,3 +255,38 @@ class TenantIdentityScopingTests(TenantTestCase):
         self.assertIn(self.system_role.id, role_ids)
         self.assertIn(self.admin_a.id, user_ids)
         self.assertIn(self.user_b.id, user_ids)
+
+    # ─── (f) 3.5 regression: admin-provisioned users get a real password policy ─
+
+    def test_create_user_rejects_weak_password(self):
+        """AUTH_PASSWORD_VALIDATORS was configured but never invoked anywhere
+        (3.5 audit) — UserCreateSerializer accepted any 8-char string. Now it
+        must reject a password that is long but has no strength (all
+        lowercase + digits) same as the other two password-setting paths."""
+        resp = self.client.post(
+            "/api/v1/users/",
+            {
+                "email": "weak-pw@identity-scoping.test",
+                "full_name": "Weak Pw",
+                "password": "password123456",
+                "role_id": str(self.role_a.id),
+            },
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("password", resp.data)
+        self.assertFalse(User.objects.filter(email="weak-pw@identity-scoping.test").exists())
+
+    def test_create_user_accepts_strong_password(self):
+        resp = self.client.post(
+            "/api/v1/users/",
+            {
+                "email": "strong-pw@identity-scoping.test",
+                "full_name": "Strong Pw",
+                "password": "Kn0wn!Strong#Pass",
+                "role_id": str(self.role_a.id),
+            },
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 201)
+        self.assertTrue(User.objects.filter(email="strong-pw@identity-scoping.test").exists())

@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { getAccessToken } from '@/lib/auth';
 
 const STATUS_BADGE: Record<string, string> = {
   open: 'bg-blue-100 text-blue-700',
@@ -38,15 +37,12 @@ export default function BatchesPage() {
   const [createError, setCreateError] = useState('');
 
   const load = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) { setError('Sessão expirada'); setLoading(false); return; }
     setLoading(true);
     try {
       const params = new URLSearchParams();
       if (statusFilter) params.set('status', statusFilter);
       const res = await fetch(`/api/v1/billing/batches/?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+              });
       if (!res.ok) throw new Error(`${res.status}`);
       const data = await res.json();
       setBatches(Array.isArray(data) ? data : data.results ?? []);
@@ -63,12 +59,9 @@ export default function BatchesPage() {
     setShowModal(true);
     setCreateError('');
     if (providers.length === 0) {
-      const token = getAccessToken();
-      if (!token) return;
       try {
         const res = await fetch('/api/v1/billing/providers/', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+                  });
         const data = await res.json();
         setProviders(Array.isArray(data) ? data : data.results ?? []);
       } catch { /* ignore */ }
@@ -77,14 +70,12 @@ export default function BatchesPage() {
 
   const createBatch = async () => {
     if (!newProviderId) { setCreateError('Selecione uma operadora.'); return; }
-    const token = getAccessToken();
-    if (!token) { setCreateError('Sessão expirada'); return; }
     setCreating(true);
     setCreateError('');
     try {
       const res = await fetch('/api/v1/billing/batches/', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ provider: newProviderId }),
       });
       if (!res.ok) {

@@ -15,6 +15,7 @@ from django.utils.translation import gettext_lazy as _
 from django_tenants.utils import schema_context
 from rest_framework import generics, permissions, status
 from rest_framework import throttling as rest_framework_throttling
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -42,6 +43,7 @@ from .serializers import (
     UserCreateSerializer,
     UserDTOSerializer,
     UserSerializer,
+    _validate_strong_password,
 )
 from .tenant_auth import enforce_refresh_membership, login_allowed, tokens_for_user
 
@@ -226,6 +228,14 @@ class SetPasswordView(APIView):
             return Response({"error": "PASSWORD_TOO_SHORT"}, status=400)
 
         user = invitation.user
+        # 3.5: this was the only length check on this path (>=8 chars, nothing
+        # else) — AUTH_PASSWORD_VALIDATORS was configured in settings but
+        # never invoked here, so e.g. "password123456" was accepted outright.
+        try:
+            _validate_strong_password(password, user=user)
+        except DRFValidationError as exc:
+            return Response({"error": "PASSWORD_TOO_WEAK", "details": exc.detail}, status=400)
+
         user.set_password(password)
         user.must_change_password = False
         user.save(update_fields=["password", "must_change_password"])
@@ -460,7 +470,7 @@ class ChangePasswordView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def put(self, request):
-        serializer = ChangePasswordSerializer(data=request.data)
+        serializer = ChangePasswordSerializer(data=request.data, context={"request": request})
         if not serializer.is_valid():
             return Response(
                 {

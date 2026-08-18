@@ -48,18 +48,21 @@ async function loginAsAdmin(page: Page): Promise<string> {
     throw new Error(`admin login failed (${response.status()}): ${await response.text()}`);
   }
 
+  // access_token is httpOnly (no client-readable access_token_js mirror since
+  // item 3.8) — Playwright's context().cookies() can still read it, unlike
+  // document.cookie in the page itself.
   await expect
     .poll(
       async () =>
-        (await page.context().cookies()).find((cookie) => cookie.name === 'access_token_js')
+        (await page.context().cookies()).find((cookie) => cookie.name === 'access_token')
           ?.value ?? null,
-      { timeout: 20_000, message: 'admin login should set access_token_js' },
+      { timeout: 20_000, message: 'admin login should set access_token' },
     )
     .not.toBeNull();
 
   const cookies = await page.context().cookies();
-  const accessToken = cookies.find((cookie) => cookie.name === 'access_token_js')?.value;
-  expect(accessToken, 'admin login should set access_token_js').toBeTruthy();
+  const accessToken = cookies.find((cookie) => cookie.name === 'access_token')?.value;
+  expect(accessToken, 'admin login should set access_token').toBeTruthy();
   await page.goto('/dashboard');
   await expect(page).toHaveURL(/\/dashboard/, { timeout: 20_000 });
   return accessToken!;

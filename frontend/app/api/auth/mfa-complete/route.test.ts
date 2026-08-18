@@ -40,7 +40,6 @@ describe("POST /api/auth/mfa-complete", () => {
 
     expect(response.status).toBe(401);
     expect(response.cookies.get("access_token")).toBeUndefined();
-    expect(response.cookies.get("access_token_js")).toBeUndefined();
     expect(response.cookies.get("refresh_token")).toBeUndefined();
     expect(fetchMock).toHaveBeenCalledWith(
       "http://django:8000/api/v1/me",
@@ -62,15 +61,6 @@ describe("POST /api/auth/mfa-complete", () => {
     expect(access).toMatchObject({
       value: valid,
       httpOnly: true,
-      sameSite: "lax",
-      path: "/",
-      maxAge: 15 * 60,
-    });
-
-    const accessJs = response.cookies.get("access_token_js");
-    expect(accessJs).toMatchObject({
-      value: valid,
-      httpOnly: false,
       sameSite: "lax",
       path: "/",
       maxAge: 15 * 60,

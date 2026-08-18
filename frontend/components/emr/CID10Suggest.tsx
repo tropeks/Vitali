@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { getAccessToken } from '@/lib/auth';
 
 interface CID10Suggestion {
   code: string;
@@ -51,13 +50,9 @@ export function CID10Suggest({
 
     setLoading(true);
     try {
-      const token = getAccessToken();
       const res = await fetch(`/api/v1/encounters/${encounterId}/cid10-suggest/`, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),
         signal: abortRef.current.signal,
       });
@@ -97,11 +92,10 @@ export function CID10Suggest({
   }, []);
 
   const acceptCode = async (code: string) => {
-    const token = getAccessToken();
     try {
       await fetch(`/api/v1/encounters/${encounterId}/cid10-accept/`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code }),
       });
     } catch {

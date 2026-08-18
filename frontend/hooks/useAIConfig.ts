@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { getAccessToken } from '@/lib/auth';
 
 const CACHE_KEY = 'vitali_ai_config';
 const TTL_MS = 5 * 60 * 1000; // 5 minutes
@@ -47,10 +46,7 @@ async function fetchAIConfig(): Promise<AIConfigData | null> {
   if (cached) return cached;
 
   if (!inflight) {
-    const token = getAccessToken();
-    inflight = fetch('/api/v1/settings/dpa/', {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
+    inflight = fetch('/api/v1/settings/dpa/')
       .then(async (res) => {
         if (!res.ok) {
           inflight = null;

@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { getAccessToken } from '@/lib/auth';
 import { Plus, Trash2 } from 'lucide-react';
 import RemoteCombobox from '@/components/shared/RemoteCombobox';
 
@@ -67,10 +66,9 @@ export default function NovaCompraPage() {
     }
     setLoadingDrugs(true);
     try {
-      const token = getAccessToken();
       const res = await fetch(
         `/api/v1/pharmacy/drugs/?search=${encodeURIComponent(q)}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: {} }
       );
       if (res.ok) {
         const data = await res.json();
@@ -127,11 +125,6 @@ export default function NovaCompraPage() {
     setSaving(true);
     setError('');
     try {
-      const token = getAccessToken();
-      if (!token) {
-        setError('Sessão expirada. Faça login novamente.');
-        return;
-      }
       const body = {
         supplier: selectedSupplier.id,
         expected_date: expectedDate || null,
@@ -146,7 +139,6 @@ export default function NovaCompraPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(body),
       });

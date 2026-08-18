@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Loader2, ClockIcon, BellRing, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
-import { getAccessToken } from "@/lib/auth";
 
 interface WaitlistEntry {
   id: string;
@@ -78,11 +77,9 @@ function formatDateRange(from: string, to: string): string {
 }
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const token = getAccessToken();
   const res = await fetch(`/api/v1${path}`, {
     ...options,
     headers: {
-      Authorization: `Bearer ${token}`,
       ...(options?.body ? { "Content-Type": "application/json" } : {}),
       ...(options?.headers ?? {}),
     },

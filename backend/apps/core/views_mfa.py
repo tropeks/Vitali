@@ -28,6 +28,7 @@ from .mfa import (
     get_or_create_device,
     verify_totp_code,
 )
+from .permissions import is_platform_admin
 from .tenant_auth import tokens_for_user
 from .throttles_mfa import MFAVerifyThrottle
 
@@ -212,15 +213,24 @@ class MFADisableView(APIView):
     """
     POST /auth/mfa/disable/
 
-    Platform admin only (is_staff=True).
-    Deletes the TOTPDevice for the target user.
+    Platform admin only. Deletes the TOTPDevice for the target user, whose
+    lookup is deliberately UNSCOPED by tenant (this is a Vitali-ops action,
+    not a clinic-admin one — see is_platform_admin).
+
+    3.10: was gated on ``request.user.is_staff``, the Django-admin-site flag
+    (default False for every normal tenant employee; NOT a platform-admin
+    signal). Combined with the unscoped user_id lookup below, any tenant user
+    who happened to have ``is_staff=True`` could delete the TOTP device of
+    ANY user on the platform, in ANY tenant. ``is_platform_admin`` keys off
+    ``is_superuser``, which policy reserves for genuine Vitali operators (see
+    apps/core/permissions.py), matching this endpoint's actual intent.
     Body: {user_id: "<uuid>"}
     """
 
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        if not request.user.is_staff:
+        if not is_platform_admin(request.user):
             return Response(
                 {"error": "Apenas administradores podem desativar MFA."},
                 status=status.HTTP_403_FORBIDDEN,

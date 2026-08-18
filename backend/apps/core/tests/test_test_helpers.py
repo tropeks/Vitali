@@ -167,7 +167,10 @@ class IssueInvitationTokenViewTests(TenantTestCase):
         anon_client.defaults["SERVER_NAME"] = self.__class__.domain.domain
         set_pw_resp = anon_client.post(
             f"/api/v1/auth/set-password/{token}/",
-            {"password": "NewPass123!"},
+            # 12+ chars: Onda 3 / 3.5 passou a chamar validate_password de verdade,
+            # e o mínimo do projeto é 12. A senha antiga (11) era aceita só porque
+            # os validadores nunca rodavam.
+            {"password": "NewPass1234!"},
             format="json",
         )
         self.assertEqual(set_pw_resp.status_code, 200, set_pw_resp.data)

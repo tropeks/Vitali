@@ -2,10 +2,17 @@
  * Centralized fetch wrapper for Vitali frontend.
  *
  * Handles:
- *   - JWT Authorization header injection (uses getAccessToken from lib/auth)
  *   - PASSWORD_CHANGE_REQUIRED 403 → redirect to /auth/change-password (T5/T12)
  *   - single-flight JWT refresh + one retry on 401
  *   - expired refresh session cleanup + redirect to login preserving `next`
+ *
+ * The JWT itself is never read or attached client-side: `/api/*` is served by
+ * the Next.js proxy (app/api/[...path]/route.ts), which reads the httpOnly
+ * access_token cookie on the server and injects the Authorization header
+ * before forwarding to Django. The browser sends the httpOnly cookie
+ * automatically (fetch's default credentials mode is same-origin) — a fresh
+ * access_token cookie from /api/auth/refresh is picked up on the very next
+ * request with no client-side bookkeeping.
  *
  * Usage:
  *   const data = await apiFetch('/api/v1/me')
@@ -14,7 +21,6 @@
  *     body: JSON.stringify(payload),
  *   })
  */
-import { getAccessToken } from './auth'
 
 let refreshInFlight: Promise<Response> | null = null
 
@@ -34,11 +40,7 @@ export class ApiError extends Error {
 }
 
 function fetchWithAccessToken(path: string, fetchInit: RequestInit): Promise<Response> {
-  const token = getAccessToken()
   const headers = new Headers(fetchInit.headers)
-  if (token && !headers.has('Authorization')) {
-    headers.set('Authorization', `Bearer ${token}`)
-  }
   return fetch(path, { ...fetchInit, headers })
 }
 

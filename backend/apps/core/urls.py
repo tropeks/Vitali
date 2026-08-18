@@ -4,6 +4,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from . import views
+from .views_audit import AuditTrailListView
 from .views_clinic import ClinicProfileView
 from .views_dpa import DPASignView, DPAStatusView
 from .views_manchester import (
@@ -75,6 +76,8 @@ urlpatterns = [
     path("onboarding/", OnboardingView.as_view(), name="onboarding"),
     # Wedge operational telemetry (S30-04)
     path("wedge-telemetry/", WedgeTelemetryView.as_view(), name="wedge-telemetry"),
+    # Audit trail — DPO-facing read of AuditLog (Onda 3 / 3.4)
+    path("audit-trail/", AuditTrailListView.as_view(), name="audit-trail"),
     # AI: TUSS sync status (admin-only)
     path("ai/tuss-sync-status/", views.TUSSSyncStatusView.as_view(), name="tuss-sync-status"),
     # E1-T4: terminology autocomplete (read-only) — GET /terminology/<system>/?q=

@@ -24,11 +24,6 @@ vi.mock('@/lib/api', () => ({
   },
 }))
 
-// Mock getAccessToken (apiFetch imports it internally; the mock above bypasses it)
-vi.mock('@/lib/auth', () => ({
-  getAccessToken: () => 'test-token',
-}))
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 import { apiFetch } from '@/lib/api'

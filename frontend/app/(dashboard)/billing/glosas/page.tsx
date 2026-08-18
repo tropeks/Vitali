@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { getAccessToken } from '@/lib/auth';
 
 const APPEAL_BADGE: Record<string, string> = {
   none: 'bg-neu-app text-neu-inkSoft',
@@ -34,11 +33,8 @@ export default function GlosasPage() {
   const [appealError, setAppealError] = useState('');
 
   useEffect(() => {
-    const token = getAccessToken();
-    if (!token) { setError('Sessão expirada'); setLoading(false); return; }
     fetch('/api/v1/billing/glosas/', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+          })
       .then(r => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); })
       .then(data => setGlosas(Array.isArray(data) ? data : data.results ?? []))
       .catch(e => setError(e.message))
@@ -48,14 +44,12 @@ export default function GlosasPage() {
   const submitAppeal = async () => {
     if (!appealModal) return;
     if (!appealText.trim()) { setAppealError('O texto do recurso é obrigatório.'); return; }
-    const token = getAccessToken();
-    if (!token) { setAppealError('Sessão expirada'); return; }
     setSubmittingAppeal(true);
     setAppealError('');
     try {
       const res = await fetch(`/api/v1/billing/glosas/${appealModal.id}/appeal/`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ appeal_text: appealText }),
       });
       if (!res.ok) {

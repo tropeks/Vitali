@@ -13,10 +13,6 @@ vi.mock('next/navigation', () => ({
   }),
 }));
 
-vi.mock('@/lib/auth', () => ({
-  getAccessToken: () => 'test-token',
-}));
-
 vi.mock('@/components/billing/TUSSCodeSearch', () => ({
   default: ({ value, onChange }: any) => (
     <button

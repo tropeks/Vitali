@@ -22,7 +22,6 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
-from django.conf import settings
 from django.core.cache import cache
 from django.db.models import F, Sum
 from django.utils import timezone
@@ -30,8 +29,10 @@ from django.utils import timezone
 from apps.core.models import TenantAIConfig, TUSSCode
 
 from .circuit_breaker import is_open, record_failure, record_success
+from .consent import requires_ai_consent
 from .gateway import ClaudeGateway, LLMGatewayError
 from .models import AIPromptTemplate, AIUsageLog, TUSSAISuggestion
+from .phi_scrubber import scrub_generic
 from .rate_limiter import is_rate_limited
 
 logger = logging.getLogger(__name__)
@@ -274,19 +275,16 @@ def suggest(
     Never raises — always returns TUSSCoderResponse (degraded=True on any failure).
     Now uses per-tenant config (TenantAIConfig) for feature toggle, rate limit, and ceiling.
     """
-    # Global kill switch first
-    if not getattr(settings, "FEATURE_AI_TUSS", False):
+    # Single consent gate (Onda 3 / 3.2): global flag, signed DPA, per-tenant
+    # toggle, monthly ceiling — see apps/ai/consent.py. This is also where
+    # TUSSCoder gets a DPA check for the first time; it never had one before.
+    consent = requires_ai_consent("tuss", tenant_schema)
+    if not consent.allowed:
+        if consent.reason == "monthly_ceiling_exceeded":
+            _log_usage(event_type="degraded", input_text=description)
         return TUSSCoderResponse(suggestions=[], degraded=True, cached=False)
 
-    # Per-tenant feature toggle
     config = get_tenant_ai_config(tenant_schema)
-    if not config.ai_tuss_enabled:
-        return TUSSCoderResponse(suggestions=[], degraded=True, cached=False)
-
-    # Monthly token ceiling
-    if check_monthly_ceiling(tenant_schema):
-        _log_usage(event_type="degraded", input_text=description)
-        return TUSSCoderResponse(suggestions=[], degraded=True, cached=False)
 
     # Circuit breaker check
     if is_open(tenant_schema, feature="tuss"):
@@ -466,19 +464,15 @@ def predict_glosa(
     Predict glosa (denial) risk for a TISS guide item.
     Never raises — returns PredictionResult(degraded=True) on any failure.
     """
-    # Global kill switch
-    if not getattr(settings, "FEATURE_AI_GLOSA", True):
+    # Single consent gate (Onda 3 / 3.2) — see apps/ai/consent.py. GlosaPredictor
+    # never checked DPA before; this closes that gap.
+    consent = requires_ai_consent("glosa", schema_name)
+    if not consent.allowed:
+        if consent.reason == "monthly_ceiling_exceeded":
+            _log_usage(event_type="degraded", input_text=tuss_code)
         return PredictionResult(risk_level="low", degraded=True)
 
-    # Per-tenant feature toggle
     config = get_tenant_ai_config(schema_name)
-    if not config.ai_glosa_prediction_enabled:
-        return PredictionResult(risk_level="low", degraded=True)
-
-    # Monthly token ceiling
-    if check_monthly_ceiling(schema_name):
-        _log_usage(event_type="degraded", input_text=tuss_code)
-        return PredictionResult(risk_level="low", degraded=True)
 
     # Circuit breaker (Glosa has its own independent circuit)
     if is_open(schema_name, feature="glosa"):
@@ -514,8 +508,10 @@ def predict_glosa(
         _log_usage(event_type="degraded", input_text=tuss_code)
         return PredictionResult(risk_level="low", degraded=True)
 
-    # Build prompt inputs — sanitize all user-controlled fields
-    safe_insurer_name = _sanitize_insurer_name(insurer_name)
+    # Build prompt inputs — scrub (Onda 3 / 3.1: defense-in-depth against free
+    # text accidentally containing CPF/CNS/phone/e-mail/dates) then sanitize
+    # against prompt injection.
+    safe_insurer_name = _sanitize_insurer_name(scrub_generic(insurer_name))
     safe_guide_type = guide_type.replace("{", "").replace("}", "")[:50]
     safe_cid10 = ", ".join(_sanitize_cid10_code(c) for c in cid10_codes[:20])
     safe_tuss = str(tuss_code).replace("{", "").replace("}", "")[:20]

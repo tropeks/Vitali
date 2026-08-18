@@ -14,9 +14,22 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.permissions import HasPermission
 from apps.emr.models import Patient, Professional, WaitlistEntry
 
 logger = logging.getLogger(__name__)
+
+# 3.10: was `request.user.is_staff` — that's the Django-admin-site flag, default
+# False for every normal tenant employee (UserManager.create_user never sets it;
+# only create_superuser/platform ops do — see apps/core/managers.py). It is NOT
+# a tenant role signal (docs/RBAC.md §1). In practice this meant reception/
+# clinical staff fell into the "no Patient row → show nothing / 403" branch,
+# same class of bug as the reception/enfermeiro example in RBAC.md §1.
+# schedule.read/write is the real gate — same domain RECEPTION_PERMISSIONS,
+# CLINICAL_PRESCRIBER_PERMISSIONS and NURSING_PERMISSIONS already carry for
+# agenda-adjacent features.
+_SCHEDULE_READ = HasPermission("schedule.read")
+_SCHEDULE_WRITE = HasPermission("schedule.write")
 
 STATUS_BADGE_LABELS = {
     "waiting": "Aguardando",
@@ -119,10 +132,10 @@ class WaitlistViewSet(APIView):
     def get(self, request):
         """
         List waitlist entries.
-        Staff (is_staff) can see all entries.
+        Staff with schedule.read can see all entries.
         Patient users see only their own entries.
         """
-        if request.user.is_staff:
+        if _SCHEDULE_READ.has_permission(request, self):
             qs = WaitlistEntry.objects.select_related("patient", "professional__user").all()
         else:
             # Try to find the Patient linked to this user
@@ -154,7 +167,7 @@ class WaitlistViewSet(APIView):
         patient = None
         patient_id = data.get("patient_id")
         if patient_id:
-            if not request.user.is_staff:
+            if not _SCHEDULE_WRITE.has_permission(request, self):
                 return Response(
                     {"error": "Apenas staff pode especificar patient_id."},
                     status=status.HTTP_403_FORBIDDEN,
@@ -240,7 +253,7 @@ class WaitlistDetailView(APIView):
             )
 
         # Authorization: staff only (Patient has no user FK)
-        if not request.user.is_staff:
+        if not _SCHEDULE_WRITE.has_permission(request, self):
             return Response(
                 {"error": "Sem permissão para cancelar esta entrada."},
                 status=status.HTTP_403_FORBIDDEN,

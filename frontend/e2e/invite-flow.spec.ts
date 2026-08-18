@@ -28,9 +28,11 @@ async function expectApiOk(response: APIResponse, label: string): Promise<void> 
 }
 
 async function getAccessTokenFromSession(page: Page): Promise<string> {
+  // access_token is httpOnly (no client-readable access_token_js mirror since
+  // item 3.8) — Playwright's context().cookies() can still read it.
   const cookies = await page.context().cookies();
-  const accessToken = cookies.find((cookie) => cookie.name === 'access_token_js')?.value;
-  expect(accessToken, 'admin login should set access_token_js').toBeTruthy();
+  const accessToken = cookies.find((cookie) => cookie.name === 'access_token')?.value;
+  expect(accessToken, 'admin login should set access_token').toBeTruthy();
   return accessToken!;
 }
 

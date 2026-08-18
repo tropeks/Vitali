@@ -184,7 +184,7 @@ class GlosaPredictView(APIView):
         return [IsAuthenticated(), _AI_TUSS_MODULE, HasPermission("ai.use")]
 
     def post(self, request):
-        if not getattr(settings, "FEATURE_AI_GLOSA", True):
+        if not getattr(settings, "FEATURE_AI_GLOSA", False):
             return Response(
                 {
                     "prediction_id": None,
@@ -274,7 +274,7 @@ class GlosaPredictBatchView(APIView):
         data = serializer.validated_data
         items = data["items"]
 
-        if not getattr(settings, "FEATURE_AI_GLOSA", True):
+        if not getattr(settings, "FEATURE_AI_GLOSA", False):
             return Response(
                 {
                     "predictions": [self._degraded_item(item["tuss_code"]) for item in items],

@@ -3,8 +3,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ImagingPanel } from './ImagingPanel';
 
-vi.mock('@/lib/auth', () => ({ getAccessToken: () => 'token' }));
-
 describe('ImagingPanel', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -36,10 +34,7 @@ describe('ImagingPanel', () => {
     render(<ImagingPanel labOrderId="order-1" />);
 
     await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        '/api/v1/imaging/studies/?lab_order=order-1',
-        expect.objectContaining({ headers: { Authorization: 'Bearer token' } }),
-      ),
+      expect(fetchMock).toHaveBeenCalledWith('/api/v1/imaging/studies/?lab_order=order-1'),
     );
     expect(await screen.findByText('Imagens em processamento')).toBeInTheDocument();
     expect(screen.queryByTitle(/Vitali Imagem/)).not.toBeInTheDocument();
@@ -56,10 +51,7 @@ describe('ImagingPanel', () => {
     render(<ImagingPanel labOrderItemId="item-1" />);
 
     await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        '/api/v1/imaging/studies/?lab_order_item=item-1',
-        expect.any(Object),
-      ),
+      expect(fetchMock).toHaveBeenCalledWith('/api/v1/imaging/studies/?lab_order_item=item-1'),
     );
   });
 
@@ -89,10 +81,7 @@ describe('ImagingPanel', () => {
     render(<ImagingPanel />);
 
     await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        '/api/v1/imaging/studies/?',
-        expect.objectContaining({ headers: { Authorization: 'Bearer token' } }),
-      ),
+      expect(fetchMock).toHaveBeenCalledWith('/api/v1/imaging/studies/?'),
     );
     const openButton = await screen.findByRole('button', { name: 'Abrir' });
     expect(screen.queryByTitle(/Vitali Imagem/)).not.toBeInTheDocument();

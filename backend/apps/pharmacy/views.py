@@ -18,6 +18,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.dispensation_signals import dispensation_billable
+from apps.core.mixins import AuditReadMixin
 from apps.core.models import AuditLog
 from apps.core.permissions import HasPermission, ModuleRequiredPermission
 
@@ -515,9 +516,10 @@ class ThreeWayMatchViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(ThreeWayMatchSerializer(match).data)
 
 
-class PharmacistValidationViewSet(viewsets.ModelViewSet):
+class PharmacistValidationViewSet(AuditReadMixin, viewsets.ModelViewSet):
     queryset = PharmacistValidation.objects.select_related("prescription", "pharmacist")
     serializer_class = PharmacistValidationSerializer
+    audit_resource_type = "PharmacistValidation"
     http_method_names = ("get", "post", "head", "options")
 
     def get_permissions(self):
@@ -1055,8 +1057,9 @@ class AcknowledgeStockAlertView(APIView):
 # ─── S-028: Dispensation ──────────────────────────────────────────────────────
 
 
-class DispensationViewSet(viewsets.ReadOnlyModelViewSet):
+class DispensationViewSet(AuditReadMixin, viewsets.ReadOnlyModelViewSet):
     serializer_class = DispensationSerializer
+    audit_resource_type = "Dispensation"
 
     def get_permissions(self):
         return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission("pharmacy.dispense")]

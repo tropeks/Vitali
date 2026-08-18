@@ -365,6 +365,10 @@ AI_RATE_LIMIT_PER_HOUR = env.int("AI_RATE_LIMIT_PER_HOUR", default=100)
 AI_SUGGEST_TIMEOUT_S = env.int("AI_SUGGEST_TIMEOUT_S", default=5)
 FEATURE_AI_TUSS = env.bool("FEATURE_AI_TUSS", default=False)
 FEATURE_AI_SCRIBE = env.bool("FEATURE_AI_SCRIBE", default=False)
+# Onda 3 / 3.2: was implicitly default=True via getattr() at each call site —
+# the only LLM path that opened itself while every other one defaulted OFF.
+# Aligned with FEATURE_AI_TUSS/FEATURE_AI_SCRIBE.
+FEATURE_AI_GLOSA = env.bool("FEATURE_AI_GLOSA", default=False)
 FEATURE_WHISPER_FALLBACK = env.bool("FEATURE_WHISPER_FALLBACK", default=True)
 SCRIBE_SESSION_RETENTION_DAYS = env.int("SCRIBE_SESSION_RETENTION_DAYS", default=90)
 

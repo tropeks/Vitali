@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { getAccessToken } from '@/lib/auth';
 import { Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 
 interface POItem {
@@ -76,12 +75,9 @@ export default function PODetailPage() {
   const [entries, setEntries] = useState<Record<string, ReceiptEntry>>({});
 
   async function load() {
-    const token = getAccessToken();
-    if (!token) return;
     try {
       const res = await fetch(`/api/v1/pharmacy/purchase-orders/${id}/`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+              });
       if (!res.ok) return;
       const data: PurchaseOrder = await res.json();
       setOrder(data);
@@ -117,8 +113,7 @@ export default function PODetailPage() {
   }
 
   async function handleRegisterReceipt() {
-    const token = getAccessToken();
-    if (!token || !order) return;
+    if (!order) return;
 
     setRegistering(true);
     setReceiptError(null);
@@ -136,7 +131,6 @@ export default function PODetailPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ items: payload }),
       });

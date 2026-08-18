@@ -19,28 +19,17 @@ function MFALoginContent() {
     inputRefs.current[0]?.focus();
   }, []);
 
-  const getToken = (): string | null => {
-    if (typeof window === "undefined") return null;
-    return (
-      document.cookie
-        .split("; ")
-        .find((c) => c.startsWith("access_token_js="))
-        ?.split("=")[1] ?? null
-    );
-  };
-
   const submitMfa = async (code: string, isBackup = false) => {
     setSubmitting(true);
     setError(null);
     try {
-      const token = getToken();
       const body = isBackup ? { backup_code: code } : { code };
+      // /api/v1/* is served by the Next.js proxy, which attaches the
+      // pre-MFA-verified access token from the httpOnly access_token
+      // cookie (set by /api/auth/login) — no client-readable token needed.
       const res = await fetch("/api/v1/auth/mfa/login/", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
       const data = await res.json();

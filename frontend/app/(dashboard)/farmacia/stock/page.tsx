@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { getAccessToken } from '@/lib/auth'
 
 function extractError(err: any): string {
   if (typeof err === 'string') return err
@@ -54,10 +53,8 @@ export default function StockPage() {
   const fetchStock = async () => {
     setLoading(true)
     try {
-      const token = getAccessToken()
       const res = await fetch('/api/v1/pharmacy/stock/items/', {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+              })
       const data = await res.json()
       setItems(data.results ?? data ?? [])
     } finally { setLoading(false) }
@@ -71,10 +68,8 @@ export default function StockPage() {
     if (!q.trim()) { setDrugResults([]); return }
     setLoadingDrugs(true)
     try {
-      const token = getAccessToken()
       const res = await fetch(`/api/v1/pharmacy/drugs/?search=${encodeURIComponent(q)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+              })
       const data = await res.json()
       setDrugResults(data.results ?? data ?? [])
     } finally { setLoadingDrugs(false) }
@@ -90,12 +85,10 @@ export default function StockPage() {
     setSaving(true)
     setError('')
     try {
-      const token = getAccessToken()
-      if (!token) { setError('Sessão expirada'); setSaving(false); return }
       // 1. Create StockItem (lot) for this drug
       const itemRes = await fetch('/api/v1/pharmacy/stock/items/', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           drug: selectedDrug.id,
           lot_number: lotNumber,
@@ -112,7 +105,7 @@ export default function StockPage() {
       // 2. Register the entry movement
       const movRes = await fetch('/api/v1/pharmacy/stock/movements/', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           stock_item: stockItem.id,
           movement_type: 'entry',

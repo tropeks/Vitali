@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Lock } from 'lucide-react'
-import { getAccessToken } from '@/lib/auth'
 
 export default function ChangePasswordPage() {
   const router = useRouter()
@@ -33,13 +32,9 @@ export default function ChangePasswordPage() {
 
     setSubmitting(true)
     try {
-      const token = getAccessToken()
       const res = await fetch('/api/v1/auth/password', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           current_password: currentPassword,
           new_password: newPassword,
