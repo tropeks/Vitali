@@ -24,6 +24,7 @@ from apps.billing.models import (
 )
 from apps.billing.services.xml_engine import (
     TISSXMLGenerationError,
+    _resolve_internacao_authorization,
     generate_batch_xml,
     generate_guide_xml,
     validate_xml,
@@ -346,9 +347,142 @@ class InternacaoGuideXMLConformanceTests(XMLEngineTestCase):
         self,
     ):
         """guide.authorization_number alone gives a senha but no honest
-        dataAutorizacao source (no matching approved Authorization row) —
-        must fail loud instead of fabricating a date."""
+        dataAutorizacao source (no matching approved Authorization row nor a
+        typed authorization_date) — must fail loud instead of fabricating a
+        date."""
         guide = self._make_internacao_guide()
 
         with pytest.raises(TISSXMLGenerationError, match="autorização resolvível"):
             generate_guide_xml(guide)
+
+
+class InternacaoAuthorizationPrecedenceTests(XMLEngineTestCase):
+    """B10 — ``TISSGuide.authorization_date`` (digitação manual) as the
+    LAST-RESORT fallback source for ``dataAutorizacao``, used ONLY when no
+    approved ``Authorization`` resolves. One test per branch of the
+    precedence documented on ``_resolve_internacao_authorization``'s
+    docstring (xml_engine.py): resolved Authorization always wins; typed
+    pair is a fallback, never an override; either field alone (with no
+    resolvable Authorization) is not enough — fail loud with an actionable
+    message telling the faturista what to do.
+    """
+
+    def _make_internacao_guide(self, *, authorization_number="AUTH123"):
+        guide = TISSGuide.objects.create(
+            guide_type="internacao",
+            encounter=self.encounter,
+            patient=self.patient,
+            provider=self.provider,
+            insured_card_number="1234567890123456",
+            authorization_number=authorization_number,
+            competency="2026-08",
+        )
+        TISSGuideItem.objects.create(
+            guide=guide,
+            tuss_code=self.tuss_consulta,
+            description="Consulta em consultório",
+            quantity=Decimal("1"),
+            unit_value=Decimal("150.00"),
+        )
+        return guide
+
+    def test_resolved_authorization_wins_over_typed_date(self):
+        """A resolvable Authorization row wins even when the guide ALSO
+        carries a typed authorization_date — the typed decoy date must be
+        ignored, not blended or preferred."""
+        guide = self._make_internacao_guide()
+        guide.authorization_date = datetime.date(2099, 1, 1)  # decoy, must be ignored
+        guide.save(update_fields=["authorization_date"])
+        Authorization.objects.create(
+            patient=self.patient,
+            provider=self.provider,
+            tuss_code=self.tuss_consulta,
+            status=Authorization.Status.APPROVED,
+            valid_from=datetime.date(2026, 8, 1),
+            authorization_number="AUTH123",
+        )
+
+        resolved = _resolve_internacao_authorization(guide)
+
+        assert resolved == ("AUTH123", datetime.date(2026, 8, 1))
+
+    def test_typed_date_used_as_fallback_when_no_authorization_resolves(self):
+        """No resolvable Authorization → falls back to the guide's own typed
+        (authorization_number, authorization_date) pair."""
+        guide = self._make_internacao_guide(authorization_number="AUTH999")
+        guide.authorization_date = datetime.date(2026, 8, 5)
+        guide.save(update_fields=["authorization_date"])
+
+        resolved = _resolve_internacao_authorization(guide)
+
+        assert resolved == ("AUTH999", datetime.date(2026, 8, 5))
+
+    def test_number_without_date_and_no_authorization_resolves_to_none(self):
+        guide = self._make_internacao_guide(authorization_number="AUTH999")
+        # authorization_date left unset (None), no Authorization row exists.
+        assert _resolve_internacao_authorization(guide) is None
+
+    def test_date_without_number_and_no_authorization_resolves_to_none(self):
+        guide = self._make_internacao_guide(authorization_number="")
+        guide.authorization_date = datetime.date(2026, 8, 5)
+        guide.save(update_fields=["authorization_date"])
+        assert _resolve_internacao_authorization(guide) is None
+
+    def test_neither_number_nor_date_resolves_to_none(self):
+        guide = self._make_internacao_guide(authorization_number="")
+        assert _resolve_internacao_authorization(guide) is None
+
+    def test_error_message_is_actionable_when_neither_source_resolves(self):
+        """The failure message must tell the faturista what to DO (register
+        an Authorization OR type both fields), not just name a missing
+        field."""
+        guide = self._make_internacao_guide(authorization_number="")
+
+        with pytest.raises(TISSXMLGenerationError) as exc_info:
+            generate_guide_xml(guide)
+
+        message = str(exc_info.value)
+        assert "registre uma authorization aprovada" in message.lower()
+        assert "authorization_number" in message
+        assert "authorization_date" in message
+
+    def test_existing_guide_without_authorization_date_still_valid(self):
+        """Pre-existing guides (created before this field existed) have
+        authorization_date=None by default — the resolvable-Authorization
+        path must keep working unmodified (regression guard for the
+        aditiva/no-backfill migration)."""
+        guide = self._make_internacao_guide()
+        assert guide.authorization_date is None
+        Authorization.objects.create(
+            patient=self.patient,
+            provider=self.provider,
+            tuss_code=self.tuss_consulta,
+            status=Authorization.Status.APPROVED,
+            valid_from=datetime.date(2026, 8, 1),
+            authorization_number="AUTH123",
+        )
+
+        resolved = _resolve_internacao_authorization(guide)
+
+        assert resolved == ("AUTH123", datetime.date(2026, 8, 1))
+
+    def test_typed_date_fallback_renders_dadosautorizacao_without_error(self):
+        """Sanity: the typed-date fallback path is wired all the way through
+        generate_batch_xml (not just the resolver in isolation) — same
+        residual gap (dadosBeneficiario, out of this slice's scope) as the
+        Authorization-row path, confirming dataAutorizacao/senha themselves
+        render and are schema-accepted from digitação alone, with no
+        autorização-related error in the residual."""
+        guide = self._make_internacao_guide(authorization_number="AUTH-TYPED")
+        guide.authorization_date = datetime.date(2026, 8, 1)
+        guide.save(update_fields=["authorization_date"])
+        batch = TISSBatch.objects.create(provider=self.provider)
+        batch.guides.add(guide)
+
+        xml = generate_batch_xml(batch)
+        errors = validate_xml(xml)
+
+        assert errors, "expected the pre-existing dadosBeneficiario residual, got fully valid XML"
+        assert not any(
+            "autorizacao" in error.lower() or "senha" in error.lower() for error in errors
+        )

@@ -46,7 +46,7 @@ tabelas abaixo são a leitura orientada a "de onde vem o dado".
 |---|---|---|---|---|
 | `cabecalhoGuia.registroANS` | sim | ✅ | `guide.provider.ans_code` | já funciona (Onda 2) |
 | `cabecalhoGuia.numeroGuiaPrestador` | sim | ✅ | `guide.guide_number` | já funciona |
-| `dadosAutorizacao.dataAutorizacao` | sim, **se o bloco existir** (bloco é opcional) | parcial | `guide.created_at` (errado — é data de criação, não de autorização) | precisa de campo `authorization_date` explícito ou aceitar `created_at` como proxy documentado |
+| `dadosAutorizacao.dataAutorizacao` | sim, **se o bloco existir** (bloco é opcional) | ✅ **(B10, resolvido)** | `TISSGuide.authorization_date` — resolvido a partir de `Authorization` aprovada (fonte preferida) ou, na ausência, da digitação manual (`authorization_number`+`authorization_date` juntos); ver `xml_engine._resolve_internacao_authorization` | campo existe (models.py, migration `0034`); SADT ainda não invoca o resolver (só `internacao` — §3 — o bloco `dadosAutorizacao` do SADT continua fora desta fatia) |
 | `dadosAutorizacao.senha` | opcional dentro do bloco | ✅ | `guide.authorization_number` | já existe, `blank=True` |
 | `dadosBeneficiario.numeroCarteira` | sim | ✅ | `guide.insured_card_number` | já funciona |
 | `dadosBeneficiario.atendimentoRN` | sim (S/N) | ❌ | — | hoje hardcoded `"N"` no template — aceitável como default documentado (RN é minoria), não é bloqueador de dado |
@@ -74,7 +74,7 @@ placeholder existente).
 | Campo XSD | Obrigatório | Hoje existe? | Onde | Fonte real |
 |---|---|---|---|---|
 | `numeroGuiaSolicitacaoInternacao` | sim | ❌ | — | referência a uma guia de solicitação de internação que o Vitali não modela como documento separado; candidato mais barato: reusar `guide.guide_number` da própria guia como autorreferência (defensável só se não existir uma guia de solicitação prévia real) — **decisão de produto**, não é puramente técnico |
-| `dadosAutorizacao.senha` | **sim** (obrigatório aqui, opcional no SADT) | parcial | `guide.authorization_number`, `blank=True` | vira regra de negócio: bloquear geração da guia de internação sem senha preenchida, não mudança de schema |
+| `dadosAutorizacao.senha` + `dadosAutorizacao.dataAutorizacao` | **sim** (obrigatório aqui, opcional no SADT) | ✅ **(B10, resolvido)** | `guide.authorization_number` (senha) + `TISSGuide.authorization_date` (fallback de digitação) ou `Authorization` aprovada resolvida (fonte preferida — vence sempre que resolve) | `generate_guide_xml` falha alto (`TISSXMLGenerationError`, mensagem acionável) quando nem a `Authorization` resolve nem o par digitado está completo — nunca fabrica a data; ver `xml_engine._resolve_internacao_authorization` |
 | `dadosInternacao.caraterAtendimento` | sim | ❌ | — | ver `AihAutorizacao.CaraterInternacao` — precedente direto, precisa de campo espelho em contexto TISS (`Admission` não tem hoje) |
 | `dadosInternacao.tipoFaturamento` | sim | ❌ | — | 4 valores (parcial/final/complementar/...); é sobre o MOMENTO do faturamento (internação em andamento vs. encerrada), não é dado clínico — provável default fixo por enquanto (só há geração de guia na alta hoje, ver `generate_internacao_guide_for_admission`), mas o ciclo de vida "parcial" fica bloqueado sem campo |
 | `dadosInternacao.tipoInternacao` | sim | ❌ | — | 5 valores (clínica/cirúrgica/obstétrica/pediátrica/psiquiátrica) — **sem equivalente em `Admission`**; `Admission.AdmissionSource` (emergência/ambulatório/transferência/centro cirúrgico/outro) é uma taxonomia diferente (origem, não especialidade) |

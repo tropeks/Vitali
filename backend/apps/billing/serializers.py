@@ -193,6 +193,7 @@ class TISSGuideSerializer(serializers.ModelSerializer):
             "status_display",
             "insured_card_number",
             "authorization_number",
+            "authorization_date",
             "competency",
             "cid10_codes",
             "total_value",

@@ -992,13 +992,29 @@ class TISSGuideViewSet(AuditReadMixin, viewsets.ModelViewSet):
         Só ``status == "draft"`` é editável. ``pending``/``submitted``/``paid``/
         ``denied``/``appeal`` são todos travados: a guia já está a caminho da
         operadora (ou já voltou) e ``provider``, ``competency``,
-        ``authorization_number``, ``cid10_codes``, ``price_table`` e
-        ``insured_card_number`` deixarem de bater com o que foi transmitido é
-        exatamente o jeito de o lote exportado divergir do que a operadora
-        recebeu. Não há hoje nenhum campo "observação interna" no model/
-        serializer para deixar de fora da trava (ver relatório da tarefa); se o
-        negócio precisar de uma nota pós-envio, isso é campo novo em
-        ``models.py`` — fora do escopo aqui.
+        ``authorization_number``, ``authorization_date``, ``cid10_codes``,
+        ``price_table`` e ``insured_card_number`` deixarem de bater com o que
+        foi transmitido é exatamente o jeito de o lote exportado divergir do
+        que a operadora recebeu. Não há hoje nenhum campo "observação interna"
+        no model/serializer para deixar de fora da trava (ver relatório da
+        tarefa); se o negócio precisar de uma nota pós-envio, isso é campo
+        novo em ``models.py`` — fora do escopo aqui.
+
+        ``authorization_date`` (B10, digitação manual de ``dataAutorizacao``
+        quando não há ``Authorization`` aprovada) HERDA esta mesma trava: só
+        pode ser digitada/corrigida enquanto a guia é ``draft``. Isso É
+        coerente com o resto do model — mas vale registrar o cenário real em
+        que ele aperta: a autorização pode legitimamente chegar da operadora
+        DEPOIS que a guia já saiu de rascunho (ex.: internação de urgência,
+        XML gerado e a guia movida para ``pending`` antes de a operadora
+        aprovar/comunicar a senha+data). Hoje não há campo de correção
+        pós-draft nem para ``authorization_number`` nem para
+        ``authorization_date`` — o fluxo de correção existente é reemitir via
+        "guia de correção" ou reabrir por glosa/retorno (mesmo texto do erro
+        acima). Não enfraquecemos o guard aqui: se esse cenário for
+        recorrente na operação, a solução é um fluxo de correção explícito
+        (novo estado ou endpoint dedicado), não abrir o PATCH geral para guias
+        não-draft — decisão de produto fora do escopo desta tarefa.
         """
         from apps.core.signals import _write_audit
 

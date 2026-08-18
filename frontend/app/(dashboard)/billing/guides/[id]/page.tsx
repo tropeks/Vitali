@@ -46,6 +46,12 @@ export default function GuideDetailPage() {
   const [submitting, setSubmitting] = useState(false);
   const [actionMsg, setActionMsg] = useState('');
 
+  const [authNumber, setAuthNumber] = useState('');
+  const [authDate, setAuthDate] = useState('');
+  const [savingAuth, setSavingAuth] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [authSaved, setAuthSaved] = useState(false);
+
   useEffect(() => {
     fetch(`/api/v1/billing/guides/${id}/`, {
           })
@@ -54,6 +60,43 @@ export default function GuideDetailPage() {
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, [id]);
+
+  useEffect(() => {
+    if (!guide) return;
+    setAuthNumber(guide.authorization_number ?? '');
+    // DRF DateField serializa como "YYYY-MM-DD" puro — usamos a string direto,
+    // sem passar por Date/toISOString, para não arriscar deslocar o dia por fuso.
+    setAuthDate(guide.authorization_date ?? '');
+  }, [guide]);
+
+  const isDraft = guide?.status === 'draft';
+
+  const saveAuthorization = async () => {
+    setSavingAuth(true);
+    setAuthError('');
+    setAuthSaved(false);
+    try {
+      const res = await fetch(`/api/v1/billing/guides/${id}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          authorization_number: authNumber,
+          authorization_date: authDate || null,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail ?? JSON.stringify(data) ?? `${res.status}`);
+      }
+      const data = await res.json();
+      setGuide(data);
+      setAuthSaved(true);
+    } catch (e: any) {
+      setAuthError(e.message || 'Não foi possível salvar a autorização.');
+    } finally {
+      setSavingAuth(false);
+    }
+  };
 
   const submitGuide = async () => {
     setSubmitting(true);
@@ -133,6 +176,72 @@ export default function GuideDetailPage() {
           <Field label="Criado em" value={guide?.created_at ? new Date(guide.created_at).toLocaleString('pt-BR') : null} />
           <Field label="Encontro" value={guide?.encounter} />
         </dl>
+      </div>
+
+      {/* Autorização TISS */}
+      <div className="bg-neu-panel rounded-lg border border-slate-200 p-4">
+        <h2 className="font-semibold text-neu-ink mb-1">Autorização TISS</h2>
+        <p className="text-xs text-neu-inkMuted mb-4">
+          Senha e data comunicadas pela operadora. Se esta guia tiver uma autorização aprovada
+          registrada, ela é usada na guia de resumo de internação e esta data digitada é ignorada —
+          preencha aqui só o fallback para quando não há autorização aprovada correspondente.
+        </p>
+
+        {!isDraft && (
+          <p className="mb-3 text-xs text-neu-inkMuted bg-neu-app rounded-lg px-3 py-2">
+            Guia com status &quot;{STATUS_LABEL[guide.status] ?? guide.status}&quot; não pode mais
+            ser editada — apenas rascunhos aceitam alteração de autorização.
+          </p>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl">
+          <div>
+            <label htmlFor="guide-auth-number" className="block text-xs font-medium text-neu-inkMuted uppercase tracking-wide mb-1">
+              Senha de autorização
+            </label>
+            <input
+              id="guide-auth-number"
+              type="text"
+              value={authNumber}
+              onChange={(e) => setAuthNumber(e.target.value)}
+              disabled={!isDraft}
+              maxLength={20}
+              placeholder="Senha informada pela operadora"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+          </div>
+          <div>
+            <label htmlFor="guide-auth-date" className="block text-xs font-medium text-neu-inkMuted uppercase tracking-wide mb-1">
+              Data da autorização
+            </label>
+            <input
+              id="guide-auth-date"
+              type="date"
+              value={authDate}
+              onChange={(e) => setAuthDate(e.target.value)}
+              disabled={!isDraft}
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+          </div>
+        </div>
+
+        {authError && (
+          <div className="mt-3 bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">{authError}</div>
+        )}
+        {authSaved && (
+          <div className="mt-3 bg-green-50 border border-green-200 text-green-700 rounded-lg px-4 py-3 text-sm">Autorização salva.</div>
+        )}
+
+        {isDraft && (
+          <button
+            type="button"
+            onClick={saveAuthorization}
+            disabled={savingAuth}
+            className="mt-4 bg-gradient-to-b from-neu-brand to-neu-brandDeep border-t border-neu-brandEdge shadow-neu-btn-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:shadow-neu-btn-primary-hover disabled:opacity-50"
+          >
+            {savingAuth ? 'Salvando...' : 'Salvar autorização'}
+          </button>
+        )}
       </div>
 
       {/* Items table */}

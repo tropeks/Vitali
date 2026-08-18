@@ -365,6 +365,25 @@ class TISSGuide(models.Model):
     # TISS mandatory fields
     insured_card_number = models.CharField("Número da carteirinha", max_length=20)
     authorization_number = models.CharField("Senha de autorização", max_length=20, blank=True)
+    # B10: manual digitação fallback for ct_autorizacaoInternacao.dataAutorizacao
+    # (guiaResumoInternacao) when there is NO approved Authorization row covering
+    # the guide — decisão do Capitão. Only used together with
+    # authorization_number as the last-resort source; a resolved Authorization
+    # row always wins. See xml_engine._resolve_internacao_authorization for the
+    # precedence.
+    authorization_date = models.DateField(
+        "Data da autorização (digitada)",
+        null=True,
+        blank=True,
+        help_text=(
+            "Data de autorização informada manualmente pelo faturista, conforme "
+            "recebida da operadora. Só é usada para preencher dataAutorizacao "
+            "da guia de resumo de internação QUANDO não existe uma Authorization "
+            "aprovada correspondente (paciente/operadora/janela/TUSS) — o "
+            "registro de autorização, quando existe, sempre tem prioridade "
+            "sobre esta digitação."
+        ),
+    )
     competency = models.CharField("Competência (AAAA-MM)", max_length=7, help_text="Ex: 2026-03")
     cid10_codes = models.JSONField(
         "Códigos CID-10", default=list, help_text='Lista de {"code": "X00"} do SOAPNote'

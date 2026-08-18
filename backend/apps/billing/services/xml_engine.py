@@ -191,12 +191,24 @@ def _resolve_internacao_authorization(guide) -> tuple[str, datetime.date] | None
     also exists — and falls back to the resolved row's own
     ``authorization_number``.
 
-    Returns None when no HONEST ``dataAutorizacao`` can be produced — in
-    particular, ``guide.authorization_number`` filled with NO matching
-    ``Authorization`` row gives a senha but no date, and inventing one would
-    put a false date on a document sent to the operadora. Callers must treat
-    None as "cannot render this guide type" and fail loud rather than
-    fabricate the date.
+    PRECEDENCE (decisão do Capitão, B10) — an approved ``Authorization`` row
+    ALWAYS wins over manual digitação when both exist:
+
+    1. A resolvable ``Authorization`` row (as above) → its ``valid_from`` is
+       the ``dataAutorizacao``. The registered authorization is the more
+       trustworthy source (it went through the operadora's own approval
+       workflow and is reused across every guide it covers), so it takes
+       priority whenever it resolves — manual digitação never overrides it.
+    2. No resolvable row → fall back to the pair typed directly on the guide,
+       ``(TISSGuide.authorization_number, TISSGuide.authorization_date)``
+       (models.py). This is honest digitação-by-the-faturista of what the
+       operadora communicated (phone/portal) when there is no Authorization
+       record yet — a fallback of last resort, never an override.
+    3. Neither branch produces a COMPLETE ``senha`` + ``dataAutorizacao``
+       pair → return None; the caller fails loud instead of fabricating a
+       date (e.g. ``authorization_number`` typed with no
+       ``authorization_date`` and no matching ``Authorization`` row still
+       gives a senha but no honest date).
     """
     effective_date = guide.created_at.date()
     guide_tuss_ids = {item.tuss_code_id for item in guide.items.all()}
@@ -216,10 +228,21 @@ def _resolve_internacao_authorization(guide) -> tuple[str, datetime.date] | None
     if resolved is None:
         resolved = next((r for r in rows if r.tuss_code_id is None), None)
 
-    senha = (guide.authorization_number or "").strip() or (
-        resolved.authorization_number if resolved else ""
-    )
-    data_autorizacao = resolved.valid_from if resolved else None
+    guide_senha = (guide.authorization_number or "").strip()
+
+    if resolved is not None:
+        # Branch 1: registered Authorization wins — senha still prefers the
+        # guide's own typed number when present (it IS the senha regardless),
+        # but the DATE always comes from the resolved row, never from
+        # guide.authorization_date.
+        senha = guide_senha or resolved.authorization_number
+        data_autorizacao = resolved.valid_from
+    else:
+        # Branch 2: no registered Authorization resolves — fall back to the
+        # manually-typed pair. Both must come from the SAME source (the
+        # guide) so we never mix a typed senha with an unrelated date.
+        senha = guide_senha
+        data_autorizacao = guide.authorization_date
 
     if not senha or data_autorizacao is None:
         return None
@@ -294,12 +317,14 @@ def generate_guide_xml(guide) -> str:
                 f"Guia de resumo de internação {guide.guide_number} não tem "
                 "autorização resolvível: ct_autorizacaoInternacao exige "
                 "dataAutorizacao E senha (tissComplexTypesV4_01_00.xsd, "
-                "ct_autorizacaoInternacao). guide.authorization_number "
-                "sozinho (sem uma Authorization aprovada correspondente, no "
-                "mesmo paciente/operadora, cobrindo a data efetiva da guia) "
-                "dá senha mas nenhuma dataAutorizacao honesta — nunca "
-                "inventada. Registre uma Authorization aprovada cobrindo "
-                "este paciente/operadora/janela (genérica ou por TUSS)."
+                "ct_autorizacaoInternacao). Para corrigir, faça UMA das duas "
+                "coisas: (1) registre uma Authorization aprovada cobrindo "
+                "este paciente/operadora/janela (genérica ou por TUSS) — é a "
+                "fonte preferida e cobre qualquer guia futura da mesma "
+                "autorização; ou (2) preencha, nesta guia (enquanto ainda "
+                "estiver em rascunho), tanto authorization_number (senha) "
+                "quanto authorization_date (data informada pela operadora) — "
+                "os dois campos juntos, um sozinho não basta."
             )
         context["autorizacao_senha"], context["autorizacao_data"] = resolved_auth
 
