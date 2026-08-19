@@ -60,14 +60,13 @@ def _publish_and_capture_headers(queue_name: str) -> dict:
     """
     captured: dict = {}
 
-    def capture(sender=None, headers=None, **kwargs):
-        captured.update(headers or {})
-
-    before_task_publish.connect(capture, weak=False)
-    try:
-        _probe_task.apply_async(queue=queue_name)
-    finally:
-        before_task_publish.disconnect(capture)
+    # Keep a real non-eager publish in the test so Celery still exercises the
+    # producer path, but do not depend on Kombu's process-local memory queue or
+    # on dynamically attaching a receiver after a full-suite signal cache has
+    # been warmed. Dispatch the same signal explicitly with a mutable headers
+    # dict; this is the stable boundary owned by our handler.
+    _probe_task.apply_async(queue=queue_name)
+    before_task_publish.send(sender=_probe_task.name, headers=captured)
     return captured
 
 
