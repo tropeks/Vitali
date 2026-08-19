@@ -183,7 +183,7 @@ class EmployeeOnboardingCascadeIntegrationTests(TenantTestCase):
         token = self._token_from_invite_email(mock_send)
         set_pw = self.client.post(
             f"/api/v1/auth/set-password/{token}/",
-            {"password": "Recep0Str!"},
+            {"password": "Recep0Str!xY"},
             format="json",
         )
         self.assertEqual(set_pw.status_code, 200, set_pw.json())
@@ -192,7 +192,7 @@ class EmployeeOnboardingCascadeIntegrationTests(TenantTestCase):
         login_client.defaults["SERVER_NAME"] = self.__class__.domain.domain
         login = login_client.post(
             "/api/v1/auth/login",
-            {"email": "recepcao.cascade@test.com", "password": "Recep0Str!"},
+            {"email": "recepcao.cascade@test.com", "password": "Recep0Str!xY"},
             format="json",
         )
         self.assertEqual(login.status_code, 200, login.json())

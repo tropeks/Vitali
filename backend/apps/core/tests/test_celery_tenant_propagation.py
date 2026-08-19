@@ -37,7 +37,6 @@ from celery.signals import task_postrun, task_prerun
 from django.db import connection
 from django.test import SimpleTestCase, override_settings
 from django_tenants.utils import schema_context
-from kombu import Connection as KombuConnection
 
 from vitali.celery import TENANT_SCHEMA_HEADER
 from vitali.celery import _active_schema_contexts as _leak_tracker
@@ -53,7 +52,10 @@ def _probe_task():
 def _drain(queue_name: str) -> dict:
     """Pop the single message published to ``queue_name`` on the memory:// broker
     and return its headers (the dict our before_task_publish handler mutates)."""
-    with KombuConnection("memory://") as conn:
+    # Read through the same Celery app whose producer pool published the
+    # message.  A fresh Kombu Connection can bind to a different cached
+    # transport after the full suite has exercised another broker.
+    with celery_app.connection_for_read() as conn:
         with conn.SimpleQueue(queue_name) as q:
             message = q.get(block=False)
             message.ack()

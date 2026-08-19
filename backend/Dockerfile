@@ -63,6 +63,7 @@ ENV REDIS_URL=${REDIS_URL}
 # avoids the dev/placeholder/"django-insecure-" patterns the validators reject.
 RUN SECRET_KEY="ci-build-throwaway-secret-not-for-prod-0123456789abcdef" \
     FIELD_ENCRYPTION_KEY="OrnFQUsB_Cffudfe79JCnCs8NkrE7t9sMr-x2oliags=" \
+    BACKUP_ENCRYPTION_KEY="ci-build-throwaway-backup-key-not-for-prod" \
     POSTGRES_PASSWORD="ci-build-throwaway-pw" \
     REDIS_PASSWORD="ci-build-throwaway-pw" \
     WHATSAPP_EVOLUTION_API_KEY="build-time-throwaway" \
