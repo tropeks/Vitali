@@ -33,7 +33,7 @@ import uuid
 from unittest import mock
 
 from celery import shared_task
-from celery.signals import task_postrun, task_prerun
+from celery.signals import before_task_publish, task_postrun, task_prerun
 from django.db import connection
 from django.test import SimpleTestCase, override_settings
 from django_tenants.utils import schema_context
@@ -49,17 +49,26 @@ def _probe_task():
     return connection.schema_name
 
 
-def _drain(queue_name: str) -> dict:
-    """Pop the single message published to ``queue_name`` on the memory:// broker
-    and return its headers (the dict our before_task_publish handler mutates)."""
-    # Read through the same Celery app whose producer pool published the
-    # message.  A fresh Kombu Connection can bind to a different cached
-    # transport after the full suite has exercised another broker.
-    with celery_app.connection_for_read() as conn:
-        with conn.SimpleQueue(queue_name) as q:
-            message = q.get(block=False)
-            message.ack()
-            return message.headers
+def _publish_and_capture_headers(queue_name: str) -> dict:
+    """Publish once and capture final headers at the signal boundary.
+
+    Reading the message back through Kombu's ``memory://`` transport is
+    suite-order dependent: Celery's producer pool and Kombu's in-memory
+    transport cache can be warmed by unrelated tests. The contract under test
+    is the mutation performed by ``before_task_publish`` itself, so observe
+    that boundary directly while still using a real non-eager ``apply_async``.
+    """
+    captured: dict = {}
+
+    def capture(sender=None, headers=None, **kwargs):
+        captured.update(headers or {})
+
+    before_task_publish.connect(capture, weak=False)
+    try:
+        _probe_task.apply_async(queue=queue_name)
+    finally:
+        before_task_publish.disconnect(capture)
+    return captured
 
 
 @override_settings(CELERY_TENANT_PROPAGATION=True)
@@ -125,9 +134,7 @@ class CeleryTenantPropagationTests(SimpleTestCase):
     def test_publish_from_tenant_schema_stamps_header(self):
         queue = self._unique_queue()
         with schema_context("tenant_alpha"):
-            _probe_task.apply_async(queue=queue)
-
-        headers = _drain(queue)
+            headers = _publish_and_capture_headers(queue)
         self.assertEqual(headers.get(TENANT_SCHEMA_HEADER), "tenant_alpha")
 
     # ── (b) execution observes the enqueuing schema — fails without the fix ─
@@ -229,8 +236,7 @@ class CeleryTenantPropagationTests(SimpleTestCase):
     def test_public_schema_publish_and_execution_stay_public(self):
         queue = self._unique_queue()
         with schema_context("public"):
-            _probe_task.apply_async(queue=queue)
-        headers = _drain(queue)
+            headers = _publish_and_capture_headers(queue)
         self.assertEqual(headers.get(TENANT_SCHEMA_HEADER), "public")
 
         task_id = str(uuid.uuid4())
@@ -260,8 +266,7 @@ class CeleryTenantPropagationTests(SimpleTestCase):
     def test_flag_disabled_restores_legacy_behavior_on_both_sides(self):
         queue = self._unique_queue()
         with schema_context("tenant_epsilon"):
-            _probe_task.apply_async(queue=queue)
-        headers = _drain(queue)
+            headers = _publish_and_capture_headers(queue)
         # Publish side: no header stamped at all when the flag is off.
         self.assertNotIn(TENANT_SCHEMA_HEADER, headers)
 
