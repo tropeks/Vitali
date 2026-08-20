@@ -56,6 +56,7 @@ describe('EmergencyReclassifyModal', () => {
 
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith('/api/v1/manchester-flowcharts/')
+      expect(screen.getByLabelText('Fluxograma')).not.toBeDisabled()
     })
 
     fireEvent.change(screen.getByLabelText('Fluxograma'), { target: { value: 'fc-1' } })
