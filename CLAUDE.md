@@ -45,6 +45,8 @@ require `docker compose up -d`. Frontend tools run on the host with
 - typecheck (backend): `docker compose exec -T django mypy apps/ vitali/ --ignore-missing-imports`
 - lint (backend): `docker compose exec -T django ruff check apps/ vitali/`
 - format-check (backend): `docker compose exec -T django ruff format --check apps/ vitali/`
-- test (backend): `docker compose exec -T django pytest -v`
+- test (backend): `scripts/pytest.sh [alvo]` — **não** use `docker compose exec -T django pytest`:
+  o container `vitali-django-1` roda de imagem baked sem o bind `./backend:/app`, então aquele
+  pytest testa código velho e dá falso-verde. Detalhes e flags: skill `run-backend-tests`.
 - typecheck (frontend): `cd frontend && npx tsc --noEmit`
 - lint (frontend): `cd frontend && npx next lint`
