@@ -1,9 +1,9 @@
 <!-- maestro-intent v1
-version: 1
-ts: 2026-09-11T09:05:37-03:00
-head: 1482af33ae4195c7d6801d4975622cb9b9b538e8
+version: 2
+ts: 2026-09-11T10:19:43-03:00
+head: 1725bf76dc13ec35a29b18c46fec7201523d559f
 author_session: desconhecido
-hash: 27e9a465
+hash: 39f1a054
 -->
 # Direção — vitali
 
