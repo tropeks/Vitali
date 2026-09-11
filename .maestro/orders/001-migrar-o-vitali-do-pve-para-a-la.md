@@ -71,10 +71,20 @@ Todas as imagens de aplicação vêm do GHCR — **nada é construído no PVE**:
 | `ghcr.io/tropeks/vitali-viewer:sha-f48348dcea1d55394e4a80a34c4b2f991640128a` | 421 MB | **rodava por SHA, não por `latest`** |
 | `orthancteam/orthanc:26.6.1` · `postgres:16-alpine` · `redis:7-alpine` · `nginx:alpine` · `evoapicloud/evolution-api:v2.2.3` | — | públicas |
 
-> **Armadilha:** `.env.staging` diz `IMAGE_TAG=latest`, mas o container do viewer que estava
-> de pé é a tag `sha-f48348…`. `latest` pode ter andado no GHCR desde então. O passo 2.2
-> resolve a tag **uma vez** e a congela — subir na lab "no latest" é subir um software que
-> ninguém validou.
+> **MEDIDO em 2026-09-11 (passo 2.2 executado).** Backend e viewer conferem: o config
+> digest de `vitali-backend:latest` no GHCR é `0f44e312…`, idêntico ao ID local no PVE, e
+> `vitali-viewer:latest` continua em `62c43e2c…` — a mesma imagem que estava de pé (ela
+> rodava como `:latest`; a tag `sha-f48348…` é o mesmo conteúdo).
+>
+> **O frontend não confere, e é o achado desta ordem.** A imagem de pé no PVE
+> (`cad2465ead86`) tem **`RepoDigests` vazio**: nunca foi puxada de registry nenhum — foi
+> construída no próprio PVE (ou carregada por `docker load`) e depois marcada com o nome do
+> GHCR. O `vitali-frontend:latest` do GHCR hoje é outro config digest (`ee845883…`), criado
+> **42 segundos antes** do local (02:36:10Z contra 02:36:52Z, ambos em 01/08). Mesma fonte,
+> dois builds — bits diferentes, procedência nenhuma.
+>
+> Consequência: **a lab não consegue reproduzir por `pull` o frontend que estava rodando.**
+> Ver passo 2.2 para as três saídas e a recomendação.
 
 ### 1.3 Volumes e o que vai junto
 
@@ -193,19 +203,39 @@ Sem o setgid **e** a ACL default, arquivo criado pelo admin nasce ilegível para
 o dia a dia vira sucessão de `chown`. Se a migração de usuário já tem plano próprio, esta
 ordem **consome** esse plano em vez de improvisar um — pergunta para o Imediato.
 
-### 2.2 Congelar a tag das imagens
+### 2.2 Congelar a tag das imagens — **FEITO, com achado**
 
-Resolver **uma vez**, na forge, e escrever o resultado em `IMAGE_TAG`:
+Resolvido na forge contra o GHCR, e cruzado com o que estava de pé no PVE:
 
-```bash
-docker buildx imagetools inspect ghcr.io/tropeks/vitali-backend:latest  --format '{{.Manifest.Digest}}'
-docker buildx imagetools inspect ghcr.io/tropeks/vitali-frontend:latest --format '{{.Manifest.Digest}}'
-docker buildx imagetools inspect ghcr.io/tropeks/vitali-viewer:sha-f48348dcea1d55394e4a80a34c4b2f991640128a --format '{{.Manifest.Digest}}'
-```
+| Imagem | GHCR hoje (config digest) | Rodando no PVE | Confere? |
+|---|---|---|---|
+| `vitali-backend:latest` | `0f44e312…` | `0f44e312…` | **sim** |
+| `vitali-viewer:latest` = `sha-f48348…` | `62c43e2c…` (manifest) | `62c43e2c…` | **sim** |
+| `vitali-frontend:latest` | `ee845883…` | `cad2465e…`, **sem RepoDigest** | **NÃO** |
 
-Se as três SHA não formarem um conjunto coerente (backend e frontend de um build, viewer de
-sete semanas atrás), **isso é achado, não detalhe**: sobe-se o conjunto que estava rodando,
-não o que está mais novo. Exige `docker login ghcr.io` na lab com PAT de `read:packages`.
+O frontend que serviu o staging **não veio de registry**. Foi construído no PVE em
+`2026-08-01T02:36:52Z`, 42 s depois do build que virou `latest` no GHCR
+(`2026-08-01T02:36:10Z`), e recebeu o nome do GHCR por `docker tag`. Não tem `RepoDigests`,
+não tem label OCI, não tem `org.opencontainers.image.revision`. É um artefato sem
+procedência — e é justamente o pedaço que o usuário vê.
+
+Três saídas, e a escolha é de quem assina:
+
+1. **`docker save` no PVE → `docker load` na lab** (~3,57 GB pela LAN, ~1 min). Único
+   caminho que move **os mesmos bits**. **Recomendado:** migração troca de host, não de
+   software; uma variável por vez.
+2. **Puxar `ghcr.io/tropeks/vitali-frontend:latest`** (`ee845883…`). Quase certamente o
+   mesmo código — mas "quase certamente" durante uma migração é como se descobre, três dias
+   depois, que a regressão não era do host.
+3. **Rebuildar pelo CI a partir do branch.** É a saída *certa* a médio prazo e a única que
+   dá procedência ao artefato — mas é trabalho de outra ordem, não desta janela.
+
+**Proposta: 1 agora, 3 depois**, com a dívida registrada — enquanto o frontend de staging
+for um build local sem digest, nenhum ambiente é reproduzível a partir do repositório.
+
+Backend e viewer sobem por digest fixo (`@sha256:…`), não por `latest`. O `pull` na lab
+exige `docker login ghcr.io` com PAT de `read:packages` — **credencial que eu não tenho e
+não devo manusear**; é passo do Imediato.
 
 ### 2.3 Porta e firewall (**root para a regra, Ask-First**)
 
@@ -222,16 +252,22 @@ sudo nft add rule inet vulcan input ip saddr 192.168.255.70 tcp dport 3005 accep
 O DICOM C-STORE (4242) **continua em loopback**, como no PVE. Nenhuma modalidade empurra
 estudo para a lab; abrir 4242 seria superfície sem cliente.
 
-### 2.4 Confirmar que o apparmor da lab não tem o bug do Proxmox
+### 2.4 Apparmor da lab — **FEITO, limpo**
 
-```bash
-ssh lab 'docker run --rm postgres:16-alpine pg_isready --version && \
-         sudo dmesg | grep -c "failed protocol match" || echo "0 negacoes"'
+Medido na lab em 2026-09-11:
+
+```
+apparmor habilitado : Y
+pacote              : apparmor 4.1.0-1  (Debian — NÃO o 4.1.1-pmx1 do Proxmox)
+dmesg               : 0 ocorrências de "failed protocol match"
+prova real          : docker run --rm postgres:16-alpine sob docker-default →
+                      "database system is ready to accept connections"
 ```
 
-Se limpo — o esperado em Debian 13 —, o overlay da lab **remove** todos os
-`security_opt: apparmor=unconfined` que o `docker-compose.staging.yml` carrega por causa do
-PVE. Migrar é boa hora para devolver o confinamento, não para herdar a exceção.
+Sob o bug do PVE esse mesmo container dá FATAL na criação do socket unix. Na lab ele sobe.
+O overlay **remove** todos os `security_opt: apparmor=unconfined` que a base carrega por
+causa do PVE — o confinamento volta, que é o certo e estava desligado por acidente de
+hospedagem, não por necessidade do Vitali.
 
 ---
 
@@ -251,6 +287,7 @@ das imagens na lab (~6 GB, o `vitali-frontend` de 3,57 GB é o longo).
 | 3.3 | `pg_dumpall --roles-only` **por TCP com senha** (socket falha no container — `AMBIENTES.md`) → `roles.sql` | PVE | 10 s | — |
 | 3.4 | `pg_dump -Fc -d vitali -f /tmp/vitali.dump` dentro do container, `docker cp` para o host, `sha256sum` | PVE | 2–5 min | — |
 | 3.5 | `tar czf` dos volumes `orthanc_data`, `backups`, `media_files` via container `alpine` (o grupo `docker` basta; sem `sudo`) | PVE | 1 min | — |
+| 3.5b | *(se a saída 1 do passo 2.2 for a escolhida)* `docker save ghcr.io/tropeks/vitali-frontend:latest \| gzip` no PVE → `docker load` na lab. É o único jeito de a lab rodar **os bits** que rodavam | PVE → lab | 2–3 min | não carregar; puxar o `latest` do GHCR |
 | 3.6 | *(se aprovado)* mesmo dump para o banco do stack `vitali` de dev, parqueado, não restaurado | PVE | 2 min | — |
 | 3.7 | `scp` dos artefatos PVE → forge → lab (LAN, ~1 GB), conferindo `sha256sum` **nas duas pontas** | — | 1–2 min | reenviar |
 | 3.8 | Na lab: subir `postgres` sozinho, `psql -f roles.sql`, `pg_restore -d vitali`, restaurar os tars, e **repetir o 3.2 comparando número a número** | lab | 5 min | `docker compose down -v` do projeto novo e refazer — o PVE continua intacto |
@@ -427,6 +464,9 @@ e `docker-compose.pitr.yml` (o PITR é redesenho na lab, não cópia de timeline
 2. **O stack `vitali` de dev vai junto, é parqueado como dump, ou morre com o PVE?**
 3. **A criação do usuário `vulcan` e de `/srv/vulcan` é desta ordem ou da migração de usuário já em curso?**
 4. **O WAL de PITR de 4 GB** — arquivo frio antes de desmontar, ou descarte assumido?
+5. **O frontend sem procedência** (passo 2.2) — `docker save`/`load` dos mesmos bits, ou
+   puxar o `latest` do GHCR e aceitar um build diferente durante a migração? Minha
+   recomendação é `save`/`load`, e rebuild com procedência em ordem separada.
 
 ## 9. Prova de que a ordem está feita
 
