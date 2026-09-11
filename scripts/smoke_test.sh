@@ -199,10 +199,41 @@ else
   echo "  - Celery check skipped (Docker Compose file not available)"
 fi
 
-# ─── Check 7: HTTPS redirect (only for non-localhost) ────────────────────────
+# ─── Check 7: Catálogos governados ───────────────────────────────────────────
+# Um deploy pode passar em TODOS os checks acima e ainda assim faturar errado: sem
+# TUSS, CID-10, SIGTAP e companhia, cada guia TISS sai com código inválido — e o
+# caminho de erro é silencioso ("sem TUSS correspondente" vira log INFO e a linha
+# simplesmente não é faturada). `verify_catalogs` é o comando que existe para isso
+# e o docstring dele manda rodá-lo DEPOIS dos imports, como gate de deploy; este é
+# o lugar onde um gate encontra o humano, porque este é o script que alguém roda
+# depois de todo deploy. Ordem 002.
+#
+# O comando entrou no repo em 2026-08-18 (Onda 2). Imagem anterior a isso não o
+# tem: o check então AVISA em vez de reprovar, porque "sua imagem é velha" não é o
+# mesmo defeito que "seus catálogos estão vazios", e confundir os dois faz o smoke
+# mentir nos dois sentidos.
 
 echo ""
-echo "7. HTTPS redirect..."
+echo "7. Catálogos governados..."
+if command -v docker >/dev/null 2>&1 && [[ -f "$COMPOSE_FILE" ]]; then
+  CATALOG_OUT=$("${compose_cmd[@]}" exec -T django python manage.py verify_catalogs --quiet 2>&1 || true)
+  if echo "$CATALOG_OUT" | grep -q "Unknown command: 'verify_catalogs'"; then
+    echo "  - verify_catalogs ausente na imagem (anterior a 2026-08-18) — check pulado"
+  elif "${compose_cmd[@]}" exec -T django python manage.py verify_catalogs --quiet >/dev/null 2>&1; then
+    check "verify_catalogs → todos os catálogos essenciais populados" "ok" "ok"
+  else
+    check "verify_catalogs → todos os catálogos essenciais populados" "vazio" "ok"
+    echo "      $(echo "$CATALOG_OUT" | tail -3)"
+    echo "      carregue com: manage.py seed_catalogs --manifest <manifest.toml> --source-dir <dir>"
+  fi
+else
+  echo "  - Catálogos check pulado (Docker Compose indisponível)"
+fi
+
+# ─── Check 8: HTTPS redirect (only for non-localhost) ────────────────────────
+
+echo ""
+echo "8. HTTPS redirect..."
 if [[ "$BASE_URL" == http://* ]] && [[ "$BASE_URL" != *localhost* ]]; then
   REDIRECT_STATUS=$(curl_status 5 --no-location "$BASE_URL/health/")
   check "HTTP → HTTPS redirect (301)" "$REDIRECT_STATUS" "301"
