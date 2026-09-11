@@ -32,27 +32,42 @@ services:
 
   # ── Imagens fixadas por digest ───────────────────────────────────────────────
   # `IMAGE_TAG` nao serve: a base escreve `image: repo:${IMAGE_TAG}` e digest exige
-  # `repo@sha256:`. Estes sao os digests que estavam REALMENTE rodando no PVE,
-  # conferidos um a um contra o GHCR em 11/09. `latest` e alvo movel; digest nao.
+  # `repo@sha256:`. Estes sao os digests construidos pelo CI a partir do commit
+  # d4521faefae8f7906a0f2aa11626535e19b88b40 (run 34625181181, ordem 002 passo 1).
+  #
+  # `latest` NAO foi movido por este build: o workflow so publica essa tag na branch
+  # default (`type=raw,value=latest,enable={{is_default_branch}}`) e construimos da
+  # onda0-perimetro-multitenant. So saiu a tag `sha-<commit>`. Nada que dependa de
+  # `latest` mudou de baixo de ninguem.
   django:
-    image: ghcr.io/tropeks/vitali-backend@sha256:da58aae3e49a394b56381de19d79ce65d26eae8c3b4bd968f3e8574fbfcb5441
+    image: ghcr.io/tropeks/vitali-backend@sha256:2b6e432fcf276f949e0b9127f27c6e67cc6c30b89034ec895026a9cf2356f68b
   celery-worker:
-    image: ghcr.io/tropeks/vitali-backend@sha256:da58aae3e49a394b56381de19d79ce65d26eae8c3b4bd968f3e8574fbfcb5441
+    image: ghcr.io/tropeks/vitali-backend@sha256:2b6e432fcf276f949e0b9127f27c6e67cc6c30b89034ec895026a9cf2356f68b
   celery-beat:
-    image: ghcr.io/tropeks/vitali-backend@sha256:da58aae3e49a394b56381de19d79ce65d26eae8c3b4bd968f3e8574fbfcb5441
+    image: ghcr.io/tropeks/vitali-backend@sha256:2b6e432fcf276f949e0b9127f27c6e67cc6c30b89034ec895026a9cf2356f68b
+
+  # O viewer saiu deste build com digest IDENTICO ao que ja rodava
+  # (62c43e2c...): a imagem do OHIF nao mudou entre 21/07 e agora. Fica como esta —
+  # trocar a referencia sem trocar o conteudo so criaria ruido no diff.
   vitali-viewer:
     image: ghcr.io/tropeks/vitali-viewer@sha256:62c43e2c8fb5810e7a50d0550f15e13c6a1222317fe85389d052b9a44858b020
     security_opt: !override []
 
-  # ── O frontend NAO vem de registry ───────────────────────────────────────────
-  # A imagem que servia o staging no PVE tem RepoDigests VAZIO: foi construida la e
-  # marcada com o nome do GHCR. O `latest` do GHCR e outro build (42s de diferenca,
-  # config digest diferente). Migracao troca de host, nao de software — entao os bits
-  # vieram por `docker save`/`docker load` (passo 3.5b da ordem).
-  # `pull_policy: never` e o que impede o compose de trocar a imagem carregada pelo
-  # `latest` do registry no primeiro `up`. Sem isso o cuidado todo se perde sozinho.
+  # ── O frontend agora TEM procedencia ─────────────────────────────────────────
+  # Ate a ordem 001, a imagem que servia o staging tinha RepoDigests VAZIO: foi
+  # construida no PVE e carimbada com o nome do GHCR. Os bits vieram por
+  # `docker save`/`docker load`, porque migracao troca de host e nao software.
+  #
+  # Este build paga essa divida: o frontend passa a ser uma imagem do CI, com digest
+  # de registry de verdade, rastreavel ate o commit. Por isso o `pull_policy: never`
+  # SAIU — ele existia para impedir que um `up` puxasse `latest` por cima dos bits
+  # carregados a mao; agora ele impediria justamente o contrario, e deixaria a lab
+  # presa na imagem sem procedencia.
+  #
+  # O tarball do frontend antigo continua em migracao/img-vitali-frontend.tar.gz,
+  # que e o caminho de volta (ver .maestro/orders/002-ROLLBACK-passo1.md).
   nextjs:
-    pull_policy: never
+    image: ghcr.io/tropeks/vitali-frontend@sha256:ec71383aec0aa5fc91b916fb847903a8c6bd9d5680146b6f935040be2b1c7c9b
 
   # orthanc: a base ja publica 8042 e 4242 em 127.0.0.1. Fica como esta — nenhuma
   # modalidade DICOM empurra estudo para a lab, entao 4242 nao ganha rota externa.
