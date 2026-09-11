@@ -321,3 +321,52 @@ de este dump ser considerado recuperável.
 **2. Ainda há um dump em texto claro no volume.** `vitali_20260723T171954Z.dump`, 686 KB, de
 23/07 — anterior ao guard de criptografia. É dado clínico em claro, em repouso, e agora é o
 único. Cifrar ou apagar é decisão do Imediato; não apago nada sem 'vai'.
+accepted_at: 2026-09-11T20:13:55-03:00
+accepted_session: desconhecido
+accepted_tree: 4e6888c4ec6e6c1ab7ccb732f31100b5c0fa0964
+accepted_intent: 4
+
+---
+
+## 9. O dump de julho em texto claro — cifrado e destruído, com ressalva
+
+Ordem do Imediato depois do aceite. **Não improvisei um gpg parecido**: usei a invocação
+exata do `scripts/backup.sh:94-98`, para que o artefato seja indistinguível de um produzido
+pelo pipeline.
+
+```
+gpg --batch --yes --quiet --passphrase "$BACKUP_ENCRYPTION_KEY" \
+    --cipher-algo AES256 --symmetric --output "$F.gpg" "$F"
+```
+
+**A verificação veio antes da destruição**, e foi mais forte que "decifra e começa com
+PGDMP":
+
+| Checagem | Resultado |
+|---|---|
+| sha256 do texto claro, antes | `3cadba23d755af549b5bbf91fd8e6c5772001a90d82e51d60a242ff6779c6783` |
+| Cifra é AES256? | `symkey enc packet, cipher 9` — igual ao do `backup.sh` |
+| Magic do decifrado | **`PGDMP`** |
+| **sha256 do decifrado** | **`3cadba23…` — idêntico, byte a byte** |
+
+Só depois disso: `shred -v -n 3 -z -u`. O volume `vitali-lab_backups` agora tem **dois
+`.gpg` e zero texto claro**.
+
+### A ressalva: isto removeu uma de quatro cópias
+
+Dizer "o texto claro foi destruído" seria falso. O **mesmo** arquivo, em claro, continua em:
+
+| Onde | O quê |
+|---|---|
+| `/srv/vulcan/apps/vitali/migracao/vol-backups.tgz` | lab — tarball da migração |
+| `~/vitali-migracao-20260911/vol-backups.tgz` | PVE — tarball da migração |
+| volume `vitali-staging_backups` | **PVE — o original** |
+
+Os dois tarballs estão sob a sua ordem de *"artefatos da migração ficam onde estão até o
+Capitão decidir a desmontagem do PVE — não apague nada"*, e eu a respeitei: **não toquei em
+nenhum**. Mas eles carregam EMR regulado por LGPD em claro, em repouso, e a decisão sobre
+eles está amarrada à desmontagem do PVE — que é do Capitão.
+
+Fica registrado para que a desmontagem não seja tratada como faxina de disco: é também o
+momento em que três cópias de dado clínico em claro deixam de existir, ou passam a existir
+cifradas.
