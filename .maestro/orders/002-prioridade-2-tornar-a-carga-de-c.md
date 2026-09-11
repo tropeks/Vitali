@@ -176,3 +176,62 @@ wedge sobre sistema que não fatura e não restaura é demo. Registrado, não re
 - Direção vigente na criação: INTENT v4 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 002` (você não fecha a própria ordem).
+
+---
+
+## 7. Passos 2, 3 e 4 — FEITOS (11/09). Passo 1 aguarda o CI.
+
+### Passo 2 — `seed_catalogs` + `scripts/catalogs/manifest.toml`
+
+Orquestrador sobre os `import_*` que já existem: não importa nada por conta própria, não
+conhece formato de fonte, não baixa nada. O que acrescenta é a **conferência de contagem**
+— reprova quando o total fica **abaixo** do esperado; acima não reprova, porque banco
+semeado tem linhas legítimas a mais (staging: 2.455 CBO contra 2.445 do ETL).
+
+Duas recusas, ambas deliberadas:
+
+- **Versão vazia é erro**, nomeando o catálogo e o que preencher, **sem default em lugar
+  nenhum**. O rótulo diz qual release da fonte foi carregada; adivinhá-lo fabrica
+  proveniência (INTENT §Limites).
+- **`--manifest` é obrigatório**, e isso é fato de empacotamento, não preferência: a imagem
+  do backend é construída de `./backend`, então `scripts/` **não está nela** — verificado
+  contra `vitali-backend@sha256:da58aae3`. Default apontando para caminho inexistente dentro
+  do container seria pior que default nenhum.
+
+### Passo 3 — o gate nos dois lugares onde o deploy acontece
+
+`docs/DEPLOY.md` como passo numerado **depois** dos imports, e `scripts/smoke_test.sh` como
+**check 7**. Imagem anterior a 18/08 não tem o comando: o check **avisa** em vez de reprovar
+— "sua imagem é velha" não é o mesmo defeito que "seus catálogos estão vazios", e confundir
+os dois faz o smoke mentir nos dois sentidos.
+
+**Erro corrigido no próprio DEPLOY.md:** ele mandava anexar o gate ao *"script que o
+`deploy-staging.yml` SSHes in and runs after `migrate_schemas`"*. Esse script não existe.
+
+### Passo 4 — LOINC pronto até onde uma pessoa é necessária
+
+`scripts/catalogs/etl_loinc.py` converte o `Loinc.csv` oficial, filtra
+`DEPRECATED`/`DISCOURAGED`/`TRIAL` e emite o formato que o `import_loinc` espera — testado
+contra fixture. Entrada no manifesto criada, marcada `blocked`.
+
+**O que falta é ato de pessoa:** conta gratuita em <https://loinc.org/downloads/> e
+**aceite da LOINC License** no download. Aceitar termos é declaração em nome de alguém; não
+faço por ninguém. A licença permite redistribuição — uma vez baixado, o CSV circula entre
+ambientes. Destrava junto as unidades UCUM compostas (`mg/dL`, `10*3/uL`).
+
+### O que ainda NÃO foi provado
+
+**Nada deste passo 2–4 foi executado.** Não há pytest na forge nem dev-deps na imagem de
+staging, então o CI é a primeira execução destes testes. O lint eu consegui rodar:
+**ruff 0.9.0**, a versão que o CI fixa, instalada pela convenção `~/opt` do `AMBIENTES.md`.
+Comecei com a 0.16.7 e ela acusava quatro regras que **não existem** na versão do gate —
+"limpo aqui" não queria dizer nada sobre "limpo lá". Backend inteiro passa em `check` e
+`format`, 1.086 arquivos.
+
+### Armadilha do fluxo, para a próxima ordem
+
+**Branch de ordem não dispara CI.** O `ci.yml` roda em push para `main|master|develop` e em
+`pull_request` **contra** essas bases. Um PR de `order/NNN` para `onda0-perimetro-multitenant`
+não casa o filtro. Então código de ordem só entra sob o gate quando é mesclado no `onda0` e o
+PR #211 roda. Não é defeito desta ordem; é do desenho do `ci.yml`, e vale registrar antes que
+alguém confunda "nenhum run vermelho" com "testado".
