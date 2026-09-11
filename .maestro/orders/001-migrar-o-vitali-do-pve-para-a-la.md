@@ -126,16 +126,22 @@ exige o `postgres` de pé, e isso é toque no PVE (passo 3.1, Ask-First).
 
 ### 1.6 Segredos (`.env.staging`, modo 600, fora do git)
 
-35 chaves. Três decidem a migração:
+34 chaves. Duas decidem a migração — e a terceira que eu esperava encontrar **não existe**:
 
 | Chave | Se mudar |
 |---|---|
 | **`FIELD_ENCRYPTION_KEY`** | **a PII do paciente vira ilegível.** CPF, nome, contato, endereço e diagnóstico estão cifrados com Fernet em repouso. Chave nova = dado perdido, sem recuperação |
-| **`BACKUP_ENCRYPTION_KEY`** | nenhum backup anterior abre mais |
 | `SECRET_KEY` | toda sessão e todo token assinado cai (sobrevivível — derruba quem estiver logado) |
+| ~~`BACKUP_ENCRYPTION_KEY`~~ | **ausente do `.env.staging`.** Existe no `.env` do stack de *dev*, não no de staging — ver seção 10, porque a ausência tem consequência |
 
-As três **viajam idênticas**, por `scp`, modo 600, nunca por git e nunca por heredoc de
-`ssh -n` (grava vazio — `AMBIENTES.md`, §Armadilhas).
+**Correção de um erro meu:** a versão anterior desta seção dizia "três chaves, as três viajam
+idênticas" e listava `BACKUP_ENCRYPTION_KEY` entre elas. Eu li a lista de chaves do `.env`
+(dev) e a atribuí ao `.env.staging`. Não está lá, e a diferença não é cosmética: quem fosse
+procurar a chave para preservá-la ia procurar por algo que nunca existiu.
+
+O arquivo **viajou idêntico** — `sha256` conferido nas duas pontas
+(`6fd974096bee669d…`), modo 600, nunca por git e nunca por heredoc de `ssh -n` (grava
+vazio — `AMBIENTES.md`, §Armadilhas).
 
 Não mudam e não precisam mudar: `ALLOWED_HOSTS=vitali.qtec.me,vitali-demo.qtec.me,.qtec.me,localhost`,
 `CSRF_TRUSTED_ORIGINS=https://vitali.qtec.me,…`, `NEXT_PUBLIC_API_URL=https://vitali.qtec.me`.
@@ -367,6 +373,46 @@ medicamentos. **O dump leva os catálogos junto, então a lab nasce com eles** �
 existindo caminho automatizado que os carregue. Alguém os importou à mão neste ambiente. A
 migração preserva o resultado e **não** preserva a receita — o que significa que o próximo
 ambiente a nascer volta a nascer vazio.
+
+
+
+### Passos 3.7 e 3.8 — **FEITOS, e o restore bate byte a byte**
+
+**3.7 — transferência.** Feita por *stream* PVE → lab através da forge
+(`ssh pve "cat f" | ssh lab "cat > f"`), sem escrever o dump clínico no disco de uma
+terceira máquina. Nove artefatos, `sha256sum -c` conferido **na ponta de destino**:
+
+```
+vitali-staging.dump: OK      vol-orthanc_data.tgz: OK     vitali-dev-PARQUEADO.dump: OK
+img-vitali-frontend.tar.gz: OK   vol-backups.tgz: OK      inventario-PVE.txt: OK
+roles.sql: OK                vol-media_files.tgz: OK      vol-pitr_wal_archive.tgz: OK
+```
+
+Destino: `/srv/vulcan/apps/vitali/migracao/` (modo 700, dumps em 600) e o WAL em
+`/srv/vulcan/apps/vitali/archive/`, como o Imediato determinou.
+
+**A árvore foi por `git archive`, não por clone nem por `rsync` do working tree.** O commit
+`9ea40dd` do branch da ordem, sem `.git`, sem `node_modules`, sem `.env`, sem `.coverage` —
+só o que está versionado. A lab recebe árvore pronta e não vira bancada
+(`AMBIENTES.md`). A proveniência fica em `PROVENIENCIA.txt` na raiz do app.
+
+O `.env.staging` viajou à parte, modo 600, e é **byte a byte o mesmo**: `sha256`
+`6fd974096bee669d…` nas duas máquinas. `FIELD_ENCRYPTION_KEY` idêntica — que era a condição
+para o dado cifrado continuar legível.
+
+**3.8 — restore.** `postgres` sozinho de pé no projeto `vitali-lab`, `roles.sql` aplicado
+(o `vitali` já existia, criado pelo entrypoint; o `ALTER ROLE` passou), `pg_restore
+--no-owner --clean --if-exists` com rc=0 e nenhum erro.
+
+**A conferência:** rodei o mesmo `inventario.sql` na lab e comparei com o do PVE.
+
+```
+IDENTICO — 269 tabelas, 742.116 linhas, byte a byte
+```
+
+Não é "as contagens batem": é o arquivo inteiro igual — schemas, os dois tenants, os quatro
+domínios e as 269 linhas de contagem, na mesma ordem. Volumes restaurados por tar: `orthanc_data`
+19 arquivos / 2,4 MB (o mesmo 1 estudo DICOM), `backups` 1 arquivo, `media_files` vazio.
 
 
 ---
@@ -657,14 +703,36 @@ O `crond` do busybox chama `setgroups()` antes de executar o job, leva negativa 
 nunca roda**. O `backup.sh` está no container, o `/etc/backup.env` está escrito, o `gpg`
 está instalado — e nada disso é alcançado.
 
-**Hipótese com teste barato:** é o mesmo apparmor do PVE. No
-`docker-compose.staging.yml`, `nginx` e `vitali-viewer` têm `security_opt:
-apparmor=unconfined` justamente porque o perfil do PVE os quebrava; **`db-backup` não tem**,
-e roda sob `docker-default`. Se a causa for o host, o serviço **conserta sozinho na lab**,
-onde o apparmor é o do Debian e o passo 2.4 já provou que container confinado funciona.
+**São duas falhas independentes, não uma — e isso importa porque consertar só a primeira
+não produz backup nenhum.**
 
-**Teste, depois do 3.9:** `docker logs vitali-lab-db-backup-1` e procurar a mesma linha. Sem
-ela, era o host. Com ela, é do compose e vira ordem própria.
+**Falha 1 — o cron nunca dispara o job.** Hipótese: é o apparmor do PVE. No
+`docker-compose.staging.yml`, `postgres`, `nginx` e `vitali-viewer` têm `security_opt:
+apparmor=unconfined` justamente porque o perfil do PVE os quebrava; **`db-backup` não tem**,
+e roda sob `docker-default`. Se a causa for o host, essa metade **conserta sozinha na lab**,
+onde o apparmor é o do Debian e o passo 2.4 já provou que container confinado sobe limpo.
+
+**Falha 2 — mesmo disparando, o `backup.sh` se recusa a rodar.** O `.env.staging` **não
+tem** `BACKUP_ENCRYPTION_KEY` **nem** `BACKUP_ALLOW_PLAINTEXT` (conferido chave a chave em
+11/09, nas duas máquinas — o arquivo é byte a byte o mesmo). O script é explícito
+(`scripts/backup.sh:13-22`): a chave é *REQUIRED*, o dump carrega dado clínico regulado por
+LGPD, e a única saída documentada é setar `BACKUP_ALLOW_PLAINTEXT=1`. Sem nenhuma das duas,
+ele falha fechado — que é o comportamento **certo** do script e a configuração **errada** do
+ambiente.
+
+Isso explica também o único dump existente: `vitali_20260723T171954Z.dump`, **sem `.gpg`**,
+de 23/07. É anterior ao guard ("*now-mandatory encryption step*", nas palavras do próprio
+compose). Ou seja: o backup parou de funcionar quando a criptografia virou obrigatória e a
+chave nunca foi provisionada — e ninguém soube, porque a outra falha já garantia silêncio.
+
+**Esta metade NÃO se conserta sozinha na lab**, porque o `.env.staging` viajou idêntico, de
+propósito. A lab vai reproduzir a falha 2 exatamente.
+
+**Teste, depois do 3.9:** `docker logs vitali-lab-db-backup-1` procurando `can't set
+groups`. Sem a linha, a falha 1 era do host. Depois, disparar o script à mão
+(`docker compose exec db-backup /usr/local/bin/backup.sh`) para ver a falha 2 na cara.
+A correção — provisionar `BACKUP_ENCRYPTION_KEY` e guardá-la em cofre offline, como manda o
+próprio script — é ordem própria, e é a que fecha a prioridade 3 da direção.
 
 **O que isso muda agora, independentemente da causa:** não existe backup recente do Vitali.
 O `vitali-staging.dump` tirado hoje (26,7 MB, `77236fdfc289`) é **o único artefato de
