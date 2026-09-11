@@ -308,71 +308,112 @@ junto, então o esperado é zero órfão; o comando é a **prova** disso, não u
 
 ---
 
-## 4. Cutover — troca de túnel (**Ask-First: root no cloudflared; aplica o Imediato ou o Capitão**)
+## 4. Cutover — troca de túnel (sequência do Capitão)
 
-Nenhum passo desta seção é executado por mim. A ordem exata, com o ponto de retorno
-marcado:
+**Quem executa:** os passos **4.1** e **4.3** são do Imediato ou do Capitão — hoje exigem
+`root` no `cloudflared` e o certificado de conta, que não estão comigo. Os passos **4.2**,
+**4.4** e **4.5** são do executor. Ordem fixa: pular ou inverter qualquer par dá 404 ou 502
+na cara de quem estiver acessando.
 
-**4.1 — Subir na lab e provar por dentro** (executor)
+Pré-condição: passo 3.9 concluído — stack de pé na lab, todo healthcheck verde,
+`celery-beat` incluído. `celery-beat` verde é o teste do commit `9b7bd0a`: com
+`timeout: 15s` ele nasceria `unhealthy` para sempre num container de 0,25 CPU. Vermelho ali
+significa que a correção não chegou no clone.
 
-```bash
-cd /srv/vulcan/apps/vitali
-docker compose -p vitali-lab -f docker-compose.staging.yml -f docker-compose.lab.yml \
-  --env-file .env.staging up -d
-docker compose -p vitali-lab ps        # todo healthcheck verde, inclusive celery-beat
+### 4.1 — Ingress na forge (**Ask-First · Imediato ou Capitão**)
+
+Em `/etc/cloudflared/config.yml` da forge, **antes** do `http_status:404`:
+
+```yaml
+  - hostname: vitali.qtec.me
+    service: http://192.168.255.72:3005
+  - hostname: vitali-demo.qtec.me
+    service: http://192.168.255.72:3005
 ```
 
-`celery-beat` verde é o teste do commit `9b7bd0a`: com `timeout: 15s` ele nasceria
-`unhealthy` para sempre num container de 0,25 CPU. Se nascer vermelho aqui, a correção não
-chegou — e é isso que se está provando.
+```bash
+sudo cloudflared tunnel ingress validate --config /etc/cloudflared/config.yml
+sudo systemctl restart cloudflared
+```
 
-**4.2 — Validar com Host header, da forge** (executor; ainda sem tocar em DNS)
+Quando o **`vulcan-ingress`** existir, este passo passa a ser ele; hoje é edição de arquivo
+com `root`.
+
+> **Armadilha medida em 11/09.** Existem **dois** `config.yml` na forge, e o errado parece
+> certo: `~/.cloudflared/config.yml` (222 B) é cópia velha, com `lab.qtec.me` e mais nada.
+> O serviço roda `--config /etc/cloudflared/config.yml` (conferido em
+> `systemctl cat cloudflared`). Editar o do home não faz efeito nenhum — e pior, um
+> `cloudflared tunnel ingress validate` **sem `sudo` e sem `--config`** lê o do home e
+> responde OK sobre um arquivo que ninguém usa. Por isso o `--config` explícito acima.
+
+Este passo é seguro de fazer cedo: enquanto o CNAME ainda aponta para o túnel do PVE,
+nenhum tráfego chega por aqui. Só deixa a forge pronta.
+
+### 4.2 — Validar por curl direto na lab (executor; ainda sem tocar em DNS)
 
 ```bash
 curl -sS -o /dev/null -w '%{http_code}\n' -H 'Host: vitali.qtec.me'      http://192.168.255.72:3005/login
 curl -sS -o /dev/null -w '%{http_code}\n' -H 'Host: vitali-demo.qtec.me' http://192.168.255.72:3005/login
 ```
 
-Os dois têm de dar **200**. O nginx é `server_name _` (vhost único): quem separa
-`vitali` de `vitali-demo` é o `django-tenants`, resolvendo o tenant pelo domínio. Se
-`vitali-demo` responder diferente de `vitali`, o problema é a tabela `Domain` no dump —
-**e isso se descobre aqui, antes do DNS**, que é a razão de este passo existir.
+Os dois têm de dar **200**, e da forge — a regra de nftables só abre 3005 para
+`192.168.255.70`. O nginx é `server_name _` (vhost único): quem separa `vitali` de
+`vitali-demo` é o `django-tenants`, resolvendo o tenant pelo domínio. Se `vitali-demo`
+responder diferente de `vitali`, o problema está na tabela `Domain` que veio no dump — e é
+**aqui** que isso aparece, com o DNS ainda intacto. É a razão de este passo existir.
 
-**4.3 — Ingress na forge, e só então o CNAME** (**Ask-First**)
+### 4.3 — `route dns` (**Ask-First · Imediato ou Capitão**)
 
 ```bash
-# (a) /etc/cloudflared/config.yml na forge, ANTES do http_status:404:
-#   - hostname: vitali.qtec.me
-#     service: http://192.168.255.72:3005
-#   - hostname: vitali-demo.qtec.me
-#     service: http://192.168.255.72:3005
-sudo cloudflared tunnel ingress validate && sudo systemctl restart cloudflared
-
-# (b) só depois de (a) — inverter dá 404 na cara do usuário:
-cloudflared tunnel route dns --overwrite-dns vulcan-forge vitali.qtec.me
-cloudflared tunnel route dns --overwrite-dns vulcan-forge vitali-demo.qtec.me
+cloudflared tunnel route dns vulcan-forge vitali.qtec.me
+cloudflared tunnel route dns vulcan-forge vitali-demo.qtec.me
 ```
 
-**Antes de rodar (b), anotar o ID do túnel do PVE** (`sudo grep tunnel:
-/etc/cloudflared/config.yml` no PVE). É o único dado que o rollback precisa e o único que
-não se recupera depois.
+O comando **recria o CNAME já apontando para o túnel da forge** — não há edição manual de
+zona.
 
-**4.4 — Validar de fora**
+**Sobre o `--overwrite-dns`, conferido no binário instalado (cloudflared 2026.8.3):**
+
+```
+--overwrite-dns, -f   Overwrites existing DNS records with this hostname (default: false)
+```
+
+O default é `false` e **os dois CNAME já existem**, apontando para o túnel do PVE. Então a
+forma acima, sem a flag, **deve falhar** dizendo que o registro já existe — e essa falha
+**não altera nada**, é recusa, não estado quebrado. Duas leituras possíveis, as duas úteis:
+
+- rodar primeiro **sem** a flag é uma sonda barata e segura: se falhar por "already exists",
+  está confirmado que o registro é o do PVE, e aí se repete **com** `--overwrite-dns`;
+- ou ir direto com `--overwrite-dns`, que é o que o `AMBIENTES.md` já usa para a lab.
+
+**Registrado:** pela documentação do binário, `--overwrite-dns` **é necessário** neste
+caso. A sonda sem a flag serve para provar isso na hora, não para evitá-la.
+
+`cloudflared tunnel route dns` precisa do **certificado de conta** (`cert.pem`), que não
+está no `rcosta00` da forge — `cloudflared tunnel list` falha com *"Cannot determine default
+origin certificate path"*. É exatamente o que o `AMBIENTES.md` antecipa: *"se falhar, é item
+para o Capitão"*.
+
+**Antes de rodar, anotar o ID do túnel do PVE** — `sudo grep '^tunnel:'
+/etc/cloudflared/config.yml` no PVE. É o único dado de que o rollback precisa e o único que
+não se recupera depois de sobrescrever o CNAME.
+
+### 4.4 — Validar de fora (executor)
 
 ```bash
 curl -sS -o /dev/null -w '%{http_code}\n' https://vitali.qtec.me/login
 curl -sS -o /dev/null -w '%{http_code}\n' https://vitali-demo.qtec.me/login
 ```
 
-200 nos dois, e um login/refresh/logout **manual** — a Onda 3 mexeu no caminho de
-autenticação inteiro e o refresh single-flight só tem cobertura por mock
-(`VITALI_HANDOFF_MIGRACAO.md`). Propagação do CNAME: segundos, com o proxy da Cloudflare na
-frente.
+200 nos dois — hoje ambos dão **502**, então a mudança é visível sem ambiguidade. Depois,
+**login, refresh e logout manuais**: a Onda 3 mexeu no caminho de autenticação inteiro e o
+refresh single-flight só tem cobertura por mock (`VITALI_HANDOFF_MIGRACAO.md`). Propagação
+do CNAME é de segundos, com o proxy da Cloudflare na frente.
 
-**4.5 — Desligar no PVE** (só depois do 4.4 verde)
+### 4.5 — Só então o PVE desliga (executor, depois do 4.4 verde)
 
 ```bash
-docker compose -p vitali-staging stop      # stop, NÃO down: volume e rede ficam
+docker compose -p vitali-staging stop      # stop, NÃO down
 ```
 
 E remover as duas entradas do ingress no túnel do PVE. **Nada de `down -v`, nada de
@@ -382,11 +423,14 @@ E remover as duas entradas do ingress no túnel do PVE. **Nada de `down -v`, nad
 
 | Onde falhou | O que fazer | Volta em |
 |---|---|---|
-| 4.1 / 4.2 (lab não sobe ou responde errado) | não mexeu em DNS; ninguém percebeu. Corrigir na lab, ou `docker compose -p vitali-staging start` no PVE e adiar | imediato |
-| 4.4 (o mundo vê erro depois do CNAME) | `cloudflared tunnel route dns --overwrite-dns <túnel-do-PVE> vitali.qtec.me` e idem demo; `start` do stack no PVE se já parado | ~1 min |
+| 4.1 (ingress não valida) | nada mudou para o usuário: o CNAME ainda é o do PVE. Corrigir o arquivo e revalidar | imediato |
+| 4.2 (a lab responde errado) | idem — DNS intacto. Corrigir na lab, ou `docker compose -p vitali-staging start` no PVE e adiar a janela | imediato |
+| 4.4 (o mundo vê erro depois do `route dns`) | **`cloudflared tunnel route dns --overwrite-dns <túnel-do-PVE> vitali.qtec.me`** e idem para `vitali-demo` — o CNAME volta para o túnel do PVE. `start` do stack no PVE se já estiver parado | ~1 min |
 | Depois do 4.5 | igual acima: o stack do PVE é `start`, os volumes estão lá. **É por isso que 4.5 é `stop` e não `down`** | ~2 min |
 
-O ponto de não-retorno é a **desmontagem do PVE (passo 5)** — não o cutover.
+O rollback é sempre o mesmo gesto — `route dns` de volta para o túnel do PVE — e ele só
+existe enquanto o ID daquele túnel estiver anotado. Ponto de não-retorno não é o cutover: é
+a desmontagem do PVE, que é a seção 5 e tem 'vai' próprio.
 
 ---
 
@@ -455,7 +499,9 @@ e `docker-compose.pitr.yml` (o PITR é redesenho na lab, não cópia de timeline
 
 1. **Qualquer coisa no PVE**, incluindo `start` do `postgres` para o dump (passo 3.1).
 2. **`sudo` na lab**: criar `vulcan`, `/srv/vulcan`, instalar `acl`, regra de nftables.
-3. **`cloudflared` na forge** — ingress e CNAME (passo 4.3). Aplica o Imediato ou o Capitão.
+3. **`cloudflared` na forge** — o ingress (4.1) e o `route dns` (4.3). Aplica o Imediato ou
+   o Capitão; os dois exigem `root` e o `route dns` exige o certificado de conta, que não
+   está no `rcosta00` da forge.
 4. **Desligar o stack do PVE** (4.5) e qualquer passo da seção 5.
 
 ## 8. Decisões que dependem do Imediato
