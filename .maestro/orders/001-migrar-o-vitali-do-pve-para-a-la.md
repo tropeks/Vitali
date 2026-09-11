@@ -176,32 +176,32 @@ a leva — que era exatamente o buraco apontado pelo Tenente do Maestro.
 RAM (28 disponíveis), Docker 29.7.2, Compose v5.5.1, `rcosta00` no grupo `docker`.
 Sobra folga para os ~6 GB de imagem e ~1 GB de dado.
 
-### 2.1 `/srv/vulcan` não existe na lab — e o destino é ele (**root, Ask-First**)
+### 2.1 `/srv/vulcan` na lab — **FEITO pelo Imediato, conferido em 11/09**
 
-Ordem do Capitão: `/srv/vulcan/apps/vitali`, e nada em `/home/rcosta00/apps` (a migração de
-usuário está em curso). Medido na lab agora:
+O `RUNBOOK-migracao.md` da ordem 004 (§7) é explícito: **a lab não é resolvida por aquela
+ordem.** *"A lab é uma segunda máquina… Migrar só a forge deixa o deploy funcionando, mas
+continua entrando na lab como o admin — a separação fica pela metade e, pior, fica
+invisível: nada quebra, então ninguém lembra. Precisa de ordem própria."* Consumir o runbook
+aqui significava, portanto, **não** improvisar a migração inteira da lab — e sim criar só a
+raiz, no formato que a ordem futura vai herdar.
+
+Foi o que o Imediato executou. Conferido por mim, somente leitura:
 
 ```
-/srv/vulcan        → não existe
-usuário vulcan     → não existe  (id: 'vulcan': no such user)
-setfacl            → AUSENTE (pacote acl não instalado — não vem por padrão no Debian 13)
+vulcan            uid=1001(vulcan) gid=1001(vulcan)     ← mesmo uid da forge (§1 do runbook)
+rcosta00          pertence ao grupo 1001(vulcan)
+/srv/vulcan{,/dev,/apps}   drwxrwsr-x+ vulcan:vulcan    ← setgid (s) e ACL (+) presentes
+ACL default       default:group:vulcan:rwx
+nft               ip saddr 192.168.255.70 tcp dport 3005 accept
+prova de escrita  arquivo criado por rcosta00 nasceu  rcosta00:vulcan  ← o setgid funciona
 ```
 
-Pelo `AMBIENTES.md`, §"Raiz dos agentes", precisa de:
+O uid **1001** casando com o da forge não é detalhe: é o que faz `rsync -a` e bind mount
+preservarem dono entre as duas máquinas sem uma tradução que ninguém lembra de fazer.
 
-```bash
-sudo apt-get install -y acl
-sudo groupadd -g 1001 vulcan && sudo useradd -u 1001 -g vulcan -m -s /bin/bash vulcan
-sudo usermod -aG vulcan rcosta00          # exige nova sessão de login para valer
-sudo mkdir -p /srv/vulcan/{dev,apps}
-sudo chown -R vulcan:vulcan /srv/vulcan
-sudo chmod -R 2775 /srv/vulcan            # setgid: arquivo novo herda o grupo
-sudo setfacl -R -d -m g:vulcan:rwX /srv/vulcan
-```
-
-Sem o setgid **e** a ACL default, arquivo criado pelo admin nasce ilegível para o agente e
-o dia a dia vira sucessão de `chown`. Se a migração de usuário já tem plano próprio, esta
-ordem **consome** esse plano em vez de improvisar um — pergunta para o Imediato.
+**O que continua faltando na lab, e é da ordem futura, não desta:** usuário `vulcan` com
+chave ssh própria, serviços rodando sob ele, e os containers de mr-site/processo-guarda
+recriados fora do uid 1000. Esta ordem deixa a raiz pronta e não finge ter feito o resto.
 
 ### 2.2 Congelar a tag das imagens — **FEITO, com achado**
 
@@ -233,11 +233,15 @@ Três saídas, e a escolha é de quem assina:
 **Proposta: 1 agora, 3 depois**, com a dívida registrada — enquanto o frontend de staging
 for um build local sem digest, nenhum ambiente é reproduzível a partir do repositório.
 
-Backend e viewer sobem por digest fixo (`@sha256:…`), não por `latest`. O `pull` na lab
-exige `docker login ghcr.io` com PAT de `read:packages` — **credencial que eu não tenho e
-não devo manusear**; é passo do Imediato.
+Backend e viewer sobem por **digest fixo** (`@sha256:…`), não por `latest`.
 
-### 2.3 Porta e firewall (**root para a regra, Ask-First**)
+> **O PAT não é necessário — os pacotes do GHCR são públicos.** Medido em 11/09: não existe
+> `~/.docker/config.json` no PVE, **nem na forge, nem na lab**, e ainda assim a lab — uma
+> máquina sem credencial nenhuma — resolveu `ghcr.io/tropeks/vitali-backend:latest` para
+> `da58aae3…`, o mesmo digest. É assim que o PVE sempre puxou. Não há o que pedir ao
+> Capitão neste item.
+
+### 2.3 Porta e firewall — **FEITO pelo Imediato**
 
 Em uso na lab: **3002** NetForge frontend · **3003** preview do site · **3004**
 processo-guarda. Livre e escolhida: **3005** — nginx do Vitali, publicado em
@@ -245,8 +249,9 @@ processo-guarda. Livre e escolhida: **3005** — nginx do Vitali, publicado em
 
 ```bash
 sudo nft add rule inet vulcan input ip saddr 192.168.255.70 tcp dport 3005 accept
-# e a MESMA linha persistida em /etc/nftables.conf — a tabela atual mostra duplicatas
-# de 3002/3003, sinal de regra aplicada duas vezes sem revisar o arquivo
+# aplicada E persistida em /etc/nftables.conf pelo Imediato; conferida na tabela viva.
+# Nota de higiene: a tabela mostra 3002/3003 duplicados, sinal de regra aplicada duas
+# vezes sem revisar o arquivo. Não é desta ordem, mas está anotado.
 ```
 
 O DICOM C-STORE (4242) **continua em loopback**, como no PVE. Nenhuma modalidade empurra
@@ -305,6 +310,64 @@ não-retorno não é a cópia — é a desmontagem do PVE, que é passo 5 e tem 
 backfill real → `--dry-run --fail-on-orphans`). Com `ENFORCE_TENANT_MEMBERSHIP=True` — e
 está `True` — todo usuário sem vínculo materializado leva 401. O dump traz os vínculos
 junto, então o esperado é zero órfão; o comando é a **prova** disso, não uma correção.
+
+
+### Resultados medidos da janela (11/09, passos 3.1 a 3.6 — **FEITOS**)
+
+'vai' do Imediato. No PVE subiu **só** o `postgres` do staging (`docker start
+vitali-staging-postgres-1`, sem compose, sem django, sem celery) e, para o 3.6, só o
+`postgres` do stack de dev — os dois voltaram ao estado parado logo depois. Nada mais foi
+ligado, nada foi apagado.
+
+**O banco é menor do que o volume sugere.** Os 852,8 MB do volume viram **26,7 MB** de dump
+`-Fc`. O resto é índice, bloat e WAL.
+
+| Artefato em `~/vitali-migracao-20260911` no PVE | Bytes | sha256 (12 primeiros) |
+|---|---:|---|
+| `vitali-staging.dump` (`pg_dump -Fc`) | 26.680.530 | `77236fdfc289` |
+| `img-vitali-frontend.tar.gz` (passo 3.5b, `docker save`) | 1.183.661.330 | `b622861387b6` |
+| `vitali-dev-PARQUEADO.dump` (passo 3.6) | 398.937 | `2b142b7c8c34` |
+| `vol-backups.tgz` | 137.926 | `c620ce8aafe4` |
+| `vol-orthanc_data.tgz` | 50.778 | `0a8d174dd8b0` |
+| `inventario-PVE.txt` (**prova do 3.8**) | 18.501 | `3801dd39ce4f` |
+| `roles.sql` (1 `CREATE ROLE`) | 665 | `70a9add6fd35` |
+| `vol-media_files.tgz` (vazio, como esperado) | 88 | `45c84c42d189` |
+| `vol-pitr_wal_archive.tgz` (arquivo frio, aprovado) | em curso | — |
+
+Lista completa em `SHA256SUMS.txt` no mesmo diretório; o passo 3.7 confere **nas duas
+pontas** com `sha256sum -c`. O `docker save` do frontend levou 5m40s e comprimiu 3,57 GB em
+1,18 GB.
+
+**Inventário do banco — o alvo da conferência pós-restore:**
+
+- **2 schemas:** `public` e `demo`. **1 tenant real:** `Clínica Demo` (`a9d47888-…`).
+- **269 tabelas, 742.116 linhas no total.**
+- **4 domínios**, e o detalhe que importa para o cutover: **`vitali.qtec.me` é o domínio
+  `is_primary` do tenant `demo`** — não do `public`. `vitali-demo.qtec.me`,
+  `demo.vitali.qtec.me` e `localhost` apontam para o **mesmo** tenant. Ou seja: os dois
+  hostnames servem a mesma clínica, e o passo 4.2 deve ver respostas **idênticas** nos dois.
+  Diferença ali é defeito, não configuração.
+
+**Os catálogos estão carregados neste staging** — e isso muda a leitura do bloqueador de
+receita:
+
+| Catálogo | Linhas |
+|---|---|
+| `core_cnesestablishment` | 627.706 |
+| `core_tusscode` | 54.139 |
+| `core_cid10code` | 14.233 |
+| `core_sigtapprocedure` | 5.004 |
+| `core_cbocode` | 2.455 |
+| `core_cidomorphology` | 816 · `core_ucumunit` 316 · `core_loinccode` 6 |
+
+Cerca de **700 mil das 742 mil linhas são catálogo de referência**. O dado clínico do
+`demo` é semente: 9 funcionários, 7 casos cirúrgicos, 3 notas SOAP, 1 estudo DICOM, 2
+medicamentos. **O dump leva os catálogos junto, então a lab nasce com eles** — mas isso
+**não fecha** o bloqueador registrado na direção (INTENT §Prioridades, item 2): continua não
+existindo caminho automatizado que os carregue. Alguém os importou à mão neste ambiente. A
+migração preserva o resultado e **não** preserva a receita — o que significa que o próximo
+ambiente a nascer volta a nascer vazio.
+
 
 ---
 
@@ -389,14 +452,31 @@ forma acima, sem a flag, **deve falhar** dizendo que o registro já existe — e
 **Registrado:** pela documentação do binário, `--overwrite-dns` **é necessário** neste
 caso. A sonda sem a flag serve para provar isso na hora, não para evitá-la.
 
-`cloudflared tunnel route dns` precisa do **certificado de conta** (`cert.pem`), que não
-está no `rcosta00` da forge — `cloudflared tunnel list` falha com *"Cannot determine default
-origin certificate path"*. É exatamente o que o `AMBIENTES.md` antecipa: *"se falhar, é item
-para o Capitão"*.
+**De onde rodar o 4.3.** O comando exige o certificado de conta (`cert.pem`), e a forge
+não tem: lá `cloudflared tunnel list` morre com *"Cannot determine default origin
+certificate path"*. O PVE tem, em `~/.cloudflared/cert.pem` do `rcosta00` (modo 600,
+`rcosta00:rcosta00`, 282 B, de 22/07) — sem `root`.
 
-**Antes de rodar, anotar o ID do túnel do PVE** — `sudo grep '^tunnel:'
-/etc/cloudflared/config.yml` no PVE. É o único dado de que o rollback precisa e o único que
-não se recupera depois de sobrescrever o CNAME.
+Como `route dns` é chamada de API contra a conta Cloudflare e **não** precisa rodar na
+máquina de destino, o caminho mais curto é executá-la **do PVE**, onde a credencial já
+está, apontando para o túnel da forge. Assim nenhuma credencial de conta muda de máquina
+por conta desta migração. Se o Imediato preferir que a forge passe a ter autonomia de DNS,
+isso é provisionamento próprio (`cloudflared login` na forge, gerando cert dela) e é decisão
+dele — não subproduto de um cutover.
+
+**O ID do túnel do PVE — o alvo do rollback — é:**
+
+```
+1db76a1a-7627-42cb-8c92-822f6f8edf86
+```
+
+Lido sem abrir o `config.yml` root-only: é o nome do arquivo de credencial em
+`/etc/cloudflared/` do PVE. Fica anotado **aqui**, no documento, porque é o único dado de
+que o rollback precisa e o único que não se recupera depois de sobrescrever o CNAME.
+
+> Nota de higiene, não desta ordem: `/etc/cloudflared/` no PVE tem **16 arquivos
+> `config.yml.bak-*`**, o mais recente de hoje às 09:09. Versionamento por sufixo, num
+> diretório que só `root` lê, é backup que ninguém audita.
 
 ### 4.4 — Validar de fora (executor)
 
@@ -531,3 +611,49 @@ e `docker-compose.pitr.yml` (o PITR é redesenho na lab, não cópia de timeline
 - Direção vigente na criação: INTENT v1 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 001` (você não fecha a própria ordem).
+
+---
+
+## 10. Achado colateral — o backup diário do staging nunca rodou
+
+Apareceu ao abrir o `vol-backups.tgz` do passo 3.5, e não é da migração: é do sistema.
+
+**O volume tem exatamente um dump:** `vitali_20260723T171954Z.dump`. O container
+`vitali-staging-db-backup-1` foi criado em `2026-07-23T17:19:35Z` — **19 segundos antes**
+do carimbo desse arquivo. É o único que existe, e ele nasceu junto com o container.
+
+`KEEP_LAST=7`, então poda não explica: a política guarda sete, e há um. O container foi
+reiniciado pela última vez em `2026-08-25T18:33:27Z` e ficou **`Up 2 weeks`** até ser parado
+hoje. Dezessete dias de verde, zero backups.
+
+O log diz por quê, uma vez por disparo do cron, sem interrupção:
+
+```
+crond: USER root pid 30 cmd . /etc/backup.env && /tmp/backup.sh >> /proc/1/fd/1 2>&1
+crond: can't set groups: Permission denied
+```
+
+O `crond` do busybox chama `setgroups()` antes de executar o job, leva negativa e **o job
+nunca roda**. O `backup.sh` está no container, o `/etc/backup.env` está escrito, o `gpg`
+está instalado — e nada disso é alcançado.
+
+**Hipótese com teste barato:** é o mesmo apparmor do PVE. No
+`docker-compose.staging.yml`, `nginx` e `vitali-viewer` têm `security_opt:
+apparmor=unconfined` justamente porque o perfil do PVE os quebrava; **`db-backup` não tem**,
+e roda sob `docker-default`. Se a causa for o host, o serviço **conserta sozinho na lab**,
+onde o apparmor é o do Debian e o passo 2.4 já provou que container confinado funciona.
+
+**Teste, depois do 3.9:** `docker logs vitali-lab-db-backup-1` e procurar a mesma linha. Sem
+ela, era o host. Com ela, é do compose e vira ordem própria.
+
+**O que isso muda agora, independentemente da causa:** não existe backup recente do Vitali.
+O `vitali-staging.dump` tirado hoje (26,7 MB, `77236fdfc289`) é **o único artefato de
+recuperação atual que existe** — o anterior tem sete semanas. Isso eleva o cuidado com os
+artefatos do passo 3.7: até o restore na lab ser conferido, eles não têm cópia.
+
+Liga direto na direção: INTENT v1 §Prioridades item 3 — *"Backup que nunca foi restaurado
+não é backup"* — e §Limites — *"Sinal verde tem que significar verde: healthcheck, CI e
+alerta que vivem vermelhos ensinam a equipe a ignorar vermelho"*. Aqui foi pior que
+vermelho ignorado: foi **verde mentindo**. O container não tem healthcheck nenhum, então
+"Up" era tudo que o operador via, e "Up" era verdade — o processo `crond` estava mesmo de
+pé, sem fazer nada.
