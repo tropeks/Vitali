@@ -1,16 +1,17 @@
 <!-- maestro-intent v1
-version: 3
-ts: 2026-09-11T12:34:19-03:00
-head: c898290cc0705d8e7c60569b65d519369efbfeee
+version: 4
+ts: 2026-09-11T12:34:32-03:00
+head: e20a9ec47cb340e44a8d84dabce45406a81b894d
 author_session: desconhecido
-hash: f42ef2a1
+hash: e88157e6
 -->
 # Direção — vitali
 
 > Redigida a partir de `README.md`, `docs/PROJECT_BRIEF.md`, `docs/VISION-AI-NATIVE.md`,
-> `docs/AI-NATIVE-WEDGES.md` e `CLAUDE.md`. Nada aqui é novo: é o que os documentos
-> canônicos já dizem, reduzido ao que decide uma ordem. **v1 aguarda carimbo do Capitão**
-> (`maestro intent --bump` é dele, não do executor).
+> `docs/AI-NATIVE-WEDGES.md` e `CLAUDE.md`, e corrigida contra o que foi medido no banco.
+> Reduzida ao que decide uma ordem. **Carimbada pelo Capitão** — `maestro intent --bump` é
+> dele, não do executor. Histórico: v1 redigida em 11/09; v2 carimbada no mesmo dia; v3
+> corrigiu a Prioridade 2, que afirmava um fato falso sobre os catálogos.
 
 ## Problema
 
