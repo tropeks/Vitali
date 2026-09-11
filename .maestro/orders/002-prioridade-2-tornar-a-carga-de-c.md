@@ -235,3 +235,89 @@ Comecei com a 0.16.7 e ela acusava quatro regras que **não existem** na versão
 não casa o filtro. Então código de ordem só entra sob o gate quando é mesclado no `onda0` e o
 PR #211 roda. Não é defeito desta ordem; é do desenho do `ci.yml`, e vale registrar antes que
 alguém confunda "nenhum run vermelho" com "testado".
+
+---
+
+## 8. Passo 1 — FEITO na segunda tentativa. E a primeira provou mais que a segunda.
+
+### A tentativa que caiu, e por que ela valeu
+
+Subi as imagens do HEAD, `celery-worker` entrou em crash loop e levou o `django` junto
+(gunicorn: *"Worker failed to boot"*). Uma leitura de log deu a causa inteira, em
+`vitali/settings/production.py:62`:
+
+```
+ImproperlyConfigured: BACKUP_ENCRYPTION_KEY must be set. scripts/backup.sh dumps
+LGPD-regulated clinical data (EMR — apps.emr); without this key the nightly dump is
+written to disk in plaintext.
+```
+
+**É o achado da §10 da ordem 001 chegando pelo outro lado.** A Onda 2 acrescentou um
+**guard de boot** para a mesma variável que faltava. A imagem de 05/08 é anterior ao guard —
+por isso ela subia feliz com o mesmo ambiente, sem nunca produzir um backup.
+
+Rollback imediato, sem investigar no ambiente quebrado: serviço restaurado, smoke 8/8,
+nenhum volume tocado. E o repo foi revertido junto, para não ficar prescrevendo um deploy
+que não sobe.
+
+O guard está certo e a queda foi útil: converteu dois meses de silêncio numa parada
+barulhenta, no lugar certo, antes de servir tráfego.
+
+### A tentativa que subiu
+
+Chave provisionada pelo Imediato. Repin, deploy, **dez containers, nove healthy** (o
+`db-backup` não tem healthcheck).
+
+**`verify_catalogs` → EXIT=0**, pela primeira vez num ambiente, com as nove contagens
+**idênticas** às medidas na ordem 001 §1 — a imagem nova não encostou no dado:
+
+```
+CID-10 14.233 · TUSS 54.139 · CNES 627.706 · ANVISA 10.276 · CMED 24.346
+SIGTAP 5.004 · CBO 2.455 · CID-O 816 · UCUM 316
+```
+
+**`smoke_test.sh` → 9 passaram, 0 falharam**, agora com o check 7 rodando de verdade em vez
+de pular por imagem velha.
+
+### A prova que faltava há dois meses
+
+`backup.sh` rodado uma vez, `BACKUP_SH_EXIT=0`:
+
+```
+[backup] Written: /backups/vitali_20260911T230846Z.dump (25.5M)
+[backup] Encrypting (AES256)…
+[backup] Encrypted: /backups/vitali_20260911T230846Z.dump.gpg
+[backup] Metric written: /backups/metrics/vitali_backup.prom
+```
+
+E, porque "nasceu um arquivo" não é prova de recuperação, fui além:
+
+| Verificação | Resultado |
+|---|---|
+| É mesmo GPG, não texto claro? | `gpg --list-packets`: `symkey enc packet, cipher 9` (**AES256**), s2k 3 |
+| **Abre com a chave do ambiente?** | sim |
+| **O que sai é um dump válido?** | primeiros bytes = **`PGDMP`** — formato custom do `pg_dump` |
+| Sobrou texto claro? | o `.dump` novo foi removido após cifrar |
+| Observabilidade | `vitali_backup_last_success_timestamp_seconds 1789168257` — a métrica tem valor real pela primeira vez |
+
+### Duas coisas que ficam para o Imediato
+
+**1. Divergência no comprimento da chave — 46, não 48.** O valor no `.env.staging` tem
+**46 bytes** (linha de 68 = `BACKUP_ENCRYPTION_KEY=` + 46), sem aspas e sem CR, e o `mtime`
+não mudou entre a gravação e a conferência. O arquivo cresceu exatamente uma linha, então o
+resto do `.env.staging` está intacto.
+
+Se o cofre guardar 48, **todo dump nasce inabrível pela cópia do cofre** — que é exatamente
+o risco que o docstring do `backup.sh` descreve. Comparação sem imprimir segredo nenhum:
+
+```
+fingerprint do arquivo : b40e33e7af3a1066
+comparar com           : printf '%s' '<chave do cofre>' | sha256sum | cut -c1-16
+```
+
+Bateu, foi contagem. Não bateu, a chave do cofre precisa substituir a do arquivo **antes**
+de este dump ser considerado recuperável.
+
+**2. Ainda há um dump em texto claro no volume.** `vitali_20260723T171954Z.dump`, 686 KB, de
+23/07 — anterior ao guard de criptografia. É dado clínico em claro, em repouso, e agora é o
+único. Cifrar ou apagar é decisão do Imediato; não apago nada sem 'vai'.
