@@ -1,0 +1,58 @@
+# docker-compose.lab.yml — staging na lab da Vulcan (192.168.255.72)
+#
+#   docker compose -p vitali-lab \
+#     -f docker-compose.staging.yml -f docker-compose.lab.yml \
+#     --env-file .env.staging up -d
+#
+# A base (docker-compose.staging.yml) foi escrita para o PVE. Este arquivo desfaz o que
+# era do PVE e fixa o que e da lab. Nada aqui muda comportamento de aplicacao.
+#
+# Ordem 001 (.maestro/orders/001-*.md) tem o porque de cada linha.
+
+services:
+  # ── Publicacao ───────────────────────────────────────────────────────────────
+  # A lab publica no IP da LAN, nunca em 0.0.0.0 (AMBIENTES.md). 3005 porque 3002,
+  # 3003 e 3004 ja sao do netforge-frontend, do preview do site e do processo-guarda.
+  # A regra de nftables abre 3005 so para a forge (192.168.255.70).
+  nginx:
+    ports: !override
+      - "192.168.255.72:3005:80"
+    security_opt: !override []
+
+  # ── Confinamento de volta ────────────────────────────────────────────────────
+  # A base desliga o apparmor em TRES servicos por causa do PVE: postgres, nginx e
+  # vitali-viewer. O apparmor da lab e o 4.1.0-1 do Debian, nao o 4.1.1-pmx1 do
+  # Proxmox, e nao tem o bug "failed protocol match" — medido em 11/09: zero negacoes
+  # no dmesg e postgres:16-alpine chegando a "ready to accept connections" sob
+  # docker-default, que e exatamente o container que da FATAL no PVE.
+  # Os tres voltam confinados. Esquecer um faz o `unconfined` sobreviver a migracao
+  # sem que ninguem note — nada quebra, que e o jeito de isso durar anos.
+  postgres:
+    security_opt: !override []
+
+  # ── Imagens fixadas por digest ───────────────────────────────────────────────
+  # `IMAGE_TAG` nao serve: a base escreve `image: repo:${IMAGE_TAG}` e digest exige
+  # `repo@sha256:`. Estes sao os digests que estavam REALMENTE rodando no PVE,
+  # conferidos um a um contra o GHCR em 11/09. `latest` e alvo movel; digest nao.
+  django:
+    image: ghcr.io/tropeks/vitali-backend@sha256:da58aae3e49a394b56381de19d79ce65d26eae8c3b4bd968f3e8574fbfcb5441
+  celery-worker:
+    image: ghcr.io/tropeks/vitali-backend@sha256:da58aae3e49a394b56381de19d79ce65d26eae8c3b4bd968f3e8574fbfcb5441
+  celery-beat:
+    image: ghcr.io/tropeks/vitali-backend@sha256:da58aae3e49a394b56381de19d79ce65d26eae8c3b4bd968f3e8574fbfcb5441
+  vitali-viewer:
+    image: ghcr.io/tropeks/vitali-viewer@sha256:62c43e2c8fb5810e7a50d0550f15e13c6a1222317fe85389d052b9a44858b020
+    security_opt: !override []
+
+  # ── O frontend NAO vem de registry ───────────────────────────────────────────
+  # A imagem que servia o staging no PVE tem RepoDigests VAZIO: foi construida la e
+  # marcada com o nome do GHCR. O `latest` do GHCR e outro build (42s de diferenca,
+  # config digest diferente). Migracao troca de host, nao de software — entao os bits
+  # vieram por `docker save`/`docker load` (passo 3.5b da ordem).
+  # `pull_policy: never` e o que impede o compose de trocar a imagem carregada pelo
+  # `latest` do registry no primeiro `up`. Sem isso o cuidado todo se perde sozinho.
+  nextjs:
+    pull_policy: never
+
+  # orthanc: a base ja publica 8042 e 4242 em 127.0.0.1. Fica como esta — nenhuma
+  # modalidade DICOM empurra estudo para a lab, entao 4242 nao ganha rota externa.
