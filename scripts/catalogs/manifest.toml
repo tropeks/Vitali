@@ -1,0 +1,159 @@
+# Manifesto dos catálogos governados — entrada do `manage.py seed_catalogs`.
+#
+# POR QUE ISTO EXISTE
+# ------------------
+# Até 2026-09-11 a carga dos catálogos vivia em dois lugares e nenhum deles era
+# executável: o procedimento no README.md ao lado, e o resultado no banco que o
+# recebeu. Ambiente novo nascia vazio. Este arquivo é a parte que faltava — a
+# receita em forma que uma máquina segue.
+#
+# O QUE ESTE ARQUIVO NAO FAZ
+# --------------------------
+# Não adivinha `version`. O rótulo de versão descreve QUAL RELEASE da fonte
+# oficial foi baixada, e só quem baixou sabe. Inventá-lo fabricaria proveniência,
+# que é o que `.maestro/INTENT.md` §Limites proíbe e o que o docstring de
+# `verify_catalogs` explica em detalhe. Por isso `version = ""` **falha**, com o
+# nome do catálogo e o que preencher. Não há default, e não deve haver.
+#
+# `expected_rows` vem do README.md ao lado, catálogo por catálogo — é o resultado
+# que o ETL produziu quando foi medido, não uma estimativa.
+#
+# As FONTES não são versionadas (são grandes e oficiais). Ficam num diretório que
+# o operador preenche e aponta com `--source-dir`.
+
+[meta]
+readme = "scripts/catalogs/README.md"
+# Conferido contra o banco de staging em 2026-09-11.
+measured_at = "2026-09-11"
+
+# ─── Carregáveis: fonte pública, ETL no repo ────────────────────────────────
+
+[[catalog]]
+key = "cid10"
+command = "import_cid10"
+source_arg = "--source"
+version_arg = "--cid-version"
+file = "cid10_full.csv"
+etl = "etl_cid10_datasus.py"
+model = "core.CID10Code"
+expected_rows = 14233
+version = ""   # ex.: "2008" — veja README §CID-10
+
+[[catalog]]
+key = "cido"
+command = "import_cido"
+source_arg = "--source"
+version_arg = "--cido-version"
+file = "cido_full.csv"
+etl = "etl_cido.py"
+model = "core.CIDOMorphology"
+expected_rows = 816
+version = ""   # ex.: "2008"
+
+[[catalog]]
+key = "cbo"
+command = "import_cbo"
+source_arg = "--source"
+version_arg = "--cbo-version"
+file = "cbo_full.csv"
+etl = "etl_cbo.py"
+model = "core.CBOCode"
+expected_rows = 2445
+version = ""   # ex.: "2002"
+
+[[catalog]]
+key = "sigtap"
+command = "import_sigtap"
+source_arg = "--source"
+version_arg = "--sigtap-version"
+file = "sigtap_full.csv"
+etl = "etl_sigtap.py"
+model = "core.SIGTAPProcedure"
+expected_rows = 4996
+version = ""   # competência, ex.: "202607"
+
+[[catalog]]
+key = "ucum"
+command = "import_ucum"
+source_arg = "--source"
+version_arg = "--ucum-version"
+file = "ucum_full.csv"
+etl = "etl_ucum.py"
+model = "core.UcumUnit"
+expected_rows = 312
+version = ""   # ex.: "2.2"
+
+[[catalog]]
+key = "anvisa"
+command = "import_anvisa"
+source_arg = "--source"
+version_arg = "--anvisa-version"
+file = "anvisa_full.csv"
+etl = "etl_anvisa.py"
+model = "core.AnvisaProduct"
+expected_rows = 10276
+version = ""   # ex.: "2026-08"
+
+[[catalog]]
+key = "anvisa_cmed"
+command = "import_anvisa_cmed"
+source_arg = "--source"
+version_arg = "--cmed-version"
+file = "anvisa_cmed_full.csv"
+etl = "etl_anvisa_cmed.py"
+model = "core.AnvisaPresentation"
+expected_rows = 25701
+version = ""   # ex.: "2026-08"
+# NOTA (11/09): o staging tem 24.346 apresentações, 1.355 A MENOS que o resultado
+# medido do ETL. Divergência real, aberta — é justamente o tipo de coisa que o
+# check de contagem existe para não deixar passar de novo.
+
+[[catalog]]
+key = "cnes"
+command = "import_cnes"
+source_arg = "--source"
+version_arg = "--cnes-version"
+file = "cnes_full.csv"
+etl = "etl_cnes.py"
+model = "core.CNESEstablishment"
+expected_rows = 627705
+version = ""   # competência, ex.: "202606"
+
+# ATENCAO: o import_tuss é o único que NÃO usa `--source`, e o único cujo rótulo
+# de versão é obrigatório no próprio comando. Não derive estes nomes — são estes.
+[[catalog]]
+key = "tuss"
+command = "import_tuss"
+source_arg = "--file"
+version_arg = "--tuss-version"
+file = "tuss_full.csv"
+etl = "etl_tuss.py"
+model = "core.TUSSCode"
+expected_rows = 54136
+version = ""   # competência, ex.: "202607"
+
+# ─── Bloqueados por acesso à fonte, não por código ──────────────────────────
+
+[[catalog]]
+key = "loinc"
+command = "import_loinc"
+source_arg = "--source"
+version_arg = "--loinc-version"
+file = "loinc_full.csv"
+etl = "etl_loinc.py"
+model = "core.LoincCode"
+expected_rows = 0          # desconhecido até alguém baixar a release
+version = ""
+blocked = "cadastro gratuito em loinc.org — ver README §LOINC. Trava junto as unidades UCUM compostas (mg/dL, 10*3/uL)."
+
+[[catalog]]
+key = "cbhpm"
+command = "import_cbhpm"
+source_arg = "--source"
+version_arg = "--cbhpm-version"
+file = "cbhpm_full.csv"
+etl = ""                   # sem ETL: não há fonte para transformar
+model = "core.CBHPMItem"
+expected_rows = 0
+version = ""
+blocked = "tabela LICENCIADA (AMB/CBHPM). Decisão de compra, com o Capitão — não é trabalho de engenharia."

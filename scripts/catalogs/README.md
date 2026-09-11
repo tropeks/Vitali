@@ -236,9 +236,49 @@ faturável. Importado no staging em 2026-08-04.
   `TUSSCode` (a apresentação vive em `core.AnvisaPresentation`, alcançável pela
   ponte acima).
 
+## LOINC (exames laboratoriais) — `etl_loinc.py`
+
+**O ETL está pronto e testado. O que falta é o arquivo, e baixá-lo é ato de pessoa.**
+
+Fonte oficial: **<https://loinc.org/downloads/>** → "LOINC Table File (CSV)".
+
+O que quem baixar precisa fazer, e por que não sou eu:
+
+1. **Criar conta gratuita** no loinc.org. É gratuita — não é licença paga.
+2. **Aceitar a LOINC License** no ato do download. Aceitar termos é declaração em nome
+   de uma pessoa ou organização; um agente não faz isso por ninguém. É o único motivo
+   deste item estar parado.
+3. Baixar o zip e extrair. O arquivo que interessa é `LoincTable/Loinc.csv`.
+
+A licença LOINC **permite** redistribuição — então, uma vez baixado, o CSV pode circular
+entre os ambientes normalmente. Não é caso de caçar mirror: a conta é o caminho certo.
+
+```bash
+# 1. ETL (roda no diretório do Loinc.csv, ou passe o caminho)
+python3 etl_loinc.py                 # -> loinc_full.csv, só STATUS=ACTIVE
+python3 etl_loinc.py --all           # inclui DEPRECATED/DISCOURAGED/TRIAL
+
+# 2. anote no manifest.toml: `version` = a release (ex "2.80") e
+#    `expected_rows` = a contagem que o ETL imprimiu
+
+# 3. import (ou via seed_catalogs, que faz o mesmo e confere a contagem)
+python manage.py import_loinc --source /caminho/loinc_full.csv --loinc-version 2.80
+```
+
+O filtro de STATUS é o padrão de propósito: a LOINC marca códigos como `DEPRECATED`,
+`DISCOURAGED` e `TRIAL`, e carregar um aposentado no catálogo governado é oferecer ao
+usuário um código que a própria fonte retirou.
+
+**Destrava junto:** as unidades UCUM **compostas** (`mg/dL`, `10*3/uL`), que não existem
+no `ucum-essence.xml` e vêm no "example UCUM units" da tabela LOINC.
+
+---
+
 ## Pendências (fontes)
 
-- **LOINC — BLOQUEADO por cadastro** (não por licença). `loinc.org/download/*`
+- **LOINC — bloqueado por cadastro** (não por licença). **ETL pronto desde 11/09**
+  (`etl_loinc.py`); falta só o arquivo. Ver §LOINC abaixo para o que o Capitão precisa
+  fazer. `loinc.org/download/*`
   redireciona para login; `Top 2000` idem; UMLS/NLM exige licença UMLS. A licença
   LOINC **permite** redistribuição, e a conta é gratuita — o caminho certo é criar
   conta no loinc.org, não caçar mirror. Investigadas e descartadas: o pacote FHIR

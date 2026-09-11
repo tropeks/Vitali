@@ -46,7 +46,10 @@ docker compose -f docker-compose.staging.yml exec django \
 docker compose -f docker-compose.staging.yml exec django \
   python manage.py createsuperuser
 
-# 9. Run smoke tests to verify
+# 9. Carregar os catálogos governados (ver "Reference Catalogs" abaixo) —
+#    sem eles toda guia TISS sai com código inválido, em silêncio
+
+# 10. Run smoke tests to verify
 BASE_URL=https://staging.vitali.com.br \
 COMPOSE_FILE=docker-compose.staging.yml \
 COMPOSE_ENV_FILE=.env.staging \
@@ -74,16 +77,37 @@ competência):
 cd scripts/catalogs && python3 etl_tuss.py && python3 etl_anvisa.py anvisa_medicamentos.csv
 # ... one etl_<x>.py per catalog (cid10, cbo, sigtap, cido, ucum, anvisa_cmed, cnes)
 
-# 2. Import into the target environment (idempotent upsert — safe to re-run;
-#    --dry-run first is recommended for the multi-hour ones like CNES)
-docker compose -f docker-compose.staging.yml exec django \
-  python manage.py import_tuss --file /path/to/tuss_full.csv --tuss-version 202607
-# ... one import_<x> per catalog — commands and required flags in scripts/catalogs/README.md
+# 2. Preencha a versão de cada catálogo em scripts/catalogs/manifest.toml com a
+#    release que você baixou no passo 1. Campo `version` vazio = erro explícito.
+#    Não há default: adivinhar o rótulo fabricaria proveniência.
 
-# 3. Gate: fail loudly (exit 1) if anything essential is still empty
+# 3. Ensaio (valida fonte, versão e importers; nada é persistido)
+docker compose -f docker-compose.staging.yml exec django \
+  python manage.py seed_catalogs --manifest /mnt/catalogs/manifest.toml \
+    --source-dir /mnt/catalogs --dry-run
+
+# 4. Carga real — chama os import_* na ordem e CONFERE a contagem de cada um
+docker compose -f docker-compose.staging.yml exec django \
+  python manage.py seed_catalogs --manifest /mnt/catalogs/manifest.toml \
+    --source-dir /mnt/catalogs
+
+# 5. Gate: fail loudly (exit 1) if anything essential is still empty
 docker compose -f docker-compose.staging.yml exec django \
   python manage.py verify_catalogs
 ```
+
+> **`scripts/` não está na imagem.** O build do backend usa `./backend` como contexto,
+> então o manifesto e os ETLs vivem fora do container — monte-os (`-v`) junto com o
+> diretório das fontes. É por isso que `--manifest` é obrigatório e não tem default:
+> um default apontando para um caminho inexistente dentro do container seria pior que
+> nenhum.
+>
+> **`seed_catalogs` não substitui o passo 1 nem o 2.** Ele orquestra os `import_*` que
+> já existem, a partir do manifesto — não baixa fonte e não inventa versão. O que ele
+> acrescenta é a conferência: depois de cada import, compara a contagem final com a
+> esperada (do `scripts/catalogs/README.md`) e **reprova se ficou abaixo**. Em 31/07 o
+> CID-O entrou `partial` com 772 de 816 linhas, o `TerminologyImportLog` registrou, e
+> ninguém olhou. Esta é a checagem que teria gritado.
 
 `verify_catalogs` (`apps/core/management/commands/verify_catalogs.py`) is
 read-only and reports every essential catalog's row count; it is the
@@ -94,16 +118,27 @@ check --deploy`, which today is **not run by any CI workflow** (same gap as
 `docs/research/VITALI_HUMAN_APPLIED_GATES.md` item 0.3 — applying that item
 also activates E008, no separate CI change needed for the check itself).
 
-**What belongs in CI/deploy automation but isn't wired yet (human lot):**
-`verify_catalogs` cannot run as a CI *workflow* step — GitHub Actions runners
-have no access to the multi-hundred-MB catalog source files staged on the
-deploy host, and the import step itself is host-side for the same reason
-(CNES alone is ~45MB processed / ~40min import). The right automation is a
-**post-deploy step on the host** (e.g. appended to whatever script
-`deploy-staging.yml` SSHes in and runs after `migrate_schemas`), not a GitHub
-Actions job: `python manage.py verify_catalogs || <alert/rollback>`. This
-repo does not touch `.github/workflows/` (denylist) or the host's deploy
-script from an agent session — apply manually.
+**Onde o gate mora, medido em 2026-09-11 (ordem 002):**
+`verify_catalogs` não pode ser um *step* de workflow — os runners do GitHub
+Actions não alcançam as fontes de centenas de MB preparadas no host, e o import
+é host-side pelo mesmo motivo (só o CNES são ~45MB processados / ~40min).
+
+**Correção de um erro deste documento:** a versão anterior falava do "script que o
+`deploy-staging.yml` SSHes in and runs after `migrate_schemas`". **Esse script não
+existe.** Os três workflows — `ci.yml`, `deploy-staging.yml` e `release-deploy.yml`
+— apenas **constroem e publicam imagem**: nenhum tem `ssh`, nenhum roda
+`docker compose up`. O nome `deploy-staging.yml` é enganoso; ele é *build*. Quem
+faz deploy é um humano, com este documento na mão.
+
+Então o gate mora nos dois lugares onde o deploy de fato acontece, e é isso que a
+ordem 002 entregou:
+
+1. **Aqui**, como passo 5 do procedimento acima — depois dos imports, antes do smoke.
+2. **No `scripts/smoke_test.sh`** (check 7), que é o script que alguém já roda depois
+   de todo deploy. Se a imagem for anterior a 2026-08-18 e não tiver o comando, o
+   check **avisa** em vez de reprovar: "sua imagem é velha" não é o mesmo defeito que
+   "seus catálogos estão vazios", e confundir os dois faz o smoke mentir nos dois
+   sentidos.
 
 ---
 
