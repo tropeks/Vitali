@@ -1,9 +1,9 @@
 <!-- maestro-intent v1
-version: 2
-ts: 2026-09-11T10:19:43-03:00
-head: 1725bf76dc13ec35a29b18c46fec7201523d559f
+version: 3
+ts: 2026-09-11T12:34:19-03:00
+head: c898290cc0705d8e7c60569b65d519369efbfeee
 author_session: desconhecido
-hash: 39f1a054
+hash: f42ef2a1
 -->
 # Direção — vitali
 
@@ -62,10 +62,14 @@ desfecho).
    permissão ou migration passa por especialista e teste — é o que o `.maestro.yaml` já
    declara.
 2. **Receita destravada antes de escopo novo.** O caminho guia TISS válida → lote →
-   faturamento tem precedência sobre qualquer módulo adicional. Hoje o bloqueador conhecido
-   é operacional, não de código: os 24 importers de catálogo (TUSS, CID-10, CBHPM) existem
-   e são idempotentes, mas nunca são chamados em nenhum ambiente — sem eles, toda guia sai
-   com código inválido (`docs/research/VITALI_VIABILIDADE_VS_CE.md`).
+   faturamento tem precedência sobre qualquer módulo adicional. Os catálogos públicos
+   **estão carregados** em staging desde 04/08 — CID-10, TUSS, CNES, ANVISA, SIGTAP, CBO,
+   CID-O e UCUM, com fonte e versão gravadas em `TerminologyImportLog` — mas **por mão
+   humana, nunca por pipeline**: todo ambiente novo nasce vazio e a carga não é reproduzível
+   a partir do repositório. Dois bloqueadores sobram, e são de natureza diferente:
+   **CBHPM está em zero e é catálogo licenciado** (decisão de compra, não de engenharia), e
+   **LOINC tem 6 linhas**, travado por cadastro gratuito
+   (`docs/research/VITALI_CATALOGOS_ESTADO_REAL.md`).
 3. **Recuperação provada, não documentada.** Backup que nunca foi restaurado não é backup.
    O drill (`scripts/restore_test.sh`) vale mais que mais um alerta.
 4. **Interceptação sobre registro.** Entre melhorar um CRUD e fechar uma cunha de
