@@ -953,3 +953,29 @@ PHI legível. Se for para guardar, guardar cifrado. **Decisão do Imediato; não
 
 **Veredito:** o plano não conflita com a v2. Fez o que a direção autoriza, e o que ficou
 aberto está nomeado — não escondido.
+
+### Adendo — o recibo que reprovava a si mesmo
+
+A primeira versão do recibo `order-1` chamava o `smoke_test.sh`. Regravei, e veio
+**7 passou / 1 falhou**: `POST /api/v1/auth/login bad creds → 401 (got: 429)`.
+
+Não era regressão. `DEFAULT_THROTTLE_RATES` tem `login: "5/min"`
+(`backend/vitali/settings/base.py:199`), e eu havia rodado o smoke três vezes em poucos
+minutos — cada execução posta uma credencial errada. **Eu gastei o orçamento e depois
+reprovei o sistema por ele estar protegido.**
+
+Duas coisas boas saíram disso:
+
+1. **O throttle está correto atrás do túnel novo.** Ele é chaveado pelo IP real do cliente
+   (`NUM_PROXIES=1` + último `X-Forwarded-For`), e o comentário em `base.py:201-208` explica
+   por quê: sem isso o cliente controla a chave e cunha buckets infinitos. O 429 prova que a
+   cadeia Cloudflare → forge → nginx → Django preserva o IP real. É validação extra do
+   cutover, obtida por acidente.
+2. **O recibo estava mal desenhado.** Um recibo que consome um recurso limitado a cada
+   execução reprova quando re-rodado — e recibo que não sobrevive a ser re-rodado não é
+   recibo. Refeito sobre asserções estáveis: HTTPS 200 nos dois hostnames, `auth` em **401
+   ou 429** (os dois provam endpoint vivo e protegido; 200, 500 ou 502 reprovam), 9
+   healthchecks verdes, inventário idêntico, zero containers no PVE.
+
+O resultado 8/8 do `smoke_test.sh` continua valendo como medição pontual, e está na seção
+12. Ele só não serve como recibo repetível.
