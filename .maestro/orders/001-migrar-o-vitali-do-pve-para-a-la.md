@@ -415,6 +415,64 @@ domínios e as 269 linhas de contagem, na mesma ordem. Volumes restaurados por t
 19 arquivos / 2,4 MB (o mesmo 1 estudo DICOM), `backups` 1 arquivo, `media_files` vazio.
 
 
+
+### Passo 3.9 e a validação 4.2 — **FEITOS**
+
+**Dez containers na lab, os mesmos dez do PVE**, nove `healthy` e o `db-backup` (que não tem
+healthcheck). Inclusive — e é a prova do commit `9b7bd0a` — **`celery-beat` healthy** num
+container de 0,25 CPU, onde o `timeout: 15s` anterior o deixaria `unhealthy` para sempre.
+
+Dois ajustes que o PVE não contava:
+
+- **`db-backup` está atrás do profile `backup`** na base, e `.env.staging` não define
+  `COMPOSE_PROFILES` — o PVE foi subido com `--profile backup` explícito em algum momento.
+  A lab faz o mesmo, e aí a contagem bate: dez serviços.
+- **`evolution-api` nunca existiu no projeto do PVE** e na lab entra em crash loop
+  (`Error: Database provider  invalid.`). Foi para trás de um profile `whatsapp`. Detalhe
+  que ninguém tinha olhado: `WHATSAPP_EVOLUTION_URL=http://evolution-api:8080` aponta
+  exatamente para ele — o WhatsApp em staging sempre falou com o vazio.
+
+`backfill_tenant_memberships --dry-run --report`: *"demo: 11 referenced user(s), 11 already
+bound, 0 to create"*. Zero órfãos, como o dump previa — o comando é a prova, não a correção.
+
+**Validação 4.2, da forge, sem tocar em DNS:**
+
+| Host header | `/login` | `/api/v1/` | `/` |
+|---|---|---|---|
+| `vitali.qtec.me` | **200** | 401 | 307 |
+| `vitali-demo.qtec.me` | **200** | 401 | 307 |
+
+Idênticos nos dois, que era a exigência: os dois domínios pertencem ao mesmo tenant `demo`.
+401 na API sem credencial e 307 na raiz (redireciona para o login) são o comportamento
+certo.
+
+### Os dois achados do backup, agora testados na lab
+
+**Falha 1 era do PVE, e a migração a consertou de graça.** `busybox crond` sob
+`docker-default` na lab despacha o job sem reclamar:
+
+```
+crond: crond (busybox 1.37.0) started, log level 8
+crond: USER root pid 12 cmd true          ← e NENHUM "can't set groups" depois
+```
+
+No PVE essa mesma linha vem sempre seguida da negativa. Confirmado: era o apparmor do host.
+
+**Falha 2 se reproduziu na lab, exatamente como previsto**, porque o `.env.staging` viajou
+idêntico de propósito. Disparo manual do `backup.sh`:
+
+```
+[backup] ERROR: BACKUP_ENCRYPTION_KEY is not set. Dumps contain LGPD-regulated
+[backup] clinical data (EMR) and must not be written to disk unencrypted.
+BACKUP_SH_EXIT=1
+```
+
+**Saldo:** o backup do Vitali passou de *silenciosamente morto* a *ruidosamente quebrado*.
+A partir das 02:00 UTC de amanhã ele falha todo dia com essa mensagem no log, em vez de não
+fazer nada sem dizer nada. Falta **uma chave** para ele funcionar — e é a prioridade 3 da
+direção.
+
+
 ---
 
 ## 4. Cutover — troca de túnel (sequência do Capitão)
@@ -745,3 +803,63 @@ alerta que vivem vermelhos ensinam a equipe a ignorar vermelho"*. Aqui foi pior 
 vermelho ignorado: foi **verde mentindo**. O container não tem healthcheck nenhum, então
 "Up" era tudo que o operador via, e "Up" era verdade — o processo `crond` estava mesmo de
 pé, sem fazer nada.
+
+---
+
+## 11. Achado de segurança — a regra de nftables da lab não filtra porta de container
+
+Apareceu no passo 4.2. Além de confirmar que a lab responde 200 nos dois hostnames,
+testei o contrário: que a porta **não** responde para quem não é a forge. Responde.
+
+```
+PVE (192.168.255.190) -> lab:3002  404   ← netforge, deveria estar fechada
+PVE                   -> lab:3003  200   ← preview do site, deveria estar fechada
+PVE                   -> lab:3004  ---   bloqueado
+PVE                   -> lab:3005  307   ← Vitali, deveria estar fechada
+```
+
+**A causa:** porta publicada por container não passa pela chain `input`. O Docker faz DNAT
+na tabela `nat`, e o pacote segue para o container — ou seja, atravessa `forward`, não
+`input`. Regra em `input` para uma porta publicada é decorativa: nunca é avaliada.
+
+A tabela da lab prova isso sozinha. As regras de 3002, 3003 e 3005 estão em `input`. A de
+3004 está em **`forward`**:
+
+```
+chain forward {
+  ct direction original ct original ip daddr 192.168.255.72 ct original proto-dst 3004 \
+    ip saddr != 192.168.255.70 counter packets 125 bytes 7500 drop
+}
+```
+
+**3004 é a única que funciona** — e o contador com 125 pacotes mostra que ela está de fato
+dropando tráfego real. Alguém já descobriu isso ao subir o processo-guarda, consertou ali, e
+o conhecimento não voltou nem para as portas antigas nem para o `AMBIENTES.md`.
+
+**E é o `AMBIENTES.md` que ensina a versão que não funciona**, §"Publicar algo na lab":
+
+> `sudo nft add rule inet vulcan input ip saddr 192.168.255.70 tcp dport <porta> accept`
+
+Quem segue a receita ganha uma porta que parece protegida. É o mesmo padrão do dia inteiro:
+controle verde que não controla nada. Só que este não é monitor — é perímetro.
+
+**O escopo é maior que esta ordem.** `netforge.qtec.me` e o preview do site estão expostos à
+LAN inteira desde que subiram. Não é exposição à internet: a LAN é 192.168.255.0/24 e o
+túnel continua sendo o único caminho de fora. Mas não é o que a política diz, e não é o que
+o Imediato acha que aplicou.
+
+**Correção para a 3005 (root na lab — Ask-First, não executo):**
+
+```bash
+sudo nft add rule inet vulcan forward \
+  ct direction original ct original ip daddr 192.168.255.72 ct original proto-dst 3005 \
+  ip saddr != 192.168.255.70 counter drop
+# e a MESMA linha persistida em /etc/nftables.conf
+```
+
+Conferência depois de aplicar: `curl` do PVE para `192.168.255.72:3005` tem de parar de
+responder, e o `curl` da forge tem de continuar em 200. As regras de `input` de 3002/3003/
+3005 podem sair — não fazem nada —, mas isso é limpeza, não correção.
+
+**Fora desta ordem, mas nascido dela:** 3002 e 3003 precisam do mesmo tratamento, e o
+`AMBIENTES.md` precisa da receita certa, senão a próxima porta nasce igual.
