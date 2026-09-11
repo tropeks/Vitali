@@ -82,14 +82,29 @@ echo "[drill] chave carregada do .env (${#BACKUP_ENCRYPTION_KEY} bytes, valor na
 mkdir -p "$WORKDIR"
 chmod 700 "$WORKDIR"
 
+# Escolha por NOME, nunca por mtime. O nome carrega um timestamp ISO-8601 UTC
+# (vitali_20260911T230846Z.dump.gpg), entao ordem lexical == ordem cronologica.
+# `ls -t` responde outra pergunta — "qual arquivo foi TOCADO por ultimo" — e as
+# duas divergem assim que alguem recifra, copia ou restaura um dump antigo.
+# Medido em 11/09: recifrar o dump de julho o tornou o mais recente por mtime,
+# a frente do backup daquele mesmo dia. Ver ordem 003 §7.
 if [ -z "$ARTIFACT_NAME" ]; then
   ARTIFACT_NAME="$(docker run --rm -v "$VOLUME":/v:ro "$PG_IMAGE" \
-    sh -c 'ls -t /v/*.dump.gpg 2>/dev/null | head -1 | xargs -r basename')"
+    sh -c 'ls /v/*.dump.gpg 2>/dev/null | sort | tail -1 | xargs -r basename')"
 fi
 [ -n "$ARTIFACT_NAME" ] || { echo "[drill] ✗ nenhum .dump.gpg no volume $VOLUME" >&2; exit 1; }
 
-docker run --rm -v "$VOLUME":/v:ro -v "$WORKDIR":/out "$PG_IMAGE" \
-  sh -c "cp /v/'$ARTIFACT_NAME' /out/ && chmod 600 /out/'$ARTIFACT_NAME'"
+# --user: o container escreve como o usuario do host, senao a copia nasce root
+# e o proprio drill nao consegue le-la. Os arquivos do volume sao 644, entao
+# ler sem privilegio funciona.
+docker run --rm --user "$(id -u):$(id -g)" -v "$VOLUME":/v:ro -v "$WORKDIR":/out "$PG_IMAGE" \
+  sh -c "cp /v/'$ARTIFACT_NAME' /out/"
+chmod 600 "$WORKDIR/$ARTIFACT_NAME"
+
+# O restore_test.sh tambem escolhe por `ls -1t` (:60). Deixando UM unico
+# artefato no BACKUP_DIR, a escolha dele fica sem ambiguidade — e o drill
+# canonico roda sem ser modificado.
+find "$WORKDIR" -maxdepth 1 -name 'vitali_*.dump*' ! -name "$ARTIFACT_NAME" -delete
 
 ARTIFACT_PATH="$WORKDIR/$ARTIFACT_NAME"
 ARTIFACT_SHA="$(sha256sum "$ARTIFACT_PATH" | cut -d' ' -f1)"
@@ -154,12 +169,18 @@ echo "[drill] containers de drill remanescentes: $RESTOS_CONTAINER"
 
 # Prova por find: nenhum .dump em claro sobrou. /tmp cobre o WORKDIR do
 # restore_test.sh (mktemp -d); o diretorio de trabalho cobre o nosso.
-CLAROS_TMP="$(find /tmp -maxdepth 3 -name '*.dump' -type f 2>/dev/null | wc -l)"
-CLAROS_WORK="$(find "$WORKDIR" -name '*.dump' -type f 2>/dev/null | wc -l)"
+# `|| true` dentro da substituicao NAO e enfeite: este script tambem roda com
+# `set -euo pipefail`, e o `find` sai nao-zero ao esbarrar num subdiretorio de
+# /tmp sem permissao. Com pipefail o status dele vence o do `wc`, e a atribuicao
+# derruba a fase de limpeza inteira — silenciosamente, antes de relatar coisa
+# alguma. Foi o que aconteceu na primeira execucao completa (11/09): o mesmo
+# defeito que esta ordem encontrou no restore_test.sh, aqui.
+CLAROS_TMP="$(find /tmp -maxdepth 3 -name '*.dump' -type f 2>/dev/null | wc -l || true)"
+CLAROS_WORK="$(find "$WORKDIR" -name '*.dump' -type f 2>/dev/null | wc -l || true)"
 echo "[drill] .dump em claro em /tmp      : $CLAROS_TMP"
 echo "[drill] .dump em claro em $WORKDIR : $CLAROS_WORK"
-find /tmp -maxdepth 3 -name '*.dump' -type f 2>/dev/null | sed 's/^/[drill]   sobrou: /'
-find "$WORKDIR" -name '*.dump' -type f 2>/dev/null | sed 's/^/[drill]   sobrou: /'
+find /tmp -maxdepth 3 -name '*.dump' -type f 2>/dev/null | sed 's/^/[drill]   sobrou: /' || true
+find "$WORKDIR" -name '*.dump' -type f 2>/dev/null | sed 's/^/[drill]   sobrou: /' || true
 
 # A copia cifrada era redundante (o original segue no volume). Some.
 shred -n 3 -z -u "$ARTIFACT_PATH" 2>/dev/null || rm -f "$ARTIFACT_PATH"
