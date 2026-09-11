@@ -863,3 +863,93 @@ responder, e o `curl` da forge tem de continuar em 200. As regras de `input` de 
 
 **Fora desta ordem, mas nascido dela:** 3002 e 3003 precisam do mesmo tratamento, e o
 `AMBIENTES.md` precisa da receita certa, senão a próxima porta nasce igual.
+
+---
+
+## 12. Cutover executado · 4.4 e 4.5 · revisão contra o INTENT v2
+
+**O cutover foi executado pelo Imediato em 11/09:** ingress dos dois hostnames no túnel da
+forge (validado, `cloudflared` reiniciado) e `route dns --overwrite-dns` para o túnel
+`2fa06d6f-…`, rodado do PVE. Túnel de rollback anotado: `1db76a1a-7627-42cb-8c92-822f6f8edf86`.
+
+### 4.4 — validação de fora
+
+| | `vitali.qtec.me` | `vitali-demo.qtec.me` |
+|---|---|---|
+| `GET /login` | **200** (0,17 s) | **200** (0,14 s) |
+| `GET /` | 307 → `/dashboard` | 307 → `/dashboard` |
+| `GET /api/v1/` | 401 | 401 |
+
+Os dois estavam em **502** antes. E a prova de que quem responde é a lab, não um cache: o
+`access_log` do nginx do projeto `vitali-lab` registrou as requisições vindas de
+`192.168.255.70` — a forge — com o IP real do cliente no `X-Forwarded-For`. A cadeia
+Cloudflare → túnel da forge → lab:3005 está fechada ponta a ponta.
+
+**`scripts/smoke_test.sh` contra `https://vitali.qtec.me`: 8 passaram, 0 falharam.** Inclui
+`POST /api/v1/auth/login` com credencial errada devolvendo **401 em JSON** (o caminho de
+auth alcança o banco e responde certo), `/visualizador/` anônimo em 401, schema OpenAPI,
+estáticos, e **ida e volta real do Celery pelo broker** (`send_task` → worker → `pong`).
+
+> Armadilha, para quem repetir: o smoke test monta `docker compose -f
+> docker-compose.staging.yml` **sem `-p`**, então assume o nome de projeto do diretório e
+> reporta `Celery worker running: not-running` num stack perfeitamente saudável. Rode com
+> `COMPOSE_PROJECT_NAME=vitali-lab`. Não é bug do stack; é do harness.
+
+**O que falta do 4.4, e não consigo fazer sozinho:** login, refresh e logout **autenticados**.
+Não há credencial de staging documentada (o equivalente ao `netforge-demo-admin.txt` não
+existe para o Vitali), `seed_demo_data` não fixa senha, e o banco tem 11 usuários e
+**nenhum superusuário**. Verificado do caminho de auth: credencial errada → 401 JSON;
+sem token → 401. **Não** verificado: sessão válida, refresh single-flight e logout — que é
+exatamente o que o `VITALI_HANDOFF_MIGRACAO.md` manda testar à mão, porque o refresh só tem
+cobertura por mock. Duas saídas, e a escolha é do Imediato: passar uma credencial de
+staging, ou autorizar a criação de um usuário descartável para o teste (é escrita no banco
+recém-migrado, por isso não fiz).
+
+### 4.5 — PVE desligado
+
+**Zero containers do Vitali de pé no PVE.** Nove dos dez parados e nenhum rodando; volumes,
+imagens e `.env` intactos — o rollback continua sendo `docker start`.
+
+**Correção de um erro meu:** eu relatei, depois do passo 3.6, que "os dois postgres voltaram
+a parados". Só o do stack de *dev* voltou. O `vitali-staging-postgres-1`, que subi no passo
+3.1 para tirar o dump, **ficou de pé por três horas** — até eu conferir agora e pará-lo. Não
+teve consequência (ninguém escrevia nele: o Django estava parado, e o dump foi tirado no
+começo da janela), mas o relato estava errado e a máquina não estava no estado que eu disse
+que estava.
+
+**4.5b não ficou pendente — já estava feito.** O `/etc/cloudflared/config.yml` do PVE não
+tem **nenhuma** entrada `vitali` e não tem catch-all: termina em `http_status:404`. Nada a
+remover.
+
+> Achado de vizinhança, não desta ordem: o ingress do PVE ainda declara
+> `netforge.qtec.me → localhost:3002` e `netforge-app.qtec.me → localhost:3002`, enquanto o
+> da forge declara os mesmos hostnames apontando para `192.168.255.72:3002`. Dois túneis
+> reivindicando o mesmo nome; quem decide é o CNAME. Funciona, e é o tipo de configuração
+> que morde quando alguém mexe no DNS meses depois.
+
+### Revisão do plano contra o INTENT v2
+
+A ordem nasceu citando a v1; a v2 carimbou o mesmo conteúdo (hash `39f1a054`). Item a item:
+
+| Prioridade v2 | Como esta ordem se comporta |
+|---|---|
+| 1 — isolamento antes de feature | **Preservado.** `ENFORCE_TENANT_MEMBERSHIP=True` viajou, `backfill_tenant_memberships` reporta 11 usuários, 11 vinculados, 0 órfãos. Os dois hostnames resolvem para o mesmo tenant `demo`, como no PVE |
+| 2 — receita antes de escopo novo | **Não tocada — e a ordem expôs um conflito que não criou.** A imagem de staging é de 05/08 e o branch tem 45 commits depois dela, a Onda 2 inteira, que É o trabalho de receita. Migramos o que estava no ar, que é o certo para uma migração, e isso deixa o ambiente uma onda atrás do repositório. Vira item da 002 |
+| 3 — recuperação provada | **Avançada de verdade.** Um `pg_dump` → transferência → `pg_restore` → inventário **idêntico byte a byte** → sistema no ar servindo tráfego é o drill de restore que a auditoria dizia nunca ter sido feito. Prova o *round-trip*; **não** prova o pipeline de backup, que segue quebrado por falta de `BACKUP_ENCRYPTION_KEY` |
+| 4 — interceptação sobre registro | Não tocada |
+| 5 — compliance como gate | **Cumprida no transporte, com uma dívida que eu criei** — abaixo |
+
+**A dívida de compliance, minha:** para não escrever dado clínico no disco de uma terceira
+máquina, transferi por *stream*. Mas o resultado é que
+`/srv/vulcan/apps/vitali/migracao/vitali-staging.dump` é um dump **em claro**, em repouso,
+fora do banco, com EMR regulado por LGPD dentro. Está em modo 600 — e o `backup.sh` deste
+mesmo repositório **se recusa** a fazer exatamente isso sem chave. Não posso alegar o
+princípio quando ele me favorece e ignorá-lo quando me custa.
+
+**Proposta:** depois do aceite, apagar `migracao/` na lab (o original segue no PVE, que é o
+rollback, e o banco restaurado é a cópia viva), mantendo apenas `archive/` — que é WAL, não
+PHI legível. Se for para guardar, guardar cifrado. **Decisão do Imediato; não apago nada sem
+'vai'.**
+
+**Veredito:** o plano não conflita com a v2. Fez o que a direção autoriza, e o que ficou
+aberto está nomeado — não escondido.
