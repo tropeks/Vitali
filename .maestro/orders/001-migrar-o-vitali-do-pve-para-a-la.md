@@ -559,12 +559,32 @@ services:
       - "127.0.0.1:4242:4242"
 ```
 
-E `.env.staging` na lab, idêntico ao do PVE **exceto**:
+**Correção do passo 2.2, medida:** `IMAGE_TAG` **não serve para fixar digest.** A base usa
+`image: ghcr.io/${GHCR_REPO}/vitali-backend:${IMAGE_TAG:-latest}` — forma `repo:tag`, e
+digest exige `repo@sha256:…`. Fixar de verdade é sobrescrever o `image:` no overlay:
 
-```diff
-- IMAGE_TAG=latest
-+ IMAGE_TAG=<sha resolvida no passo 2.2>
+```yaml
+  django:        &backend_img
+    image: ghcr.io/tropeks/vitali-backend@sha256:da58aae3e49a394b56381de19d79ce65d26eae8c3b4bd968f3e8574fbfcb5441
+  celery-worker: *backend_img
+  celery-beat:   *backend_img
+  vitali-viewer:
+    image: ghcr.io/tropeks/vitali-viewer@sha256:62c43e2c8fb5810e7a50d0550f15e13c6a1222317fe85389d052b9a44858b020
+  nextjs:
+    # NÃO vem de registry: entra por `docker load` do passo 3.5b, com o nome que
+    # a imagem já carrega no PVE. Ver 2.2 — este artefato não tem procedência.
+    image: ghcr.io/tropeks/vitali-frontend:latest
 ```
+
+`.env.staging` na lab fica **idêntico** ao do PVE. `IMAGE_TAG` deixa de decidir qualquer
+coisa para os três serviços fixados acima.
+
+> **A procedência não foi recuperável.** Os pacotes expõem tags imutáveis `sha-<gitsha>`,
+> e a listagem anônima funciona — mas ela vem **limitada a 100 tags** e nenhuma das 14 mais
+> recentes de `vitali-backend` ou `vitali-frontend` casa com o digest que o `latest` aponta.
+> Ou seja: **não dá para dizer de qual commit saiu o que está em produção**, nem pelo
+> registry. O digest fixa o *quê*; o *de onde* continua perdido, e só a saída 3 do passo 2.2
+> (rebuild pelo CI) o recupera.
 
 `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `NEXT_PUBLIC_API_URL`, `FIELD_ENCRYPTION_KEY`,
 `BACKUP_ENCRYPTION_KEY` e `SECRET_KEY` **não mudam** — os três primeiros porque o endereço é
