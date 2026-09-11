@@ -56,3 +56,18 @@ services:
 
   # orthanc: a base ja publica 8042 e 4242 em 127.0.0.1. Fica como esta — nenhuma
   # modalidade DICOM empurra estudo para a lab, entao 4242 nao ganha rota externa.
+
+  # ── Servico que nunca rodou em staging ───────────────────────────────────────
+  # Medido em 11/09: o projeto `vitali-staging` no PVE tinha DEZ containers, e
+  # `evolution-api` NAO era um deles — nunca foi criado. Na lab ele sobe e entra em
+  # crash loop: `Error: Database provider  invalid.` (falta DATABASE_PROVIDER, que o
+  # .env.staging nao tem). E `WHATSAPP_EVOLUTION_URL=http://evolution-api:8080` aponta
+  # justamente para ele: o WhatsApp em staging sempre falou com o vazio.
+  #
+  # Fica atras de profile para a lab reproduzir o PVE — dez containers, nao onze — em
+  # vez de exibir um container reiniciando para sempre, que e o tipo de vermelho que
+  # ensina a ignorar vermelho. Ligar de verdade e ordem propria:
+  #   docker compose --profile whatsapp up -d
+  evolution-api:
+    profiles:
+      - whatsapp
