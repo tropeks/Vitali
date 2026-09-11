@@ -115,11 +115,28 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "celery -A vitali inspect ping -t 10 >/dev/null 2>&1 || exit 1"]
-      interval: 30s
-      timeout: 15s
+      # MEDIDO em 25/08, dentro dos containers de staging: esta sonda sobe o
+      # Django inteiro a cada execucao, e o custo disso depende do orcamento de
+      # CPU do container. `celery-beat` (cpus=0.25) levou **24,9s**; o
+      # `celery-worker` (cpus=1.0), **11,7s**. Com o `timeout: 15s` anterior o
+      # beat estourava SEMPRE (`exit=-1`, "Health check exceeded timeout") e
+      # ficava `unhealthy` permanente com o agendador despachando tarefa
+      # normalmente — o log provava isso a cada minuto. O worker passava por
+      # 3,3s de margem, ou seja, a um pico de carga de comecar a piscar.
+      #
+      # A sonda nunca esteve errada: ela foi escrita e validada contra o
+      # `docker-compose.yml` base, que **nao declara limite de CPU**. Os limites
+      # entraram depois, so em staging e prod, e o timeout nao foi revisitado.
+      #
+      # `-t 5` corta 5s da espera por resposta; `timeout: 45s` da folga real
+      # sobre os 24,9s medidos; `interval: 60s` reduz pela metade a frequencia
+      # com que um container de 0,25 CPU gasta o proprio orcamento provando que
+      # esta vivo, em vez de despachar tarefa.
+      test: ["CMD-SHELL", "celery -A vitali inspect ping -t 5 >/dev/null 2>&1 || exit 1"]
+      interval: 60s
+      timeout: 45s
       retries: 3
-      start_period: 60s
+      start_period: 90s
     mem_limit: 1g
     cpus: 1.0
 
@@ -140,11 +157,28 @@ services:
         condition: service_healthy
     healthcheck:
       # Beat has no native ping; broker-reachability proxy (a live worker answers).
-      test: ["CMD-SHELL", "celery -A vitali inspect ping -t 10 >/dev/null 2>&1 || exit 1"]
-      interval: 30s
-      timeout: 15s
+      # MEDIDO em 25/08, dentro dos containers de staging: esta sonda sobe o
+      # Django inteiro a cada execucao, e o custo disso depende do orcamento de
+      # CPU do container. `celery-beat` (cpus=0.25) levou **24,9s**; o
+      # `celery-worker` (cpus=1.0), **11,7s**. Com o `timeout: 15s` anterior o
+      # beat estourava SEMPRE (`exit=-1`, "Health check exceeded timeout") e
+      # ficava `unhealthy` permanente com o agendador despachando tarefa
+      # normalmente — o log provava isso a cada minuto. O worker passava por
+      # 3,3s de margem, ou seja, a um pico de carga de comecar a piscar.
+      #
+      # A sonda nunca esteve errada: ela foi escrita e validada contra o
+      # `docker-compose.yml` base, que **nao declara limite de CPU**. Os limites
+      # entraram depois, so em staging e prod, e o timeout nao foi revisitado.
+      #
+      # `-t 5` corta 5s da espera por resposta; `timeout: 45s` da folga real
+      # sobre os 24,9s medidos; `interval: 60s` reduz pela metade a frequencia
+      # com que um container de 0,25 CPU gasta o proprio orcamento provando que
+      # esta vivo, em vez de despachar tarefa.
+      test: ["CMD-SHELL", "celery -A vitali inspect ping -t 5 >/dev/null 2>&1 || exit 1"]
+      interval: 60s
+      timeout: 45s
       retries: 3
-      start_period: 60s
+      start_period: 90s
     mem_limit: 256m
     cpus: 0.25
 
@@ -186,7 +220,16 @@ services:
       - "127.0.0.1:8042:8042"
       - "127.0.0.1:4242:4242"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS -u $${ORTHANC_USERNAME}:$${ORTHANC_PASSWORD} http://127.0.0.1:8042/system || exit 1"]
+      # A imagem do Orthanc NAO tem curl nem wget (verificado em 25/08 contra
+      # orthancteam/orthanc:26.6.1: curl AUSENTE, wget AUSENTE, python3 presente).
+      # O healthcheck anterior chamava curl e falhava com
+      # `/bin/sh: 1: curl: not found` em TODA execucao — o container ficava
+      # permanentemente `unhealthy` com o servico perfeitamente no ar. Monitor que
+      # vive vermelho e pior que monitor nenhum: ensina todo mundo a ignorar vermelho.
+      # `python3` existe na imagem, e esta e a MESMA idiom que o healthcheck do
+      # servico `django` deste arquivo ja usava. Usar `os.environ` em vez de
+      # interpolacao de shell evita de quebra a armadilha do `$$` do compose.
+      test: ["CMD-SHELL", "python3 -c \"import base64,os,urllib.request as u; c=os.environ['ORTHANC_USERNAME']+':'+os.environ['ORTHANC_PASSWORD']; h={'Authorization':'Basic '+base64.b64encode(c.encode()).decode()}; u.urlopen(u.Request('http://127.0.0.1:8042/system',headers=h),timeout=5)\" || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 4
