@@ -979,3 +979,7 @@ Duas coisas boas saíram disso:
 
 O resultado 8/8 do `smoke_test.sh` continua valendo como medição pontual, e está na seção
 12. Ele só não serve como recibo repetível.
+accepted_at: 2026-09-11T12:33:09-03:00
+accepted_session: desconhecido
+accepted_tree: e62612737a97e7881f73bf991d9d0fcb5f2e307a
+accepted_intent: 2
