@@ -20,6 +20,7 @@ reprovar aqui.
 
 from __future__ import annotations
 
+import tempfile
 import textwrap
 from pathlib import Path
 
@@ -53,11 +54,7 @@ def _escreve_manifesto(tmp: Path, version: str = '""', extra: str = "") -> Path:
 class SeedCatalogsContratoTests(SimpleTestCase):
     """Contrato do orquestrador — nada aqui toca banco."""
 
-    databases: set[str] = set()
-
     def setUp(self) -> None:
-        import tempfile
-
         self._tmp = tempfile.TemporaryDirectory()
         self.tmp = Path(self._tmp.name)
         self.addCleanup(self._tmp.cleanup)
@@ -139,8 +136,6 @@ class SeedCatalogsContratoTests(SimpleTestCase):
 
 class ManifestoDoRepoTests(SimpleTestCase):
     """O manifesto versionado tem de ser legível e coerente com o repo."""
-
-    databases: set[str] = set()
 
     @property
     def manifesto(self) -> Path:
