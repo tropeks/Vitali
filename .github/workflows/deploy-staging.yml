@@ -37,11 +37,42 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
+      # Um metadata POR IMAGEM — ordem 005.
+      #
+      # Antes havia um so, configurado com BACKEND_IMAGE, e a saida dele era
+      # usada apenas no `labels:` do build do backend. Frontend e viewer nao
+      # recebiam `labels:` nenhum: medido em 12/09, a imagem do frontend que a
+      # lab roda tem `Config.Labels: null`, enquanto a do backend traz
+      # `org.opencontainers.image.revision = d4521fae…`. Uma imagem sem revision
+      # nao diz de qual commit saiu — foi exatamente o buraco que a ordem 001
+      # encontrou no frontend construido a mao no PVE, e que o CI estava
+      # reproduzindo em silencio.
+      #
+      # Nao da para reusar um metadata so: `image.title` e `image.description`
+      # saem do nome da imagem, entao as tres precisam do seu.
+      - name: Extract metadata (backend)
+        id: meta_backend
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ${{ env.BACKEND_IMAGE }}
+          tags: |
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Extract metadata (frontend)
+        id: meta_frontend
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ${{ env.FRONTEND_IMAGE }}
+          tags: |
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Extract metadata (viewer)
+        id: meta_viewer
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ${{ env.VIEWER_IMAGE }}
           tags: |
             type=sha,prefix=sha-
             type=raw,value=latest,enable={{is_default_branch}}
@@ -54,7 +85,7 @@ jobs:
           tags: |
             ${{ env.BACKEND_IMAGE }}:sha-${{ github.sha }}
             ${{ env.BACKEND_IMAGE }}:latest
-          labels: ${{ steps.meta.outputs.labels }}
+          labels: ${{ steps.meta_backend.outputs.labels }}
           cache-from: type=registry,ref=${{ env.BACKEND_IMAGE }}:latest
           cache-to: type=inline
 
@@ -66,6 +97,7 @@ jobs:
           tags: |
             ${{ env.FRONTEND_IMAGE }}:sha-${{ github.sha }}
             ${{ env.FRONTEND_IMAGE }}:latest
+          labels: ${{ steps.meta_frontend.outputs.labels }}
           cache-from: type=registry,ref=${{ env.FRONTEND_IMAGE }}:latest
           cache-to: type=inline
 
@@ -77,5 +109,6 @@ jobs:
           tags: |
             ${{ env.VIEWER_IMAGE }}:sha-${{ github.sha }}
             ${{ env.VIEWER_IMAGE }}:latest
+          labels: ${{ steps.meta_viewer.outputs.labels }}
           cache-from: type=registry,ref=${{ env.VIEWER_IMAGE }}:latest
           cache-to: type=inline
