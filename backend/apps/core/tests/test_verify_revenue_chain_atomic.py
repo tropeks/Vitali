@@ -45,6 +45,12 @@ class VerifyRevenueChainAtomicTests(TenantTestCase):
         profissional = Professional.objects.create(
             user=user, council_type="CRM", council_number="90007", council_state="SP"
         )
+        # CNES é obrigatório para o XML da guia renderizar: `_cnes_obrigatorio`
+        # levanta antes de qualquer validação. Sem isto o teste morre no passo 3 e
+        # nunca chega ao comportamento transacional que é o assunto dele —
+        # falhando igual antes e depois da correção, ou seja, provando nada.
+        profissional.cnes_code = "0000000"
+        profissional.save(update_fields=["cnes", "legacy_cnes_text", "cnes_unmatched"])
         paciente = Patient.objects.create(
             full_name="Paciente Atomic",
             cpf="000.000.000-07",
