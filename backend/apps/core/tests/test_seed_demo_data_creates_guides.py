@@ -101,7 +101,9 @@ class SeedDemoDataCreatesGuidesTests(TenantTestCase):
         # nascia no banco e morria na geração do XML, com
         # "guide_type='consultation' has no TISS XML template". Django não
         # valida choices no `create()`, então só um teste pega isto.
-        tipos_validos = {c[0] for c in TISSGuide._meta.get_field("guide_type").choices}
+        # `choices` é Optional nos django-stubs; `or []` mantém o mypy honesto
+        # sem esconder um campo que por acaso venha sem choices.
+        tipos_validos = {c[0] for c in (TISSGuide._meta.get_field("guide_type").choices or [])}
         self.assertIn(
             guia.guide_type,
             tipos_validos,

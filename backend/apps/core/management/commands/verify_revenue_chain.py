@@ -44,7 +44,7 @@ from __future__ import annotations
 
 import datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, NoReturn
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
@@ -101,7 +101,13 @@ class Command(BaseCommand):
             falhas.append("sem InsuranceProvider — rode `import_insurances`")
         if not tabela:
             falhas.append("sem PriceTable — rode `seed_revenue_staging`")
-        if falhas:
+        # A condição é escrita sobre as VARIÁVEIS, não sobre `falhas`, e isso é
+        # deliberado: `if falhas: self._reprovar(...)` reprova igual em tempo de
+        # execução, mas o mypy não consegue ligar "a lista está vazia" a
+        # "provider não é None" — a conexão existe na minha cabeça, não no
+        # código. Testar os dois diretamente dá ao verificador o mesmo que dá ao
+        # leitor, e `falhas` continua carregando as duas mensagens de uma vez.
+        if provider is None or tabela is None:
             self._reprovar(falhas)
 
         itens_tabela = list(PriceTableItem.objects.filter(table=tabela).select_related("tuss_code"))
@@ -194,5 +200,13 @@ class Command(BaseCommand):
             self.style.SUCCESS("cadeia de receita OK — guia válida, lote fechado, valor > 0")
         )
 
-    def _reprovar(self, falhas: list[str]) -> None:
+    def _reprovar(self, falhas: list[str]) -> NoReturn:
+        """`NoReturn` não é enfeite de tipo: é o que faz o mypy estreitar.
+
+        Todo `if not X: self._reprovar(...)` acima depende disto. Com a
+        anotação `-> None`, o mypy assume que a função pode voltar, mantém os
+        `Optional` largos e acusa `union-attr` em cada uso seguinte — foi
+        exatamente o que reprovou o CI em 5675be13. `NoReturn` diz a verdade:
+        daqui não se volta.
+        """
         raise CommandError("cadeia de receita REPROVOU:\n  - " + "\n  - ".join(falhas))
