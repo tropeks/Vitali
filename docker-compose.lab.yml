@@ -33,24 +33,25 @@ services:
   # ── Imagens fixadas por digest ───────────────────────────────────────────────
   # `IMAGE_TAG` nao serve: a base escreve `image: repo:${IMAGE_TAG}` e digest exige
   # `repo@sha256:`. Estes sao os digests construidos pelo CI a partir do commit
-  # d4521faefae8f7906a0f2aa11626535e19b88b40 (run 34625181181, ordem 002 passo 1).
+  # 5675be13be3400ee281670d0cb75756d1d22911d (run 34702900292, ordem 006).
+  # ROLLBACK para a 002: backend 2b6e432f, frontend ec71383a, viewer 62c43e2c.
   #
   # `latest` NAO foi movido por este build: o workflow so publica essa tag na branch
   # default (`type=raw,value=latest,enable={{is_default_branch}}`) e construimos da
   # onda0-perimetro-multitenant. So saiu a tag `sha-<commit>`. Nada que dependa de
   # `latest` mudou de baixo de ninguem.
   django:
-    image: ghcr.io/tropeks/vitali-backend@sha256:2b6e432fcf276f949e0b9127f27c6e67cc6c30b89034ec895026a9cf2356f68b
+    image: ghcr.io/tropeks/vitali-backend@sha256:0072abe336815584b5d7afff3868abcf5d34d8a11a77c88563f138d6ecb379f6
   celery-worker:
-    image: ghcr.io/tropeks/vitali-backend@sha256:2b6e432fcf276f949e0b9127f27c6e67cc6c30b89034ec895026a9cf2356f68b
+    image: ghcr.io/tropeks/vitali-backend@sha256:0072abe336815584b5d7afff3868abcf5d34d8a11a77c88563f138d6ecb379f6
   celery-beat:
-    image: ghcr.io/tropeks/vitali-backend@sha256:2b6e432fcf276f949e0b9127f27c6e67cc6c30b89034ec895026a9cf2356f68b
+    image: ghcr.io/tropeks/vitali-backend@sha256:0072abe336815584b5d7afff3868abcf5d34d8a11a77c88563f138d6ecb379f6
 
-  # O viewer saiu deste build com digest IDENTICO ao que ja rodava
-  # (62c43e2c...): a imagem do OHIF nao mudou entre 21/07 e agora. Fica como esta —
-  # trocar a referencia sem trocar o conteudo so criaria ruido no diff.
+  # O digest do viewer MUDOU nesta volta (62c43e2c -> 1d4293a3) mesmo sem
+  # alteracao no OHIF: a ordem 005 acrescentou labels OCI aos tres builds, e label
+  # e conteudo de imagem. Digest diferente com comportamento identico — esperado.
   vitali-viewer:
-    image: ghcr.io/tropeks/vitali-viewer@sha256:62c43e2c8fb5810e7a50d0550f15e13c6a1222317fe85389d052b9a44858b020
+    image: ghcr.io/tropeks/vitali-viewer@sha256:1d4293a3d126937f3933151cfb464111d7ede3ec6ee2ca407e2882f6f5f02a00
     security_opt: !override []
 
   # ── O frontend agora TEM procedencia ─────────────────────────────────────────
@@ -67,7 +68,7 @@ services:
   # O tarball do frontend antigo continua em migracao/img-vitali-frontend.tar.gz,
   # que e o caminho de volta (ver .maestro/orders/002-ROLLBACK-passo1.md).
   nextjs:
-    image: ghcr.io/tropeks/vitali-frontend@sha256:ec71383aec0aa5fc91b916fb847903a8c6bd9d5680146b6f935040be2b1c7c9b
+    image: ghcr.io/tropeks/vitali-frontend@sha256:c227be7cc1c1cd27c450e5948bff5ec9d27a660261a540cf6ebabb3c79f87750
 
   # orthanc: a base ja publica 8042 e 4242 em 127.0.0.1. Fica como esta — nenhuma
   # modalidade DICOM empurra estudo para a lab, entao 4242 nao ganha rota externa.
