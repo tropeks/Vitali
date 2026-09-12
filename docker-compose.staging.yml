@@ -307,21 +307,43 @@ services:
       # environment with no real patient data — leave unset otherwise.
       BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:-}
       BACKUP_ALLOW_PLAINTEXT: ${BACKUP_ALLOW_PLAINTEXT:-}
+      # ── Offsite (ordem 004) ─────────────────────────────────────────────
+      # Todas vazias por padrao: com BACKUP_S3_BUCKET vazio o backup.sh pula o
+      # bloco de upload inteiro e o backup segue sendo local, que e o estado
+      # atual. Preencher as cinco em .env.staging liga o offsite sem tocar aqui.
+      # BACKUP_S3_COMPAT=r2 liga o contorno de checksum CRC32 do Cloudflare R2;
+      # vazio, 'b2' ou 'aws' = comportamento padrao. Ver scripts/backup.sh e
+      # docs/BACKUPS.md — os tres lugares dizem a mesma coisa de proposito.
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-}
+      BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}
+      BACKUP_S3_PREFIX: ${BACKUP_S3_PREFIX:-}
+      BACKUP_S3_ACCESS_KEY: ${BACKUP_S3_ACCESS_KEY:-}
+      BACKUP_S3_SECRET_KEY: ${BACKUP_S3_SECRET_KEY:-}
+      BACKUP_S3_COMPAT: ${BACKUP_S3_COMPAT:-}
     volumes:
       - ./scripts/backup.sh:/usr/local/bin/backup.sh:ro
       - backups:/backups
     # Runs backup.sh at 02:00 UTC daily via busybox crond (built into alpine).
     # crond resets the process environment, so we snapshot the container env into
     # /etc/backup.env at startup; the cron job sources it before calling backup.sh.
-    # gnupg is installed here (not baked into the postgres:16-alpine image) so
-    # backup.sh's now-mandatory encryption step has `gpg` available — mirrors
-    # docker-compose.prod.yml's install step, minus aws-cli: staging does not
-    # (yet) wire BACKUP_S3_*, so there is nothing here that needs it.
+    # gnupg e aws-cli sao instalados aqui (nao vem na postgres:16-alpine): o
+    # gpg para a cifra obrigatoria, o aws para o upload offsite — backup.sh
+    # falha explicito se BACKUP_S3_BUCKET estiver setado sem o CLI. Espelha o
+    # docker-compose.prod.yml, que ja instala os dois.
+    #
+    # ARMADILHA MEDIDA (ordem 004): o `crond` do busybox zera o ambiente, entao
+    # o job le /etc/backup.env, montado pelo `printenv | grep` abaixo. Uma
+    # variavel que nao casa esse filtro NAO EXISTE para o backup noturno — ainda
+    # que esteja no .env e no `environment:` acima. Ate 12/09 as BACKUP_S3_*
+    # ficavam de fora: quem ligasse o offsite veria o upload funcionar num
+    # `docker compose exec` (ambiente completo) e o cron pular o bloco inteiro
+    # em silencio toda noite, com metrica de sucesso escrita e exit 0. Ao
+    # acrescentar variavel nova ao servico, acrescente-a TAMBEM aqui.
     command: >
       sh -c '
-        apk add --no-cache gnupg >/dev/null 2>&1;
+        apk add --no-cache gnupg aws-cli >/dev/null 2>&1;
         cp /usr/local/bin/backup.sh /tmp/backup.sh && chmod +x /tmp/backup.sh &&
-        printenv | grep -E "^(POSTGRES_HOST|POSTGRES_PORT|POSTGRES_DB|POSTGRES_USER|POSTGRES_PASSWORD|BACKUP_DIR|KEEP_LAST|BACKUP_ENCRYPTION_KEY|BACKUP_ALLOW_PLAINTEXT)=" \
+        printenv | grep -E "^(POSTGRES_HOST|POSTGRES_PORT|POSTGRES_DB|POSTGRES_USER|POSTGRES_PASSWORD|BACKUP_DIR|KEEP_LAST|BACKUP_ENCRYPTION_KEY|BACKUP_ALLOW_PLAINTEXT|BACKUP_S3_BUCKET|BACKUP_S3_ENDPOINT|BACKUP_S3_PREFIX|BACKUP_S3_ACCESS_KEY|BACKUP_S3_SECRET_KEY|BACKUP_S3_COMPAT)=" \
           > /etc/backup.env &&
         chmod 600 /etc/backup.env &&
         mkdir -p /var/spool/cron/crontabs &&

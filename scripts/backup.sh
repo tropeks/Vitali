@@ -25,6 +25,11 @@
 # BACKUP_S3_ENDPOINT      Optional custom endpoint (e.g. Backblaze B2:
 #                         https://s3.us-west-002.backblazeb2.com). Omit for AWS S3.
 # BACKUP_S3_PREFIX        Optional key prefix inside the bucket (default: vitali).
+#                         Os objetos vao para <prefix>/daily/ e, uma vez por
+#                         competencia, tambem para <prefix>/monthly/ — e o que
+#                         torna possivel a retencao GFS por lifecycle do bucket.
+# BACKUP_S3_COMPAT        'r2' liga o contorno de checksum do Cloudflare R2
+#                         (CRC32 nao implementado la). Vazio/'b2'/'aws' = padrao.
 # BACKUP_S3_ACCESS_KEY    S3 access key id.
 # BACKUP_S3_SECRET_KEY    S3 secret access key.
 #
@@ -113,19 +118,60 @@ if [ -n "${BACKUP_S3_BUCKET:-}" ]; then
   : "${BACKUP_S3_ACCESS_KEY:?BACKUP_S3_ACCESS_KEY is required when BACKUP_S3_BUCKET is set}"
   : "${BACKUP_S3_SECRET_KEY:?BACKUP_S3_SECRET_KEY is required when BACKUP_S3_BUCKET is set}"
   S3_PREFIX="${BACKUP_S3_PREFIX:-vitali}"
-  S3_KEY="s3://${BACKUP_S3_BUCKET}/${S3_PREFIX}/$(basename "${ARTIFACT}")"
+  ARTIFACT_BASE="$(basename "${ARTIFACT}")"
 
   endpoint_args=()
   [ -n "${BACKUP_S3_ENDPOINT:-}" ] && endpoint_args=(--endpoint-url "${BACKUP_S3_ENDPOINT}")
 
-  echo "[backup] Uploading to ${S3_KEY}…"
-  if ! AWS_ACCESS_KEY_ID="${BACKUP_S3_ACCESS_KEY}" \
-       AWS_SECRET_ACCESS_KEY="${BACKUP_S3_SECRET_KEY}" \
-       aws "${endpoint_args[@]}" s3 cp "${ARTIFACT}" "${S3_KEY}"; then
-    echo "[backup] ERROR: offsite upload failed for ${ARTIFACT}" >&2
-    exit 1
+  # ── Compatibilidade do provedor ──────────────────────────────────────────
+  # BACKUP_S3_COMPAT=r2 liga o contorno do Cloudflare R2: as SDKs/CLI recentes
+  # da AWS mandam checksum CRC32 por padrao em PutObject/UploadPart, e o R2
+  # recusa com
+  #   Header 'x-amz-checksum-algorithm' with value 'CRC32' not implemented
+  # Sem isto o upload falha, e a mensagem nao se parece com "faltou configurar".
+  # Vazio (ou 'b2'/'aws') = comportamento padrao, que e o que B2 e S3 esperam.
+  if [ "${BACKUP_S3_COMPAT:-}" = "r2" ]; then
+    export AWS_REQUEST_CHECKSUM_CALCULATION="when_required"
+    export AWS_RESPONSE_CHECKSUM_VALIDATION="when_required"
+    echo "[backup] Provedor R2: checksum em modo when_required"
   fi
-  echo "[backup] Uploaded: ${S3_KEY}"
+
+  # ── Retencao GFS: quem separa diario de mensal e o uploader ──────────────
+  # Todo artefato se chama vitali_<timestamp>.dump.gpg — o nome nao distingue
+  # diario de mensal. E regra de lifecycle de bucket opera por IDADE e PREFIXO,
+  # nunca por "guarde o primeiro de cada mes". Entao o esquema 30 diarios + 12
+  # mensais so existe se o upload colocar os dois em prefixos diferentes:
+  #   <prefix>/daily/    → lifecycle expira em 30 dias
+  #   <prefix>/monthly/  → lifecycle expira em 365 dias
+  # O mensal e uma COPIA do mesmo artefato (25 MB, uma vez por mes), nao um
+  # dump separado: cifrado com a mesma chave, identico byte a byte ao diario.
+  s3_upload() {
+    local destino="$1"
+    echo "[backup] Uploading to ${destino}…"
+    if ! AWS_ACCESS_KEY_ID="${BACKUP_S3_ACCESS_KEY}" \
+         AWS_SECRET_ACCESS_KEY="${BACKUP_S3_SECRET_KEY}" \
+         aws "${endpoint_args[@]}" s3 cp "${ARTIFACT}" "${destino}"; then
+      echo "[backup] ERROR: offsite upload failed for ${ARTIFACT} -> ${destino}" >&2
+      exit 1
+    fi
+    echo "[backup] Uploaded: ${destino}"
+  }
+
+  s3_upload "s3://${BACKUP_S3_BUCKET}/${S3_PREFIX}/daily/${ARTIFACT_BASE}"
+
+  # O mensal sobe quando AINDA NAO EXISTE mensal para a competencia corrente.
+  # Deliberadamente NAO e "se hoje e dia 1": uma unica noite falha no dia 1
+  # custaria o mes inteiro, em silencio, e so se descobriria um ano depois.
+  # O `ls` e uma chamada Class B (barata; gratuita nos dois candidatos).
+  COMPETENCIA="$(date -u +%Y%m)"
+  MENSAL_EXISTENTE="$(AWS_ACCESS_KEY_ID="${BACKUP_S3_ACCESS_KEY}" \
+    AWS_SECRET_ACCESS_KEY="${BACKUP_S3_SECRET_KEY}" \
+    aws "${endpoint_args[@]}" s3 ls \
+      "s3://${BACKUP_S3_BUCKET}/${S3_PREFIX}/monthly/vitali_${COMPETENCIA}" 2>/dev/null | head -1 || true)"
+  if [ -z "${MENSAL_EXISTENTE}" ]; then
+    echo "[backup] Sem mensal para a competencia ${COMPETENCIA} — promovendo este artefato"
+    s3_upload "s3://${BACKUP_S3_BUCKET}/${S3_PREFIX}/monthly/${ARTIFACT_BASE}"
+  fi
 fi
 
 # ── Success metric (Prometheus textfile collector — VitaliBackupStale) ──────
