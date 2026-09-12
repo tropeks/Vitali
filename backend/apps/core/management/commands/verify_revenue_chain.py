@@ -124,10 +124,14 @@ class Command(BaseCommand):
                     encounter=encontro,
                     provider=provider,
                     price_table=tabela,
-                    guide_type="consultation",
+                    guide_type="consulta",
                     status="draft",
                     competency=datetime.date.today().replace(day=1).strftime("%Y-%m"),
                     total_value=item_preco.negotiated_value,
+                    # `numeroCarteira` é st_texto20 com minLength=1: vazio derruba
+                    # o lote inteiro. Em produção vem de PatientInsurance.card_number;
+                    # aqui é fictício e declarado, como manda a fronteira da ordem 006.
+                    insured_card_number="FICTICIA-STAGING",
                 )
                 TISSGuideItem.objects.create(
                     guide=guia,
@@ -142,19 +146,22 @@ class Command(BaseCommand):
                 self._reprovar(["nenhuma TISSGuide no tenant — rode com --create"])
             self.stdout.write(f"   itens         : {guia.items.count()}")
 
-            # ── 3. XML da guia contra o XSD ──────────────────────────────────
-            self.stdout.write("3. XML da guia contra o XSD oficial")
+            # ── 3. XML da guia ───────────────────────────────────────────────
+            # Só a RENDERIZAÇÃO, não a validação: `generate_guide_xml` devolve o
+            # fragmento da guia, sem o `xmlns:ans` que o envelope declara.
+            # Validá-lo sozinho sempre acusa "Namespace prefix ans não definido" —
+            # erro do meu recorte, não do XML. A validação que vale é a do
+            # envelope, no passo 4, e é lá que ela está.
+            #
+            # Renderizar já prova bastante: foi aqui que apareceram o guide_type
+            # sem template e o CNES ausente, os dois com erro acionável.
+            self.stdout.write("3. XML da guia (renderização)")
             xml_guia = generate_guide_xml(guia)
-            erros_guia = validate_xml(xml_guia)
             self.stdout.write(f"   bytes         : {len(xml_guia)}")
-            self.stdout.write(f"   erros XSD     : {len(erros_guia)}")
-            for e in erros_guia[:5]:
-                self.stdout.write(f"     - {e}")
-            if erros_guia:
-                falhas.append(f"XML da guia reprovou no XSD ({len(erros_guia)} erro(s))")
+            self.stdout.write("   (validação XSD: no envelope, passo 4)")
 
             # ── 4. Lote ──────────────────────────────────────────────────────
-            self.stdout.write("4. Lote")
+            self.stdout.write("4. Lote + validação contra o XSD oficial")
             lote = TISSBatch.objects.create(provider=provider)
             lote.guides.add(guia)
             xml_lote = generate_batch_xml(lote)

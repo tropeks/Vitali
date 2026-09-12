@@ -83,6 +83,25 @@ class Command(BaseCommand):
             default="000000",
             help="Código ANS da operadora fictícia já importada (default: 000000)",
         )
+        parser.add_argument(
+            "--cnes",
+            default="0000000",
+            help=(
+                "CNES fictício para os profissionais sem cadastro (default: 0000000). "
+                "Sete dígitos porque o XSD exige st_texto7; zeros porque não é um "
+                "estabelecimento atribuído."
+            ),
+        )
+        parser.add_argument(
+            "--cbo",
+            default="225125",
+            help=(
+                "CBO para profissionais sem cadastro (default: 225125, Médico clínico). "
+                "É código REAL do catálogo, e deve ser: o XSD tem enumeração fechada de "
+                "CBOS e rejeita qualquer coisa fora dela. CBO é taxonomia, como TUSS e "
+                "CID-10 — usar o código certo não é inventar dado."
+            ),
+        )
         parser.add_argument("--delimiter", default=";")
         parser.add_argument("--dry-run", action="store_true", help="Valida e reverte tudo")
 
@@ -113,6 +132,8 @@ class Command(BaseCommand):
 
         with tenant_context(tenant):
             self._semear(linhas, options["provider_ans"], bool(options["dry_run"]))
+            self._cnes_dos_profissionais(options["cnes"], bool(options["dry_run"]))
+            self._cbo_dos_profissionais(options["cbo"], bool(options["dry_run"]))
 
     def _ler_csv(self, caminho: Path, delimiter: str) -> list[dict[str, str]]:
         with caminho.open(encoding="utf-8-sig", newline="") as fh:
@@ -181,3 +202,74 @@ class Command(BaseCommand):
             if dry_run:
                 transaction.set_rollback(True)
                 self.stdout.write(self.style.WARNING("dry-run: tudo revertido"))
+
+    def _cnes_dos_profissionais(self, cnes: str, dry_run: bool) -> None:
+        """Dá CNES fictício a quem não tem — sem apontar para estabelecimento real.
+
+        O XSD exige ``CNES`` (st_texto7) e ``codigoPrestadorNaOperadora``
+        (st_texto14) com ``minLength=1``, e emitir vazio **invalida o lote
+        inteiro**, não só a guia — a operadora rejeita sem dizer qual prestador
+        está sem cadastro.
+
+        Por que não apontar para o catálogo real. ``Professional.cnes`` é FK para
+        ``core.CNESEstablishment``, e o catálogo tem 627.706 estabelecimentos
+        **reais**. Ligar um profissional fictício a um deles nomearia um hospital
+        existente como executante de atendimento que nunca houve — no XML que iria
+        para uma operadora. É a armadilha que o `docs/DEPTH_BACKLOG.md` §P1 já
+        registra: o seed usou o CNES 2077469 rotulado como "Hospital das Clínicas"
+        quando o código é do HOSP DOM ALVARENGA, e virou duplicata quando o
+        catálogo real entrou.
+
+        `0000000` não está no catálogo, então o setter de ``cnes_code`` guarda em
+        ``legacy_cnes_text`` e marca ``cnes_unmatched=True`` — o registro se
+        autodeclara não-casado, que é a verdade.
+        """
+        from apps.emr.models import Professional
+
+        # Transação PRÓPRIA: este método roda fora do `atomic()` do `_semear`,
+        # então sem isto o `--dry-run` reverteria a tabela de preço e gravaria o
+        # CNES — um dry-run que escreve metade é pior que nenhum, porque ensina a
+        # confiar nele.
+        with transaction.atomic():
+            alterados = 0
+            for prof in Professional.objects.all():
+                if (prof.cnes_code or "").strip():
+                    continue
+                prof.cnes_code = cnes
+                prof.save(update_fields=["cnes", "legacy_cnes_text", "cnes_unmatched"])
+                alterados += 1
+            self.stdout.write(
+                f"CNES fictício {cnes}: {alterados} profissional(is) sem cadastro atualizado(s)"
+            )
+            if dry_run:
+                transaction.set_rollback(True)
+                self.stdout.write(self.style.WARNING("dry-run: CNES revertido"))
+
+    def _cbo_dos_profissionais(self, cbo_code: str, dry_run: bool) -> None:
+        """CBO real para quem não tem — o XSD não aceita outra coisa.
+
+        ``CBOS`` no XSD é enumeração FECHADA: o valor vazio produz
+        ``SCHEMAV_CVC_ENUMERATION_VALID`` e derruba o lote. E não existe "CBO
+        fictício": qualquer código fora da lista da ANS é rejeitado.
+
+        Isso não conflita com a fronteira de dado fictício da ordem 006. CBO é
+        **taxonomia de ocupação**, da mesma família de TUSS e CID-10, que este
+        ambiente já carrega de fontes oficiais. Usar o código certo de "médico
+        clínico" não identifica pessoa nem estabelecimento — descreve um ofício.
+        O que é fictício aqui é o profissional, não a profissão.
+        """
+        from apps.core.models import CBOCode
+        from apps.emr.models import Professional
+
+        cbo = CBOCode.objects.filter(code=cbo_code).first()
+        if cbo is None:
+            raise CommandError(
+                f"CBO {cbo_code} não está no catálogo. Rode `seed_catalogs` antes — "
+                f"este comando não cria código de taxonomia."
+            )
+        with transaction.atomic():
+            alterados = Professional.objects.filter(cbo__isnull=True).update(cbo=cbo)
+            self.stdout.write(f"CBO {cbo_code} ({cbo.display}): {alterados} profissional(is)")
+            if dry_run:
+                transaction.set_rollback(True)
+                self.stdout.write(self.style.WARNING("dry-run: CBO revertido"))

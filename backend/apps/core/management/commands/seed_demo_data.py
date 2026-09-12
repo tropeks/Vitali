@@ -272,7 +272,7 @@ class Command(BaseCommand):
                     executor=enc.professional,
                     encounter=enc,
                     provider=provider,
-                    guide_type="consultation",
+                    guide_type="consulta",
                     status="paid" if i < 3 else "denied",
                     competency=timezone.now().date().replace(day=1).strftime("%Y-%m"),
                 )

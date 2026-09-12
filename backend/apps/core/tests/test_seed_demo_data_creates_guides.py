@@ -95,6 +95,19 @@ class SeedDemoDataCreatesGuidesTests(TenantTestCase):
         self.assertEqual(guia.patient_id, self.patient.id)
         self.assertTrue(guia.items.exists(), "guia sem item não vira faturamento")
 
+        # Nome de campo certo com valor de enum errado ainda é guia que não
+        # vira XML. O seed gravava guide_type="consultation", que NÃO está entre
+        # as choices do modelo (sadt/consulta/honorarios/internacao): a guia
+        # nascia no banco e morria na geração do XML, com
+        # "guide_type='consultation' has no TISS XML template". Django não
+        # valida choices no `create()`, então só um teste pega isto.
+        tipos_validos = {c[0] for c in TISSGuide._meta.get_field("guide_type").choices}
+        self.assertIn(
+            guia.guide_type,
+            tipos_validos,
+            f"guide_type={guia.guide_type!r} fora das choices do modelo {sorted(tipos_validos)}",
+        )
+
     def test_sem_operadora_avisa_em_vez_de_sumir(self) -> None:
         """O `return` silencioso vira aviso — condição (1) do Imediato.
 
