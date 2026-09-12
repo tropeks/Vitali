@@ -41,6 +41,7 @@ WORKDIR=""
 REFERENCE=""
 INVENTORY_SQL=""
 ARTIFACT_NAME=""
+FROM_S3=0
 PG_IMAGE="${PG_IMAGE:-postgres:16-alpine}"
 
 while [ $# -gt 0 ]; do
@@ -51,6 +52,7 @@ while [ $# -gt 0 ]; do
     --reference) REFERENCE="$2"; shift 2 ;;
     --inventory-sql) INVENTORY_SQL="$2"; shift 2 ;;
     --artifact) ARTIFACT_NAME="$2"; shift 2 ;;
+    --from-s3) FROM_S3=1; shift ;;
     *) echo "[drill] argumento desconhecido: $1" >&2; exit 2 ;;
   esac
 done
@@ -70,7 +72,11 @@ trap cleanup EXIT
 
 # ── A chave. Substituicao de comando, sem echo, sem ir para argv. ────────────
 # `cut -d= -f2-` preserva '=' de padding base64. Nada abaixo imprime $KEY.
-BACKUP_ENCRYPTION_KEY="$(grep -m1 '^BACKUP_ENCRYPTION_KEY=' "$ENV_FILE" | cut -d= -f2-)"
+# `|| true`: grep sem casamento sai 1, e sob `set -euo pipefail` isso mata a
+# atribuicao antes da checagem logo abaixo — a mensagem de erro escrita para o
+# caso "chave ausente" nunca seria impressa. Mesmo defeito que a ordem 003
+# encontrou no restore_test.sh, e que eu ja repeti duas vezes neste arquivo.
+BACKUP_ENCRYPTION_KEY="$(grep -m1 '^BACKUP_ENCRYPTION_KEY=' "$ENV_FILE" | cut -d= -f2- || true)"
 export BACKUP_ENCRYPTION_KEY
 if [ -z "$BACKUP_ENCRYPTION_KEY" ]; then
   echo "[drill] ✗ BACKUP_ENCRYPTION_KEY ausente ou vazia em $ENV_FILE" >&2
@@ -78,10 +84,61 @@ if [ -z "$BACKUP_ENCRYPTION_KEY" ]; then
 fi
 echo "[drill] chave carregada do .env (${#BACKUP_ENCRYPTION_KEY} bytes, valor nao exibido)"
 
-# ── Fase 0: extrair o artefato CIFRADO do volume, sem root ───────────────────
+# ── Fase 0: obter o artefato CIFRADO ─────────────────────────────────────────
 mkdir -p "$WORKDIR"
 chmod 700 "$WORKDIR"
 
+if [ "$FROM_S3" = "1" ]; then
+  # Prova que vale num incendio: o artefato vem do BUCKET, exercitando
+  # credencial, rede e listagem — nao so o gpg e o pg_restore.
+  #
+  # O download NAO usa `aws` do host: a lab nao tem o CLI, e instalar um binario
+  # no host para um drill seria dependencia nova onde nao precisa. Vai por
+  # container efemero com o mesmo `apk add aws-cli` que o servico db-backup usa
+  # — se o pacote parar de existir, os dois quebram juntos e ninguem descobre
+  # tarde.
+  #
+  # Por isso tambem NAO se usa o caminho S3 do proprio restore_test.sh (`:43`),
+  # que exige `aws` no host: o wrapper baixa e entrega um arquivo local, e o
+  # drill canonico roda igual nos dois modos.
+  S3_BUCKET="$(grep -m1 '^BACKUP_S3_BUCKET=' "$ENV_FILE" | cut -d= -f2- || true)"
+  S3_ENDPOINT="$(grep -m1 '^BACKUP_S3_ENDPOINT=' "$ENV_FILE" | cut -d= -f2- || true)"
+  S3_PREFIX="$(grep -m1 '^BACKUP_S3_PREFIX=' "$ENV_FILE" | cut -d= -f2- || true)"
+  S3_AK="$(grep -m1 '^BACKUP_S3_ACCESS_KEY=' "$ENV_FILE" | cut -d= -f2- || true)"
+  S3_SK="$(grep -m1 '^BACKUP_S3_SECRET_KEY=' "$ENV_FILE" | cut -d= -f2- || true)"
+  S3_COMPAT="$(grep -m1 '^BACKUP_S3_COMPAT=' "$ENV_FILE" | cut -d= -f2- || true)"
+  : "${S3_PREFIX:=vitali}"
+
+  if [ -z "$S3_BUCKET" ] || [ -z "$S3_AK" ] || [ -z "$S3_SK" ]; then
+    echo "[drill] ✗ --from-s3 exige BACKUP_S3_BUCKET, _ACCESS_KEY e _SECRET_KEY em $ENV_FILE" >&2
+    exit 2
+  fi
+  echo "[drill] origem   : s3://$S3_BUCKET/$S3_PREFIX/daily/ (credencial nao exibida)"
+
+  s3_env=(-e "AWS_ACCESS_KEY_ID=$S3_AK" -e "AWS_SECRET_ACCESS_KEY=$S3_SK")
+  if [ "$S3_COMPAT" = "r2" ]; then
+    s3_env+=(-e "AWS_REQUEST_CHECKSUM_CALCULATION=when_required"
+             -e "AWS_RESPONSE_CHECKSUM_VALIDATION=when_required")
+    echo "[drill] provedor : R2 — checksum em modo when_required"
+  fi
+  s3_ep=()
+  [ -n "$S3_ENDPOINT" ] && s3_ep=(--endpoint-url "$S3_ENDPOINT")
+
+  # Mais recente por NOME, nunca por mtime — o timestamp esta no nome e o `sort`
+  # lexical o respeita. Ver ordem 003 §7.
+  if [ -z "$ARTIFACT_NAME" ]; then
+    ARTIFACT_NAME="$(docker run --rm "${s3_env[@]}" "$PG_IMAGE" sh -c \
+      "apk add --no-cache aws-cli >/dev/null 2>&1; aws ${s3_ep[*]} s3 ls 's3://$S3_BUCKET/$S3_PREFIX/daily/' | awk '{print \$4}' | sort | tail -1")"
+  fi
+  [ -n "$ARTIFACT_NAME" ] || { echo "[drill] ✗ nenhum objeto em s3://$S3_BUCKET/$S3_PREFIX/daily/" >&2; exit 1; }
+
+  docker run --rm --user "$(id -u):$(id -g)" "${s3_env[@]}" -v "$WORKDIR":/out "$PG_IMAGE" sh -c \
+    "apk add --no-cache aws-cli >/dev/null 2>&1; aws ${s3_ep[*]} s3 cp 's3://$S3_BUCKET/$S3_PREFIX/daily/$ARTIFACT_NAME' /out/" \
+    || { echo "[drill] ✗ download do bucket falhou — credencial, escopo ou rede" >&2; exit 1; }
+  chmod 600 "$WORKDIR/$ARTIFACT_NAME"
+fi
+
+if [ "$FROM_S3" != "1" ]; then
 # Escolha por NOME, nunca por mtime. O nome carrega um timestamp ISO-8601 UTC
 # (vitali_20260911T230846Z.dump.gpg), entao ordem lexical == ordem cronologica.
 # `ls -t` responde outra pergunta — "qual arquivo foi TOCADO por ultimo" — e as
@@ -105,6 +162,7 @@ chmod 600 "$WORKDIR/$ARTIFACT_NAME"
 # artefato no BACKUP_DIR, a escolha dele fica sem ambiguidade — e o drill
 # canonico roda sem ser modificado.
 find "$WORKDIR" -maxdepth 1 -name 'vitali_*.dump*' ! -name "$ARTIFACT_NAME" -delete
+fi
 
 ARTIFACT_PATH="$WORKDIR/$ARTIFACT_NAME"
 ARTIFACT_SHA="$(sha256sum "$ARTIFACT_PATH" | cut -d' ' -f1)"
