@@ -59,6 +59,7 @@ def generate_soap_task(self, session_id: str) -> None:
     S-069: Async SOAP generation from a transcription.
     Updates AIScribeSession.status to 'completed' or 'failed'.
     """
+    from django.db import connection
     from django.utils import timezone
 
     from .models import AIScribeSession
@@ -71,7 +72,19 @@ def generate_soap_task(self, session_id: str) -> None:
         return
 
     try:
-        soap = generate_soap(session.raw_transcription)
+        # Onda 3 / 3.1+3.2: this is the async path — vitali/celery.py propagates
+        # the dispatching request's tenant schema onto the task (see
+        # TENANT_SCHEMA_HEADER), so connection.schema_name is correct here.
+        # Passing it makes generate_soap() enforce consent (global flag + DPA
+        # + ceiling) for THIS call too, not just the synchronous view that
+        # dispatched it — closing the gap where a future caller of this task
+        # could bypass ScribeStartView's DPA check entirely.
+        schema_name = connection.schema_name  # type: ignore[attr-defined]
+        soap = generate_soap(
+            session.raw_transcription,
+            patient=session.encounter.patient,
+            tenant_schema=schema_name,
+        )
         # generate_soap is fail-open — check if all fields are empty (degraded result)
         if not any(soap.values()):
             session.status = AIScribeSession.Status.FAILED

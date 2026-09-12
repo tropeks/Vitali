@@ -28,9 +28,11 @@ async function expectApiOk(response: APIResponse, label: string): Promise<void> 
 }
 
 async function getAccessTokenFromSession(page: Page): Promise<string> {
+  // access_token is httpOnly (no client-readable access_token_js mirror since
+  // item 3.8) — Playwright's context().cookies() can still read it.
   const cookies = await page.context().cookies();
-  const accessToken = cookies.find((cookie) => cookie.name === 'access_token_js')?.value;
-  expect(accessToken, 'admin login should set access_token_js').toBeTruthy();
+  const accessToken = cookies.find((cookie) => cookie.name === 'access_token')?.value;
+  expect(accessToken, 'admin login should set access_token').toBeTruthy();
   return accessToken!;
 }
 
@@ -92,7 +94,7 @@ test.describe('Invite flow — admin invites user by email', () => {
     await expect(page.locator(`text=${inviteeEmail}`)).toBeVisible({ timeout: 20_000 });
   });
 
-  test('invitee visits set-password link and lands on dashboard', async ({ page, request }) => {
+  test('invitee visits set-password link and lands on dashboard', async ({ page }) => {
     test.skip(
       !process.env.E2E_MODE,
       'Skipped: E2E_MODE env var not set. Configure E2E_MODE=1 + a _test DB to enable.'
@@ -130,7 +132,7 @@ test.describe('Invite flow — admin invites user by email', () => {
     // second login request and keeps the protected helper on the same auth path
     // the product uses after sign-in.
     const access = await getAccessTokenFromSession(page);
-    const tokenResp = await request.post('/api/v1/_test/invitations/issue-token/', {
+    const tokenResp = await page.request.post('/api/v1/_test/invitations/issue-token/', {
       headers: { Authorization: `Bearer ${access}` },
       data: { user_email: inviteeEmail },
     });

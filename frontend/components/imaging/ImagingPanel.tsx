@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { ExternalLink, ImageOff, ScanLine } from 'lucide-react';
-import { getAccessToken } from '@/lib/auth';
 
 // Browser-facing, white-label route for Vitali's embedded image viewer.
 const VIEWER_BASE = (process.env.NEXT_PUBLIC_IMAGING_VIEWER_URL ?? '/visualizador').replace(/\/$/, '');
@@ -45,19 +44,12 @@ export function ImagingPanel({ encounterId, labOrderId, labOrderItemId }: Imagin
   const [activeUid, setActiveUid] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    const token = getAccessToken();
-    if (!token) {
-      setLoading(false);
-      return;
-    }
     setLoading(true);
     const params = new URLSearchParams();
     if (encounterId) params.set('encounter', encounterId);
     if (labOrderId) params.set('lab_order', labOrderId);
     if (labOrderItemId) params.set('lab_order_item', labOrderItemId);
-    fetch(`/api/v1/imaging/studies/?${params.toString()}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    fetch(`/api/v1/imaging/studies/?${params.toString()}`)
       .then((r) => {
         if (r.status === 403) {
           setHidden(true);

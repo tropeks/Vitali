@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { getAccessToken } from '@/lib/auth';
 import { ApiError } from '@/lib/api';
 import {
   isGlosaSafetyBlock,
@@ -58,11 +57,8 @@ export default function BatchDetailPage() {
   // Refetch the batch (and its guides) — used on initial load and after a
   // `batch_modified_during_close` 409, when the guide set changed mid-close.
   const loadBatch = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) { setError('Sessão expirada'); setLoading(false); return; }
     const res = await fetch(`/api/v1/billing/batches/${id}/`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+          });
     if (!res.ok) throw new Error(`${res.status}`);
     const data = await res.json();
     setBatch(data);
@@ -78,14 +74,11 @@ export default function BatchDetailPage() {
   // override. Wraps a non-ok response into ApiError so isGlosaSafetyBlock /
   // isBatchModifiedDuringClose can detect the 409 interception shapes.
   const submitClose = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) { setError('Sessão expirada'); return; }
     setBusy(true); setError(''); setActionMsg('');
     try {
       const res = await fetch(`/api/v1/billing/batches/${id}/close/`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
+              });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         throw new ApiError(res.status, data);
@@ -121,14 +114,11 @@ export default function BatchDetailPage() {
   };
 
   const exportXml = async () => {
-    const token = getAccessToken();
-    if (!token) { setError('Sessão expirada'); return; }
     setBusy(true); setError(''); setActionMsg('');
     try {
       const res = await fetch(`/api/v1/billing/batches/${id}/export/`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
+              });
       if (!res.ok) throw new Error(`${res.status}`);
       const data = await res.json();
       const url = data.url ?? data.download_url ?? data.file_url ?? '';
@@ -142,16 +132,13 @@ export default function BatchDetailPage() {
   };
 
   const uploadRetorno = async (file: File) => {
-    const token = getAccessToken();
-    if (!token) { setError('Sessão expirada'); return; }
     setBusy(true); setError(''); setActionMsg('');
     try {
       const formData = new FormData();
       formData.append('file', file);
       const res = await fetch(`/api/v1/billing/batches/${id}/upload_retorno/`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
+                body: formData,
       });
       if (!res.ok) throw new Error(`${res.status}`);
       const data = await res.json();

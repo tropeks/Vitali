@@ -34,9 +34,10 @@ from rest_framework.exceptions import ValidationError
 
 from apps.billing.material_models import MaterialPriceItem
 from apps.billing.models import GlosaSafetyAlert, PriceTable, TISSGuide, TISSGuideItem
+from apps.billing.services.execution_dates import to_local_date
 from apps.billing.services.surgery_billing import generate_sadt_guide_for_surgical_case
 from apps.core.simpro_models import SimproMaterial
-from apps.emr.models import SurgicalCase
+from apps.emr.models import SurgicalCase, SurgicalMaterial, SurgicalTime
 
 
 def material_unit_value(price_table: PriceTable | None, simpro: SimproMaterial) -> Decimal:
@@ -78,6 +79,15 @@ class MaterialBillingResult:
         }
 
 
+_CATEGORIA_POR_KIND: dict[str, str] = {
+    SurgicalMaterial.Kind.OPME: TISSGuideItem.BillingCategory.OPME,
+    SurgicalMaterial.Kind.MATERIAL: TISSGuideItem.BillingCategory.MATERIAIS,
+    SurgicalMaterial.Kind.MEDICAMENTO: TISSGuideItem.BillingCategory.MEDICAMENTOS,
+    # Kind.OUTRO ausente de propósito: ct_guiaValorTotal não tem "outros", e
+    # empurrar para valorMateriais seria inventar a classificação.
+}
+
+
 def bill_surgical_materials_for_case(case: SurgicalCase) -> MaterialBillingResult:
     """Materializa os materiais consumidos de um caso cirúrgico na guia SP/SADT.
 
@@ -103,6 +113,18 @@ def bill_surgical_materials_for_case(case: SurgicalCase) -> MaterialBillingResul
         price_table = guide.price_table
 
         result = MaterialBillingResult(guide_id=guide.id)
+
+        # dataExecucao do material: a mesma INCISÃO do procedimento que o
+        # consumiu. Material de OPME não tem carimbo próprio de consumo em
+        # `SurgicalMaterial`; o fato clínico que o gastou é a cirurgia, e a guia
+        # de material é a MESMA guia SP/SADT do caso (generate_sadt_guide_for_
+        # surgical_case acima) — datar as duas pelo mesmo instante mantém a guia
+        # internamente coerente. Caso sem incisão registrada: sem data, e a
+        # emissão do XML falha alto.
+        incision = (
+            case.times.filter(event=SurgicalTime.Event.INCISAO).order_by("recorded_at").first()
+        )
+        execution_date = to_local_date(incision.recorded_at) if incision is not None else None
 
         materials = case.materials.select_related("simpro", "simpro__tuss_code").filter(
             quantity_consumed__gt=0
@@ -131,6 +153,14 @@ def bill_surgical_materials_for_case(case: SurgicalCase) -> MaterialBillingResul
                     quantity=Decimal(material.quantity_consumed),
                     unit_value=unit_value,
                     surgical_material=material,
+                    execution_date=execution_date,
+                    # SurgicalMaterial.Kind é o fato registrado por quem consumiu
+                    # o material na sala; ct_guiaValorTotal separa OPME de
+                    # material comum e de medicamento em três campos distintos.
+                    # Kind.OUTRO não tem campo correspondente no XSD e fica SEM
+                    # categoria de propósito — a guia então sai sem breakdown, em
+                    # vez de o material cair num campo escolhido a esmo.
+                    billing_category=_CATEGORIA_POR_KIND.get(material.kind, ""),
                 )
                 result.items_created += 1
             else:

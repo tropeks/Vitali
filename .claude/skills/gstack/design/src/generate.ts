@@ -5,6 +5,7 @@
 import fs from "fs";
 import path from "path";
 import { requireApiKey } from "./auth";
+import { receiptedFetch } from "./receipted-fetch";
 import { parseBrief } from "./brief";
 import { createSession, sessionPath } from "./session";
 import { checkMockup } from "./check";
@@ -37,10 +38,10 @@ async function callImageGeneration(
   quality: string,
 ): Promise<{ responseId: string; imageData: string }> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 120_000);
+  const timeout = setTimeout(() => controller.abort(), 240_000);
 
   try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
+    const response = await receiptedFetch("generate-image-request", "https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${apiKey}`,
@@ -60,7 +61,14 @@ async function callImageGeneration(
 
     if (!response.ok) {
       const error = await response.text();
-      throw new Error(`API error (${response.status}): ${error}`);
+      if (response.status === 403 && error.includes("organization must be verified")) {
+        throw new Error(
+          "OpenAI organization verification required.\n"
+          + "Go to https://platform.openai.com/settings/organization to verify.\n"
+          + "After verification, wait up to 15 minutes for access to propagate.",
+        );
+      }
+      throw new Error(`API error (${response.status}): ${error.slice(0, 200)}`);
     }
 
     const data = await response.json() as any;

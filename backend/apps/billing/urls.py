@@ -16,6 +16,7 @@ from .views import (
     BankTransactionViewSet,
     CashFlowEntryViewSet,
     GlosaViewSet,
+    InpatientFeeViewSet,
     InsuranceProviderViewSet,
     PayableViewSet,
     PIXChargeView,
@@ -40,6 +41,8 @@ router.register(r"tuss", TUSSCodeViewSet, basename="tuss")
 router.register(r"providers", InsuranceProviderViewSet, basename="provider")
 router.register(r"price-tables", PriceTableViewSet, basename="pricetable")
 router.register(r"guides", TISSGuideViewSet, basename="guide")
+# Onda2 2.1/2.2: taxas e gases medicinais de internação (B6 exposto).
+router.register(r"inpatient-fees", InpatientFeeViewSet, basename="inpatient-fee")
 router.register(r"batches", TISSBatchViewSet, basename="batch")
 router.register(r"glosas", GlosaViewSet, basename="glosa")
 router.register(r"receivables", AccountsReceivableViewSet, basename="receivable")

@@ -46,7 +46,10 @@ docker compose -f docker-compose.staging.yml exec django \
 docker compose -f docker-compose.staging.yml exec django \
   python manage.py createsuperuser
 
-# 9. Run smoke tests to verify
+# 9. Carregar os catálogos governados (ver "Reference Catalogs" abaixo) —
+#    sem eles toda guia TISS sai com código inválido, em silêncio
+
+# 10. Run smoke tests to verify
 BASE_URL=https://staging.vitali.com.br \
 COMPOSE_FILE=docker-compose.staging.yml \
 COMPOSE_ENV_FILE=.env.staging \
@@ -54,6 +57,88 @@ COMPOSE_ENV_FILE=.env.staging \
 ```
 
 Subsequent deploys are handled automatically by `.github/workflows/deploy-staging.yml` on every push to `master`.
+
+---
+
+## Reference Catalogs (TUSS / ANVISA / SIGTAP / CID-10 / CNES / CBO / CID-O / UCUM)
+
+**These are NOT loaded by any migration, fixture, workflow, or entrypoint.** A
+clean deploy boots with every governed catalog empty, and B6-B9 billing
+(TUSS/ANVISA/SIGTAP-dependent) then fails **silently** — no error, just "sem
+TUSS correspondente" at INFO level and the line never gets billed. Do this
+once per environment (and again whenever refreshing a catalog to a newer
+competência):
+
+```bash
+# 1. Run the ETL for each catalog you need (downloads + transforms the
+#    official source into the CSV import_* expects). See scripts/catalogs/README.md
+#    for the exact source URL, gotchas and expected row count per catalog —
+#    do not skip that doc, several sources have non-obvious encoding/format traps.
+cd scripts/catalogs && python3 etl_tuss.py && python3 etl_anvisa.py anvisa_medicamentos.csv
+# ... one etl_<x>.py per catalog (cid10, cbo, sigtap, cido, ucum, anvisa_cmed, cnes)
+
+# 2. Preencha a versão de cada catálogo em scripts/catalogs/manifest.toml com a
+#    release que você baixou no passo 1. Campo `version` vazio = erro explícito.
+#    Não há default: adivinhar o rótulo fabricaria proveniência.
+
+# 3. Ensaio (valida fonte, versão e importers; nada é persistido)
+docker compose -f docker-compose.staging.yml exec django \
+  python manage.py seed_catalogs --manifest /mnt/catalogs/manifest.toml \
+    --source-dir /mnt/catalogs --dry-run
+
+# 4. Carga real — chama os import_* na ordem e CONFERE a contagem de cada um
+docker compose -f docker-compose.staging.yml exec django \
+  python manage.py seed_catalogs --manifest /mnt/catalogs/manifest.toml \
+    --source-dir /mnt/catalogs
+
+# 5. Gate: fail loudly (exit 1) if anything essential is still empty
+docker compose -f docker-compose.staging.yml exec django \
+  python manage.py verify_catalogs
+```
+
+> **`scripts/` não está na imagem.** O build do backend usa `./backend` como contexto,
+> então o manifesto e os ETLs vivem fora do container — monte-os (`-v`) junto com o
+> diretório das fontes. É por isso que `--manifest` é obrigatório e não tem default:
+> um default apontando para um caminho inexistente dentro do container seria pior que
+> nenhum.
+>
+> **`seed_catalogs` não substitui o passo 1 nem o 2.** Ele orquestra os `import_*` que
+> já existem, a partir do manifesto — não baixa fonte e não inventa versão. O que ele
+> acrescenta é a conferência: depois de cada import, compara a contagem final com a
+> esperada (do `scripts/catalogs/README.md`) e **reprova se ficou abaixo**. Em 31/07 o
+> CID-O entrou `partial` com 772 de 816 linhas, o `TerminologyImportLog` registrou, e
+> ninguém olhou. Esta é a checagem que teria gritado.
+
+`verify_catalogs` (`apps/core/management/commands/verify_catalogs.py`) is
+read-only and reports every essential catalog's row count; it is the
+actionable version of the `core.E008` system check
+(`apps/core/checks.py`, `deploy=True`) — E008 only fires under `manage.py
+check --deploy`, which today is **not run by any CI workflow** (same gap as
+`core.E002`, documented in
+`docs/research/VITALI_HUMAN_APPLIED_GATES.md` item 0.3 — applying that item
+also activates E008, no separate CI change needed for the check itself).
+
+**Onde o gate mora, medido em 2026-09-11 (ordem 002):**
+`verify_catalogs` não pode ser um *step* de workflow — os runners do GitHub
+Actions não alcançam as fontes de centenas de MB preparadas no host, e o import
+é host-side pelo mesmo motivo (só o CNES são ~45MB processados / ~40min).
+
+**Correção de um erro deste documento:** a versão anterior falava do "script que o
+`deploy-staging.yml` SSHes in and runs after `migrate_schemas`". **Esse script não
+existe.** Os três workflows — `ci.yml`, `deploy-staging.yml` e `release-deploy.yml`
+— apenas **constroem e publicam imagem**: nenhum tem `ssh`, nenhum roda
+`docker compose up`. O nome `deploy-staging.yml` é enganoso; ele é *build*. Quem
+faz deploy é um humano, com este documento na mão.
+
+Então o gate mora nos dois lugares onde o deploy de fato acontece, e é isso que a
+ordem 002 entregou:
+
+1. **Aqui**, como passo 5 do procedimento acima — depois dos imports, antes do smoke.
+2. **No `scripts/smoke_test.sh`** (check 7), que é o script que alguém já roda depois
+   de todo deploy. Se a imagem for anterior a 2026-08-18 e não tiver o comando, o
+   check **avisa** em vez de reprovar: "sua imagem é velha" não é o mesmo defeito que
+   "seus catálogos estão vazios", e confundir os dois faz o smoke mentir nos dois
+   sentidos.
 
 ---
 
@@ -185,6 +270,10 @@ All variables must be set in `.env.staging` (and GitHub Secrets for the CI pipel
 | `WHATSAPP_EVOLUTION_URL` | ✅ | `http://evolution-api:8080` | Fixed (internal) |
 | `WHATSAPP_EVOLUTION_API_KEY` | ✅ | Strong random string | Set manually |
 | `WHATSAPP_WEBHOOK_SECRET` | ✅ | Strong random string | Set manually — must match Evolution API config |
+| `ORTHANC_USERNAME` | ✅ | Strong random string | Set manually — basic-auth user shared by the `orthanc` service and `django`/`celery-worker` |
+| `ORTHANC_PASSWORD` | ✅ | Strong random string | Set manually — basic-auth password, same as above |
+| `ORTHANC_WEBHOOK_SECRET` | ✅ | Strong random string | Set manually — webhook refuses (`503`) unauthenticated when unset, see docs/IMAGING.md |
+| `ORTHANC_URL` | — | `http://orthanc:8042` | **Not** read from this file — hardcoded in `docker-compose.staging.yml`'s `django`/`celery-worker` (Onda 2 / item 2.9) |
 
 > **Fail-fast validation:** production startup now **rejects** empty or placeholder
 > values for `SECRET_KEY`, `POSTGRES_PASSWORD`, `REDIS_PASSWORD`,
@@ -205,6 +294,48 @@ All variables must be set in `.env.staging` (and GitHub Secrets for the CI pipel
 ### GitHub Actions boundary
 
 No host, SSH key, runtime environment, or deployment secret belongs in GitHub. Actions only receives its repository token to publish GHCR images. Runtime secrets stay in `.env.staging` on the PVE host.
+
+### Static compose config guard
+
+`bash scripts/check_orthanc_config.sh` (Onda 2 / item 2.9) is a fast, Docker-free
+static check: it fails if any `docker-compose*.yml` defines an `orthanc` service
+without a non-empty `ORTHANC_URL` on its `django`/`celery-worker` siblings — the
+exact class of regression this item fixed (imaging silently inert). Cheap enough
+to run as a pre-commit/pre-deploy step; para ligá-lo como gate de PR, vale a regra
+de edição de workflows abaixo.
+
+---
+
+## Quem edita `.github/workflows/`, e sob qual revisão
+
+**A regra real, decidida em 2026-09-12 (ordem 005):** workflow se edita **por ordem**, com
+**gate do Imediato** e **diff aditivo revisado**.
+
+Até aqui este documento dizia apenas que o repositório *"não toca `.github/workflows/` a
+partir de sessão de agente (denylist)"*. Isso descrevia um hábito, não um processo — e um
+hábito não resiste ao primeiro caso legítimo. Na ordem 005 o caso apareceu: o CI não testava
+código de ordem antes do merge, e consertar isso era necessariamente editar o workflow. A
+regra proibia sem dizer o que fazer no lugar.
+
+**Por que existe uma regra aqui, e não liberdade geral:** workflow é fronteira de segurança.
+Quem edita CI alcança `GITHUB_TOKEN`, os segredos do runner e o que é publicado no GHCR. Um
+diff de uma linha em `run:` exfiltra credencial sem parecer estranho à leitura rápida.
+
+**O que "diff aditivo revisado" quer dizer, na prática:**
+
+| Muda | Regra |
+|---|---|
+| `on:`, `paths-ignore`, `tags:`, `labels:`, `needs:`, matriz | ordem + gate do Imediato |
+| `run:`, `env:`, `secrets:`, `permissions:`, `uses:` de terceiro novo | ordem + gate **e** revisão linha a linha do que o comando alcança |
+| Qualquer coisa que rode em `pull_request_target` | não se faz por sessão de agente, ponto |
+
+A ordem 005 ficou na primeira faixa: dois campos de gatilho, seis linhas de `labels:` e a
+troca de `tags:` escritos à mão por saídas do `metadata-action`. Nenhuma linha tocou
+`secrets`, `permissions` ou `run:`.
+
+**O que continua fora, sem exceção:** `pull_request_target`, `uses:` apontando para ação de
+terceiro não fixada por SHA, e qualquer alteração que dê ao workflow acesso a segredo que
+ele ainda não tinha.
 
 ---
 
@@ -252,6 +383,7 @@ Beyond `smoke_test.sh`, confirm:
 2. JSON logs are structured: `docker compose logs django | head -5 | python3 -m json.tool`
 3. Celery tasks are running: `docker compose exec django celery -A vitali inspect active`
 4. Migrations applied: `docker compose exec django python manage.py showmigrations | grep "\[ \]"` should be empty
+5. Essential catalogs loaded (see "Reference Catalogs" above): `docker compose exec django python manage.py verify_catalogs`
 
 ---
 

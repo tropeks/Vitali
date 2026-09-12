@@ -25,6 +25,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.core.mixins import AuditReadMixin
 from apps.core.permissions import HasPermission
 
 from .serializers_transfusion import CrossMatchSerializer, TransfusionRequestSerializer
@@ -65,11 +66,14 @@ class _TransfusionRequestPermissionMixin:
     ),
     create=extend_schema(tags=["hemoterapia"], summary="Cria requisição transfusional"),
 )
-class TransfusionRequestViewSet(_TransfusionRequestPermissionMixin, viewsets.ModelViewSet):
+class TransfusionRequestViewSet(
+    AuditReadMixin, _TransfusionRequestPermissionMixin, viewsets.ModelViewSet
+):
     """Requisições transfusionais. create=hemoterapia.request / read=hemoterapia.read /
     reservar+liberar+cancelar=hemoterapia.manage."""
 
     serializer_class = TransfusionRequestSerializer
+    audit_resource_type = "TransfusionRequest"
     http_method_names = ["get", "post", "head", "options"]
 
     def get_queryset(self):
@@ -167,10 +171,11 @@ class TransfusionRequestViewSet(_TransfusionRequestPermissionMixin, viewsets.Mod
         parameters=[_REQUEST_PARAM],
     ),
 )
-class CrossMatchViewSet(viewsets.ReadOnlyModelViewSet):
+class CrossMatchViewSet(AuditReadMixin, viewsets.ReadOnlyModelViewSet):
     """Provas de compatibilidade (read-only). read=hemoterapia.read. Filter ``?request=``."""
 
     serializer_class = CrossMatchSerializer
+    audit_resource_type = "CrossMatch"
 
     def get_permissions(self):
         return [IsAuthenticated(), HasPermission("hemoterapia.read")]

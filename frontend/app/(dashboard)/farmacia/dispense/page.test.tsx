@@ -9,10 +9,6 @@ vi.mock('next/navigation', () => ({
   }),
 }))
 
-vi.mock('@/lib/auth', () => ({
-  getAccessToken: () => 'test-token',
-}))
-
 const mockFetch = vi.fn()
 global.fetch = mockFetch
 

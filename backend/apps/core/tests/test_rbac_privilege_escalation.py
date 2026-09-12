@@ -21,7 +21,7 @@ These tests lock in:
 
 from rest_framework.test import APIClient, APIRequestFactory
 
-from apps.core.models import Role, User
+from apps.core.models import Role, User, UserTenantMembership
 from apps.core.permissions import HasPermission, role_has_admin_capability
 from apps.test_utils import TenantTestCase
 
@@ -56,6 +56,19 @@ class RBACPrivilegeEscalationTests(TenantTestCase):
             full_name="Victim User",
             role=self.clinician_role,
         )
+
+        # Onda 0 / 0.4b: UserDetailView.get_queryset() now scopes the admin
+        # branch to User.for_current_tenant(), which resolves through
+        # UserTenantMembership. Without these rows the admin simply cannot
+        # address a colleague (404) — the intended cross-tenant fix, not a
+        # regression — so materialize the memberships this fixture always
+        # implied but never created.
+        for _user in (self.admin, self.clinician, self.victim):
+            UserTenantMembership.objects.create(
+                user=_user,
+                tenant=self.__class__.tenant,
+                role=_user.role,
+            )
 
         self.client = APIClient()
         self.client.defaults["SERVER_NAME"] = self.__class__.domain.domain

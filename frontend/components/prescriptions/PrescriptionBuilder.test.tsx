@@ -3,10 +3,6 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PrescriptionBuilder } from './PrescriptionBuilder'
 
-vi.mock('@/lib/auth', () => ({
-  getAccessToken: () => 'test-token',
-}))
-
 vi.mock('./SafetyBadge', () => ({
   SafetyBadge: () => <span>Seguro</span>,
 }))

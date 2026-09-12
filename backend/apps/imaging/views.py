@@ -27,6 +27,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.mixins import AuditReadMixin
 from apps.core.permissions import HasPermission, IsPlatformAdmin, ModuleRequiredPermission
 
 from .models import DicomStudy, ImagingModality, ModalityWorklistItem
@@ -62,9 +63,12 @@ class ImagingModalityViewSet(ImagingOperationsPermissionsMixin, viewsets.ModelVi
         return Response(self.get_serializer(modality).data)
 
 
-class ModalityWorklistViewSet(ImagingOperationsPermissionsMixin, viewsets.ModelViewSet):
+class ModalityWorklistViewSet(
+    AuditReadMixin, ImagingOperationsPermissionsMixin, viewsets.ModelViewSet
+):
     queryset = ModalityWorklistItem.objects.select_related("patient", "modality", "encounter")
     serializer_class = ModalityWorklistItemSerializer
+    audit_resource_type = "ModalityWorklistItem"
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)

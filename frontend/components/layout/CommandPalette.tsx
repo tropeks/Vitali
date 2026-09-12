@@ -291,7 +291,7 @@ export default function CommandPalette({ user, activeModules, open, onOpenChange
             const index = i;
             const active = index === activeIndex;
             return (
-              <li key={`nav-${row.href}`} role="presentation">
+              <li key={`nav-${row.href}-${row.label}-${i}`} role="presentation">
                 <button
                   type="button"
                   role="option"

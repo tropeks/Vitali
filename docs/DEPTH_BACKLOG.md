@@ -34,9 +34,16 @@
 - ⬜ **LOINC**: bloqueado por **cadastro** (não licença) — `loinc.org` exige conta gratuita. Trava junto as unidades
   UCUM **compostas** (`mg/dL`, `10*3/uL`), que não existem no `ucum-essence.xml` e vêm no "example UCUM units" do LOINC.
 - ⬜ **Licenciados sem fonte paga**: NANDA/NIC/NOC, Simpro/Brasíndice, CBHPM seguem simbólicos.
-- ⚠️ **Seed planta dado fictício com código real**: `seed_demo_data` cria CNES/UCUM inventados (o CNES 2077469 como
-  "Hospital das Clínicas", que na verdade é HOSP DOM ALVARENGA). Ao importar o catálogo real vira duplicata por código.
-  As 4 duplicatas foram removidas do staging em 2026-08-04, mas **o seed não foi corrigido** — replanta se rodar.
+- ✅ **2026-08-18 — reauditado, não reproduz**: `seed_demo_data` **não cria** `CNESEstablishment`/`UcumUnit`
+  nem nenhum outro modelo de catálogo governado (`core.*`) hoje — grep completo no arquivo não encontra
+  `CNESEstablishment`, `UcumUnit`, nem o código histórico `2077469`. A nota abaixo (histórico) descrevia um
+  estado anterior; ficou stale depois que o bug foi corrigido em outro commit sem atualizar este backlog.
+  Convenção anti-colisão (prefixo `DEMO-`/`DEMO_`) documentada no docstring do command e travada por
+  `apps/core/tests/test_seed_demo_data_no_fake_catalog_codes.py` (guarda estática — falha se alguém
+  reintroduzir o código real ou criar um catálogo governado sem o prefixo seguro).
+  Histórico: `seed_demo_data` chegou a criar CNES/UCUM inventados (o CNES 2077469 como "Hospital das
+  Clínicas", que na verdade é HOSP DOM ALVARENGA). Ao importar o catálogo real virava duplicata por código.
+  As 4 duplicatas foram removidas do staging em 2026-08-04.
 
 ## P1 — Centro Cirúrgico: enforcement + peças que faltam
 - **Checklist OMS não é enforcado** (é artefato registrado, cirurgia avança sem ele). "Cirurgia segura" de verdade =

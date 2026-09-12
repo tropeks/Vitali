@@ -12,7 +12,6 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { getAccessToken } from '@/lib/auth';
 
 export interface GlosaPrediction {
   prediction_id: string | null;
@@ -86,15 +85,9 @@ export default function GlosaRiskBadge({
 
     setState({ kind: 'loading' });
 
-    const token = getAccessToken();
-    if (!token) {
-      setState({ kind: 'idle' });
-      return;
-    }
-
     fetch('/api/v1/ai/glosa-predict/', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         tuss_code: tussCode,
         insurer_ans_code: insurerAnsCode,

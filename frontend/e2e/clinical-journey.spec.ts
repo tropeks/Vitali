@@ -48,18 +48,21 @@ async function loginAsAdmin(page: Page): Promise<string> {
     throw new Error(`admin login failed (${response.status()}): ${await response.text()}`);
   }
 
+  // access_token is httpOnly (no client-readable access_token_js mirror since
+  // item 3.8) — Playwright's context().cookies() can still read it, unlike
+  // document.cookie in the page itself.
   await expect
     .poll(
       async () =>
-        (await page.context().cookies()).find((cookie) => cookie.name === 'access_token_js')
+        (await page.context().cookies()).find((cookie) => cookie.name === 'access_token')
           ?.value ?? null,
-      { timeout: 20_000, message: 'admin login should set access_token_js' },
+      { timeout: 20_000, message: 'admin login should set access_token' },
     )
     .not.toBeNull();
 
   const cookies = await page.context().cookies();
-  const accessToken = cookies.find((cookie) => cookie.name === 'access_token_js')?.value;
-  expect(accessToken, 'admin login should set access_token_js').toBeTruthy();
+  const accessToken = cookies.find((cookie) => cookie.name === 'access_token')?.value;
+  expect(accessToken, 'admin login should set access_token').toBeTruthy();
   await page.goto('/dashboard');
   await expect(page).toHaveURL(/\/dashboard/, { timeout: 20_000 });
   return accessToken!;
@@ -73,7 +76,7 @@ test.describe('Clinical journey', () => {
     await page.addInitScript(() => window.localStorage.setItem('vitali_cookie_consent', 'true'));
   });
 
-  test('patient registration to signed encounter and timeline', async ({ page, request }) => {
+  test('patient registration to signed encounter and timeline', async ({ page }) => {
     test.setTimeout(180_000);
 
     const timestamp = Date.now();
@@ -83,7 +86,11 @@ test.describe('Clinical journey', () => {
     const doctorEmail = `dra.jornada+${timestamp}@vitali.com`;
     const access = await loginAsAdmin(page);
 
-    const doctorResp = await request.post('/api/v1/hr/employees/', {
+    // Use the browser-context request so the httpOnly access_token cookie is
+    // forwarded through the Next proxy. The proxy deliberately discards a
+    // client-supplied Authorization header and authenticates from that cookie.
+    const api = page.request;
+    const doctorResp = await api.post('/api/v1/hr/employees/', {
       headers: { Authorization: `Bearer ${access}` },
       data: {
         full_name: doctorName,
@@ -144,7 +151,7 @@ test.describe('Clinical journey', () => {
     }
     start.setSeconds(0, 0);
     const end = new Date(start.getTime() + 30 * 60 * 1000);
-    const appointmentResp = await request.post('/api/v1/appointments/', {
+    const appointmentResp = await api.post('/api/v1/appointments/', {
       headers: { Authorization: `Bearer ${access}` },
       data: {
         patient: patientId,

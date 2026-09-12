@@ -172,6 +172,42 @@ export const ADMISSION_SOURCE_OPTIONS: ChoiceOption[] = [
   { value: 'outro', label: 'Outro' },
 ]
 
+// dm_motivoSaida (Admission.MotivoEncerramento) — mirrors
+// `backend/apps/emr/adt_models.py` VERBATIM, including the "rótulo a
+// confirmar" placeholders for codes 41–67 (no ANS manual available to the
+// backend to confirm those labels; do NOT invent a label here — the pending
+// text must stay visible to the user). Opcional: `''` = "não informado".
+export const MOTIVO_ENCERRAMENTO_OPTIONS: ChoiceOption[] = [
+  { value: '11', label: 'Alta melhorado' },
+  { value: '12', label: 'Alta a pedido' },
+  { value: '14', label: 'Alta por evasão' },
+  { value: '15', label: 'Alta com previsão de retorno para acompanhamento do paciente' },
+  { value: '16', label: 'Alta por outros motivos' },
+  { value: '18', label: 'Alta da puérpera e do recém-nascido' },
+  { value: '19', label: 'Alta da puérpera' },
+  { value: '21', label: 'Transferência para internação domiciliar' },
+  { value: '22', label: 'Permanência por características próprias da doença' },
+  { value: '23', label: 'Permanência por intercorrência' },
+  { value: '24', label: 'Permanência por impossibilidade social' },
+  { value: '25', label: 'Transferência para outro estabelecimento' },
+  { value: '26', label: 'Permanência por outros motivos' },
+  { value: '27', label: 'Óbito com declaração de óbito fornecida pelo médico assistente' },
+  { value: '28', label: 'Óbito com declaração de óbito fornecida pelo IML' },
+  { value: '31', label: 'Óbito com declaração de óbito fornecida pelo SVO' },
+  { value: '32', label: 'Encerramento administrativo' },
+  { value: '41', label: 'Código 41 (rótulo a confirmar no manual ANS)' },
+  { value: '42', label: 'Código 42 (rótulo a confirmar no manual ANS)' },
+  { value: '43', label: 'Código 43 (rótulo a confirmar no manual ANS)' },
+  { value: '51', label: 'Código 51 (rótulo a confirmar no manual ANS)' },
+  { value: '61', label: 'Código 61 (rótulo a confirmar no manual ANS)' },
+  { value: '62', label: 'Código 62 (rótulo a confirmar no manual ANS)' },
+  { value: '63', label: 'Código 63 (rótulo a confirmar no manual ANS)' },
+  { value: '64', label: 'Código 64 (rótulo a confirmar no manual ANS)' },
+  { value: '65', label: 'Código 65 (rótulo a confirmar no manual ANS)' },
+  { value: '66', label: 'Código 66 (rótulo a confirmar no manual ANS)' },
+  { value: '67', label: 'Código 67 (rótulo a confirmar no manual ANS)' },
+]
+
 // ─── Formatting helpers ──────────────────────────────────────────────────────
 
 /** LOS is reported in whole hours; render coarse (e.g. "3d 4h", "5h", "0h"). */

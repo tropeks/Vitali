@@ -65,11 +65,9 @@ describe('Serve HTTP endpoints', () => {
         const url = new URL(req.url);
 
         if (req.method === 'GET' && url.pathname === '/') {
-          const injected = htmlContent.replace(
-            '</head>',
-            `<script>window.__GSTACK_SERVER_URL = '${url.origin}';</script>\n</head>`
-          );
-          return new Response(injected, {
+          // Board JS uses relative URLs (./api/feedback, ./api/progress)
+          // and a location.protocol feature-detect; no injection needed.
+          return new Response(htmlContent, {
             headers: { 'Content-Type': 'text/html; charset=utf-8' },
           });
         }
@@ -118,12 +116,17 @@ describe('Serve HTTP endpoints', () => {
     server.stop();
   });
 
-  test('GET / serves HTML with injected __GSTACK_SERVER_URL', async () => {
+  test('GET / serves HTML with relative-path board JS (no injection)', async () => {
     const res = await fetch(baseUrl);
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain('__GSTACK_SERVER_URL');
-    expect(html).toContain(baseUrl);
+    // No more per-origin URL injection; board JS uses relative paths.
+    expect(html).not.toContain('__GSTACK_SERVER_URL');
+    expect(html).not.toContain(baseUrl);
+    // Board JS calls relative endpoints so the same HTML works at / and at
+    // /boards/<id>/ (daemon mode).
+    expect(html).toContain("fetch('./api/feedback'");
+    expect(html).toContain("fetch('./api/progress')");
     expect(html).toContain('Design Exploration');
   });
 
@@ -271,6 +274,139 @@ describe('Serve HTTP endpoints', () => {
   test('GET /unknown returns 404', async () => {
     const res = await fetch(`${baseUrl}/random-path`);
     expect(res.status).toBe(404);
+  });
+});
+
+// ─── Path traversal protection in /api/reload ─────────────────────
+
+describe('Serve /api/reload — path traversal protection', () => {
+  let server: ReturnType<typeof Bun.serve>;
+  let baseUrl: string;
+  let htmlContent: string;
+  let allowedDir: string;
+
+  beforeAll(() => {
+    // Production-equivalent allowedDir anchored to tmpDir
+    allowedDir = fs.realpathSync(tmpDir);
+    htmlContent = fs.readFileSync(boardHtml, 'utf-8');
+
+    // This server mirrors the production serve() with the path validation fix
+    server = Bun.serve({
+      port: 0,
+      fetch(req) {
+        const url = new URL(req.url);
+
+        if (req.method === 'GET' && url.pathname === '/') {
+          return new Response(htmlContent, {
+            headers: { 'Content-Type': 'text/html; charset=utf-8' },
+          });
+        }
+
+        if (req.method === 'POST' && url.pathname === '/api/reload') {
+          return (async () => {
+            let body: any;
+            try { body = await req.json(); } catch { return Response.json({ error: 'Invalid JSON' }, { status: 400 }); }
+            if (!body.html || !fs.existsSync(body.html)) {
+              return Response.json({ error: `HTML file not found: ${body.html}` }, { status: 400 });
+            }
+            // Production path validation — same as design/src/serve.ts
+            const resolvedReload = fs.realpathSync(path.resolve(body.html));
+            if (!resolvedReload.startsWith(allowedDir + path.sep)) {
+              return Response.json({ error: `Path must be within: ${allowedDir}` }, { status: 403 });
+            }
+            if (!fs.statSync(resolvedReload).isFile()) {
+              return Response.json({ error: `Path must be a file, not a directory: ${body.html}` }, { status: 400 });
+            }
+            htmlContent = fs.readFileSync(resolvedReload, 'utf-8');
+            return Response.json({ reloaded: true });
+          })();
+        }
+
+        return new Response('Not found', { status: 404 });
+      },
+    });
+    baseUrl = `http://localhost:${server.port}`;
+  });
+
+  afterAll(() => {
+    server.stop();
+  });
+
+  test('blocks reload with path outside allowed directory', async () => {
+    const res = await fetch(`${baseUrl}/api/reload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html: '/etc/passwd' }),
+    });
+    expect(res.status).toBe(403);
+    const data = await res.json();
+    expect(data.error).toContain('Path must be within');
+  });
+
+  test('blocks reload with symlink pointing outside allowed directory', async () => {
+    const linkPath = path.join(tmpDir, 'evil-link.html');
+    try {
+      fs.symlinkSync('/etc/passwd', linkPath);
+      const res = await fetch(`${baseUrl}/api/reload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ html: linkPath }),
+      });
+      expect(res.status).toBe(403);
+    } finally {
+      try { fs.unlinkSync(linkPath); } catch {}
+    }
+  });
+
+  test('allows reload with file inside allowed directory', async () => {
+    const goodPath = path.join(tmpDir, 'safe-board.html');
+    fs.writeFileSync(goodPath, '<html><body>Safe reload</body></html>');
+
+    const res = await fetch(`${baseUrl}/api/reload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html: goodPath }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.reloaded).toBe(true);
+
+    // Verify the new content is served
+    const page = await fetch(baseUrl);
+    expect(await page.text()).toContain('Safe reload');
+  });
+
+  // Regression for the directory-instead-of-file guard (Codex finding).
+  // Before: resolvedReload === allowedDir passed the guard and then
+  // readFileSync threw EISDIR with no helpful message.
+  test('blocks reload when path resolves to the allowed directory itself', async () => {
+    const res = await fetch(`${baseUrl}/api/reload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html: tmpDir }),
+    });
+    // tmpDir does not satisfy startsWith(allowedDir + sep), so the within-dir
+    // check rejects with 403 — but importantly, no EISDIR crash.
+    expect(res.status).toBe(403);
+  });
+
+  test('blocks reload when path is a subdirectory (not a file)', async () => {
+    const subdir = path.join(tmpDir, 'subdir-not-a-file');
+    fs.mkdirSync(subdir, { recursive: true });
+    try {
+      const res = await fetch(`${baseUrl}/api/reload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ html: subdir }),
+      });
+      // Inside allowedDir but a directory — must fail before readFileSync,
+      // with a clear "must be a file" error instead of EISDIR.
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data.error).toContain('must be a file');
+    } finally {
+      try { fs.rmSync(subdir, { recursive: true, force: true }); } catch {}
+    }
   });
 });
 

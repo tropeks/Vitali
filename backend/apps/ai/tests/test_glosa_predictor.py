@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 from django.core.cache import cache
 from django.test import override_settings
 
+from apps.ai.consent import ConsentResult
 from apps.ai.models import AIPromptTemplate, GlosaPrediction
 from apps.ai.services import predict_glosa
 from apps.test_utils import TenantTestCase
@@ -58,6 +59,15 @@ class PredictGlosaTest(TenantTestCase):
         self._override.enable()
         self.template = _make_glosa_template()
         self.schema = self.tenant.schema_name
+        # Onda 3 / 3.2: predict_glosa() now also requires a signed DPA
+        # (it never checked one before — see test_dpa_not_signed_blocks_call
+        # below, which deliberately does NOT use this patch). The rest of
+        # this file is about retrieval/caching/sanitization, not consent.
+        self._consent_patch = patch(
+            "apps.ai.services.requires_ai_consent", return_value=ConsentResult(True)
+        )
+        self._consent_patch.start()
+        self.addCleanup(self._consent_patch.stop)
 
     def tearDown(self):
         self._override.disable()
@@ -123,6 +133,27 @@ class PredictGlosaTest(TenantTestCase):
         self.assertTrue(result.degraded)
         self.assertEqual(result.risk_level, "low")
         self.assertEqual(GlosaPrediction.objects.count(), 0)
+
+    @patch("apps.ai.services.get_tenant_ai_config")
+    @patch("apps.ai.services.ClaudeGateway")
+    def test_dpa_not_signed_blocks_call(self, MockGateway, mock_config):
+        """
+        Onda 3 / 3.2 regression test: before this ticket, GlosaPredictor never
+        checked the DPA at all (only the TUSS/Scribe paths did). No AIDPAStatus
+        row exists for self.tenant here — requires_ai_consent() must fail
+        CLOSED (not just "no row = allow"), the LLM must never be called, and
+        no GlosaPrediction row is persisted.
+        """
+        self._consent_patch.stop()  # exercise the REAL consent gate, not the class-wide stub
+        mock_config.return_value = _make_config(self.schema)
+
+        result = self._call()
+
+        self.assertTrue(result.degraded)
+        self.assertEqual(result.risk_level, "low")
+        MockGateway.return_value.complete.assert_not_called()
+        self.assertEqual(GlosaPrediction.objects.count(), 0)
+        self._consent_patch.start()  # restore for tearDown's addCleanup bookkeeping
 
     @patch("apps.ai.services.get_tenant_ai_config")
     def test_missing_template_returns_degraded(self, mock_config):

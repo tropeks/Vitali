@@ -37,14 +37,6 @@ function setSessionCookies(response: NextResponse, access: string, refresh: stri
     maxAge: ACCESS_MAX_AGE,
   });
 
-  response.cookies.set("access_token_js", access, {
-    httpOnly: false,
-    secure: IS_PROD,
-    sameSite: "lax",
-    path: "/",
-    maxAge: ACCESS_MAX_AGE,
-  });
-
   response.cookies.set("refresh_token", refresh, {
     httpOnly: true,
     secure: IS_PROD,

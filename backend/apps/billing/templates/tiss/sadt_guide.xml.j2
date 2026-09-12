@@ -1,40 +1,130 @@
-{# SP/SADT Guide fragment — TISS 4.01.00 #}
-<ans:guiaSP_SADT>
+{# Guia SP/SADT — TISS 4.01.00 (ctm_sp-sadtGuia, tissGuiasV4_01_00.xsd).
+   Fatia 0 (Onda 4): reescrita contra o XSD real — a versão anterior emitia
+   <cabecalhoGuia> com numeroGuiaOperadora/dataAutorizacao/senhaAutorizacao/
+   numeroCarteira/codigoCBO/CNES/dataInicioFaturamento/dataFinalFaturamento
+   dentro do cabeçalho, nenhum dos quais existe em ct_guiaCabecalho (só
+   registroANS + numeroGuiaPrestador, ver ctm_consultaGuia/cabecalhoConsulta
+   já corrigido), e em seguida <dadosSolicitacaoExame>/<procedimentosSolicitados>,
+   elementos que não existem em ctm_sp-sadtGuia (o elemento real é
+   <procedimentosExecutados>/<procedimentoExecutado>, e só depois de
+   dadosSolicitante/dadosSolicitacao/dadosExecutante/dadosAtendimento).
+
+   Forma corrigida na Fatia 0: cabecalhoGuia + dadosBeneficiario, no formato
+   real do XSD (mesmos filtros de consulta_guide.xml.j2).
+
+   dadosSolicitante FECHADO (18/08/2026). Era o último gap de dado da Onda 4 e o
+   único que exigiu um PAPEL novo no domínio: o Vitali só modelava quem executa
+   (encounter.professional). Emitir o executante aqui declararia à operadora que
+   quem pediu o exame foi quem o fez — não é placeholder honesto como o
+   codigoPrestadorNaOperadora (texto livre cujo valor real não temos), é
+   afirmação clínica falsa sobre quem indicou o procedimento.
+
+   Fonte: TISSGuide.requesting_professional, herdado de LabOrder.requested_by
+   quando a guia nasce de um pedido de exame, informado à mão nos demais casos
+   (SurgicalCase tem surgeon — quem opera —, não quem indicou). Toda a validação
+   (conselho em dm_conselhoProfissional, UF em dm_UF, CBOS entre os 171 de
+   dm_CBOS, CNES presente) mora em xml_engine._resolve_sadt_solicitante e falha
+   ALTO antes daqui, então este bloco não tem defesa inline.
+
+   dadosSolicitacao.caraterAtendimento is sourced from SurgicalCase.priority;
+   optional children are omitted because no equivalent clinical source exists.
+   The remaining residual (dadosExecutante, dadosAtendimento,
+   procedimentosExecutados, valorTotal) is documented in
+   VITALI_ONDA4_TISS_MODELAGEM.md §2. #}
+<ans:guiaSP-SADT>
   <ans:cabecalhoGuia>
     <ans:registroANS>{{ guide.provider.ans_code }}</ans:registroANS>
     <ans:numeroGuiaPrestador>{{ guide.guide_number }}</ans:numeroGuiaPrestador>
-    <ans:numeroGuiaOperadora>{{ guide.guide_number }}</ans:numeroGuiaOperadora>
-    <ans:dataAutorizacao>{{ guide.created_at | format_date }}</ans:dataAutorizacao>
-    <ans:senhaAutorizacao>{{ guide.authorization_number or '' }}</ans:senhaAutorizacao>
-    <ans:dataValidadeSenha>{{ guide.created_at | format_date }}</ans:dataValidadeSenha>
-    <ans:numeroCarteira>{{ guide.insured_card_number }}</ans:numeroCarteira>
-    <ans:nomeBeneficiario>{{ guide.patient.full_name | truncate(70, false, '') }}</ans:nomeBeneficiario>
-    <ans:dataNascimentoBeneficiario>{{ guide.patient.birth_date | format_date }}</ans:dataNascimentoBeneficiario>
-    <ans:codigoCBO>{{ professional.cbo_code if professional else '225120' }}</ans:codigoCBO>
-    <ans:CNES>{{ professional.cnes_code if professional else '' }}</ans:CNES>
-    <ans:dataInicioFaturamento>{{ guide.created_at | format_date }}</ans:dataInicioFaturamento>
-    <ans:dataFinalFaturamento>{{ guide.created_at | format_date }}</ans:dataFinalFaturamento>
   </ans:cabecalhoGuia>
-  <ans:dadosSolicitacaoExame>
-{% for item in guide.items.all() %}
-    <ans:procedimentosSolicitados>
-      <ans:codigoTabela>22</ans:codigoTabela>
-      <ans:codigoProcedimento>{{ item.tuss_code.code }}</ans:codigoProcedimento>
-      <ans:descricaoProcedimento>{{ item.description | truncate(100, false, '') }}</ans:descricaoProcedimento>
-      <ans:quantidadeSolicitada>{{ item.quantity | format_decimal }}</ans:quantidadeSolicitada>
-    </ans:procedimentosSolicitados>
-{% endfor %}
-  </ans:dadosSolicitacaoExame>
+  <ans:dadosBeneficiario>
+    <ans:numeroCarteira>{{ guide.insured_card_number }}</ans:numeroCarteira>
+    {# atendimentoRN: sem dado de origem no model — "N" é o default seguro,
+       mesmo usado em consulta_guide.xml.j2 (a maioria não é atendimento de
+       recém-nascido). #}
+    <ans:atendimentoRN>N</ans:atendimentoRN>
+  </ans:dadosBeneficiario>
+  <ans:dadosSolicitante>
+    <ans:contratadoSolicitante>
+      {# ct_contratadoDados é um <choice>: codigoPrestadorNaOperadora | CPF |
+         CNPJ. Mesmo placeholder documentado do executante e do cabeçalho do
+         lote — o código atribuído pela operadora não existe em model nenhum, e
+         o CNES é texto livre válido aqui (<=14 chars). Ver batch_envelope. #}
+      <ans:codigoPrestadorNaOperadora>{{ solicitante_codigo_prestador }}</ans:codigoPrestadorNaOperadora>
+    </ans:contratadoSolicitante>
+    <ans:nomeContratadoSolicitante>{{ solicitante_nome_contratado }}</ans:nomeContratadoSolicitante>
+    <ans:profissionalSolicitante>
+      <ans:nomeProfissional>{{ solicitante_nome_profissional }}</ans:nomeProfissional>
+      <ans:conselhoProfissional>{{ solicitante_conselho }}</ans:conselhoProfissional>
+      <ans:numeroConselhoProfissional>{{ solicitante_numero_conselho }}</ans:numeroConselhoProfissional>
+      <ans:UF>{{ solicitante_uf }}</ans:UF>
+      <ans:CBOS>{{ solicitante_cbos }}</ans:CBOS>
+    </ans:profissionalSolicitante>
+  </ans:dadosSolicitante>
+  <ans:dadosSolicitacao>
+    <ans:caraterAtendimento>{{ sadt_carater_atendimento }}</ans:caraterAtendimento>
+  </ans:dadosSolicitacao>
+  {# dadosExecutante: MESMA forma do resumo de internação (contratadoExecutante
+     + CNES irmão), não a de guiaConsulta. ct_contratadoDados é um <choice>;
+     emitimos codigoPrestadorNaOperadora com o CNES — placeholder DOCUMENTADO,
+     igual ao cabeçalho do lote: o código atribuído pela operadora não existe em
+     model nenhum, e o campo é texto livre.
+
+     Ausência e tamanho do CNES falham ALTO em
+     xml_engine._resolve_sadt_executante, e não aqui: st_texto7 tem
+     minLength="1", então <CNES></CNES> é XSD-inválido e viraria rejeição do lote
+     sem explicação. #}
   <ans:dadosExecutante>
-    <ans:CNES>{{ professional.cnes_code if professional else '' }}</ans:CNES>
+    <ans:contratadoExecutante>
+      <ans:codigoPrestadorNaOperadora>{{ executante_cnes }}</ans:codigoPrestadorNaOperadora>
+    </ans:contratadoExecutante>
+    <ans:CNES>{{ executante_cnes }}</ans:CNES>
   </ans:dadosExecutante>
+  {# dadosAtendimento (ctm_sp-sadtAtendimento): três filhos obrigatórios na ordem
+     da <sequence> — tipoAtendimento, indicacaoAcidente, regimeAtendimento. Os
+     três opcionais (tipoConsulta, motivoEncerramento, saudeOcupacional) ficam de
+     fora: não há fonte para nenhum.
+
+     tipo e regime vêm de campos próprios da guia, NUNCA inferidos: nada no
+     Vitali diz o tipo e o regime do atendimento, e mapear de guide_type, de
+     encounter_type ou de SurgicalCase.priority seria adivinhação vestida de
+     regra. Falha alta em xml_engine._resolve_sadt_atendimento quando vazios.
+
+     indicacaoAcidente usa o default "9" que consulta_guide.xml.j2 e
+     internacao_guide.xml.j2 já emitem — política existente do repo, não decisão
+     nova desta fatia. Ver _INDICACAO_ACIDENTE_DEFAULT para a ressalva. #}
+  <ans:dadosAtendimento>
+    <ans:tipoAtendimento>{{ atendimento_tipo }}</ans:tipoAtendimento>
+    <ans:indicacaoAcidente>{{ atendimento_indicacao_acidente }}</ans:indicacaoAcidente>
+    <ans:regimeAtendimento>{{ atendimento_regime }}</ans:regimeAtendimento>
+  </ans:dadosAtendimento>
+  {# ct_procedimentoExecutadoSadt: a sequência medida no XSD é
+     sequencialItem/dataExecucao/(horaInicial/horaFinal opcionais)/procedimento/
+     quantidadeExecutada/(viaAcesso/tecnicaUtilizada opcionais)/reducaoAcrescimo/
+     valorUnitario/valorTotal. O Vitali não tem fonte honesta para os opcionais;
+     a validação fica no resolver compartilhado com o resumo de internação. #}
+  {% if procedimentos %}
+  <ans:procedimentosExecutados>
+    {% for p in procedimentos %}
+    <ans:procedimentoExecutado>
+      <ans:sequencialItem>{{ p.sequencial }}</ans:sequencialItem>
+      <ans:dataExecucao>{{ p.data_execucao | format_date }}</ans:dataExecucao>
+      <ans:procedimento>
+        <ans:codigoTabela>{{ p.tabela }}</ans:codigoTabela>
+        <ans:codigoProcedimento>{{ p.codigo }}</ans:codigoProcedimento>
+        <ans:descricaoProcedimento>{{ p.descricao }}</ans:descricaoProcedimento>
+      </ans:procedimento>
+      <ans:quantidadeExecutada>{{ p.quantidade }}</ans:quantidadeExecutada>
+      <ans:reducaoAcrescimo>{{ p.fator | format_currency }}</ans:reducaoAcrescimo>
+      <ans:valorUnitario>{{ p.valor_unitario | format_currency }}</ans:valorUnitario>
+      <ans:valorTotal>{{ p.valor_total | format_currency }}</ans:valorTotal>
+    </ans:procedimentoExecutado>
+    {% endfor %}
+  </ans:procedimentosExecutados>
+  {% endif %}
   <ans:valorTotal>
+    {% for campo in valor_total_breakdown %}
+    <ans:{{ campo.tag }}>{{ campo.valor | format_currency }}</ans:{{ campo.tag }}>
+    {% endfor %}
     <ans:valorTotalGeral>{{ guide.total_value | format_currency }}</ans:valorTotalGeral>
   </ans:valorTotal>
-{% for cid in guide.cid10_codes %}
-  <ans:diagnostico>
-    <ans:codigoDiagnostico>{{ cid.code }}</ans:codigoDiagnostico>
-    <ans:indicadorAcidente>N</ans:indicadorAcidente>
-  </ans:diagnostico>
-{% endfor %}
-</ans:guiaSP_SADT>
+</ans:guiaSP-SADT>

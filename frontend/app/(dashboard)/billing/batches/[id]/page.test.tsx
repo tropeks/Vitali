@@ -8,10 +8,6 @@ vi.mock('next/navigation', () => ({
   useParams: () => ({ id: 'batch-1' }),
 }))
 
-vi.mock('@/lib/auth', () => ({
-  getAccessToken: () => 'test-token',
-}))
-
 const mockFetch = vi.fn()
 global.fetch = mockFetch
 

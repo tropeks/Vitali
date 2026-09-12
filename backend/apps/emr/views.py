@@ -76,8 +76,9 @@ from .serializers import (
 )
 
 
-class MedicationAdministrationViewSet(viewsets.ModelViewSet):
+class MedicationAdministrationViewSet(AuditReadMixin, viewsets.ModelViewSet):
     serializer_class = MedicationAdministrationSerializer
+    audit_resource_type = "MedicationAdministration"
     http_method_names = ("get", "post", "head", "options")
 
     def get_queryset(self):
@@ -201,8 +202,9 @@ class MedicationAdministrationViewSet(viewsets.ModelViewSet):
         )
 
 
-class NursingAssessmentViewSet(viewsets.ModelViewSet):
+class NursingAssessmentViewSet(AuditReadMixin, viewsets.ModelViewSet):
     serializer_class = NursingAssessmentSerializer
+    audit_resource_type = "NursingAssessment"
 
     def get_queryset(self):
         from .models import NursingAssessment
@@ -241,20 +243,22 @@ class NursingAssessmentViewSet(viewsets.ModelViewSet):
         return Response(self.get_serializer(assessment).data)
 
 
-class PatientIdentifierViewSet(viewsets.ModelViewSet):
+class PatientIdentifierViewSet(AuditReadMixin, viewsets.ModelViewSet):
     queryset = PatientIdentifier.objects.select_related("patient").all()
     serializer_class = PatientIdentifierSerializer
+    audit_resource_type = "PatientIdentifier"
 
     def get_permissions(self):
         permission = "mpi.read" if self.action in {"list", "retrieve"} else "mpi.write"
         return [IsAuthenticated(), HasPermission(permission)]
 
 
-class DuplicatePatientCandidateViewSet(viewsets.ReadOnlyModelViewSet):
+class DuplicatePatientCandidateViewSet(AuditReadMixin, viewsets.ReadOnlyModelViewSet):
     queryset = DuplicatePatientCandidate.objects.select_related(
         "patient_a", "patient_b", "reviewed_by"
     ).all()
     serializer_class = DuplicatePatientCandidateSerializer
+    audit_resource_type = "DuplicatePatientCandidate"
 
     def get_permissions(self):
         permission = "mpi.read" if self.action in {"list", "retrieve"} else "mpi.review"
@@ -501,9 +505,10 @@ class ScheduleConfigViewSet(viewsets.ModelViewSet):
         return [IsAuthenticated(), HasPermission(permission)]
 
 
-class AppointmentViewSet(viewsets.ModelViewSet):
+class AppointmentViewSet(AuditReadMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasPermission("schedule.read")]  # type: ignore[list-item]
     serializer_class = AppointmentSerializer
+    audit_resource_type = "Appointment"
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     ordering = ["start_time"]
 
@@ -950,11 +955,12 @@ class EncounterViewSet(AuditReadMixin, viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class SOAPNoteViewSet(viewsets.ModelViewSet):
+class SOAPNoteViewSet(AuditReadMixin, viewsets.ModelViewSet):
     """Notas SOAP — somente PATCH, nunca DELETE"""
 
     queryset = SOAPNote.objects.select_related("encounter").all()
     serializer_class = SOAPNoteSerializer
+    audit_resource_type = "SOAPNote"
     permission_classes = [IsAuthenticated, HasPermission("emr.write")]  # type: ignore[list-item]
     http_method_names = ["get", "patch", "head", "options"]
 
@@ -972,11 +978,12 @@ class SOAPNoteViewSet(viewsets.ModelViewSet):
         )
 
 
-class VitalSignsViewSet(viewsets.ModelViewSet):
+class VitalSignsViewSet(AuditReadMixin, viewsets.ModelViewSet):
     """Sinais vitais"""
 
     queryset = VitalSigns.objects.select_related("encounter").all()
     serializer_class = VitalSignsSerializer
+    audit_resource_type = "VitalSigns"
     permission_classes = [IsAuthenticated, HasPermission("emr.write")]  # type: ignore[list-item]
     http_method_names = ["get", "patch", "head", "options"]
 
@@ -991,11 +998,12 @@ class VitalSignsViewSet(viewsets.ModelViewSet):
         )
 
 
-class ClinicalDocumentViewSet(viewsets.ModelViewSet):
+class ClinicalDocumentViewSet(AuditReadMixin, viewsets.ModelViewSet):
     """Documentos clínicos — atestado, receita, encaminhamento"""
 
     queryset = ClinicalDocument.objects.select_related("encounter", "signed_by").all()
     serializer_class = ClinicalDocumentSerializer
+    audit_resource_type = "ClinicalDocument"
     permission_classes = [IsAuthenticated, HasPermission("emr.write")]  # type: ignore[list-item]
     filter_backends = [DjangoFilterBackend]
 
@@ -1100,10 +1108,11 @@ class ClinicalFormTemplateViewSet(viewsets.ModelViewSet):
         return Response(self.get_serializer(new_template).data, status=status.HTTP_201_CREATED)
 
 
-class ClinicalFormResponseViewSet(viewsets.ModelViewSet):
+class ClinicalFormResponseViewSet(AuditReadMixin, viewsets.ModelViewSet):
     """Respostas de formulário/anamnese preenchidas, vinculadas a um Encounter."""
 
     serializer_class = ClinicalFormResponseSerializer
+    audit_resource_type = "ClinicalFormResponse"
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["template", "encounter", "patient"]
     http_method_names = ("get", "post", "head", "options")
@@ -1134,6 +1143,7 @@ class ClinicalFormResponseViewSet(viewsets.ModelViewSet):
 
 
 class EncounterAddendumViewSet(
+    AuditReadMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
@@ -1150,6 +1160,7 @@ class EncounterAddendumViewSet(
         "author", "signed_by", "previous_addendum"
     ).all()
     serializer_class = EncounterAddendumSerializer
+    audit_resource_type = "EncounterAddendum"
     permission_classes = [IsAuthenticated, HasPermission("emr.write")]  # type: ignore[list-item]
 
     def get_queryset(self):
@@ -1199,10 +1210,11 @@ class LabTestViewSet(viewsets.ModelViewSet):
         instance.save(update_fields=["active", "updated_at"])
 
 
-class LabOrderViewSet(viewsets.ModelViewSet):
+class LabOrderViewSet(AuditReadMixin, viewsets.ModelViewSet):
     """Pedido, coleta, resultado e validação de exames laboratoriais."""
 
     serializer_class = LabOrderSerializer
+    audit_resource_type = "LabOrder"
     permission_classes = [IsAuthenticated, HasPermission("emr.read")]  # type: ignore[list-item]
     http_method_names = ["get", "post", "patch", "head", "options"]
 
@@ -1383,7 +1395,7 @@ class LabOrderViewSet(viewsets.ModelViewSet):
         summary="Detalha um alerta de delta-check", responses=LabDeltaAlertSerializer
     ),
 )
-class LabDeltaAlertViewSet(viewsets.ReadOnlyModelViewSet):
+class LabDeltaAlertViewSet(AuditReadMixin, viewsets.ReadOnlyModelViewSet):
     """A3-T3 — read-only feed of laboratory delta-check alerts (emr.read).
 
     Alerts are raised by ``run_delta_check`` when a numeric result varies from
@@ -1393,6 +1405,7 @@ class LabDeltaAlertViewSet(viewsets.ReadOnlyModelViewSet):
     """
 
     serializer_class = LabDeltaAlertSerializer
+    audit_resource_type = "LabDeltaAlert"
     permission_classes = [IsAuthenticated, HasPermission("emr.read")]  # type: ignore[list-item]
 
     def get_queryset(self):
@@ -1411,10 +1424,11 @@ class LabDeltaAlertViewSet(viewsets.ReadOnlyModelViewSet):
 # ─── Sprint 7 (S-015): Prescription ───────────────────────────────────────────
 
 
-class PrescriptionViewSet(viewsets.ModelViewSet):
+class PrescriptionViewSet(AuditReadMixin, viewsets.ModelViewSet):
     """Receitas médicas — criação, listagem, assinatura."""
 
     serializer_class = PrescriptionSerializer
+    audit_resource_type = "Prescription"
 
     def get_queryset(self):
         qs = Prescription.objects.select_related(
@@ -1536,10 +1550,11 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         return Response(PrescriptionSerializer(rx).data)
 
 
-class PrescriptionItemViewSet(viewsets.ModelViewSet):
+class PrescriptionItemViewSet(AuditReadMixin, viewsets.ModelViewSet):
     """Itens de receita — CRUD dentro de uma receita."""
 
     serializer_class = PrescriptionItemSerializer
+    audit_resource_type = "PrescriptionItem"
 
     def get_permissions(self):
         return [IsAuthenticated(), HasPermission("emr.write")]

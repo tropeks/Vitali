@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { getAccessToken } from '@/lib/auth';
 
 export interface TUSSSuggestion {
   tuss_code: string;
@@ -42,15 +41,9 @@ export default function TUSSSuggestionInline({ description, guideType = '', onSe
     abortRef.current = controller;
 
     try {
-      const token = getAccessToken();
-      if (!token) {
-        setState({ kind: 'idle' });
-        return;
-      }
-
       const res = await fetch('/api/v1/ai/tuss-suggest/', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ description: desc, guide_type: guideType }),
         signal: controller.signal,
       });
@@ -117,11 +110,9 @@ export default function TUSSSuggestionInline({ description, guideType = '', onSe
 
   const postFeedback = (suggestion: TUSSSuggestion) => {
     if (!suggestion.suggestion_id) return;
-    const token = getAccessToken();
-    if (!token) return;
     fetch('/api/v1/ai/tuss-suggest/feedback/', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ suggestion_id: suggestion.suggestion_id, accepted: true }),
     }).catch(() => {
       // Fire-and-forget: feedback loss is acceptable, do not surface errors to user.

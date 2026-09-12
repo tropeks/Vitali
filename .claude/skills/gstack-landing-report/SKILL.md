@@ -1,0 +1,1 @@
+/home/rcosta00/dev/vitali/.claude/skills/gstack/landing-report/SKILL.md

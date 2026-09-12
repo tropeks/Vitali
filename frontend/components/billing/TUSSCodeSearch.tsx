@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { getAccessToken } from '@/lib/auth';
 
 export interface TUSSOption {
   id: number;
@@ -37,12 +36,8 @@ export default function TUSSCodeSearch({ value, onChange, placeholder = 'Buscar 
 
   const search = useCallback((q: string) => {
     if (!q.trim()) { setResults([]); setOpen(false); return; }
-    const token = getAccessToken();
-    if (!token) return;
     setLoading(true);
-    fetch(`/api/v1/billing/tuss/?q=${encodeURIComponent(q)}&page_size=20`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    fetch(`/api/v1/billing/tuss/?q=${encodeURIComponent(q)}&page_size=20`)
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(data => {
         const items: TUSSOption[] = (Array.isArray(data) ? data : data.results ?? []).map((r: any) => ({

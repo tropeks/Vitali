@@ -5,6 +5,7 @@
 
 import fs from "fs";
 import { requireApiKey } from "./auth";
+import { receiptedFetch } from "./receipted-fetch";
 
 export interface CheckResult {
   pass: boolean;
@@ -22,7 +23,7 @@ export async function checkMockup(imagePath: string, brief: string): Promise<Che
   const timeout = setTimeout(() => controller.abort(), 60_000);
 
   try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await receiptedFetch("check-screenshot-request", "https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${apiKey}`,
@@ -63,6 +64,10 @@ export async function checkMockup(imagePath: string, brief: string): Promise<Che
 
     if (!response.ok) {
       const error = await response.text();
+      if (response.status === 403 && error.includes("organization must be verified")) {
+        console.error("OpenAI organization verification required. Go to https://platform.openai.com/settings/organization to verify.");
+        return { pass: true, issues: "OpenAI org not verified — vision check skipped" };
+      }
       // Non-blocking: if vision check fails, default to PASS with warning
       console.error(`Vision check API error (${response.status}): ${error}`);
       return { pass: true, issues: "Vision check unavailable — skipped" };

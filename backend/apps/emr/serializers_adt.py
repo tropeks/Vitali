@@ -170,7 +170,11 @@ class AdmissionSerializer(serializers.ModelSerializer):
             "expected_discharge_datetime",
             "actual_discharge_datetime",
             "isolation_precaution",
+            "carater_atendimento",
+            "tipo_internacao",
+            "regime_internacao",
             "disposition",
+            "disposition_ans_code",
             "status",
             "created_at",
             "updated_at",
@@ -180,6 +184,7 @@ class AdmissionSerializer(serializers.ModelSerializer):
             "current_bed",
             "actual_discharge_datetime",
             "disposition",
+            "disposition_ans_code",
             "status",
             "created_at",
             "updated_at",
@@ -191,6 +196,9 @@ class AdmissionDischargeSerializer(serializers.Serializer):
 
     disposition = serializers.ChoiceField(choices=Admission.Disposition.choices)
     actual_discharge_datetime = serializers.DateTimeField(required=False)
+    disposition_ans_code = serializers.ChoiceField(
+        choices=Admission.MotivoEncerramento.choices, required=False, allow_blank=True
+    )
     reason = serializers.CharField(required=False, allow_blank=True)
 
 

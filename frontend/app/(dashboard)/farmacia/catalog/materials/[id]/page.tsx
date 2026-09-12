@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { getAccessToken } from '@/lib/auth'
 
 function extractError(err: any): string {
   if (typeof err === 'string') return err
@@ -35,8 +34,7 @@ export default function MaterialDetailPage() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    const token = getAccessToken()
-    fetch(`/api/v1/pharmacy/materials/${id}/`, { headers: { Authorization: `Bearer ${token}` } })
+    fetch(`/api/v1/pharmacy/materials/${id}/`, { headers: {} })
       .then(r => r.json())
       .then(d => { setMaterial(d); setForm(d) })
       .finally(() => setLoading(false))
@@ -46,11 +44,9 @@ export default function MaterialDetailPage() {
     setSaving(true)
     setError('')
     try {
-      const token = getAccessToken()
-      if (!token) { setError('Sessão expirada'); setSaving(false); return }
       const res = await fetch(`/api/v1/pharmacy/materials/${id}/`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
       })
       if (!res.ok) { setError(extractError(await res.json())); return }
@@ -63,12 +59,9 @@ export default function MaterialDetailPage() {
 
   const handleDeactivate = async () => {
     if (!confirm('Desativar este material?')) return
-    const token = getAccessToken()
-    if (!token) { router.push('/login'); return }
     const res = await fetch(`/api/v1/pharmacy/materials/${id}/`, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
-    })
+          })
     if (res.ok || res.status === 204) router.push('/farmacia/catalog')
   }
 

@@ -12,16 +12,39 @@
  * AskUserQuestion and persists the preference via gstack-config.
  */
 import type { TemplateContext } from './types';
+import { getHostConfig } from '../../hosts/index';
 
-export function generateLearningsSearch(ctx: TemplateContext): string {
-  if (ctx.host === 'codex') {
-    // Codex: simpler version, no cross-project, uses $GSTACK_BIN
+// Whitelist for query= macro values. Allows alphanumeric, space, hyphen, underscore.
+// Anything else (e.g. $, backticks, quotes, ;) is a shell-injection vector when the
+// emitted bash interpolates the value into `--query "${queryArg}"`. Static template
+// queries hand-written in gstack are safe, but the resolver API must defend against
+// future contributors writing dangerous values.
+const QUERY_SAFE_RE = /^[A-Za-z0-9 _-]+$/;
+
+export function generateLearningsSearch(ctx: TemplateContext, args?: string[]): string {
+  // Parse query= arg. Empty value falls through to no-query (principle of least surprise:
+  // a stray {{LEARNINGS_SEARCH:query=}} placeholder gets today's behavior, not a build error).
+  const queryArg = (args || [])
+    .filter(a => a.startsWith('query='))
+    .map(a => a.slice(6))
+    .filter(Boolean)[0];
+  if (queryArg && !QUERY_SAFE_RE.test(queryArg)) {
+    throw new Error(
+      `{{LEARNINGS_SEARCH:query=...}} value must match ${QUERY_SAFE_RE} (alphanumeric, space, hyphen, underscore). Got: ${JSON.stringify(queryArg)}`
+    );
+  }
+  const queryFlag = queryArg ? ` --query "${queryArg}"` : '';
+
+  if (getHostConfig(ctx.host).learningsMode === 'basic') {
+    // Basic learnings mode (host config learningsMode: 'basic' — every host
+    // except claude and factory): simpler version, no cross-project prompt,
+    // uses $GSTACK_BIN (all basic hosts are env-var hosts)
     return `## Prior Learnings
 
 Search for relevant learnings from previous sessions on this project:
 
 \`\`\`bash
-$GSTACK_BIN/gstack-learnings-search --limit 10 2>/dev/null || true
+$GSTACK_BIN/gstack-learnings-search --limit 10${queryFlag} 2>/dev/null || true
 \`\`\`
 
 If learnings are found, incorporate them into your analysis. When a review finding
@@ -36,9 +59,9 @@ Search for relevant learnings from previous sessions:
 _CROSS_PROJ=$(${ctx.paths.binDir}/gstack-config get cross_project_learnings 2>/dev/null || echo "unset")
 echo "CROSS_PROJECT: $_CROSS_PROJ"
 if [ "$_CROSS_PROJ" = "true" ]; then
-  ${ctx.paths.binDir}/gstack-learnings-search --limit 10 --cross-project 2>/dev/null || true
+  ${ctx.paths.binDir}/gstack-learnings-search --limit 10${queryFlag} --cross-project 2>/dev/null || true
 else
-  ${ctx.paths.binDir}/gstack-learnings-search --limit 10 2>/dev/null || true
+  ${ctx.paths.binDir}/gstack-learnings-search --limit 10${queryFlag} 2>/dev/null || true
 fi
 \`\`\`
 
@@ -68,7 +91,7 @@ smarter on their codebase over time.`;
 }
 
 export function generateLearningsLog(ctx: TemplateContext): string {
-  const binDir = ctx.host === 'codex' ? '$GSTACK_BIN' : ctx.paths.binDir;
+  const binDir = ctx.paths.binDir; // env-var hosts already resolve to $GSTACK_BIN via types.ts
 
   return `## Capture Learnings
 
@@ -80,7 +103,8 @@ ${binDir}/gstack-learnings-log '{"skill":"${ctx.skillName}","type":"TYPE","key":
 \`\`\`
 
 **Types:** \`pattern\` (reusable approach), \`pitfall\` (what NOT to do), \`preference\`
-(user stated), \`architecture\` (structural decision), \`tool\` (library/framework insight).
+(user stated), \`architecture\` (structural decision), \`tool\` (library/framework insight),
+\`operational\` (project environment/CLI/workflow knowledge).
 
 **Sources:** \`observed\` (you found this in the code), \`user-stated\` (user told you),
 \`inferred\` (AI deduction), \`cross-model\` (both Claude and Codex agree).

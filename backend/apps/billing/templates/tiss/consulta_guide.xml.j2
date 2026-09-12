@@ -1,37 +1,48 @@
-{# Consulta Guide fragment — TISS 4.01.00 #}
+{# Guia de Consulta — TISS 4.01.00 (ctm_consultaGuia, tissGuiasV4_01_00.xsd).
+   Rewritten against the real XSD (was emitting <dadosConsulta>/<nomeBeneficiario>,
+   neither of which exists in 4.01.00 — see billing 2.4 audit).
+   xml_engine.generate_guide_xml() guarantees exactly one `item` is passed in:
+   ctm_consultaGuia models a single <procedimento>, not a repeatable list. #}
 <ans:guiaConsulta>
-  <ans:cabecalhoGuia>
+  <ans:cabecalhoConsulta>
     <ans:registroANS>{{ guide.provider.ans_code }}</ans:registroANS>
     <ans:numeroGuiaPrestador>{{ guide.guide_number }}</ans:numeroGuiaPrestador>
-    <ans:numeroGuiaOperadora>{{ guide.guide_number }}</ans:numeroGuiaOperadora>
-    <ans:dataAutorizacao>{{ guide.created_at | format_date }}</ans:dataAutorizacao>
-    <ans:senhaAutorizacao>{{ guide.authorization_number or '' }}</ans:senhaAutorizacao>
+  </ans:cabecalhoConsulta>
+  <ans:dadosBeneficiario>
     <ans:numeroCarteira>{{ guide.insured_card_number }}</ans:numeroCarteira>
-    <ans:nomeBeneficiario>{{ guide.patient.full_name | truncate(70, false, '') }}</ans:nomeBeneficiario>
-    <ans:dataNascimentoBeneficiario>{{ guide.patient.birth_date | format_date }}</ans:dataNascimentoBeneficiario>
-    <ans:codigoCBO>{{ professional.cbo_code if professional else '225120' }}</ans:codigoCBO>
-    <ans:CNES>{{ professional.cnes_code if professional else '' }}</ans:CNES>
+    {# atendimentoRN (recém-nascido): não há dado de origem no model — "N" é o
+       default seguro (a grande maioria dos atendimentos não é de RN). #}
+    <ans:atendimentoRN>N</ans:atendimentoRN>
+  </ans:dadosBeneficiario>
+  <ans:contratadoExecutante>
+    {# codigoPrestadorNaOperadora: mesmo placeholder do cabeçalho do lote —
+       ver comentário em batch_envelope.xml.j2. #}
+    <ans:codigoPrestadorNaOperadora>{{ executante_cnes }}</ans:codigoPrestadorNaOperadora>
+    <ans:CNES>{{ executante_cnes }}</ans:CNES>
+  </ans:contratadoExecutante>
+  <ans:profissionalExecutante>
+    <ans:conselhoProfissional>{{ professional.council_type | conselho_ans_code if professional else '' }}</ans:conselhoProfissional>
+    <ans:numeroConselhoProfissional>{{ professional.council_number if professional else '' }}</ans:numeroConselhoProfissional>
+    <ans:UF>{{ professional.council_state | uf_ibge_code if professional else '' }}</ans:UF>
+    <ans:CBOS>{{ professional.cbo_code if professional else '225120' }}</ans:CBOS>
+  </ans:profissionalExecutante>
+  {# indicacaoAcidente (dm_indicadorAcidente): sem dado de origem no model —
+     "9" (Não acidente) é o default TISS-padrão, igual ao já usado no
+     <indicadorAcidente> do diagnóstico antes desta correção. #}
+  <ans:indicacaoAcidente>9</ans:indicacaoAcidente>
+  <ans:dadosAtendimento>
+    {# regimeAtendimento (dm_regimeAtendimento): "01" = Ambulatorial — é o
+       único regime plausível para uma guia de consulta (o model não
+       distingue regimes). #}
+    <ans:regimeAtendimento>01</ans:regimeAtendimento>
     <ans:dataAtendimento>{{ guide.encounter.encounter_date | format_date }}</ans:dataAtendimento>
-  </ans:cabecalhoGuia>
-  <ans:dadosConsulta>
-{% for item in guide.items.all() %}
-    <ans:procedimentoRealizado>
+    {# tipoConsulta (dm_tipoConsulta): "1" = Primeira — o model não distingue
+       primeira consulta de retorno; default fixo, flagged como limitação. #}
+    <ans:tipoConsulta>1</ans:tipoConsulta>
+    <ans:procedimento>
       <ans:codigoTabela>22</ans:codigoTabela>
       <ans:codigoProcedimento>{{ item.tuss_code.code }}</ans:codigoProcedimento>
-      <ans:descricaoProcedimento>{{ item.description | truncate(100, false, '') }}</ans:descricaoProcedimento>
-      <ans:quantidadeRealizada>{{ item.quantity | format_decimal }}</ans:quantidadeRealizada>
-      <ans:valorUnitario>{{ item.unit_value | format_currency }}</ans:valorUnitario>
-      <ans:valorTotal>{{ item.total_value | format_currency }}</ans:valorTotal>
-    </ans:procedimentoRealizado>
-{% endfor %}
-  </ans:dadosConsulta>
-  <ans:valorTotal>
-    <ans:valorTotalGeral>{{ guide.total_value | format_currency }}</ans:valorTotalGeral>
-  </ans:valorTotal>
-{% for cid in guide.cid10_codes %}
-  <ans:diagnostico>
-    <ans:codigoDiagnostico>{{ cid.code }}</ans:codigoDiagnostico>
-    <ans:indicadorAcidente>N</ans:indicadorAcidente>
-  </ans:diagnostico>
-{% endfor %}
+      <ans:valorProcedimento>{{ item.total_value | format_currency }}</ans:valorProcedimento>
+    </ans:procedimento>
+  </ans:dadosAtendimento>
 </ans:guiaConsulta>

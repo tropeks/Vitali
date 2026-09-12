@@ -3,8 +3,9 @@
  * - Unauthenticated users hitting protected app routes are redirected to /login
  * - Authenticated users hitting /login are redirected to /dashboard
  * - Every browser-facing response carries a Content-Security-Policy (issue #115)
- *   plus static hardening headers. CSP ships Report-Only by default and only
- *   becomes enforcing when CSP_ENFORCE=true (post-soak promotion).
+ *   plus static hardening headers. CSP enforces by default (item 3.8, Onda 3 —
+ *   promoted once the JWT stopped being client-readable); set CSP_ENFORCE=false
+ *   to fall back to Report-Only if a false positive needs triage in prod.
  */
 import { NextRequest, NextResponse } from "next/server";
 
@@ -36,6 +37,17 @@ const PROTECTED_PATH_PREFIXES = [
 // unreachable report-uri would flood the console. It is emitted for every other
 // environment (preview/staging/production) so the prod-like soak is representative.
 const CSP_ENABLED = process.env.NODE_ENV !== "development";
+// Item 3.8 (Onda 3): the JWT is no longer readable by client JS (no
+// access_token_js mirror), which sharply cuts what an XSS can exfiltrate —
+// enforcing CSP is safe to default on. Ops can still opt back to Report-Only
+// Opt-in on purpose. lib/security/csp.ts documents the rollout this project
+// chose: ship Report-Only, confirm a clean soak against the violation
+// collector, THEN promote. No soak has happened yet — production has never
+// booted, so the collector has never received a single report. Flipping the
+// default here would enforce a policy nobody has observed, and a blocked
+// legitimate resource takes the app down. Removing access_token_js (item 3.8)
+// already cut the XSS payoff from full-token exfiltration, which lowers the
+// urgency. Promote with CSP_ENFORCE=true after the soak.
 const CSP_ENFORCE = process.env.CSP_ENFORCE === "true";
 
 function pathMatches(pathname: string, prefix: string): boolean {

@@ -10,6 +10,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.mixins import AuditReadMixin
 from apps.core.models import AuditLog
 from apps.core.permissions import HasPermission
 
@@ -88,8 +89,9 @@ class LISInboundView(APIView):
         )
 
 
-class LabIntegrationMessageViewSet(viewsets.ReadOnlyModelViewSet):
+class LabIntegrationMessageViewSet(AuditReadMixin, viewsets.ReadOnlyModelViewSet):
     serializer_class = LabIntegrationMessageSerializer
+    audit_resource_type = "LabIntegrationMessage"
     permission_classes = [IsAuthenticated, HasPermission("emr.read")]  # type: ignore[list-item]
 
     def get_queryset(self):

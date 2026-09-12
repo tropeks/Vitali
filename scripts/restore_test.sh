@@ -77,11 +77,21 @@ esac
 
 # ── 3. Spin an ephemeral Postgres and restore ───────────────────────────────
 echo "[restore-test] Starting ephemeral Postgres (${PG_IMAGE})…"
+# NAO sobrescreva unix_socket_directories aqui. O entrypoint da imagem sobe um
+# servidor TEMPORARIO para criar POSTGRES_DB/POSTGRES_USER e conversa com ele por
+# `psql` SEM `-h` — ou seja, pelo diretorio de socket compilado no binario
+# (/var/run/postgresql). Mover o socket do servidor quebra essa conversa interna,
+# que nao aceita parametro nosso, e o container morre com exit=2 na inicializacao:
+#   psql: error: connection to server on socket "/var/run/postgresql/.s.PGSQL.5432"
+#         failed: No such file or directory
+# Medido em 2026-09-11, ordem 003: era por isso que o drill nunca passava da
+# espera por readiness. O default ja e gravavel; o override nao resolvia nada e
+# custava a inicializacao inteira.
 docker run -d --name "${CONTAINER}" \
   -e PGDATA=/tmp/pgdata \
   -e POSTGRES_PASSWORD="${PG_PASSWORD}" \
   -e POSTGRES_USER=vitali -e POSTGRES_DB=vitali \
-  "${PG_IMAGE}" postgres -c unix_socket_directories=/var/lib/postgresql/data >/dev/null
+  "${PG_IMAGE}" >/dev/null
 
 echo "[restore-test] Waiting for readiness…"
 for _ in $(seq 1 "$((READY_TIMEOUT_SECONDS / 2))"); do
@@ -95,30 +105,101 @@ docker cp "${DUMP}" "${CONTAINER}:/tmp/restore.dump"
 # pg_restore returns non-zero on benign warnings; we judge success by the sanity
 # checks below, not by its exit code, but we still surface its stderr.
 docker exec -e PGPASSWORD="${PG_PASSWORD}" "${CONTAINER}" \
-  pg_restore --no-owner --no-privileges --dbname=vitali --username=vitali /tmp/restore.dump \
+  pg_restore --host=127.0.0.1 --port=5432 --no-owner --no-privileges --dbname=vitali --username=vitali /tmp/restore.dump \
   2>"${WORKDIR}/restore.err" || echo "[restore-test] (pg_restore reported warnings — validating by content)"
 
+# Explicit TCP (127.0.0.1:5432), matching the readiness probe above. psql and
+# pg_restore have their own compiled-in default socket directory when no
+# -h/--host is given, and it need not match the server's — forcing TCP
+# everywhere removes that ambiguity instead of relying on both sides agreeing by
+# luck. This reasoning was always right; what was wrong was ALSO moving the
+# server's socket (see the `docker run` above), which broke the one conversation
+# we cannot pass -h to: the image entrypoint talking to its own temporary server.
 q() { docker exec -e PGPASSWORD="${PG_PASSWORD}" "${CONTAINER}" \
-  psql -tAX -U vitali -d vitali -c "$1" 2>/dev/null | tr -d '[:space:]'; }
+  psql -h 127.0.0.1 -p 5432 -tAX -U vitali -d vitali -c "$1" 2>/dev/null | tr -d '[:space:]'; }
+
+# Like q() but preserves one row per line — for multi-row results (e.g. the
+# list of tenant schema names below). q() intentionally strips ALL whitespace
+# including newlines, which would concatenate rows into one unusable string.
+q_rows() { docker exec -e PGPASSWORD="${PG_PASSWORD}" "${CONTAINER}" \
+  psql -h 127.0.0.1 -p 5432 -tAX -U vitali -d vitali -c "$1" 2>/dev/null; }
 
 # ── 4. Sanity checks ────────────────────────────────────────────────────────
 echo "[restore-test] Running sanity checks…"
 
-MIGRATIONS="$(q "SELECT count(*) FROM django_migrations;")"
+# ── set -e, pipefail e as checagens abaixo ──────────────────────────────────
+# Toda captura de resultado aqui usa a forma `X="$(...)" || X=""`, e isso NAO e
+# estilo: o script roda com `set -euo pipefail`, entao uma consulta que falha
+# derruba o script na hora da ATRIBUICAO — antes da linha seguinte, que e
+# justamente quem sabe o que fazer com o resultado vazio.
+#
+# Era o defeito que impedia o drill de passar (medido em 2026-09-11, ordem 003):
+# `core_tenant` devolve `public` e `demo`, e `public.emr_patient` NAO EXISTE por
+# construcao (apps.emr e TENANT_APP — ver vitali/settings/base.py), entao o
+# primeiro `SELECT` da primeira iteracao falhava, o `pipefail` propagava, e o
+# `set -e` matava tudo em silencio. O `else` logo abaixo, escrito exatamente
+# para esse caso, era inalcancavel — como eram inalcancaveis as mensagens de
+# `fail` cuidadosas destas checagens.
+
+MIGRATIONS="$(q "SELECT count(*) FROM django_migrations;")" || MIGRATIONS=""
 [ -n "${MIGRATIONS}" ] && [ "${MIGRATIONS}" -gt 0 ] 2>/dev/null \
   || fail "django_migrations empty or missing (got: '${MIGRATIONS:-none}')"
 echo "  ✓ django_migrations rows: ${MIGRATIONS}"
 
-# Tenants live in the public schema (django-tenants). Table name: tenants_tenant.
-TENANTS="$(q "SELECT count(*) FROM tenants_tenant;")"
+# Tenants live in the public schema — apps.core is in SHARED_APPS (see
+# vitali/settings/base.py). apps.core.models.Tenant declares no db_table, so
+# Django's default naming applies: <app_label>_<model_name> = core_tenant.
+TENANTS="$(q "SELECT count(*) FROM core_tenant;")" || TENANTS=""
 if [ -n "${TENANTS}" ] && [ "${TENANTS}" -ge 0 ] 2>/dev/null; then
-  echo "  ✓ tenants_tenant rows: ${TENANTS}"
+  echo "  ✓ core_tenant rows: ${TENANTS}"
 else
-  fail "tenants_tenant not restorable (got: '${TENANTS:-none}')"
+  fail "core_tenant not restorable (got: '${TENANTS:-none}')"
 fi
 
-# At least one tenant schema OR the public schema should hold core tables.
-SCHEMAS="$(q "SELECT count(*) FROM information_schema.schemata WHERE schema_name NOT IN ('pg_catalog','information_schema','pg_toast');")"
+# A restore that keeps the public schema (migrations ✓, core_tenant rows ✓)
+# can still have silently lost every patient in every clinic — django-tenants
+# isolates clinical data per tenant in its own Postgres schema, named after
+# Tenant.schema_name (== the clinic's slug; NOT a fixed/predictable value —
+# see Tenant.save() in apps/core/models.py). Discover the real schema names
+# from core_tenant and require at least one to actually contain emr_patient
+# rows (apps.emr is in TENANT_APPS — see vitali/settings/base.py — so
+# emr_patient lives inside each tenant schema, never in public).
+if [ "${TENANTS:-0}" != "0" ]; then
+  TENANT_SCHEMAS="$(q_rows "SELECT schema_name FROM core_tenant;")" || TENANT_SCHEMAS=""
+  FOUND_CLINICAL_DATA=0
+  while IFS= read -r SCHEMA; do
+    [ -n "${SCHEMA}" ] || continue
+    case "${SCHEMA}" in
+      *[!A-Za-z0-9_-]*)
+        echo "  ! skipping schema with unexpected characters in name: '${SCHEMA}'" >&2
+        continue
+        ;;
+    esac
+    # Identifier is double-quoted (never string-interpolated as a literal), so
+    # a hyphenated schema name (SlugField allows '-') stays a safe, single
+    # identifier rather than SQL syntax.
+    PATIENTS="$(docker exec -e PGPASSWORD="${PG_PASSWORD}" "${CONTAINER}" \
+      psql -h 127.0.0.1 -p 5432 -tAX -U vitali -d vitali \
+      -c "SELECT count(*) FROM \"${SCHEMA}\".emr_patient;" 2>/dev/null | tr -d '[:space:]')" \
+      || PATIENTS=""
+    if [ -n "${PATIENTS}" ] && [ "${PATIENTS}" -gt 0 ] 2>/dev/null; then
+      echo "  ✓ schema '${SCHEMA}' emr_patient rows: ${PATIENTS}"
+      FOUND_CLINICAL_DATA=1
+      break
+    else
+      echo "  · schema '${SCHEMA}' emr_patient rows: ${PATIENTS:-0} (table missing, or tenant has no patients yet)"
+    fi
+  done <<< "${TENANT_SCHEMAS}"
+  [ "${FOUND_CLINICAL_DATA}" -eq 1 ] \
+    || fail "no tenant schema has emr_patient rows — clinical data is missing from the restore"
+else
+  echo "  · no tenants present — skipping clinical-data check (nothing to validate yet)"
+fi
+
+# Supplementary signal only (NOT authoritative on its own — a schema can exist
+# and still be empty of clinical data, which is exactly what the check above
+# catches). Total restored schema count, tenant + public + anything else.
+SCHEMAS="$(q "SELECT count(*) FROM information_schema.schemata WHERE schema_name NOT IN ('pg_catalog','information_schema','pg_toast');")" || SCHEMAS=""
 echo "  ✓ schemas present: ${SCHEMAS}"
 
 echo "[restore-test] ✓ PASS — backup '$(basename "${ARTIFACT}")' restored and validated."

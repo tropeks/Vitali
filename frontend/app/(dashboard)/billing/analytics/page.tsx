@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { getAccessToken } from '@/lib/auth';
 import BillingKPICard from '@/components/billing/BillingKPICard';
 import RevenueChart from '@/components/billing/RevenueChart';
 import DenialByInsurerChart from '@/components/billing/DenialByInsurerChart';
@@ -11,11 +10,8 @@ import GlosaAccuracyTable from '@/components/billing/GlosaAccuracyTable';
 // ─── Data fetching ───────────────────────────────────────────────────────────
 
 function apiFetch(path: string) {
-  const token = getAccessToken();
-  if (!token) return Promise.reject(new Error('Sessão expirada'));
   return fetch(`/api/v1${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  }).then(r => {
+      }).then(r => {
     if (!r.ok) throw new Error(`${r.status}`);
     return r.json();
   });

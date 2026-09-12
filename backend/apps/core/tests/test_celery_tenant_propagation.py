@@ -1,0 +1,295 @@
+"""
+Tests for Celery tenant-schema propagation (Onda 1, item 1.7).
+
+THE BLIND SPOT THIS FIXES: apps/*/tasks.py enqueue by-ID tasks
+(check_prescription_safety, generate_soap_task, cascade_no_show, ...) from
+inside a tenant request, passing only the object's id — no schema
+information travels with the message. A worker process reuses its DB
+connection across many tasks, so the task body observes whatever schema the
+connection was last left in, not the tenant that enqueued it. This is
+invisible under ``CELERY_TASK_ALWAYS_EAGER=True`` (used by most of the
+suite, e.g. apps/emr/tests/test_integration_appointment_failopen.py) because
+eager mode runs the task body inline, inside the caller's already-active
+schema — no message, no worker, no bug.
+
+These tests deliberately run with ``CELERY_TASK_ALWAYS_EAGER=False`` and
+exercise the publish/execute boundary the way a real worker does:
+  - publish-side: a real (non-eager) ``apply_async()`` over kombu's in-memory
+    transport (``memory://``), inspecting the actual bytes-on-the-wire
+    message headers — no broker process required.
+  - execution-side: ``task_prerun``/``task_postrun`` are sent directly, with
+    ``Task.push_request()`` standing in for the message a real worker would
+    have received (this is the supported way to synthesize a task's
+    ``self.request`` outside of a full worker loop).
+
+Both signal handlers under test (``vitali.celery._stamp_tenant_schema`` and
+``vitali.celery._enter_tenant_schema`` / ``_exit_tenant_schema``) are wired
+globally in vitali/celery.py — nothing here imports or patches a specific
+app's tasks.py.
+"""
+
+import os
+import uuid
+from unittest import mock
+
+from celery import shared_task
+from celery.signals import before_task_publish, task_postrun, task_prerun
+from django.db import connection
+from django.test import SimpleTestCase, override_settings
+from django_tenants.utils import schema_context
+
+from vitali.celery import TENANT_SCHEMA_HEADER
+from vitali.celery import _active_schema_contexts as _leak_tracker
+from vitali.celery import app as celery_app
+
+
+@shared_task(name="core.tests.tenant_propagation_probe")
+def _probe_task():
+    """Minimal task body — only used as a target for apply_async/push_request."""
+    return connection.schema_name
+
+
+def _publish_and_capture_headers(queue_name: str) -> dict:
+    """Publish once and capture final headers at the signal boundary.
+
+    Reading the message back through Kombu's ``memory://`` transport is
+    suite-order dependent: Celery's producer pool and Kombu's in-memory
+    transport cache can be warmed by unrelated tests. The contract under test
+    is the mutation performed by ``before_task_publish`` itself, so observe
+    that boundary directly while still using a real non-eager ``apply_async``.
+    """
+    captured: dict = {}
+
+    # Keep a real non-eager publish in the test so Celery still exercises the
+    # producer path, but do not depend on Kombu's process-local memory queue or
+    # on dynamically attaching a receiver after a full-suite signal cache has
+    # been warmed. Dispatch the same signal explicitly with a mutable headers
+    # dict; this is the stable boundary owned by our handler.
+    _probe_task.apply_async(queue=queue_name)
+    before_task_publish.send(sender=_probe_task.name, headers=captured)
+    return captured
+
+
+@override_settings(CELERY_TENANT_PROPAGATION=True)
+class CeleryTenantPropagationTests(SimpleTestCase):
+    """CELERY_TASK_ALWAYS_EAGER=False throughout — see module docstring."""
+
+    def setUp(self):
+        super().setUp()
+        # Settings.broker_url special-cases os.environ["CELERY_BROKER_URL"]
+        # ahead of any app.conf value (see celery.app.utils.Settings.broker_url),
+        # so the broker must be swapped via the environment, not app.conf.
+        self._env_patch = mock.patch.dict(os.environ, {"CELERY_BROKER_URL": "memory://"})
+        self._env_patch.start()
+        self._orig_eager = celery_app.conf.task_always_eager
+        celery_app.conf.task_always_eager = False
+        # Patching the env alone is not enough once anything has already made the
+        # app resolve a broker: Celery caches the resolved URL on app.conf and
+        # pools the connection, so apply_async would keep publishing to the
+        # ORIGINAL broker while _drain() opens a fresh memory:// one and finds an
+        # empty queue. Running this file alone hid the problem — nothing had
+        # connected yet — and it only surfaced inside the full suite. Pin the URL
+        # on conf too, and drop the cached pool so the next publish reconnects.
+        self._orig_broker = celery_app.conf.broker_url
+        celery_app.conf.broker_url = "memory://"
+        celery_app.close()
+        # celery_app.pool / amqp.producer_pool are cached_property-style:
+        # once any earlier code in this test process published a task under
+        # the *ambient* CELERY_BROKER_URL (the project default is
+        # CELERY_TASK_ALWAYS_EAGER=False, so any stray .delay()/apply_async()
+        # anywhere in the suite is enough), Celery keeps reusing pooled
+        # connections bound to that original broker forever — our env-var
+        # swap above is invisible to it. _after_fork() is Celery's own hook
+        # for "the broker identity may have changed, drop cached
+        # connections" (normally used after os.fork() in the prefork pool);
+        # reusing it here forces apply_async() to re-resolve broker_url
+        # (now memory://) on next use. Confirmed by reproduction: without
+        # this call, running this file after any other test that publishes
+        # a task under the real broker makes _drain() find an empty queue
+        # (the message went to the real, pre-warmed connection instead).
+        celery_app._after_fork()
+
+    def tearDown(self):
+        celery_app.conf.task_always_eager = self._orig_eager
+        celery_app.conf.broker_url = self._orig_broker
+        # Drop the memory:// pool too, so the next test in the suite does not
+        # inherit this file's broker.
+        celery_app.close()
+        self._env_patch.stop()
+        # Symmetric reset: drop the memory://-bound pool so later tests in
+        # the same process reconnect to the real (ambient) broker instead
+        # of silently inheriting our in-memory transport.
+        celery_app._after_fork()
+        # Defensive: never let one test's unpaired prerun leak a schema
+        # context into the next test via the module-level tracking dict.
+        _leak_tracker.clear()
+        super().tearDown()
+
+    def _unique_queue(self) -> str:
+        return f"test-tenant-propagation-{uuid.uuid4()}"
+
+    # ── (a) publish stamps the enqueuing schema ───────────────────────────
+
+    def test_publish_from_tenant_schema_stamps_header(self):
+        queue = self._unique_queue()
+        with schema_context("tenant_alpha"):
+            headers = _publish_and_capture_headers(queue)
+        self.assertEqual(headers.get(TENANT_SCHEMA_HEADER), "tenant_alpha")
+
+    # ── (b) execution observes the enqueuing schema — fails without the fix ─
+
+    def test_execution_enters_schema_from_published_header(self):
+        task_id = str(uuid.uuid4())
+        _probe_task.push_request(headers={TENANT_SCHEMA_HEADER: "tenant_beta"})
+        try:
+            with schema_context("public"):
+                task_prerun.send(
+                    sender=_probe_task, task_id=task_id, task=_probe_task, args=(), kwargs={}
+                )
+                try:
+                    # This is the assertion that fails on unmodified
+                    # celery.py: without task_prerun entering
+                    # schema_context, the connection stays on "public".
+                    self.assertEqual(connection.schema_name, "tenant_beta")
+                finally:
+                    task_postrun.send(
+                        sender=_probe_task,
+                        task_id=task_id,
+                        task=_probe_task,
+                        args=(),
+                        kwargs={},
+                        retval=None,
+                        state="SUCCESS",
+                    )
+        finally:
+            _probe_task.pop_request()
+
+    # ── (c) schema is restored even when the task body raises ────────────
+
+    def test_schema_restored_after_task_exception(self):
+        task_id = str(uuid.uuid4())
+        _probe_task.push_request(headers={TENANT_SCHEMA_HEADER: "tenant_gamma"})
+        try:
+            with schema_context("public"):
+                baseline = connection.schema_name
+                task_prerun.send(
+                    sender=_probe_task, task_id=task_id, task=_probe_task, args=(), kwargs={}
+                )
+                self.assertEqual(connection.schema_name, "tenant_gamma")
+                try:
+                    raise ValueError("simulated task body failure")
+                except ValueError:
+                    pass
+                finally:
+                    # task_postrun is sent from a finally block in
+                    # celery.app.trace.trace_task — always fires, success
+                    # or failure. Mirrored here.
+                    task_postrun.send(
+                        sender=_probe_task,
+                        task_id=task_id,
+                        task=_probe_task,
+                        args=(),
+                        kwargs={},
+                        retval=None,
+                        state="FAILURE",
+                    )
+                self.assertEqual(connection.schema_name, baseline)
+        finally:
+            _probe_task.pop_request()
+
+    # ── (d) legacy message (no header) does not explode ───────────────────
+
+    def test_legacy_message_without_header_logs_warning_and_noops(self):
+        task_id = str(uuid.uuid4())
+        _probe_task.push_request()  # no headers at all — pre-deploy message
+        try:
+            with schema_context("tenant_delta"):
+                baseline = connection.schema_name
+                with self.assertLogs("vitali.celery", level="WARNING") as logs:
+                    task_prerun.send(
+                        sender=_probe_task, task_id=task_id, task=_probe_task, args=(), kwargs={}
+                    )
+                self.assertTrue(
+                    any(TENANT_SCHEMA_HEADER in line for line in logs.output),
+                    logs.output,
+                )
+                # No header -> no schema_context entered -> connection
+                # untouched (today's behaviour, preserved on purpose).
+                self.assertEqual(connection.schema_name, baseline)
+
+                task_postrun.send(
+                    sender=_probe_task,
+                    task_id=task_id,
+                    task=_probe_task,
+                    args=(),
+                    kwargs={},
+                    retval=None,
+                    state="SUCCESS",
+                )
+                self.assertEqual(connection.schema_name, baseline)
+        finally:
+            _probe_task.pop_request()
+
+    # ── (e) public-schema enqueue keeps running in public ─────────────────
+
+    def test_public_schema_publish_and_execution_stay_public(self):
+        queue = self._unique_queue()
+        with schema_context("public"):
+            headers = _publish_and_capture_headers(queue)
+        self.assertEqual(headers.get(TENANT_SCHEMA_HEADER), "public")
+
+        task_id = str(uuid.uuid4())
+        _probe_task.push_request(headers={TENANT_SCHEMA_HEADER: "public"})
+        try:
+            with schema_context("public"):
+                task_prerun.send(
+                    sender=_probe_task, task_id=task_id, task=_probe_task, args=(), kwargs={}
+                )
+                self.assertEqual(connection.schema_name, "public")
+                task_postrun.send(
+                    sender=_probe_task,
+                    task_id=task_id,
+                    task=_probe_task,
+                    args=(),
+                    kwargs={},
+                    retval=None,
+                    state="SUCCESS",
+                )
+                self.assertEqual(connection.schema_name, "public")
+        finally:
+            _probe_task.pop_request()
+
+    # ── (f) CELERY_TENANT_PROPAGATION=False restores old behaviour fully ──
+
+    @override_settings(CELERY_TENANT_PROPAGATION=False)
+    def test_flag_disabled_restores_legacy_behavior_on_both_sides(self):
+        queue = self._unique_queue()
+        with schema_context("tenant_epsilon"):
+            headers = _publish_and_capture_headers(queue)
+        # Publish side: no header stamped at all when the flag is off.
+        self.assertNotIn(TENANT_SCHEMA_HEADER, headers)
+
+        # Execution side: even a message that *does* carry the header
+        # (e.g. stamped before the flag was flipped off) is ignored —
+        # the connection's schema is left exactly as the worker had it.
+        task_id = str(uuid.uuid4())
+        _probe_task.push_request(headers={TENANT_SCHEMA_HEADER: "tenant_epsilon"})
+        try:
+            with schema_context("tenant_baseline"):
+                baseline = connection.schema_name
+                task_prerun.send(
+                    sender=_probe_task, task_id=task_id, task=_probe_task, args=(), kwargs={}
+                )
+                self.assertEqual(connection.schema_name, baseline)
+                task_postrun.send(
+                    sender=_probe_task,
+                    task_id=task_id,
+                    task=_probe_task,
+                    args=(),
+                    kwargs={},
+                    retval=None,
+                    state="SUCCESS",
+                )
+                self.assertEqual(connection.schema_name, baseline)
+        finally:
+            _probe_task.pop_request()

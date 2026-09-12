@@ -12,7 +12,6 @@ import {
   Search,
   ShieldAlert,
 } from 'lucide-react'
-import { getAccessToken } from '@/lib/auth'
 import { ApiError } from '@/lib/api'
 import { isDoseSafetyBlock, type DoseSafetyBlock } from '@/lib/dose-safety'
 import { PRESCRIPTION_STATUS_META, resolveBadgeMeta } from '@/lib/operational-ui'
@@ -92,11 +91,7 @@ function listFromResponse<T>(data: ApiList<T>): T[] {
 }
 
 async function apiGet<T>(path: string): Promise<T> {
-  const token = getAccessToken()
-  if (!token) throw new Error('Sessão expirada')
-  const response = await fetch(`/api/v1${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
+  const response = await fetch(`/api/v1${path}`)
   if (!response.ok) throw new Error(`Falha ${response.status}`)
   return response.json()
 }
@@ -306,18 +301,13 @@ export default function DispensePage() {
   // (HTTP 409 + code:'dose_safety_block') can be detected by the caller.
   const submitDispense = useCallback(async () => {
     if (!selectedItem) return
-    const token = getAccessToken()
-    if (!token) {
-      setError('Sessão expirada')
-      return
-    }
 
     setSaving(true)
     setError('')
     try {
       const response = await fetch('/api/v1/pharmacy/dispense/', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prescription_item_id: selectedItem.id,
           quantity: requestedQty,

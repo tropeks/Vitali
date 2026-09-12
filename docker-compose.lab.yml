@@ -1,0 +1,89 @@
+# docker-compose.lab.yml — staging na lab da Vulcan (192.168.255.72)
+#
+#   docker compose -p vitali-lab \
+#     -f docker-compose.staging.yml -f docker-compose.lab.yml \
+#     --env-file .env.staging up -d
+#
+# A base (docker-compose.staging.yml) foi escrita para o PVE. Este arquivo desfaz o que
+# era do PVE e fixa o que e da lab. Nada aqui muda comportamento de aplicacao.
+#
+# Ordem 001 (.maestro/orders/001-*.md) tem o porque de cada linha.
+
+services:
+  # ── Publicacao ───────────────────────────────────────────────────────────────
+  # A lab publica no IP da LAN, nunca em 0.0.0.0 (AMBIENTES.md). 3005 porque 3002,
+  # 3003 e 3004 ja sao do netforge-frontend, do preview do site e do processo-guarda.
+  # A regra de nftables abre 3005 so para a forge (192.168.255.70).
+  nginx:
+    ports: !override
+      - "192.168.255.72:3005:80"
+    security_opt: !override []
+
+  # ── Confinamento de volta ────────────────────────────────────────────────────
+  # A base desliga o apparmor em TRES servicos por causa do PVE: postgres, nginx e
+  # vitali-viewer. O apparmor da lab e o 4.1.0-1 do Debian, nao o 4.1.1-pmx1 do
+  # Proxmox, e nao tem o bug "failed protocol match" — medido em 11/09: zero negacoes
+  # no dmesg e postgres:16-alpine chegando a "ready to accept connections" sob
+  # docker-default, que e exatamente o container que da FATAL no PVE.
+  # Os tres voltam confinados. Esquecer um faz o `unconfined` sobreviver a migracao
+  # sem que ninguem note — nada quebra, que e o jeito de isso durar anos.
+  postgres:
+    security_opt: !override []
+
+  # ── Imagens fixadas por digest ───────────────────────────────────────────────
+  # `IMAGE_TAG` nao serve: a base escreve `image: repo:${IMAGE_TAG}` e digest exige
+  # `repo@sha256:`. Estes sao os digests construidos pelo CI a partir do commit
+  # 5675be13be3400ee281670d0cb75756d1d22911d (run 34702900292, ordem 006).
+  # ROLLBACK para a 002: backend 2b6e432f, frontend ec71383a, viewer 62c43e2c.
+  #
+  # `latest` NAO foi movido por este build: o workflow so publica essa tag na branch
+  # default (`type=raw,value=latest,enable={{is_default_branch}}`) e construimos da
+  # onda0-perimetro-multitenant. So saiu a tag `sha-<commit>`. Nada que dependa de
+  # `latest` mudou de baixo de ninguem.
+  django:
+    image: ghcr.io/tropeks/vitali-backend@sha256:0072abe336815584b5d7afff3868abcf5d34d8a11a77c88563f138d6ecb379f6
+  celery-worker:
+    image: ghcr.io/tropeks/vitali-backend@sha256:0072abe336815584b5d7afff3868abcf5d34d8a11a77c88563f138d6ecb379f6
+  celery-beat:
+    image: ghcr.io/tropeks/vitali-backend@sha256:0072abe336815584b5d7afff3868abcf5d34d8a11a77c88563f138d6ecb379f6
+
+  # O digest do viewer MUDOU nesta volta (62c43e2c -> 1d4293a3) mesmo sem
+  # alteracao no OHIF: a ordem 005 acrescentou labels OCI aos tres builds, e label
+  # e conteudo de imagem. Digest diferente com comportamento identico — esperado.
+  vitali-viewer:
+    image: ghcr.io/tropeks/vitali-viewer@sha256:1d4293a3d126937f3933151cfb464111d7ede3ec6ee2ca407e2882f6f5f02a00
+    security_opt: !override []
+
+  # ── O frontend agora TEM procedencia ─────────────────────────────────────────
+  # Ate a ordem 001, a imagem que servia o staging tinha RepoDigests VAZIO: foi
+  # construida no PVE e carimbada com o nome do GHCR. Os bits vieram por
+  # `docker save`/`docker load`, porque migracao troca de host e nao software.
+  #
+  # Este build paga essa divida: o frontend passa a ser uma imagem do CI, com digest
+  # de registry de verdade, rastreavel ate o commit. Por isso o `pull_policy: never`
+  # SAIU — ele existia para impedir que um `up` puxasse `latest` por cima dos bits
+  # carregados a mao; agora ele impediria justamente o contrario, e deixaria a lab
+  # presa na imagem sem procedencia.
+  #
+  # O tarball do frontend antigo continua em migracao/img-vitali-frontend.tar.gz,
+  # que e o caminho de volta (ver .maestro/orders/002-ROLLBACK-passo1.md).
+  nextjs:
+    image: ghcr.io/tropeks/vitali-frontend@sha256:c227be7cc1c1cd27c450e5948bff5ec9d27a660261a540cf6ebabb3c79f87750
+
+  # orthanc: a base ja publica 8042 e 4242 em 127.0.0.1. Fica como esta — nenhuma
+  # modalidade DICOM empurra estudo para a lab, entao 4242 nao ganha rota externa.
+
+  # ── Servico que nunca rodou em staging ───────────────────────────────────────
+  # Medido em 11/09: o projeto `vitali-staging` no PVE tinha DEZ containers, e
+  # `evolution-api` NAO era um deles — nunca foi criado. Na lab ele sobe e entra em
+  # crash loop: `Error: Database provider  invalid.` (falta DATABASE_PROVIDER, que o
+  # .env.staging nao tem). E `WHATSAPP_EVOLUTION_URL=http://evolution-api:8080` aponta
+  # justamente para ele: o WhatsApp em staging sempre falou com o vazio.
+  #
+  # Fica atras de profile para a lab reproduzir o PVE — dez containers, nao onze — em
+  # vez de exibir um container reiniciando para sempre, que e o tipo de vermelho que
+  # ensina a ignorar vermelho. Ligar de verdade e ordem propria:
+  #   docker compose --profile whatsapp up -d
+  evolution-api:
+    profiles:
+      - whatsapp

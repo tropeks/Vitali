@@ -283,6 +283,97 @@ class BillingTestCase(TenantTestCase):
         self.assertIn(guide_resp.json()["id"], ids)
         self.assertNotIn(str(other_guide.id), ids)
 
+    # ── Tipo de faturamento (dm_tipoFaturamento) ──────────────────────────────
+
+    def test_sadt_atendimento_options_traz_os_dois_campos_num_endpoint_so(self):
+        """UM endpoint para os DOIS campos, porque ctm_sp-sadtAtendimento exige os
+        dois juntos — a guia não emite XML sem ambos, e eles nunca fazem sentido
+        sozinhos. Dois endpoints seriam duas idas ao servidor por um formulário
+        só."""
+        client = self._auth(self.fat_token)
+
+        resp = client.get("/api/v1/billing/guides/sadt-atendimento-options/")
+
+        self.assertEqual(resp.status_code, 200, resp.content)
+        body = resp.json()
+        self.assertEqual(
+            [opt["value"] for opt in body["tipo_atendimento"]],
+            ["01", "02", "03", "04", "08", "09", "10", "13", "23"],
+        )
+        self.assertEqual(
+            [opt["value"] for opt in body["regime_atendimento"]],
+            ["01", "02", "03", "04", "05"],
+        )
+        # A pendência de rótulo é declarada, não escondida: inventar
+        # "ambulatorial"/"urgência" faria o faturista escolher errado com
+        # confiança numa tela de faturamento hospitalar.
+        for campo in ("tipo_atendimento", "regime_atendimento"):
+            for opt in body[campo]:
+                self.assertIn("a confirmar no manual ANS", opt["label"])
+
+    def test_sadt_atendimento_options_exige_autenticacao_e_perfil(self):
+        """A rota herda o gate do viewset (billing) — não é pública."""
+        anon = APIClient()
+        anon.defaults["SERVER_NAME"] = self.__class__.domain.domain
+
+        self.assertEqual(
+            anon.get("/api/v1/billing/guides/sadt-atendimento-options/").status_code, 401
+        )
+
+    def test_guia_devolve_valor_e_display_mas_nao_a_lista_de_opcoes(self):
+        """Mesmo contrato do tipo de faturamento: o serializer carrega o valor
+        gravado e seu rótulo; a LISTA mora só no endpoint."""
+        client = self._auth(self.fat_token)
+
+        payload = self._create_guide(client).json()
+
+        for campo in ("tipo_atendimento", "regime_atendimento"):
+            self.assertIn(campo, payload)
+            self.assertIn(f"{campo}_display", payload)
+            self.assertNotIn(f"{campo}_options", payload)
+
+    def test_tipo_faturamento_options_endpoint_is_the_single_source(self):
+        """A lista de códigos vem do endpoint — e SÓ dele.
+
+        As duas telas que precisam das opções são a de guia nova (que monta o
+        select antes de existir guia) e a de detalhe da guia. Um campo de lista no
+        ``TISSGuideSerializer`` não serviria à primeira e repetiria a mesma lista
+        estática em toda resposta de guia; por isso ``tipo_faturamento_options``
+        saiu do serializer e este teste trava as duas metades do contrato de uma
+        vez: o endpoint responde a lista completa e a guia NÃO a devolve.
+        """
+        client = self._auth(self.fat_token)
+        resp = client.get("/api/v1/billing/guides/tipo-faturamento-options/")
+
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(
+            resp.json(),
+            [
+                {"value": value, "label": label}
+                for value, label in TISSGuide.TipoFaturamento.choices
+            ],
+        )
+        # Os rótulos declaram a pendência em vez de inventar o texto da ANS.
+        self.assertEqual([opt["value"] for opt in resp.json()], ["1", "2", "3", "4"])
+        for opt in resp.json():
+            self.assertIn("a confirmar no manual ANS", opt["label"])
+
+        guide_payload = self._create_guide(client).json()
+        self.assertNotIn("tipo_faturamento_options", guide_payload)
+        self.assertIn("tipo_faturamento", guide_payload)
+        self.assertIn("tipo_faturamento_display", guide_payload)
+
+    def test_tipo_faturamento_options_requires_authentication(self):
+        """O endpoint herda as permissões do viewset (IsAuthenticated + módulo +
+        IsFaturistaOrAdmin) — lista de domínio TISS não é rota pública."""
+        resp = self.client.get("/api/v1/billing/guides/tipo-faturamento-options/")
+        self.assertEqual(resp.status_code, 401)
+
+        resp_enf = self._auth(self.enf_token).get(
+            "/api/v1/billing/guides/tipo-faturamento-options/"
+        )
+        self.assertEqual(resp_enf.status_code, 403)
+
     # ── Guide Status ──────────────────────────────────────────────────────────
 
     def test_guide_status_patch_ignored(self):

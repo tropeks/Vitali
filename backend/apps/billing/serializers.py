@@ -6,6 +6,7 @@ from rest_framework import serializers
 
 from apps.core.models import TUSSCode
 
+from .inpatient_models import InpatientFee
 from .models import (
     AccountingCategory,
     AccountingEntry,
@@ -163,6 +164,35 @@ class TISSGuideItemSerializer(serializers.ModelSerializer):
 class TISSGuideSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     guide_type_display = serializers.CharField(source="get_guide_type_display", read_only=True)
+    # Rótulo legível do dm_tipoFaturamento DESTA guia — mesmo par valor/`_display`
+    # que `status`/`guide_type` já expõem. É só o valor gravado; a LISTA de
+    # códigos disponíveis não sai daqui, sai de
+    # GET /api/v1/billing/guides/tipo-faturamento-options/
+    # (TISSGuideViewSet.tipo_faturamento_options).
+    #
+    # POR QUE O ENDPOINT, E NÃO UM CAMPO DE LISTA NO SERIALIZER: são duas telas
+    # que precisam das opções e uma delas não tem guia nenhuma. A tela de guia
+    # nova (frontend .../billing/guides/new) monta o select ANTES de existir
+    # objeto para serializar — um campo em TISSGuideSerializer é estruturalmente
+    # incapaz de atendê-la. O endpoint atende as duas, e não repete a mesma lista
+    # estática de quatro itens em toda resposta de guia (inclusive nas listagens).
+    #
+    # Vale notar o que a UI vai mostrar: os rótulos de TISSGuide.TipoFaturamento
+    # são "Código N (rótulo a confirmar no manual ANS)" enquanto o manual de
+    # tabelas de domínio não estiver no repo — a pendência aparece na tela de
+    # propósito, para ninguém escolher achando que sabe o que escolheu.
+    # Par valor/`_display` dos dois campos de ctm_sp-sadtAtendimento, como
+    # `status`/`guide_type` já fazem. A LISTA de opções não sai daqui — vem do
+    # endpoint sadt-atendimento-options, pelo mesmo motivo do tipo de faturamento.
+    tipo_atendimento_display = serializers.CharField(
+        source="get_tipo_atendimento_display", read_only=True
+    )
+    regime_atendimento_display = serializers.CharField(
+        source="get_regime_atendimento_display", read_only=True
+    )
+    tipo_faturamento_display = serializers.CharField(
+        source="get_tipo_faturamento_display", read_only=True
+    )
     patient_name = serializers.CharField(source="patient.full_name", read_only=True)
     provider_name = serializers.CharField(source="provider.name", read_only=True)
     items = TISSGuideItemSerializer(many=True, read_only=True)
@@ -192,6 +222,14 @@ class TISSGuideSerializer(serializers.ModelSerializer):
             "status_display",
             "insured_card_number",
             "authorization_number",
+            "authorization_date",
+            "requesting_professional",
+            "tipo_atendimento",
+            "tipo_atendimento_display",
+            "regime_atendimento",
+            "regime_atendimento_display",
+            "tipo_faturamento",
+            "tipo_faturamento_display",
             "competency",
             "cid10_codes",
             "total_value",
@@ -417,3 +455,50 @@ class AccountingEntrySerializer(serializers.ModelSerializer):
                 {"kind": "A categoria não é compatível com o tipo do lançamento."}
             )
         return attrs
+
+
+# ─── Internação: taxas e gases medicinais (Onda2 2.1/2.2) ─────────────────────
+
+
+class InpatientFeeSerializer(serializers.ModelSerializer):
+    """Taxa/gás medicinal lançado numa internação (B6, exposto na Onda 2).
+
+    A criação NÃO passa por ``ModelSerializer.save()``: é
+    ``InpatientFeeViewSet.perform_create`` que delega a
+    ``services.inpatient_billing.record_inpatient_fee``, onde moram a validação
+    de tabela TUSS/quantidade/internação ativa e a idempotência (mesmo TUSS +
+    dia + quantidade + unidade não duplica). Este serializer só valida forma e
+    faz a leitura de ida e volta.
+    """
+
+    tuss_code_display = serializers.SerializerMethodField()
+    created_by_name = serializers.CharField(
+        source="created_by.full_name", read_only=True, default=""
+    )
+    # Opcional na entrada: o serviço default para "hoje" quando omitido.
+    service_date = serializers.DateField(required=False)
+
+    class Meta:
+        model = InpatientFee
+        fields = [
+            "id",
+            "admission",
+            "service_date",
+            "tuss_code",
+            "tuss_code_display",
+            "description",
+            "quantity",
+            "unit",
+            "category",
+            "notes",
+            "created_by",
+            "created_by_name",
+            "created_at",
+            "updated_at",
+        ]
+        # description = snapshot do texto TUSS no momento do lançamento;
+        # created_by = ator autenticado. Nenhum dos dois é aceito do cliente.
+        read_only_fields = ["id", "description", "created_by", "created_at", "updated_at"]
+
+    def get_tuss_code_display(self, obj):
+        return f"{obj.tuss_code.code} — {obj.tuss_code.description[:60]}"

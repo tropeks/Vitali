@@ -14,7 +14,15 @@
     </ans:identificacaoTransacao>
     <ans:origem>
       <ans:identificacaoPrestador>
-        <ans:CNES>{{ clinic_cnes }}</ans:CNES>
+        {# ct_prestadorIdentificacao (tissComplexTypesV4_01_00.xsd) accepts
+           CNPJ | CPF | codigoPrestadorNaOperadora — NOT CNES. No model in
+           scope carries the clinic's CNPJ or a payer-assigned provider code
+           (apps.core.Tenant.cnpj lives in the public schema, out of reach of
+           this per-tenant service; InsuranceProvider.cnpj is the payer's own
+           CNPJ, not ours). Reusing the CNES text here is a schema-valid
+           placeholder (codigoPrestadorNaOperadora is free text, <=14 chars)
+           but NOT the real payer-assigned code — flagged as a known gap. #}
+        <ans:codigoPrestadorNaOperadora>{{ clinic_cnes }}</ans:codigoPrestadorNaOperadora>
       </ans:identificacaoPrestador>
     </ans:origem>
     <ans:destino>
@@ -26,10 +34,11 @@
   <ans:prestadorParaOperadora>
     <ans:loteGuias>
       <ans:numeroLote>{{ batch.batch_number }}</ans:numeroLote>
-      <ans:competenciaLote>{{ competency }}</ans:competenciaLote>
+      <ans:guiasTISS>
 {% for guide in guides %}
 {{ guide_xml[guide.guide_number] }}
 {% endfor %}
+      </ans:guiasTISS>
     </ans:loteGuias>
   </ans:prestadorParaOperadora>
 

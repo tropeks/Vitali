@@ -19,16 +19,18 @@ from django.http import FileResponse, Http404
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import OpenApiResponse, extend_schema
-from rest_framework import exceptions, filters, serializers, status, viewsets
+from rest_framework import exceptions, filters, mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.mixins import AuditReadMixin
 from apps.core.models import TUSSCode
 from apps.core.permissions import ModuleRequiredPermission
 
+from .inpatient_models import InpatientFee
 from .models import (
     AccountingCategory,
     AccountingEntry,
@@ -46,7 +48,7 @@ from .models import (
     TISSBatch,
     TISSGuide,
 )
-from .permissions import IsFaturistaOrAdmin
+from .permissions import CanRecordInpatientFee, IsFaturistaOrAdmin
 from .serializers import (
     AccountingCategorySerializer,
     AccountingEntrySerializer,
@@ -54,6 +56,7 @@ from .serializers import (
     BankTransactionSerializer,
     CashFlowEntrySerializer,
     GlosaSerializer,
+    InpatientFeeSerializer,
     InsuranceProviderSerializer,
     PayableSerializer,
     PriceTableItemSerializer,
@@ -856,12 +859,153 @@ class SurgicalMaterialBillingRequestSerializer(serializers.Serializer):
     )
 
 
-class TISSGuideViewSet(viewsets.ModelViewSet):
+class InpatientFeeViewSet(
+    mixins.CreateModelMixin,
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Onda2 2.1/2.2 — taxas e gases medicinais de internação (B6 exposto).
+
+    Só cria/lista/lê: uma taxa lançada não tem hoje um fluxo de correção/estorno
+    modelado (ao contrário da guia, que tem status), então update/destroy ficam
+    de fora deste sprint em vez de inventar uma semântica de edição sem lastro no
+    domínio — ver o relatório da tarefa.
+
+    A criação delega inteiramente a
+    ``services.inpatient_billing.record_inpatient_fee`` (validação de tabela
+    TUSS/quantidade/internação ativa + idempotência); o serializer só valida a
+    forma do payload. Ver seu docstring para o critério de idempotência.
+
+    Permissão: ``CanRecordInpatientFee`` (``billing.write`` OU ``emr.write``),
+    não o gate padrão de billing. Quem lança gás medicinal está à beira do leito;
+    exigir permissão de faturamento manteria a receita trancada por autorização
+    em vez de por ausência de rota. Decisão do Capitão em 2026-08-18.
+    """
+
+    serializer_class = InpatientFeeSerializer
+    permission_classes = [IsAuthenticated, _BILLING_MODULE, CanRecordInpatientFee]  # type: ignore[list-item]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ["admission", "tuss_code", "service_date"]
+    ordering_fields = ["service_date", "created_at"]
+    ordering = ["-created_at"]
+
+    def get_queryset(self):
+        return InpatientFee.objects.select_related("tuss_code", "created_by", "admission")
+
+    def create(self, request, *args, **kwargs):
+        from .services.inpatient_billing import record_inpatient_fee
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        # Resolvido aqui só para decidir 200 vs 201 na resposta (o próprio
+        # serviço, dentro do lock, é quem decide de fato se reaproveita ou cria —
+        # ver o critério de idempotência no docstring de record_inpatient_fee).
+        resolved_service_date = data.get("service_date") or timezone.now().date()
+        existed_before = InpatientFee.objects.filter(
+            admission=data["admission"],
+            tuss_code=data["tuss_code"],
+            service_date=resolved_service_date,
+            quantity=data["quantity"],
+            unit=data.get("unit", InpatientFee.Unit.UNIDADE),
+        ).exists()
+
+        # ValidationError do serviço (TUSS fora da tabela 18, quantidade <= 0,
+        # internação não ativa) vira 400 DRF — não estoura 500.
+        instance = record_inpatient_fee(
+            admission=data["admission"],
+            tuss_code=data["tuss_code"],
+            quantity=data["quantity"],
+            unit=data.get("unit", InpatientFee.Unit.UNIDADE),
+            service_date=data.get("service_date"),
+            notes=data.get("notes", ""),
+            category=data.get("category", ""),
+            actor=request.user,
+        )
+        serializer.instance = instance
+        http_status = status.HTTP_200_OK if existed_before else status.HTTP_201_CREATED
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=http_status, headers=headers)
+
+
+class TISSGuideViewSet(AuditReadMixin, viewsets.ModelViewSet):
+    audit_resource_type = "TISSGuide"
     permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["guide_number", "patient__full_name", "provider__name"]
     ordering_fields = ["created_at", "updated_at", "total_value", "competency"]
     ordering = ["-updated_at"]
+
+    @action(detail=False, methods=["get"], url_path="sadt-atendimento-options")
+    def sadt_atendimento_options(self, request):
+        """Códigos de ``dm_tipoAtendimento`` e ``dm_regimeAtendimento`` para os selects.
+
+        UM endpoint para os DOIS campos, e não um por campo: eles são exigidos
+        juntos por ``ctm_sp-sadtAtendimento`` (a guia não emite XML sem os dois),
+        sempre aparecem no mesmo bloco da tela e nunca fazem sentido sozinhos.
+        Dois endpoints seriam duas idas ao servidor para preencher um formulário
+        só.
+
+        Mesma razão de o endpoint existir em vez de o serializer carregar a
+        lista, já documentada em ``tipo_faturamento_options``: a tela de guia
+        NOVA precisa das opções antes de existir guia para serializar.
+
+        RÓTULOS NÃO AUTORITATIVOS, e é isso que chega à tela: cada ``label`` é
+        ``"Código NN (rótulo a confirmar no manual ANS)"``. Os
+        ``xs:enumeration`` dessas duas tabelas no ``tissSimpleTypesV4_01_00.xsd``
+        não trazem ``xs:documentation``, e o manual de domínio da ANS não está
+        versionado aqui — só o CÓDIGO é confiável. Inventar "ambulatorial",
+        "internação", "urgência" faria o faturista escolher errado com
+        confiança, numa tela de faturamento hospitalar. Mesma linha vermelha dos
+        códigos 41–67 de ``emr.Admission.MotivoEncerramento``.
+
+        NENHUM VALOR VEM PRÉ-SELECIONADO. A tela abre vazia de propósito: não há
+        fonte no Vitali para tipo e regime do atendimento, e sugerir um default
+        plausível é exatamente a inferência clínica que
+        ``_resolve_sadt_atendimento`` recusa.
+        """
+        return Response(
+            {
+                "tipo_atendimento": [
+                    {"value": value, "label": label}
+                    for value, label in TISSGuide.TipoAtendimento.choices
+                ],
+                "regime_atendimento": [
+                    {"value": value, "label": label}
+                    for value, label in TISSGuide.RegimeAtendimento.choices
+                ],
+            }
+        )
+
+    @action(detail=False, methods=["get"], url_path="tipo-faturamento-options")
+    def tipo_faturamento_options(self, request):
+        """Lista os códigos de ``dm_tipoFaturamento`` para os selects do frontend.
+
+        FONTE ÚNICA da lista, de propósito. O ``TISSGuideSerializer`` expõe só o
+        valor da guia e seu ``tipo_faturamento_display`` — a lista de opções não
+        sai de lá, porque a tela de guia NOVA precisa dela antes de existir guia
+        para serializar. Um endpoint atende as duas telas (nova e detalhe); um
+        campo no serializer atenderia só uma, e repetiria a mesma lista estática
+        em toda resposta de guia.
+
+        OS RÓTULOS NÃO SÃO AUTORITATIVOS, e é isso que vai para a tela: cada
+        ``label`` é ``"Código N (rótulo a confirmar no manual ANS)"``. Os
+        ``xs:enumeration`` de ``dm_tipoFaturamento`` no
+        ``tissSimpleTypesV4_01_00.xsd`` não trazem ``xs:documentation`` e o manual
+        de tabelas de domínio da ANS não está versionado neste repo — só o CÓDIGO
+        é confiável hoje. Inventar o texto ("parcial", "final", "complementar")
+        seria fazer o faturista escolher errado com confiança numa tela de
+        faturamento hospitalar; é a mesma linha vermelha aplicada aos códigos
+        41–67 de ``emr.Admission.MotivoEncerramento``. A pendência fica VISÍVEL na
+        interface justamente para não virar certeza falsa, e some sozinha quando o
+        manual entrar no repo: muda ``TISSGuide.TipoFaturamento.choices``, não este
+        endpoint nem dado gravado.
+        """
+        return Response(
+            [{"value": value, "label": label} for value, label in TISSGuide.TipoFaturamento.choices]
+        )
 
     def get_queryset(self):
         qs = TISSGuide.objects.select_related("patient", "provider", "price_table", "encounter")
@@ -901,6 +1045,84 @@ class TISSGuideViewSet(viewsets.ModelViewSet):
                 id__in=glosa_prediction_ids,
                 guide__isnull=True,
             ).update(guide=guide)
+
+    def perform_update(self, serializer):
+        """Onda2 2.3 — guia faturada (não-rascunho) fica imutável por PATCH/PUT.
+
+        Mesma forma de ``CashFlowEntryViewSet.perform_update``: lê o estado ANTES
+        do save, bloqueia com ``ValidationError`` (→ 400) quando não é seguro
+        editar, senão salva e grava auditoria. Diferença deliberada em relação ao
+        padrão do CashFlowEntry: aqui o BLOQUEIO em si também grava uma linha de
+        auditoria (``guide_update_blocked``) — é o cenário de risco descrito na
+        tarefa (edição de ``provider``/``competency``/etc. depois do envio,
+        derrubando o lote já transmitido sem deixar rastro de quem mudou o quê).
+        Só campos-nome vão para o audit (não os valores) para nunca arriscar
+        gravar um FK/instância não serializável em JSON.
+
+        Só ``status == "draft"`` é editável. ``pending``/``submitted``/``paid``/
+        ``denied``/``appeal`` são todos travados: a guia já está a caminho da
+        operadora (ou já voltou) e ``provider``, ``competency``,
+        ``authorization_number``, ``authorization_date``, ``tipo_faturamento``,
+        ``cid10_codes``, ``price_table`` e ``insured_card_number`` deixarem de
+        bater com o que foi transmitido é exatamente o jeito de o lote exportado
+        divergir do que a operadora recebeu. Não há hoje nenhum campo
+        "observação interna" no model/serializer para deixar de fora da trava
+        (ver relatório da tarefa); se o negócio precisar de uma nota pós-envio, isso é campo
+        novo em ``models.py`` — fora do escopo aqui.
+
+        ``authorization_date`` (B10, digitação manual de ``dataAutorizacao``
+        quando não há ``Authorization`` aprovada) HERDA esta mesma trava: só
+        pode ser digitada/corrigida enquanto a guia é ``draft``. Isso É
+        coerente com o resto do model — mas vale registrar o cenário real em
+        que ele aperta: a autorização pode legitimamente chegar da operadora
+        DEPOIS que a guia já saiu de rascunho (ex.: internação de urgência,
+        XML gerado e a guia movida para ``pending`` antes de a operadora
+        aprovar/comunicar a senha+data). Hoje não há campo de correção
+        pós-draft nem para ``authorization_number`` nem para
+        ``authorization_date`` — o fluxo de correção existente é reemitir via
+        "guia de correção" ou reabrir por glosa/retorno (mesmo texto do erro
+        acima). Não enfraquecemos o guard aqui: se esse cenário for
+        recorrente na operação, a solução é um fluxo de correção explícito
+        (novo estado ou endpoint dedicado), não abrir o PATCH geral para guias
+        não-draft — decisão de produto fora do escopo desta tarefa.
+
+        ``tipo_faturamento`` (dm_tipoFaturamento da guia de resumo de
+        internação) entra na MESMA trava, e aqui ela é ainda menos discutível
+        que nos campos de autorização: o tipo de faturamento é a declaração à
+        operadora de que ESTA guia é o faturamento parcial ou o de encerramento
+        da estada. Trocá-la depois do envio muda o significado do documento já
+        transmitido — duas guias parciais viram duas finais, ou vice-versa.
+        Diferente da senha/data de autorização, este campo não depende de a
+        operadora responder nada: quem fatura já sabe qual é no momento de
+        montar a guia, então a trava não aperta nenhum cenário legítimo.
+        """
+        from apps.core.signals import _write_audit
+
+        current = self.get_object()
+        if current.status != "draft":
+            _write_audit(
+                "guide_update_blocked",
+                "tiss_guide",
+                str(current.pk),
+                old_data={"status": current.status},
+                new_data={"attempted_fields": sorted(serializer.validated_data.keys())},
+            )
+            raise serializers.ValidationError(
+                f"Guia '{current.guide_number}' está com status '{current.status}' "
+                "e não pode mais ser editada — apenas rascunhos (status 'draft') "
+                "aceitam alteração. Emita uma guia de correção ou trate pelo fluxo "
+                "de retorno/glosa."
+            )
+        obj = serializer.save()
+        _write_audit(
+            "guide_updated",
+            "tiss_guide",
+            str(obj.pk),
+            new_data={
+                "status": obj.status,
+                "updated_fields": sorted(serializer.validated_data.keys()),
+            },
+        )
 
     @extend_schema(
         request=LabOrderBillingRequestSerializer,
@@ -1044,7 +1266,11 @@ class TISSGuideViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="generate-xml")
     def generate_xml(self, request, pk=None):
         """Generate TISS XML for a single guide and validate against XSD."""
-        from .services.xml_engine import generate_guide_xml, validate_xml
+        from .services.xml_engine import (
+            TISSXMLGenerationError,
+            generate_guide_xml,
+            validate_xml,
+        )
 
         guide = self.get_object()
         try:
@@ -1060,6 +1286,13 @@ class TISSGuideViewSet(viewsets.ModelViewSet):
                     "valid": not errors,
                 }
             )
+        except TISSXMLGenerationError as exc:
+            # The guide cannot be rendered into schema-valid TISS XML — wrong
+            # guide type for the data, unsupported type (honorários), or an item
+            # count the ANS type does not model. That is a problem with what was
+            # asked for, not a server fault: 400, and do not page anyone.
+            logger.warning("XML generation refused for guide %s: %s", guide.guide_number, exc)
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:
             logger.exception("XML generation failed for guide %s", guide.guide_number)
             return Response({"detail": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -1255,7 +1488,11 @@ class TISSBatchViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="export")
     def export(self, request, pk=None):
         """Generate and store the batch XML file. Returns download URL."""
-        from .services.xml_engine import generate_batch_xml, validate_xml
+        from .services.xml_engine import (
+            TISSXMLGenerationError,
+            generate_batch_xml,
+            validate_xml,
+        )
 
         batch = self.get_object()
         if batch.status == "open":
@@ -1286,6 +1523,12 @@ class TISSBatchViewSet(viewsets.ModelViewSet):
                     ),
                 }
             )
+        except TISSXMLGenerationError as exc:
+            # Same reasoning as TISSGuideViewSet.generate_xml: a batch mixing
+            # guide types (ctm_guiaLote/guiasTISS is a single-occurrence choice)
+            # is a composition error by the caller, not a server fault.
+            logger.warning("Batch XML export refused for %s: %s", batch.batch_number, exc)
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:
             logger.exception("Batch XML export failed for %s", batch.batch_number)
             return Response({"detail": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -1369,13 +1612,14 @@ class TISSBatchViewSet(viewsets.ModelViewSet):
         return Response(result, status=http_status)
 
 
-class GlosaViewSet(viewsets.ReadOnlyModelViewSet):
+class GlosaViewSet(AuditReadMixin, viewsets.ReadOnlyModelViewSet):
     """
     Glosas are created only by the retorno parser (system), not by API clients.
     Use GET to list/retrieve and POST /appeal/ to file an appeal.
     """
 
     serializer_class = GlosaSerializer
+    audit_resource_type = "Glosa"
     permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
     filter_backends = [filters.OrderingFilter]
     ordering = ["-created_at"]

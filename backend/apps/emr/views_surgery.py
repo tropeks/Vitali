@@ -19,6 +19,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.core.mixins import AuditReadMixin
 from apps.core.permissions import HasPermission
 
 from .serializers_surgery import (
@@ -93,7 +94,7 @@ class OperatingRoomViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
 @extend_schema_view(
     list=extend_schema(parameters=[_PATIENT_PARAM, _STATUS_PARAM, _OR_PARAM, _SURGEON_PARAM]),
 )
-class SurgicalCaseViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
+class SurgicalCaseViewSet(AuditReadMixin, _SurgeryPermissionMixin, viewsets.ModelViewSet):
     """Casos cirúrgicos. ``created_by`` é definido no servidor a partir do usuário.
 
     Per-action gate (overrides ``_SurgeryPermissionMixin``):
@@ -105,6 +106,7 @@ class SurgicalCaseViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
     """
 
     serializer_class = SurgicalCaseSerializer
+    audit_resource_type = "SurgicalCase"
 
     def get_permissions(self):
         read_actions = {"list", "retrieve", "board", "timeline"}
@@ -380,10 +382,11 @@ class SurgicalCaseViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
 @extend_schema_view(
     list=extend_schema(parameters=[_CASE_PARAM]),
 )
-class SurgicalTeamMemberViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
+class SurgicalTeamMemberViewSet(AuditReadMixin, _SurgeryPermissionMixin, viewsets.ModelViewSet):
     """Equipe cirúrgica de um caso (CRUD). Read=surgery.read / write=surgery.manage."""
 
     serializer_class = SurgicalTeamMemberSerializer
+    audit_resource_type = "SurgicalTeamMember"
 
     def get_queryset(self):
         from .models import SurgicalTeamMember
@@ -406,13 +409,14 @@ class SurgicalTeamMemberViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
 @extend_schema_view(
     list=extend_schema(parameters=[_CASE_PARAM]),
 )
-class SurgicalTimeViewSet(viewsets.ReadOnlyModelViewSet):
+class SurgicalTimeViewSet(AuditReadMixin, viewsets.ReadOnlyModelViewSet):
     """Tempos cirúrgicos (append-only, read-only). Gated surgery.read.
 
     Rows are appended via ``POST /surgical-cases/{id}/record-time/`` — this
     surface is read-only (POST/PATCH/DELETE → 405)."""
 
     serializer_class = SurgicalTimeSerializer
+    audit_resource_type = "SurgicalTime"
 
     def get_permissions(self):
         return [IsAuthenticated(), HasPermission("surgery.read")]
@@ -430,11 +434,12 @@ class SurgicalTimeViewSet(viewsets.ReadOnlyModelViewSet):
 @extend_schema_view(
     list=extend_schema(parameters=[_CASE_PARAM]),
 )
-class SurgicalChecklistViewSet(viewsets.ReadOnlyModelViewSet):
+class SurgicalChecklistViewSet(AuditReadMixin, viewsets.ReadOnlyModelViewSet):
     """Checklists de cirurgia segura (append-only por fase, read-only). Gated
     surgery.read. Confirmados via ``POST /surgical-cases/{id}/checklist/``."""
 
     serializer_class = SurgicalChecklistSerializer
+    audit_resource_type = "SurgicalChecklist"
 
     def get_permissions(self):
         return [IsAuthenticated(), HasPermission("surgery.read")]
@@ -452,10 +457,11 @@ class SurgicalChecklistViewSet(viewsets.ReadOnlyModelViewSet):
 @extend_schema_view(
     list=extend_schema(parameters=[_CASE_PARAM]),
 )
-class SurgicalProcedureViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
+class SurgicalProcedureViewSet(AuditReadMixin, _SurgeryPermissionMixin, viewsets.ModelViewSet):
     """Procedimentos planejados (TUSS) de um caso cirúrgico."""
 
     serializer_class = SurgicalProcedureSerializer
+    audit_resource_type = "SurgicalProcedure"
 
     def get_queryset(self):
         from .models import SurgicalProcedure
@@ -474,7 +480,7 @@ class SurgicalProcedureViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
 @extend_schema_view(
     list=extend_schema(parameters=[_CASE_PARAM]),
 )
-class SurgicalMaterialViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
+class SurgicalMaterialViewSet(AuditReadMixin, _SurgeryPermissionMixin, viewsets.ModelViewSet):
     """Materiais / OPME de um caso cirúrgico (CRUD + ação ``consume``).
 
     Read=``surgery.read`` / write=``surgery.manage``. ``created_by`` é definido no
@@ -483,6 +489,7 @@ class SurgicalMaterialViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
     rastreável ao caso)."""
 
     serializer_class = SurgicalMaterialSerializer
+    audit_resource_type = "SurgicalMaterial"
 
     def get_queryset(self):
         from .models import SurgicalMaterial
@@ -533,12 +540,13 @@ class SurgicalMaterialViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
 @extend_schema_view(
     list=extend_schema(parameters=[_CASE_PARAM]),
 )
-class AnestheticRecordViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
+class AnestheticRecordViewSet(AuditReadMixin, _SurgeryPermissionMixin, viewsets.ModelViewSet):
     """Ficha anestésica de um caso (OneToOne). Read=``surgery.read`` /
     write=``surgery.manage``. ``created_by`` é definido no servidor; ``events`` são
     aninhados read-only. Uma 2ª ficha para o mesmo caso → 400."""
 
     serializer_class = AnestheticRecordSerializer
+    audit_resource_type = "AnestheticRecord"
 
     def get_queryset(self):
         from .models import AnestheticRecord
@@ -563,13 +571,14 @@ class AnestheticRecordViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
 @extend_schema_view(
     list=extend_schema(parameters=[_RECORD_PARAM]),
 )
-class AnestheticEventViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
+class AnestheticEventViewSet(AuditReadMixin, _SurgeryPermissionMixin, viewsets.ModelViewSet):
     """Eventos da timeline anestésica (droga / vital / evento / ventilação).
 
     Read=``surgery.read`` / write=``surgery.manage``. ``recorded_by`` é definido no
     servidor. Filtrável por ``?record=``; ordenados por ``timestamp``."""
 
     serializer_class = AnestheticEventSerializer
+    audit_resource_type = "AnestheticEvent"
 
     def get_queryset(self):
         from .models import AnestheticEvent
@@ -591,7 +600,7 @@ class AnestheticEventViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
 @extend_schema_view(
     list=extend_schema(parameters=[_CASE_PARAM]),
 )
-class PacuRecordViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
+class PacuRecordViewSet(AuditReadMixin, _SurgeryPermissionMixin, viewsets.ModelViewSet):
     """Registro de SRPA (recuperação pós-anestésica) de um caso (OneToOne).
 
     Read=``surgery.read`` / write=``surgery.manage``. ``created_by`` é definido no
@@ -599,6 +608,7 @@ class PacuRecordViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
     caso → 400. Filtrável por ``?case=``."""
 
     serializer_class = PacuRecordSerializer
+    audit_resource_type = "PacuRecord"
 
     def get_queryset(self):
         from .models import PacuRecord
@@ -623,13 +633,14 @@ class PacuRecordViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
 @extend_schema_view(
     list=extend_schema(parameters=[_RECORD_PARAM]),
 )
-class PacuAssessmentViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
+class PacuAssessmentViewSet(AuditReadMixin, _SurgeryPermissionMixin, viewsets.ModelViewSet):
     """Avaliações periódicas (Aldrete) da timeline da SRPA.
 
     Read=``surgery.read`` / write=``surgery.manage``. Filtrável por ``?record=``;
     ordenadas por ``assessed_at``."""
 
     serializer_class = PacuAssessmentSerializer
+    audit_resource_type = "PacuAssessment"
 
     def get_queryset(self):
         from .models import PacuAssessment
@@ -651,7 +662,7 @@ class PacuAssessmentViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
 @extend_schema_view(
     list=extend_schema(parameters=[_OR_PARAM]),
 )
-class RoomTurnoverViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
+class RoomTurnoverViewSet(AuditReadMixin, _SurgeryPermissionMixin, viewsets.ModelViewSet):
     """Turnovers de sala (CRUD + ação ``complete``).
 
     Read=``surgery.read`` / write=``surgery.manage``. ``created_by`` é definido no
@@ -659,6 +670,7 @@ class RoomTurnoverViewSet(_SurgeryPermissionMixin, viewsets.ModelViewSet):
     ``status=pronta``). Filtrável por ``?operating_room=``."""
 
     serializer_class = RoomTurnoverSerializer
+    audit_resource_type = "RoomTurnover"
 
     def get_queryset(self):
         from .models import RoomTurnover

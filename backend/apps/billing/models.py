@@ -10,7 +10,7 @@ apps/core/signals.py) compensates by checking live references.
 """
 
 import uuid
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
@@ -270,6 +270,40 @@ class TISSGuide(models.Model):
     plaintext anyway.
     """
 
+    class TipoFaturamento(models.TextChoices):
+        """TISS ``dm_tipoFaturamento`` — filho obrigatório de ``ctm_internacaoDados``
+        (``dadosInternacao.tipoFaturamento``), enum fechado ``['1','2','3','4']``
+        extraído programaticamente (lxml) de
+        ``apps/billing/schemas/tissSimpleTypesV4_01_00.xsd``.
+
+        MORA AQUI, NÃO EM ``emr.Admission`` (diverge de
+        docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §5, escrito antes da medição
+        do XSD): os irmãos de sequência ``dataInicioFaturamento``/
+        ``dataFinalFaturamento`` provam que ``ctm_internacaoDados`` descreve o
+        PERÍODO DE FATURAMENTO daquela guia, não a estada. Uma internação longa
+        pode render uma guia parcial e depois uma final — e ``tipoFaturamento`` é
+        justamente o que as distingue. Se o campo morasse na ``Admission``, as
+        duas guias da MESMA internação teriam de compartilhar um único valor, o
+        que é uma contradição. É atributo do documento, não do paciente.
+
+        RÓTULOS PENDENTES, DE PROPÓSITO. Os ``xs:enumeration`` do XSD não trazem
+        ``xs:documentation`` (zero ocorrências em tissSimpleTypesV4_01_00.xsd e
+        tissGuiasV4_01_00.xsd — só ``tissComplexTypesV4_01_00.xsd`` tem 13, todas
+        de estruturas de recurso de glosa/protocolo, nenhuma de domínio) e não há
+        manual de tabelas de domínio da ANS versionado neste repo. Então só o
+        CÓDIGO é confiável. Mesmo tratamento dado aos códigos 41–67 de
+        ``emr.Admission.MotivoEncerramento`` e mesma linha vermelha registrada em
+        ``import_tuss.py``/``inpatient_models.py``: um rótulo financeiro inventado
+        numa tela de faturamento hospitalar é pior que rótulo ausente — quem
+        preenche escolhe errado com confiança. Substituir por texto real assim que
+        o manual ANS entrar no repo, sem migration de dado (só ``choices``).
+        """
+
+        CODIGO_1 = "1", "Código 1 (rótulo a confirmar no manual ANS)"
+        CODIGO_2 = "2", "Código 2 (rótulo a confirmar no manual ANS)"
+        CODIGO_3 = "3", "Código 3 (rótulo a confirmar no manual ANS)"
+        CODIGO_4 = "4", "Código 4 (rótulo a confirmar no manual ANS)"
+
     guide_number = models.CharField("Número da guia", max_length=20, unique=True, blank=True)
     guide_type = models.CharField(
         "Tipo",
@@ -340,6 +374,7 @@ class TISSGuide(models.Model):
         related_name="tiss_guides",
         help_text="Caso cirúrgico que originou esta guia (ponte Centro Cirúrgico→faturamento).",
     )
+
     # ── B3: Admission → Resumo de Internação bridge ──────────────────────────────
     # Same-schema FK (emr and billing are both tenant apps) linking an internação
     # guide to the Admission whose accumulated DailyCharges it bills. Nullable — set
@@ -347,6 +382,89 @@ class TISSGuide(models.Model):
     # below) is what makes Admission→guide generation IDEMPOTENT: at most one
     # internação guide per admission. SET_NULL so an admission delete never
     # destroys the billing record.
+    # Quem SOLICITOU o que a guia SP/SADT cobra — distinto de quem executou.
+    #
+    # `dadosSolicitante` (ctm_sp-sadtGuia) é obrigatório e exige conselho, número,
+    # UF e CBOS do profissional solicitante. O Vitali nunca modelou esse papel: o
+    # executante vem de `encounter.professional`, e usar ELE aqui declararia à
+    # operadora que quem pediu o exame foi quem o fez — invenção, não placeholder.
+    # Por isso um campo próprio, e não um reaproveitamento.
+    #
+    # Preenchido automaticamente pela ponte de laboratório a partir de
+    # `LabOrder.requested_by` (o médico que pediu o exame é literalmente o
+    # solicitante). Para guia de cirurgia não há fonte: `SurgicalCase` tem
+    # `surgeon` (quem opera), não quem indicou — fica nulo e a emissão falha
+    # alto, com o campo editável enquanto a guia é rascunho. Mesma precedência já
+    # aprovada para `authorization_date`: fonte automática quando existe,
+    # digitação quando não, nunca fabricação.
+    # ─── Taxonomias de ctm_sp-sadtAtendimento ─────────────────────────────────
+    #
+    # `dadosAtendimento` da guia SP/SADT exige tipoAtendimento e
+    # regimeAtendimento, dois enums FECHADOS da ANS sem NENHUMA fonte no Vitali:
+    # não há campo, nem no encounter nem no pedido, que diga "isto foi um
+    # atendimento de urgência em regime ambulatorial". Derivar de qualquer outro
+    # campo seria inferência clínica — exatamente o que esta onda recusa.
+    #
+    # Então são campos próprios, capturados por quem sabe, com falha alta na
+    # emissão quando vazios. Mesmo movimento de `tipo_faturamento`: a decisão vai
+    # para quem tem o fato, em vez de o sistema adivinhar.
+    #
+    # Os rótulos ficam pendentes de manual, como em `TipoFaturamento` e em
+    # `emr.Admission.MotivoEncerramento` (41–67): os XSDs deste repo não têm
+    # `xs:documentation` e o manual de tabelas de domínio da ANS não está
+    # versionado aqui. Inventar rótulo clínico é linha vermelha declarada.
+    class TipoAtendimento(models.TextChoices):
+        """TISS ``dm_tipoAtendimento`` — 9 códigos, lidos do XSD."""
+
+        CODIGO_01 = "01", "Código 01 (rótulo a confirmar no manual ANS)"
+        CODIGO_02 = "02", "Código 02 (rótulo a confirmar no manual ANS)"
+        CODIGO_03 = "03", "Código 03 (rótulo a confirmar no manual ANS)"
+        CODIGO_04 = "04", "Código 04 (rótulo a confirmar no manual ANS)"
+        CODIGO_08 = "08", "Código 08 (rótulo a confirmar no manual ANS)"
+        CODIGO_09 = "09", "Código 09 (rótulo a confirmar no manual ANS)"
+        CODIGO_10 = "10", "Código 10 (rótulo a confirmar no manual ANS)"
+        CODIGO_13 = "13", "Código 13 (rótulo a confirmar no manual ANS)"
+        CODIGO_23 = "23", "Código 23 (rótulo a confirmar no manual ANS)"
+
+    class RegimeAtendimento(models.TextChoices):
+        """TISS ``dm_regimeAtendimento`` — 5 códigos, lidos do XSD."""
+
+        CODIGO_01 = "01", "Código 01 (rótulo a confirmar no manual ANS)"
+        CODIGO_02 = "02", "Código 02 (rótulo a confirmar no manual ANS)"
+        CODIGO_03 = "03", "Código 03 (rótulo a confirmar no manual ANS)"
+        CODIGO_04 = "04", "Código 04 (rótulo a confirmar no manual ANS)"
+        CODIGO_05 = "05", "Código 05 (rótulo a confirmar no manual ANS)"
+
+    tipo_atendimento = models.CharField(  # noqa: DJ001
+        "Tipo de atendimento (TISS)",
+        max_length=2,
+        choices=TipoAtendimento.choices,
+        blank=True,
+        default="",
+        help_text="dm_tipoAtendimento (ctm_sp-sadtAtendimento). Sem ele a guia SP/SADT não gera XML.",
+    )
+    regime_atendimento = models.CharField(  # noqa: DJ001
+        "Regime de atendimento (TISS)",
+        max_length=2,
+        choices=RegimeAtendimento.choices,
+        blank=True,
+        default="",
+        help_text="dm_regimeAtendimento (ctm_sp-sadtAtendimento). Sem ele a guia SP/SADT não gera XML.",
+    )
+
+    requesting_professional = models.ForeignKey(
+        "emr.Professional",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="requested_tiss_guides",
+        verbose_name="Profissional solicitante",
+        help_text=(
+            "profissionalSolicitante de dadosSolicitante (SP/SADT). Resolvido de "
+            "LabOrder.requested_by quando a guia nasce de um pedido de exame; "
+            "informado à mão nos demais casos."
+        ),
+    )
     admission = models.ForeignKey(
         "emr.Admission",
         on_delete=models.SET_NULL,
@@ -365,6 +483,55 @@ class TISSGuide(models.Model):
     # TISS mandatory fields
     insured_card_number = models.CharField("Número da carteirinha", max_length=20)
     authorization_number = models.CharField("Senha de autorização", max_length=20, blank=True)
+    # B10: manual digitação fallback for ct_autorizacaoInternacao.dataAutorizacao
+    # (guiaResumoInternacao) when there is NO approved Authorization row covering
+    # the guide — decisão do Capitão. Only used together with
+    # authorization_number as the last-resort source; a resolved Authorization
+    # row always wins. See xml_engine._resolve_internacao_authorization for the
+    # precedence.
+    authorization_date = models.DateField(
+        "Data da autorização (digitada)",
+        null=True,
+        blank=True,
+        help_text=(
+            "Data de autorização informada manualmente pelo faturista, conforme "
+            "recebida da operadora. Só é usada para preencher dataAutorizacao "
+            "da guia de resumo de internação QUANDO não existe uma Authorization "
+            "aprovada correspondente (paciente/operadora/janela/TUSS) — o "
+            "registro de autorização, quando existe, sempre tem prioridade "
+            "sobre esta digitação."
+        ),
+    )
+    # ``dadosInternacao.tipoFaturamento`` da guia de resumo de internação. Só a
+    # guia sabe se ela é o faturamento parcial ou o de fechamento da estada — ver
+    # o docstring de ``TipoFaturamento`` acima para por que NÃO mora na Admission.
+    #
+    # ``blank=True, default=""`` (e não ``null``): guias já gravadas continuam
+    # válidas sem backfill, exatamente como os campos irmãos de taxonomia TISS em
+    # ``emr.Admission`` (carater_atendimento/tipo_internacao/regime_internacao/
+    # disposition_ans_code). Não há valor default honesto a atribuir
+    # retroativamente — nenhuma guia existente foi emitida declarando um tipo de
+    # faturamento, e escolher um por elas seria inventar o que foi transmitido.
+    # Vazio significa "ainda não declarado", e o gerador de XML falha alto nesse
+    # caso (xml_engine._resolve_internacao_dados) em vez de chutar "1".
+    #
+    # A ponte automática ``generate_internacao_guide_for_admission`` deliberadamente
+    # NÃO preenche este campo: ela roda na alta, mas o endpoint que a chama não é
+    # exclusivo da alta e nada no fluxo prova qual dos quatro códigos se aplica.
+    # É digitação do faturista, na guia, enquanto rascunho.
+    tipo_faturamento = models.CharField(
+        "Tipo de faturamento (TISS)",
+        max_length=1,
+        choices=TipoFaturamento.choices,
+        blank=True,
+        default="",
+        help_text=(
+            "dm_tipoFaturamento — declara à operadora se esta guia de resumo de "
+            "internação é o faturamento parcial ou o de encerramento da estada. "
+            "Obrigatório no XML (ctm_internacaoDados); sem ele a guia de "
+            "internação não gera XML."
+        ),
+    )
     competency = models.CharField("Competência (AAAA-MM)", max_length=7, help_text="Ex: 2026-03")
     cid10_codes = models.JSONField(
         "Códigos CID-10", default=list, help_text='Lista de {"code": "X00"} do SOAPNote'
@@ -835,6 +1002,70 @@ class TISSGuideItem(models.Model):
     quantity = models.DecimalField("Quantidade", max_digits=8, decimal_places=2, default=1)
     unit_value = models.DecimalField("Valor unitário (R$)", max_digits=10, decimal_places=2)
     total_value = models.DecimalField("Valor total (R$)", max_digits=12, decimal_places=2)
+    # ─── TISS: os dois campos que faltavam para <procedimentosExecutados> ──────
+    #
+    # dataExecucao (ct_procedimentoExecutadoInt, tissComplexTypesV4_01_00.xsd) é
+    # OBRIGATÓRIO por item. A guia já declara o PERÍODO de faturamento
+    # (dataInicioFaturamento/dataFinalFaturamento, em ctm_internacaoDados), mas a
+    # operadora confere item a item: uma diária no dia 12 e um gás no dia 14 são
+    # dois fatos com datas diferentes dentro do mesmo período.
+    #
+    # null=True porque toda linha faturada ANTES desta migration é, por definição,
+    # uma linha sem data — as cinco pontes clínico→faturamento não gravavam nada
+    # aqui. Backfill não existe: nem `created_at` nem o período da internação
+    # dizem em que dia o item foi executado, e escrever `now()` seria carimbar a
+    # data de FATURAMENTO como se fosse data clínica. A consequência é
+    # deliberada: `generate_guide_xml` FALHA ALTO num item sem data (ver
+    # `xml_engine._resolve_internacao_procedimentos`), do mesmo jeito que já
+    # falha para as taxonomias vazias de internações antigas.
+    execution_date = models.DateField(
+        "Data de execução",
+        null=True,
+        blank=True,
+        help_text=(
+            "dataExecucao (ct_procedimentoExecutadoInt) — dia em que ESTE item foi "
+            "executado, na data local da clínica. Vazio só em linhas anteriores à "
+            "Onda 4; sem ela a guia de resumo de internação não gera XML."
+        ),
+    )
+    # reducaoAcrescimo (ct_procedimentoExecutadoInt) é um FATOR MULTIPLICATIVO, e
+    # o neutro é 1.00 — não 0. A evidência, medida com lxml sobre os XSDs deste
+    # repo (docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §2 propunha `default 0`,
+    # e está corrigido lá):
+    #
+    #   1. o tipo IRMÃO `ct_procedimentoExecutado` (usado em <outrasDespesas>)
+    #      chama o mesmo conceito, na mesma posição da sequência e com o MESMO
+    #      tipo, de `fatorReducaoAcrescimo` — a palavra "fator" é da ANS;
+    #   2. `st_decimal3-2` = totalDigits 3 + fractionDigits 2 → faixa 0,00–9,99.
+    #      Isso é faixa de multiplicador. Percentual precisaria chegar a 100
+    #      (0–9,99% não descreve nem uma redução de 10%); valor em reais usaria
+    #      `st_decimal8-2`, o mesmo de valorUnitario/valorTotal, e não usa;
+    #   3. no tipo irmão o campo é `minOccurs="0"` — omitir significa "não mexe
+    #      no valor", que é exatamente o que 1.00 faz e 0.00 não faz;
+    #   4. precedente do próprio repo, anterior ao doc de pesquisa:
+    #      docs/DATA_MODEL.md já especificava
+    #      `TISSGuideItem.reduction_factor: DECIMAL(5,4) DEFAULT 1.0`;
+    #   5. com 1.00 fecha a aritmética que a operadora confere sozinha —
+    #      valorTotal = valorUnitario × quantidadeExecutada × fator. Com 0.00 a
+    #      guia declararia, item a item, que a linha vale ZERO e mesmo assim
+    #      cobraria valorTotal: convite a glosa.
+    #
+    # O que NÃO está conferido: o rótulo ANS. O XSD não traz `xs:documentation`
+    # e o manual de tabelas de domínio não está versionado aqui — 1.00 é o neutro
+    # por CONSISTÊNCIA ARITMÉTICA, não por rótulo conferido. Mesma disciplina dos
+    # "(rótulo a confirmar no manual ANS)" de TISSGuide.TipoFaturamento.
+    reduction_increase_factor = models.DecimalField(
+        "Fator de redução/acréscimo (TISS)",
+        max_digits=3,
+        decimal_places=2,
+        default=Decimal("1.00"),
+        help_text=(
+            "reducaoAcrescimo (ct_procedimentoExecutadoInt) / fatorReducaoAcrescimo "
+            "(ct_procedimentoExecutado) — multiplicador aplicado ao valor da linha. "
+            "1.00 = sem redução nem acréscimo; 0.50 = metade; 1.30 = 30% a mais. "
+            "Faixa do XSD: 0,00 a 9,99."
+        ),
+    )
     # Optional back-link to the SurgicalMaterial that produced this line (B4b OPME/
     # material bridge). Same-schema (TENANT) FK, so a normal FK — SET_NULL so a
     # deleted material does not cascade-remove a billed line. It is the idempotency
@@ -849,6 +1080,52 @@ class TISSGuideItem(models.Model):
         related_name="guide_items",
         verbose_name="Material cirúrgico de origem",
     )
+
+    # ─── Categoria do breakdown de ct_guiaValorTotal ──────────────────────────
+    #
+    # `<valorTotal>` tem SETE campos opcionais de breakdown além do total geral
+    # obrigatório. A operadora confere por eles (glosa por breakdown ausente é
+    # prática real de mercado), e a soma dos sete tem de bater com
+    # `valorTotalGeral`.
+    #
+    # POR QUE UM CAMPO, E NÃO CLASSIFICAÇÃO POR TUSS. O doc de pesquisa §4 já
+    # media isso e o repo confirma: `TUSSCode.table_number` (dm_tabela) é grosso
+    # demais — a tabela 18 contém diárias, taxas E gases medicinais, que são três
+    # campos TISS distintos, e `TUSSCode.group` idem. Classificar por eles é
+    # adivinhar. Aqui a categoria é FATO DE ORIGEM: cada ponte clínico→
+    # faturamento sabe exatamente o que está criando (uma DailyCharge é diária,
+    # um SurgicalMaterial.Kind.OPME é OPME, uma dispensação é medicamento) e
+    # grava o que sabe, no momento em que sabe.
+    #
+    # `blank=True` porque nenhuma linha anterior a esta fatia tem categoria e não
+    # há backfill honesto. A consequência é deliberada e está em
+    # `xml_engine._resolve_valor_total`: **breakdown é tudo-ou-nada**. Se um item
+    # da guia estiver sem categoria, sai só `valorTotalGeral` — um breakdown
+    # parcial, que não soma o total, é PIOR que nenhum: a operadora vê uma conta
+    # que não fecha e glosa a guia inteira.
+    class BillingCategory(models.TextChoices):
+        PROCEDIMENTOS = "procedimentos", "Procedimentos"
+        DIARIAS = "diarias", "Diárias"
+        TAXAS_ALUGUEIS = "taxas_alugueis", "Taxas e aluguéis"
+        MATERIAIS = "materiais", "Materiais"
+        MEDICAMENTOS = "medicamentos", "Medicamentos"
+        OPME = "opme", "OPME"
+        GASES_MEDICINAIS = "gases_medicinais", "Gases medicinais"
+
+    billing_category = models.CharField(  # noqa: DJ001
+        "Categoria no valorTotal (TISS)",
+        max_length=20,
+        choices=BillingCategory.choices,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text=(
+            "Campo de ct_guiaValorTotal em que esta linha entra. Gravado pela ponte "
+            "que criou o item, nunca inferido do TUSS. Vazio = linha anterior à Onda 4; "
+            "uma única assim faz a guia sair sem breakdown."
+        ),
+    )
+
     # Idempotência da dispensação de medicamento: UUID solto, NÃO FK.
     #
     # O par natural seria uma FK para ``pharmacy.Dispensation``, como
@@ -877,7 +1154,20 @@ class TISSGuideItem(models.Model):
         self.guide.save(update_fields=["total_value", "updated_at"])
 
     def save(self, *args, **kwargs):
-        self.total_value = self.unit_value * self.quantity
+        # O fator entra AQUI, e não só no XML, para a invariante que a operadora
+        # confere (valorTotal = valorUnitario × quantidadeExecutada ×
+        # reducaoAcrescimo) valer por construção, em vez de depender de o
+        # template lembrar de multiplicar. Com o default 1.00 o resultado é
+        # idêntico ao de antes desta fatia — nenhuma linha existente muda de
+        # valor. `quantize` é explícito para o valor em memória ser o MESMO que
+        # o Postgres grava em numeric(12,2): sem ele, `unit_value * quantity`
+        # pode ter 4 casas e o XML sairia de um número que o banco arredondou.
+        factor = self.reduction_increase_factor
+        if factor is None:  # defesa: alguém escreveu None por update() direto
+            factor = Decimal("1.00")
+        self.total_value = (self.unit_value * self.quantity * factor).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
         super().save(*args, **kwargs)
         self._recalc_guide_total()
 
