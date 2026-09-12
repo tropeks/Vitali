@@ -190,12 +190,24 @@ class Command(BaseCommand):
             if total <= 0:
                 falhas.append("faturamento do lote é zero — cadeia percorrida sem provar nada")
 
+            # A reprovação vive DENTRO do `atomic()` — ordem 007, passo 4.
+            #
+            # Estava fora, e o efeito era silencioso: com erro de XSD, a guia e o
+            # lote comitavam e só depois o comando reportava falha. Foi assim que
+            # a guia 202609000001 sobrou em staging, com carteirinha vazia, de uma
+            # execução reprovada. Eu havia dito ao Imediato que o `atomic()`
+            # limpava o rastro: vale para exceção levantada aqui dentro — o
+            # `guide_type` inválido foi assim — e não para falha COLETADA e
+            # relatada no fim.
+            #
+            # Passou a importar mais desde a ordem 007: a cunha de glosa julga as
+            # guias do tenant, então guia suja de execução reprovada vira alerta.
+            if falhas:
+                self._reprovar(falhas)
+
             if dry_run:
                 transaction.set_rollback(True)
                 self.stdout.write(self.style.WARNING("dry-run: guia e lote revertidos"))
-
-        if falhas:
-            self._reprovar(falhas)
         self.stdout.write(
             self.style.SUCCESS("cadeia de receita OK — guia válida, lote fechado, valor > 0")
         )
