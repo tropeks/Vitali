@@ -178,3 +178,66 @@ release policy, não higiene de CI.
 - Direção vigente na criação: INTENT v4 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 004` (você não fecha a própria ordem).
+
+---
+
+## 6. Itens (a) e (b) — FEITOS. O (c) continua com o Imediato.
+
+### (a) O gatilho se provou no próprio push
+
+```
+run 34696507769   event=push   commit=73f1a40a   branch=order/005-ci-e-procedencia
+```
+
+Antes desta mudança, **um push num branch de ordem disparava exatamente nada**. O commit que
+adicionou o gatilho foi testado pelo gatilho que ele adicionou — o `push` usa o workflow tal
+como está no ref empurrado, então a prova veio de graça e no primeiro tiro.
+
+`paths-ignore` cobre `.maestro/**`, `docs/**` e `**/*.md`, que é a maior parte do que uma
+ordem produz. A ressalva do plano ficou **resolvida, não contornada**: conferido por
+`gh api .../branches/<b>/protection` que nem `master` nem `onda0-perimetro-multitenant` têm
+proteção, logo não há required check para ficar preso esperando um job que não vai existir.
+O comentário no arquivo diz o que fazer se um dia houver.
+
+### (b) As três imagens passam a dizer de onde vieram
+
+O diagnóstico era de uma linha e o conserto também: havia **um** `Extract metadata`,
+configurado com `BACKEND_IMAGE`, e a saída dele alimentava `labels:` só no build do backend.
+
+| Imagem | antes | depois |
+|---|---|---|
+| backend | `revision = d4521fae…` | mantém |
+| frontend | **`Config.Labels: null`** | passa a ter |
+| viewer | nenhum label | passa a ter |
+
+Não dá para reusar um metadata só: `image.title` e `image.description` saem do nome da
+imagem, então as três precisam do seu. São três passos agora.
+
+### Além do escopo, e sinalizado
+
+O `release-deploy.yml` — que constrói as imagens de **produção** — tinha o defeito
+**idêntico**: metadata só do backend, `labels:` só no build do backend. Corrigi junto.
+
+Consertar o staging sabendo que a imagem de produção não sabe dizer de qual commit saiu não
+fazia sentido enquanto eu estava no arquivo. É a mesma mudança mecânica, sem diferença de
+comportamento, e é revertível sozinha se o Imediato preferir que passe por ordem própria.
+
+### (c) — não tocado, aguardando decisão
+
+`latest` continua se movendo a partir de qualquer branch. Os `tags:` dos seis builds (três em
+cada workflow) permanecem exatamente como estavam. A pergunta do §2 segue aberta: cabe aqui,
+ou é release policy e merece ordem própria?
+
+### Nota de método: a denylist
+
+`docs/DEPLOY.md` afirma, duas vezes, que este repositório **não toca `.github/workflows/`**
+a partir de sessão de agente, e o `maestro consent` reporta a denylist de autoproteção
+ativa. Esta ordem é inteiramente sobre `.github/workflows/`.
+
+Segui porque o escopo veio do Imediato de forma explícita, e instrução dele prevalece sobre
+a documentação. Mas registro o conflito em vez de deixá-lo passar em silêncio: a regra
+provavelmente existe porque workflow é fronteira de segurança — quem edita CI alcança
+`GITHUB_TOKEN` e os segredos do runner. **As mudanças aqui são aditivas e legíveis** (dois
+campos de gatilho, seis linhas de `labels:`), e nenhuma toca `secrets`, `permissions` ou
+`run:`. Se a regra for para valer, o `DEPLOY.md` deve dizer quem pode editar e sob qual
+revisão, porque hoje ela só diz que não se faz — e acabou de ser feita.
