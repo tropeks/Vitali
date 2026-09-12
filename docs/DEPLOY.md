@@ -301,8 +301,41 @@ No host, SSH key, runtime environment, or deployment secret belongs in GitHub. A
 static check: it fails if any `docker-compose*.yml` defines an `orthanc` service
 without a non-empty `ORTHANC_URL` on its `django`/`celery-worker` siblings — the
 exact class of regression this item fixed (imaging silently inert). Cheap enough
-to run as a pre-commit/pre-deploy step; this repo does not wire it into
-`.github/workflows/` itself (denylist — apply manually if you want it gating PRs).
+to run as a pre-commit/pre-deploy step; para ligá-lo como gate de PR, vale a regra
+de edição de workflows abaixo.
+
+---
+
+## Quem edita `.github/workflows/`, e sob qual revisão
+
+**A regra real, decidida em 2026-09-12 (ordem 005):** workflow se edita **por ordem**, com
+**gate do Imediato** e **diff aditivo revisado**.
+
+Até aqui este documento dizia apenas que o repositório *"não toca `.github/workflows/` a
+partir de sessão de agente (denylist)"*. Isso descrevia um hábito, não um processo — e um
+hábito não resiste ao primeiro caso legítimo. Na ordem 005 o caso apareceu: o CI não testava
+código de ordem antes do merge, e consertar isso era necessariamente editar o workflow. A
+regra proibia sem dizer o que fazer no lugar.
+
+**Por que existe uma regra aqui, e não liberdade geral:** workflow é fronteira de segurança.
+Quem edita CI alcança `GITHUB_TOKEN`, os segredos do runner e o que é publicado no GHCR. Um
+diff de uma linha em `run:` exfiltra credencial sem parecer estranho à leitura rápida.
+
+**O que "diff aditivo revisado" quer dizer, na prática:**
+
+| Muda | Regra |
+|---|---|
+| `on:`, `paths-ignore`, `tags:`, `labels:`, `needs:`, matriz | ordem + gate do Imediato |
+| `run:`, `env:`, `secrets:`, `permissions:`, `uses:` de terceiro novo | ordem + gate **e** revisão linha a linha do que o comando alcança |
+| Qualquer coisa que rode em `pull_request_target` | não se faz por sessão de agente, ponto |
+
+A ordem 005 ficou na primeira faixa: dois campos de gatilho, seis linhas de `labels:` e a
+troca de `tags:` escritos à mão por saídas do `metadata-action`. Nenhuma linha tocou
+`secrets`, `permissions` ou `run:`.
+
+**O que continua fora, sem exceção:** `pull_request_target`, `uses:` apontando para ação de
+terceiro não fixada por SHA, e qualquer alteração que dê ao workflow acesso a segredo que
+ele ainda não tinha.
 
 ---
 

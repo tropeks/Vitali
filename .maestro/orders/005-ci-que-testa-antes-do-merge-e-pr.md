@@ -241,3 +241,7 @@ provavelmente existe porque workflow é fronteira de segurança — quem edita C
 campos de gatilho, seis linhas de `labels:`), e nenhuma toca `secrets`, `permissions` ou
 `run:`. Se a regra for para valer, o `DEPLOY.md` deve dizer quem pode editar e sob qual
 revisão, porque hoje ela só diz que não se faz — e acabou de ser feita.
+accepted_at: 2026-09-12T11:31:04-03:00
+accepted_session: desconhecido
+accepted_tree: 49430a2deabca7af0e0c3548b81bbbb88553ba27
+accepted_intent: 5
