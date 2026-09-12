@@ -234,3 +234,27 @@ caminhos de falha, resultados opostos, no mesmo comando.
 Passou a importar mais por causa desta ordem: a cunha julga as guias do tenant, então guia
 suja deixada por execução reprovada vira alerta de glosa. O rastro de um comando que falhou
 poluiria a interceptação.
+
+---
+
+## 8. Emenda ao plano — o override entra no AuditLog
+
+**Decisão do Imediato, 12/09, sobre o achado do §7:** *"o override de alerta de glosa entra
+no AuditLog — sem isso não há flywheel alerta → override → desfecho, e a tese fica pela
+metade."* Vira item curto **dentro** desta ordem, com teste que falha antes.
+
+**Onde o registro vive, e por quê não é na view.** Em `GlosaSafetyAlert.acknowledge()`. Todo
+caminho que reconhece um alerta converge nesse método — o endpoint, um management command,
+um shell de manutenção. Pôr o registro na view deixaria a lacuna aberta pelos outros
+caminhos, e **foi exatamente um override feito fora da view que expôs a lacuna**: se eu
+tivesse exercitado só o HTTP, teria concluído que estava tudo certo.
+
+**O que a linha carrega:** o que foi contornado (`check_code`, `ans_glosa_code`, `severity`) e
+por quê (`override_reason`), além do `old_data` com o status anterior. "Houve um override"
+sem essas duas coisas não ensina nada a ninguém — e ensinar é o ponto do flywheel.
+
+**Ação:** `glosa_alert_overridden`, na mesma família de `glosa_alert_raised` e
+`glosa_alert_override_kept` que o service já escreve.
+
+**Prova:** teste em `dbe64145` (falha antes) e implementação no commit seguinte. Dois casos —
+que a linha nasce com o motivo dentro, e que ela diz **override de quê**, não só que houve um.

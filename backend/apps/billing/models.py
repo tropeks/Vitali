@@ -1543,11 +1543,51 @@ class GlosaSafetyAlert(models.Model):
         )
 
     def acknowledge(self, user, reason=""):
+        """Reconhece o alerta E registra o override no AuditLog (ordem 007).
+
+        O registro fica AQUI, e não na view, de propósito: todo caminho que
+        reconhece um alerta converge neste método — o endpoint, um management
+        command, um shell de manutenção. Foi um override feito fora da view que
+        expôs a lacuna, e pôr o registro na view a deixaria aberta pelos outros
+        caminhos.
+
+        Por que o override merece linha própria na auditoria: o `README.md`
+        descreve a camada de interceptação como um flywheel de `AuditLog` —
+        *alerta → override → desfecho*. Medido em 12/09, com a cunha de glosa
+        ligada sobre guias reais, `glosa_alert_raised` tinha 6 linhas e o override
+        tinha zero. O override é o sinal mais valioso dos três: é o humano
+        discordando da máquina, com motivo escrito. Sem ele, o que aprende com o
+        flywheel só vê a máquina concordando consigo mesma.
+
+        O `new_data` carrega O QUE foi contornado (check e código ANS) e POR QUÊ
+        (o motivo), porque "houve um override" sem essas duas coisas não ensina
+        nada a ninguém.
+        """
+        from apps.core.models import AuditLog
+
+        status_anterior = self.status
         self.acknowledged_by = user
         self.override_reason = reason
         self.acknowledged_at = timezone.now()
         self.status = self.Status.ACKNOWLEDGED
         self.save(update_fields=["acknowledged_by", "override_reason", "acknowledged_at", "status"])
+
+        AuditLog.objects.create(
+            user=user,
+            action="glosa_alert_overridden",
+            resource_type="tiss_guide",
+            resource_id=str(self.guide_id),
+            old_data={"status": status_anterior},
+            new_data={
+                "alert_id": str(self.id),
+                "guide_id": str(self.guide_id),
+                "check_code": self.check_code,
+                "ans_glosa_code": self.ans_glosa_code,
+                "severity": self.severity,
+                "override_reason": reason,
+                "acknowledged_at": self.acknowledged_at.isoformat(),
+            },
+        )
 
 
 class BankStatementImport(models.Model):
