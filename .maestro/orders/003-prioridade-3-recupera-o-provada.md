@@ -293,3 +293,7 @@ de tabela hoje**; se o Capitão quiser número fechado, eu levanto antes da deci
    `docker-compose.prod.yml` já faz.
 
 Vira ordem 004 quando o Capitão responder 1 e 2.
+accepted_at: 2026-09-12T07:33:56-03:00
+accepted_session: desconhecido
+accepted_tree: 87c2a63ba1abec6ef1d12a8e60aa1a87ade430ab
+accepted_intent: 4
