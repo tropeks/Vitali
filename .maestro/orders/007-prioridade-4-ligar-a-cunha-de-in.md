@@ -153,3 +153,84 @@ de produto, não de ordem técnica.
 - Direção vigente na criação: INTENT v5 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 007` (você não fecha a própria ordem).
+
+---
+
+## 7. Resultado — a cunha interceptou dado real, e o passo 3 achou um buraco
+
+**Flag ligada só no `demo`** (estado anterior: a linha **não existia**; reverter = apagá-la).
+**Desligada ao fim**, como o plano previa — a cunha fica provada e OFF.
+
+### Os veredictos, sobre guias que a operação produziu
+
+```
+202609000001  incomplete    ANS 05  [advise]  carteirinha, CID-10, senha ausentes
+202609000002  incomplete    ANS 05  [advise]  CID-10, senha ausentes
+202609000003  incomplete    ANS 05  [advise]
+202609000003  not_in_table  ANS 01  [BLOCK]   "Procedimento 10101010 não consta na
+                                               tabela de preços vigente da operadora"
+```
+
+`billing_glosasafetyalert` tinha **0 linhas** antes. O motor tinha teste e nunca julgara uma
+guia de verdade. As mensagens embutem o valor ofensor, como o `glosa_checker` promete — e
+isso não é estilo: o predicado de preservação de override chaveia na mensagem, então rótulo
+estático deixaria um bloqueio reconhecido ser burlado editando só o valor.
+
+### Duas previsões minhas, erradas, e as duas úteis
+
+**O `duplicate` (ANS 1702) não disparou.** Eu previra que sim: mesmo TUSS, mesmo atendimento,
+duas guias. Mas o motor exige guia já **APRESENTADA** à operadora, e as de staging estão em
+`draft`. O motor está certo e eu li rápido: cobrar duas vezes só é duplicidade depois de
+apresentar.
+
+**`incomplete` não bloqueia** — é `advise`. Só `duplicate` e `not_in_table` bloqueiam, por
+serem *"real, high-confidence denials"*. Para exercitar o soft-stop foi preciso o cenário que
+bloqueia de verdade: guia faturando procedimento **fora da tabela negociada**. Não é
+artificial — é o erro de faturamento mais comum que existe, e é o que a operadora glosa.
+
+### O ciclo completo, medido
+
+```
+antes do override : [block/flagged]       · guias bloqueando o fechamento: 1
+depois do override: [block/acknowledged]  · guias bloqueando o fechamento: 0
+```
+
+É a interceptação inteira: o lote **não fecharia** com o alerta aberto, e volta a poder
+fechar quando um humano assume a responsabilidade por escrito.
+
+### O achado do passo 3: o override não chega ao `AuditLog`
+
+O Capitão pediu para ver o override na auditoria. Medido:
+
+```
+AuditLog antes: 429  |  depois: 429  |  linhas novas: 0
+```
+
+O override **fica durável no próprio alerta** — `acknowledged_by`, `override_reason` (80
+chars), `acknowledged_at` — e o endpoint escreve um `logger.info`. Mas não entra na tabela de
+auditoria.
+
+A perna do alerta está lá: `glosa_alert_raised`, **6 linhas**, escritas pelo service. O
+`README.md` descreve o flywheel como *"`AuditLog` de alerta/override/desfecho"* — **alerta
+sim, override não**.
+
+Por que importa mais que uma linha faltando: **override é o sinal mais valioso do flywheel**.
+É o humano discordando da máquina, com motivo escrito. Se o que aprende lê `AuditLog`, esse
+sinal é invisível para ele — e o que sobra é a máquina aprendendo só com os próprios acertos.
+
+**Não consertei.** O Capitão pediu para ver, não para consertar, e mexer no caminho de
+auditoria é mudança de contrato. Vira item curto se ele quiser.
+
+### Passo 4 — o vazamento transacional
+
+Teste escrito para falhar antes (`9633dc3c`) e a correção depois (`44dcadbc`): o
+`if falhas: self._reprovar(...)` do `verify_revenue_chain` foi para dentro do `atomic()`.
+
+A distinção que mantinha isso invisível está no comentário do arquivo: exceção levantada
+**dentro** do bloco sempre reverteu — foi por isso que o `guide_type` inválido não deixou
+rastro — enquanto falha **coletada numa lista e relatada depois** comitava tudo antes. Dois
+caminhos de falha, resultados opostos, no mesmo comando.
+
+Passou a importar mais por causa desta ordem: a cunha julga as guias do tenant, então guia
+suja deixada por execução reprovada vira alerta de glosa. O rastro de um comando que falhou
+poluiria a interceptação.
