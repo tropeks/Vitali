@@ -266,3 +266,52 @@ própria; fica registrado aqui para não ser confundido com trabalho feito.
 
 Com 1 e 2 respondidos, ligar é preencher cinco variáveis e rodar o drill com `--from-s3`.
 **Não há trabalho de código pela frente.**
+
+---
+
+## 9. Encerrada como NÃO AGORA — decisão do Capitão, 12/09
+
+**Desfecho: `killed`.** Não porque estava errada, e sim porque a pergunta que ela fazia foi
+respondida por cima: *quanto vale o dado que estamos protegendo?*
+
+**A resposta:** a lab é ambiente de teste. Perda de dado ali não é catástrofe, e blindar
+contra ela custa mais atenção do que vale. **Backup fora do host só quando o Vitali virar
+produto — e aí vai para a nuvem, não para outro nó da Vulcan.**
+
+**A pergunta do §1 tem resposta, e ela fecha o argumento:** a R640 e o host VMware estão no
+**mesmo rack**. Era a suspeita registrada no plano, e confirmá-la elimina a opção mais barata
+que eu tinha listado — o salto para a R640 protegeria contra perda de VM e contra engano
+humano, nunca contra perda de sítio. Chamar aquilo de offsite teria sido exatamente o verde
+mentiroso que o INTENT §Limites proíbe. **Melhor não ter do que ter e acreditar.**
+
+**A custódia da chave deixa de ser bloqueio e vira recomendação.** O raciocínio continua
+válido — dump cifrado cuja chave morreu junto não é recuperação — mas enquanto for staging,
+perder as duas juntas custa dado de teste. No dia da produção volta a ser pré-requisito.
+
+### O que fica no repo, e por quê
+
+| Artefato | Onde | Estado |
+|---|---|---|
+| `backup.sh` parametrizado por endpoint S3, com a pega de checksum do R2 | `scripts/backup.sh` | **desligado** — `BACKUP_S3_BUCKET` vazio pula o bloco |
+| Retenção GFS por prefixo `daily/` e `monthly/` | idem | idem |
+| `--from-s3` no drill | `scripts/run_restore_drill.sh` | pronto, sem credencial para usar |
+| Runbook do offsite, lifecycle e roteiro do drill | `docs/BACKUPS.md` §Offsite | marcado como **NÃO AGORA**, com a decisão e a data |
+
+Ligar, no dia da produção, é preencher cinco variáveis. **Não há trabalho de código pela
+frente** — e a seção diz isso em voz alta, para que ninguém a encontre daqui a seis meses e
+a trate como pendência esquecida.
+
+### O que esta ordem entregou mesmo sendo encerrada
+
+Duas coisas que valem por si e não dependem do offsite:
+
+1. **A armadilha do `printenv`.** As `BACKUP_S3_*` não casavam o filtro que monta o
+   `/etc/backup.env` do cron. Quem ligasse o offsite veria o upload funcionar num teste
+   manual e o cron pulá-lo silenciosamente toda noite, com métrica de sucesso e `exit 0`.
+   Corrigida antes de existir — o defeito estava armado esperando o primeiro usuário.
+2. **`aws-cli` no `apk add`** do `db-backup`, que faltava e faria o `backup.sh:110` falhar.
+
+Mais o terceiro achado do mesmo defeito de `set -e`, que virou item próprio na 005.
+
+**Direção atualizada:** INTENT **v5** — §Limites ganhou a política de backup por ambiente, e
+§Fora de escopo registra o offsite como trabalho guardado, com ponteiro para o runbook.

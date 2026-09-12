@@ -1,9 +1,9 @@
 <!-- maestro-intent v1
-version: 4
-ts: 2026-09-11T12:34:32-03:00
-head: e20a9ec47cb340e44a8d84dabce45406a81b894d
+version: 5
+ts: 2026-09-12T10:25:25-03:00
+head: 5b7ff005cfa84e7b1506e71d336b1dce59e44a07
 author_session: desconhecido
-hash: e88157e6
+hash: a6120b3c
 -->
 # Direção — vitali
 
@@ -94,6 +94,12 @@ desfecho).
 - **i18n é scaffolding, não entrega.** Hoje só pt-BR é servido (`docs/I18N.md`).
 - **Sinal verde tem que significar verde.** Healthcheck, CI e alerta que vivem vermelhos
   ensinam a equipe a ignorar vermelho — e aí o vermelho real passa batido.
+- **Backup: staging tem cifrado diário local + drill provado; offsite só a partir da
+  produção, e em nuvem.** A lab é ambiente de teste — perda de dado ali não é catástrofe, e
+  proteger contra ela custa mais atenção do que vale. Dentro da Vulcan não existe offsite de
+  verdade: a R640 e o host VMware estão no mesmo rack (confirmado 12/09), então qualquer
+  cópia entre nós protege contra perda de VM, nunca contra perda de sítio. O nível de
+  proteção acompanha o que o dado vale, e hoje ele vale dado de teste.
 
 ## Fora de escopo
 
@@ -109,3 +115,8 @@ desfecho).
   sistema intercepta e explica, quem decide é o profissional.
 - Migrar para AWS/ECS neste horizonte: é destino declarado da arquitetura, não trabalho
   desta direção. Hoje o alvo de execução é Docker Compose na Vulcan.
+- **Backup fora do host enquanto o Vitali não for produto.** O preparo existe e está no
+  repo (`docs/BACKUPS.md` §Offsite, `backup.sh` parametrizado, `--from-s3` no drill),
+  desligado e pronto: ligar é preencher cinco variáveis. É trabalho guardado para o dia da
+  produção — não é dívida, e quem encontrar a seção não deve tratá-la como pendência
+  esquecida. Ordem 004, encerrada como NÃO AGORA por decisão do Capitão em 12/09.

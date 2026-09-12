@@ -418,11 +418,31 @@ one such offsite-only exercise passes.
 
 ---
 
-## Offsite — preparo (ordem 004)
+## Offsite — preparo guardado para a produção (ordem 004, encerrada como NÃO AGORA)
 
-> **Estado em 2026-09-12:** o código está pronto e **desligado**. `BACKUP_S3_BUCKET` vazio
-> faz o `backup.sh` pular o bloco de upload inteiro, e o backup segue local. Ligar é
-> preencher cinco variáveis — não há trabalho de código pela frente.
+> **DECISÃO DO CAPITÃO, 2026-09-12 — isto NÃO é pendência esquecida.**
+>
+> A lab é ambiente de teste: perda de dado ali não é catástrofe, e proteger contra ela
+> custa mais atenção do que vale hoje. **Backup fora do host só a partir do momento em que
+> o Vitali virar produto — e aí vai para a nuvem, não para outro nó da Vulcan.**
+>
+> Dentro da Vulcan não existe offsite de verdade: a **R640 e o host VMware estão no mesmo
+> rack** (confirmado). Copiar entre nós protege contra perda de VM, nunca contra perda de
+> sítio — e chamar isso de offsite seria o tipo de verde mentiroso que o
+> `.maestro/INTENT.md` §Limites proíbe.
+>
+> **O que staging tem, e é o que deve ter:** backup cifrado diário local (AES256, rodando
+> sozinho às 02:00 UTC desde 12/09) e **drill de restore provado** (ordem 003).
+>
+> **O código abaixo está pronto e desligado.** `BACKUP_S3_BUCKET` vazio faz o `backup.sh`
+> pular o bloco de upload inteiro. Ligar, no dia da produção, é preencher cinco variáveis —
+> não há trabalho de código pela frente. Leia esta seção como runbook do futuro, não como
+> tarefa aberta.
+>
+> **Recomendação, não bloqueio:** guardar a `BACKUP_ENCRYPTION_KEY` fora da máquina que ela
+> protege. Enquanto for staging, perder as duas juntas custa dado de teste. No dia em que
+> houver dado real, isso deixa de ser recomendação e vira pré-requisito de ligar o upload —
+> um dump cifrado cuja chave morreu junto não é recuperação.
 
 ### O par que ninguém deve separar: chave e destino
 
