@@ -1,3 +1,12 @@
+<!-- maestro-order v1
+absorbed_by: 002
+-->
+> **Absorvido pela ordem 002.** Este documento registrou o estado da lab antes do passo 1
+> e serviu de caminho de volta. O rollback **foi executado** — a primeira tentativa caiu no
+> guard de boot da `BACKUP_ENCRYPTION_KEY` e voltou por aqui — e depois foi **superado** pelo
+> passo 1 refeito com a chave provisionada. Não é ordem: não tem aceite nem recibo, e o
+> `maestro order --list` só o enxergava assim por ele morar no diretório das ordens.
+
 # Rollback — ordem 002, passo 1
 
 Estado da lab **antes** do build do HEAD. Registrado em 2026-09-11, como condição (1) do
