@@ -235,6 +235,39 @@ Passou a importar mais por causa desta ordem: a cunha julga as guias do tenant, 
 suja deixada por execução reprovada vira alerta de glosa. O rastro de um comando que falhou
 poluiria a interceptação.
 
+#### Correção: o primeiro par não provava nada, e envenenou quatro execuções de CI
+
+O par `9633dc3c`/`44dcadbc` está **invalidado**. A fixtura do teste não dava CNES ao
+profissional, e `_cnes_obrigatorio` levanta no passo 3 — antes de o comando chegar ao
+comportamento transacional que é o assunto do teste. Ele falhava **igual nas duas metades**,
+com `Guia Consulta 202609000001 não tem CNES do estabelecimento executante`. Teste que falha
+do mesmo jeito antes e depois não é prova, e este derrubou o `Backend — Tests` em
+`9633dc3`, `44dcadb`, `dbe6414` e `e009a521` — quatro execuções vermelhas atribuídas a
+causas diferentes até a fixtura ser lida.
+
+Refeito em `bee9872`, com o CNES fictício declarado `0000000` (pelo setter `cnes_code`, que
+escreve `cnes`, `legacy_cnes_text` e `cnes_unmatched`). Medido em container descartável na
+lab — a imagem que o CI fixa, `postgres:16-alpine` efêmero, dependências de
+`requirements/development.txt`; docker é negado ao meu usuário nesta máquina, a lab tem:
+
+```
+ANTES  (_reprovar fora do atomic)   1 failed in 6.44s
+       AssertionError: 1 != 0 : cadeia reprovada deixou guia comitada   (linha 90)
+       e o log percorre até "5. Faturamento / valor do lote : R$ 100.00" — falha no
+       comportamento, não na fixtura
+DEPOIS (_reprovar dentro do atomic) 1 passed in 371.95s
+
+antes.log   sha256 3deb0decacb550a2419f99ecedf1bfb228e7794ce832884214f2e7bf699206c1
+depois.log  sha256 4fb000627f0180b73290234ac9e456af7d24aff4b3245236039a6b1f3f5399c2
+```
+
+Containers e árvore copiada removidos ao fim. Ledger: `ordem-007-passo-4`.
+
+**O que isto custou, em método:** eu li "vermelho" quatro vezes e procurei causa nova a cada
+vez, em vez de ler a saída do teste na primeira. A regra que sai daqui é a mesma que já
+vale para o `grep -c` e o `set -e`: **um teste novo que falha tem de falhar pela asserção
+que eu escrevi** — se a mensagem for outra, o teste está quebrado, não o código.
+
 ---
 
 ## 8. Emenda ao plano — o override entra no AuditLog
@@ -258,3 +291,56 @@ sem essas duas coisas não ensina nada a ninguém — e ensinar é o ponto do fl
 
 **Prova:** teste em `dbe64145` (falha antes) e implementação no commit seguinte. Dois casos —
 que a linha nasce com o motivo dentro, e que ela diz **override de quê**, não só que houve um.
+
+**Medido em `e009a521`:** os dois testes passam (`test_override_escreve_no_auditlog`,
+`test_override_registra_o_que_foi_contornado`), e em `dbe64145` os dois falham pelas
+asserções escritas, nas linhas 87 e 107. O par é válido. O vermelho daquele CI era o teste
+do passo 4, acima — não o AuditLog.
+
+**O que ainda falta para a emenda estar provada em dado real:** a lab roda a imagem
+`sha256:0072abe3…`, revisão `5675be13` — a da ordem 006, anterior a este código. O override
+que existe em staging (guia `202609000003`, alerta `not_in_table`/ANS 01, `acknowledged`)
+foi feito por aquela imagem, e por isso **não há linha `glosa_alert_overridden` no
+`public.core_auditlog`** — 429 linhas, nenhuma dessa ação, exatamente como o §7 registrou.
+A emenda está implementada e provada em teste; falta a imagem nova subir na lab e um
+override novo deixar a linha. Isso é passo de deploy, não de código.
+
+---
+
+## 9. Estado real de staging, medido em 12/09 — e uma correção ao que reportei da 006
+
+Apurado direto no banco da lab (`vitali-lab-postgres-1`, schema `demo`) enquanto eu
+fechava esta ordem:
+
+| guia | lote | itens | valor dos itens | alerta da cunha |
+|---|---|---|---|---|
+| `202609000001` | `2026090001` | 1 | R$ 100,00 | `incomplete` / ANS 05 / advise — carteirinha vazia |
+| `202609000002` | `2026090002` | 1 | R$ 100,00 | `incomplete` / ANS 05 / advise |
+| `202609000003` | *sem lote* | 1 | R$ 100,00 | `incomplete` / ANS 05 + `not_in_table` / ANS 01 **block**, com override |
+
+**A correção.** Eu reportei ao Imediato *"valor R$ 100,00 faturado"* para o lote
+`2026090002`. O número certo do **item da guia** é esse; o **lote** não carrega valor
+nenhum:
+
+```
+billing_tissbatch: 2026090001 | open | total_value 0.00
+                   2026090002 | open | total_value 0.00
+```
+
+`verify_revenue_chain` passo 5 soma os itens **em memória** (`total = sum(...)`,
+`verify_revenue_chain.py:185`) e escreve o valor na saída do comando — nunca em
+`lote.total_value`, e nunca fecha o lote. Não existe, em todo o `billing`, caminho que
+grave `TISSBatch.total_value` ou mova o status de `open`. Então o que a ordem 006 provou,
+com precisão: **guia válida contra o XSD → lote contendo a guia → valor apurável maior que
+zero**. O que ela **não** provou: faturamento como estado persistido.
+
+**Isto não invalida a 006** — o XSD passou com 0 erros e a receita é apurável a partir de
+dado persistido — mas invalida a palavra "faturado" do jeito que eu a usei, e é assunto de
+Prioridade 2, não desta ordem. Fica proposto como ordem própria: fechar lote (`status`,
+`total_value`, `closed_at`) com teste, já que hoje o lote nasce aberto e ninguém o fecha.
+
+**A guia órfã continua lá.** O Imediato autorizou apagar a `202609000001` (dado de teste).
+Eu não apaguei e não disse que tinha apagado — o item ficou aberto. Ela agora **é prova**:
+carrega um dos três alertas `incomplete` que o §7 registra. Apagá-la remove um veredicto da
+cunha. Recomendo mantê-la até a 007 ser aceita, e então apagar guia e lote `2026090001`
+juntos — ela sozinha deixaria um lote vazio.
