@@ -1,10 +1,31 @@
 name: CI
 
+# Gatilhos — ordem 005.
+#
+# Ate 12/09 o CI so disparava em push para main|master|develop e em PR CONTRA
+# essas bases. Um PR de `order/NNN` para `onda0-perimetro-multitenant` nao casava
+# nenhum filtro, entao **codigo de ordem so encontrava o gate depois de mesclado**:
+# nas ordens 002 e 003 foi preciso mesclar para conseguir testar, o que inverte a
+# ordem natural de descobrir que algo quebrou. INTENT §Limites, "sinal verde tem
+# que significar verde" — aqui nao havia sinal nenhum.
+#
+# `paths-ignore`: a suite leva 35-43 min em cinco jobs, e boa parte dos commits
+# de ordem toca so `.maestro/` e `docs/`. Rodar Playwright para consertar uma
+# frase de runbook queima runner por nada.
+#
+# ATENCAO ao mexer nisto: `paths-ignore` num `pull_request` faz o check NAO
+# EXISTIR, e nao "passar". Se algum dia houver branch protection com required
+# check, um PR so de documentacao fica travado esperando algo que nunca vai
+# rodar. Conferido em 12/09: nem `master` nem `onda0-perimetro-multitenant` tem
+# protecao, entao nao ha required check para travar. Se ligar protecao, troque
+# `paths-ignore` por um job que reporta sucesso.
 on:
   push:
-    branches: [main, master, develop]
+    branches: [main, master, develop, 'order/**']
+    paths-ignore: ['.maestro/**', 'docs/**', '**/*.md']
   pull_request:
-    branches: [main, master, develop]
+    branches: [main, master, develop, onda0-perimetro-multitenant]
+    paths-ignore: ['.maestro/**', 'docs/**', '**/*.md']
 
 env:
   PYTHON_VERSION: "3.12"
