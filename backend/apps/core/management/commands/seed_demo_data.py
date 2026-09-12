@@ -45,6 +45,7 @@ See ``apps/core/tests/test_seed_demo_data_no_fake_catalog_codes.py`` for the
 regression guard (static source check — no DB needed).
 """
 
+import logging
 import random
 from datetime import timedelta
 from decimal import Decimal
@@ -52,6 +53,8 @@ from decimal import Decimal
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 from django_tenants.utils import schema_context
+
+logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
@@ -227,17 +230,48 @@ class Command(BaseCommand):
         from apps.billing.models import InsuranceProvider, TISSGuide, TISSGuideItem
         from apps.core.models import TUSSCode
 
+        # Ordem 006. Este bloco tinha DUAS camadas de silêncio, e as duas
+        # escondiam o mesmo defeito.
+        #
+        # A primeira era um `return` nu quando faltava operadora, código TUSS ou
+        # atendimento. Como este comando NÃO cria `InsuranceProvider`, a condição
+        # era sempre verdadeira e o corpo nunca executou — por isso o staging
+        # tinha paciente, atendimento e internação, e zero `billing_tissguide`.
+        #
+        # A segunda era um `except Exception` que virava
+        # "Skipped guide creation: …", uma linha que parece um pulo benigno. Sob
+        # ela, o corpo estava quebrado: chamava `TISSGuide.objects.create` com
+        # `insurance_provider=` e `professional=`, e os campos do modelo são
+        # `provider` e `executor`. Quem cadastrasse a primeira operadora não veria
+        # um erro — veria "skipped", e concluiria que faltava dado.
+        #
+        # Agora: o que falta é NOMEADO num aviso, e uma falha inesperada é
+        # registrada como erro com o tipo da exceção, em vez de virar um pulo.
+        faltando = []
+        provider = InsuranceProvider.objects.first()
+        if not provider:
+            faltando.append("InsuranceProvider (rode `import_insurances` antes)")
+        tuss_codes = list(TUSSCode.objects.filter(active=True)[:10])
+        if not tuss_codes:
+            faltando.append("TUSSCode ativo (rode `seed_catalogs` antes)")
+        if not encounters:
+            faltando.append("Encounter")
+        if faltando:
+            logger.warning(
+                "seed_demo_data: nenhuma guia TISS criada — falta %s", "; ".join(faltando)
+            )
+            self.stdout.write(
+                self.style.WARNING(f"Guias TISS não criadas — falta: {'; '.join(faltando)}")
+            )
+            return
+
         try:
-            provider = InsuranceProvider.objects.first()
-            tuss_codes = list(TUSSCode.objects.filter(active=True)[:10])
-            if not provider or not tuss_codes or not encounters:
-                return
             for i, enc in enumerate(encounters):
                 guide = TISSGuide.objects.create(
                     patient=enc.patient,
-                    professional=enc.professional,
+                    executor=enc.professional,
                     encounter=enc,
-                    insurance_provider=provider,
+                    provider=provider,
                     guide_type="consultation",
                     status="paid" if i < 3 else "denied",
                     competency=timezone.now().date().replace(day=1).strftime("%Y-%m"),
@@ -252,7 +286,12 @@ class Command(BaseCommand):
                     total_value=Decimal("150.00"),
                 )
         except Exception as e:
-            self.stdout.write(self.style.WARNING(f"Skipped guide creation: {e}"))
+            # Continua não abortando o seed inteiro, mas a falha para de parecer
+            # um pulo: tipo da exceção no texto, e ERROR no log.
+            logger.error("seed_demo_data: falha ao criar guia TISS: %s: %s", type(e).__name__, e)
+            self.stdout.write(
+                self.style.ERROR(f"ERRO ao criar guias TISS ({type(e).__name__}): {e}")
+            )
 
     def _create_pix_charges(self, appointments):
         """Seed PIXCharge records: 2 paid, 2 pending, 1 expired, 1 cancelled."""
