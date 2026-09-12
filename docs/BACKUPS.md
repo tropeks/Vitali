@@ -415,3 +415,120 @@ full isolated disaster exercise using only objects downloaded from offsite
 storage, record achieved RPO/RTO, row counts and the recovered WAL endpoint, and
 retain the signed drill report. PITR is not accepted as production-ready until
 one such offsite-only exercise passes.
+
+---
+
+## Offsite — preparo (ordem 004)
+
+> **Estado em 2026-09-12:** o código está pronto e **desligado**. `BACKUP_S3_BUCKET` vazio
+> faz o `backup.sh` pular o bloco de upload inteiro, e o backup segue local. Ligar é
+> preencher cinco variáveis — não há trabalho de código pela frente.
+
+### O par que ninguém deve separar: chave e destino
+
+Um dump cifrado num bucket, com a `BACKUP_ENCRYPTION_KEY` vivendo **apenas** na máquina
+que o backup protege, **não é recuperação**. Se a máquina some, some o que abre o backup, e
+o offsite vira volume pago de ruído. O `backup.sh` já avisa no cabeçalho: *"store it in an
+offline vault — losing it makes every encrypted dump unrecoverable"*.
+
+**Custódia da chave fora do host é pré-requisito de ligar o upload, não item posterior.**
+Cifrar com chave que morre junto é pior que não cifrar: parece proteção.
+
+### As variáveis, e os três lugares onde elas têm de aparecer
+
+| Variável | Para quê |
+|---|---|
+| `BACKUP_S3_BUCKET` | vazio = offsite desligado |
+| `BACKUP_S3_ENDPOINT` | omita para AWS; obrigatório em B2 e R2 |
+| `BACKUP_S3_PREFIX` | raiz das chaves (default `vitali`) |
+| `BACKUP_S3_ACCESS_KEY` / `_SECRET_KEY` | credencial **com escopo só neste prefixo** |
+| `BACKUP_S3_COMPAT` | vazio para B2/AWS; `r2` para Cloudflare R2 |
+
+**Variável nova precisa entrar em três lugares, e esquecer o terceiro é silencioso:**
+
+1. `.env.staging` (o valor),
+2. o bloco `environment:` do serviço `db-backup` no compose (para existir no container),
+3. **o filtro `printenv | grep -E` do `command:` do mesmo serviço.**
+
+O `crond` do busybox zera o ambiente, então o job noturno lê `/etc/backup.env`, montado por
+aquele filtro. Variável que não casa o filtro **não existe para o backup automático** —
+ainda que esteja nos outros dois lugares. Até 12/09 as `BACKUP_S3_*` estavam fora dele: quem
+ligasse o offsite veria o upload funcionar num `docker compose exec` (ambiente completo) e o
+cron pular o bloco em silêncio toda noite, escrevendo métrica de sucesso e saindo 0.
+
+### Cloudflare R2: a pega do checksum
+
+As CLIs e SDKs recentes da AWS mandam checksum **CRC32** por padrão em `PutObject`, e o R2
+recusa:
+
+```
+Header 'x-amz-checksum-algorithm' with value 'CRC32' not implemented
+```
+
+`BACKUP_S3_COMPAT=r2` exporta `AWS_REQUEST_CHECKSUM_CALCULATION=when_required` e
+`AWS_RESPONSE_CHECKSUM_VALIDATION=when_required`. Sem isso o upload falha com uma mensagem
+que não se parece com "faltou configurar". **B2 e AWS não precisam de nada.**
+
+### Retenção GFS — 30 diários + 12 mensais
+
+Todo artefato se chama `vitali_<timestamp>.dump.gpg`; o nome não distingue diário de mensal.
+E regra de lifecycle opera por **idade e prefixo**, nunca por *"guarde o primeiro de cada
+mês"*. Então quem separa é o uploader:
+
+```
+s3://<bucket>/<prefix>/daily/vitali_*.dump.gpg      → expira em  30 dias
+s3://<bucket>/<prefix>/monthly/vitali_*.dump.gpg    → expira em 365 dias
+```
+
+O mensal é uma **cópia** do mesmo artefato (mesma chave, idêntico byte a byte), promovida
+quando ainda não existe mensal para a competência corrente. Deliberadamente **não** é *"se
+hoje é dia 1"*: uma única noite falha no dia 1 custaria o mês inteiro, em silêncio, e só se
+descobriria um ano depois.
+
+**Volume em regime:** 25 MB/dia ⇒ ~750 MB em diários + ~300 MB em mensais ≈ **1,05 GB**.
+Cabe no nível gratuito de 10 GB de B2 e R2 **permanentemente**.
+
+Regra de lifecycle, do lado do bucket (não é código; é configuração do fornecedor):
+
+```json
+{"Rules": [
+  {"ID": "vitali-daily-30d",    "Status": "Enabled",
+   "Filter": {"Prefix": "vitali/daily/"},   "Expiration": {"Days": 30}},
+  {"ID": "vitali-monthly-365d", "Status": "Enabled",
+   "Filter": {"Prefix": "vitali/monthly/"}, "Expiration": {"Days": 365}}
+]}
+```
+
+No B2 o equivalente é *Lifecycle Settings* por prefixo no painel do bucket; no R2, *Object
+lifecycle rules*. **O `backup.sh` não poda o bucket** — a retenção dele (`KEEP_LAST`) é
+explicitamente local.
+
+### Drill de restore a partir do offsite — roteiro
+
+O `restore_test.sh` já sabe puxar do bucket: com `BACKUP_S3_BUCKET` setado ele lista o
+prefixo, pega o objeto mais recente e ignora o `BACKUP_DIR`. O que muda no roteiro é **de
+onde vem o artefato** — e é a única prova que vale num incêndio, porque exercita a
+credencial, a rede e o bucket, não só o `gpg` e o `pg_restore`.
+
+```bash
+# Na lab, sem tocar no staging. As credenciais entram pela mesma via da chave:
+# lidas do .env por substituicao de comando, nunca ecoadas, nunca em argv.
+cd /srv/vulcan/apps/vitali
+bash scripts/run_restore_drill.sh \
+  --env-file /srv/vulcan/apps/vitali/.env.staging \
+  --from-s3 \
+  --workdir /srv/vulcan/apps/vitali/drill \
+  --reference /srv/vulcan/apps/vitali/migracao/inventario-LAB.txt \
+  --inventory-sql /srv/vulcan/apps/vitali/migracao/inventario.sql
+```
+
+O que o drill tem de provar, e em que ordem:
+
+1. **A credencial lê o bucket** — falha aqui é escopo de credencial, não backup.
+2. **O artefato baixado decifra** com a chave em custódia — se a chave testada for a cópia
+   do cofre, e não a do host, esta é a prova de que a custódia funciona.
+3. **Restaura num banco descartável** com `emr_patient > 0` em algum tenant.
+4. **Inventário conferido tabela a tabela** contra a referência.
+5. **Limpeza verificada** — nenhum `.dump` em claro sobrando, nenhum container órfão.
+
+Só depois dos cinco o RTO de 4h deste documento passa a ter base. Hoje ele é uma intenção.

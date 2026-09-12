@@ -167,3 +167,102 @@ o mesmo verde mentiroso das outras três ordens.
 - Direção vigente na criação: INTENT v4 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 004` (você não fecha a própria ordem).
+
+---
+
+## 8. Preparo — FEITO (12/09). Sem credencial, sem upload.
+
+Aprovado pelo Imediato como preparo enquanto fornecedor, credencial e custódia da chave vão
+ao Capitão. **Nada foi enviado a lugar nenhum e nenhuma credencial existe.**
+
+### O esquema 30 + 12 exigiu uma decisão de desenho
+
+Todo artefato se chama `vitali_<timestamp>.dump.gpg` — o nome não distingue diário de
+mensal. E **regra de lifecycle opera por idade e prefixo, nunca por "guarde o primeiro de
+cada mês"**. Então 30 diários + 12 mensais não se expressa só do lado do bucket: quem separa
+é o uploader.
+
+```
+<prefix>/daily/    ← todo backup            → lifecycle expira em  30 dias
+<prefix>/monthly/  ← uma cópia por mês      → lifecycle expira em 365 dias
+```
+
+A promoção mensal acontece quando **ainda não existe mensal para a competência corrente**,
+não no dia 1. Uma única noite falha no dia 1 custaria o mês inteiro, em silêncio, e só se
+descobriria um ano depois. Custa um `s3 ls` por noite (Class B, gratuito nos dois
+candidatos).
+
+**Volume em regime:** ~750 MB de diários + ~300 MB de mensais ≈ **1,05 GB** — dentro do
+nível gratuito de 10 GB permanentemente, e menos que os 2,3 GB da minha proposta de 90 dias.
+O esquema do Imediato é melhor e é o que ficou.
+
+### A armadilha que o preparo quase entregou junto
+
+O `crond` do busybox zera o ambiente, então o job noturno lê `/etc/backup.env`, montado por
+um `printenv | grep -E` no `command:` do serviço. **Nenhuma `BACKUP_S3_*` casava esse
+filtro.**
+
+O modo de falha seria perfeito: configuram-se as cinco variáveis, testa-se com
+`docker compose exec` — ambiente completo, upload funciona, `[backup] Uploaded: s3://…` —
+e o cron pula o bloco inteiro toda noite, sem mensagem, com métrica de sucesso escrita e
+`exit 0`. O offsite pareceria ligado por meses.
+
+Corrigido nos dois lugares (o `environment:` e o filtro), com o comentário dizendo que
+variável nova precisa entrar nos **três** e que esquecer o terceiro não dá erro. E
+`aws-cli` entrou no `apk add`, ao lado do `gnupg` — o `backup.sh:110` falha explícito sem
+ele.
+
+### `--from-s3`, e por que o download não usa o `aws` do host
+
+A lab não tem `aws` instalado, e o caminho S3 do próprio `restore_test.sh` (`:43`) exige o
+CLI no host. Instalar um binário na lab por causa de um drill seria dependência nova onde
+não precisa. O wrapper baixa por **container efêmero**, com o mesmo `apk add aws-cli` que o
+serviço `db-backup` usa — se o pacote sumir, os dois quebram juntos, em vez de um descobrir
+tarde. O drill canônico roda igual nos dois modos, recebendo sempre um arquivo local.
+
+### O mesmo bug de `set -e`, terceira aparição — e desta vez era meu
+
+`grep` que não encontra sai 1. Sob `set -euo pipefail`, a atribuição morre **antes** da
+checagem escrita para o caso "variável ausente". O guard do `--from-s3` existia e era
+inalcançável: o script saía silenciosamente em vez de dizer o que faltava. Sete leituras do
+`.env` corrigidas com `|| true`.
+
+É a terceira vez nesta sequência de ordens: duas no `restore_test.sh` (003), uma na limpeza
+do meu wrapper (003), e agora esta. **O padrão é sempre o mesmo** — um comando que pode
+legitimamente falhar dentro de uma atribuição, num script com `set -e`, mata a linha que
+saberia lidar com a falha. Vale virar convenção escrita do repositório, não achado repetido.
+
+### Regressão: o modo local não quebrou
+
+```
+[drill] artefato   : vitali_20260912T020000Z.dump.gpg
+[drill] fase 1     : restore_test.sh PASSOU
+[drill] fase 2     : DIFERENTE — 4 linha(s) divergentes
+[drill] limpeza    : containers=0 claros_tmp=0 claros_work=0
+[drill] ✓ drill completo e limpo
+```
+
+O artefato escolhido foi o **backup automático das 02:00 UTC**, não o disparo manual — a
+seleção por nome pegou o mais recente de verdade. A recuperação está provada a partir de um
+artefato que o pipeline produziu **sozinho**.
+
+### Achado: a regra de alerta existe e ninguém a avalia
+
+`VitaliBackupStale` está escrita em `docker/observability/alerts.yml:52`
+(`time() - vitali_backup_last_success_timestamp_seconds > 26 * 3600`), e a métrica é
+produzida a cada backup. Mas o stack de observabilidade **não está de pé na lab** — nenhum
+Prometheus, nenhum Alertmanager.
+
+Regra escrita que ninguém avalia é pior que regra ausente: alguém lê o `alerts.yml`,
+conclui que backup velho dispara alerta, e vai dormir. Subir a observabilidade é ordem
+própria; fica registrado aqui para não ser confundido com trabalho feito.
+
+### O que continua faltando, e é do Capitão
+
+1. **Custódia da chave fora da lab** — pré-requisito bloqueante. Fingerprint `b40e33e7af3a1066`.
+2. **Fornecedor** — recomendação B2, pela ausência da pega de checksum do R2.
+3. **Credencial com escopo só no prefixo do Vitali**, nunca chave de conta.
+4. **A pergunta do §1:** a R640 e o host VMware ficam no mesmo rack?
+
+Com 1 e 2 respondidos, ligar é preencher cinco variáveis e rodar o drill com `--from-s3`.
+**Não há trabalho de código pela frente.**
