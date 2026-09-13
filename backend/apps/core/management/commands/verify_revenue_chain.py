@@ -82,11 +82,13 @@ class Command(BaseCommand):
             TISSGuide,
             TISSGuideItem,
         )
+        from apps.billing.services.batch_lifecycle import fechar_lote
         from apps.billing.services.xml_engine import (
             generate_batch_xml,
             generate_guide_xml,
             validate_xml,
         )
+        from apps.core.models import User
         from apps.emr.models import Encounter
 
         falhas: list[str] = []
@@ -180,16 +182,6 @@ class Command(BaseCommand):
             if erros_lote:
                 falhas.append(f"XML do lote reprovou no XSD ({len(erros_lote)} erro(s))")
 
-            # ── 5. Faturamento ───────────────────────────────────────────────
-            self.stdout.write("5. Faturamento")
-            total = sum(
-                (i.total_value or Decimal("0") for g in lote.guides.all() for i in g.items.all()),
-                Decimal("0"),
-            )
-            self.stdout.write(f"   valor do lote : R$ {total}")
-            if total <= 0:
-                falhas.append("faturamento do lote é zero — cadeia percorrida sem provar nada")
-
             # A reprovação vive DENTRO do `atomic()` — ordem 007, passo 4.
             #
             # Estava fora, e o efeito era silencioso: com erro de XSD, a guia e o
@@ -204,6 +196,30 @@ class Command(BaseCommand):
             # guias do tenant, então guia suja de execução reprovada vira alerta.
             if falhas:
                 self._reprovar(falhas)
+
+            # ── 5. Faturamento ───────────────────────────────────────────────
+            #
+            # Fecha PELO CAMINHO REAL — ordem 008. Até aqui este passo somava os
+            # itens em memória e imprimia o número; o lote ficava `open` com
+            # `total_value` em 0,00, e a linha de sucesso lá embaixo já dizia
+            # "lote fechado" sobre um lote aberto. Medido na lab em 13/09: os dois
+            # lotes que a ordem 006 produziu seguiam abertos e zerados.
+            #
+            # A reprovação acima roda ANTES de propósito: lote cujo XML não passou
+            # no XSD não deve fechar. Fechar primeiro e reverter depois daria o
+            # mesmo estado final, mas por acidente da transação em vez de por
+            # decisão — e é a diferença entre as duas que a ordem 007 já cobrou.
+            self.stdout.write("5. Faturamento")
+            usuario = User.objects.filter(is_active=True).order_by("id").first()
+            fechar_lote(lote=lote, actor=usuario)
+            lote.refresh_from_db()
+            self.stdout.write(f"   status do lote: {lote.status}")
+            self.stdout.write(f"   valor do lote : R$ {lote.total_value}")
+            self.stdout.write(f"   fechado em    : {lote.closed_at}")
+            if lote.status != "closed":
+                self._reprovar([f"lote terminou '{lote.status}', não 'closed'"])
+            if (lote.total_value or Decimal("0")) <= 0:
+                self._reprovar(["faturamento do lote é zero — cadeia percorrida sem provar nada"])
 
             if dry_run:
                 transaction.set_rollback(True)

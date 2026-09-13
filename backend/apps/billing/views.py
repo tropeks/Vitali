@@ -1340,115 +1340,40 @@ class TISSBatchViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="close")
     def close(self, request, pk=None):
-        """Close a batch (open → closed). Recalculates total_value atomically."""
+        """Close a batch (open → closed). Recalculates total_value atomically.
+
+        A regra vive em ``services/batch_lifecycle.fechar_lote`` desde a ordem 008 —
+        estava aqui dentro, devolvendo ``Response`` de dentro do ``atomic()``, e por
+        isso nenhum outro chamador conseguia fechar lote. Esta view faz o que é dela:
+        traduz cada recusa no MESMO status e no MESMO corpo de antes.
+        """
         from django.core.exceptions import ValidationError as DjangoValidationError
-        from django.db import transaction as db_transaction
+
+        from .services.batch_lifecycle import (
+            GlosaBloqueante,
+            LoteAlteradoDuranteFechamento,
+            LoteNaoAberto,
+            fechar_lote,
+        )
 
         batch = self.get_object()
-        if batch.status != "open":
+        try:
+            locked_batch = fechar_lote(lote=batch, actor=request.user)
+        except LoteNaoAberto as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except DjangoValidationError as exc:
+            # Surface model-layer ValidationError as an HTTP 400 (DRF) with a
+            # clear PT-BR message instead of an uncaught 500.
+            raise serializers.ValidationError({"guides": list(exc.messages)}) from exc
+        except GlosaBloqueante as exc:
             return Response(
-                {"detail": f"Batch is already '{batch.status}', cannot close."},
-                status=status.HTTP_400_BAD_REQUEST,
+                self._glosa_block_payload(exc.blocking),
+                status=status.HTTP_409_CONFLICT,
             )
-        with db_transaction.atomic():
-            # TOCTOU fix: lock the BATCH row first, then read its guide set from
-            # the locked instance. Without the batch lock a concurrent
-            # guides.add(new_guide) could slip an UNEVALUATED guide into the
-            # batch between evaluation and the blocking-check (which reads
-            # batch.guides.all()), letting an un-checked guide through the gate.
-            # We evaluate exactly locked_batch.guides.all() and then run the
-            # blocking-check over that SAME locked instance, so no guide can be
-            # present-but-unevaluated.
-            locked_batch = TISSBatch.objects.select_for_update().get(pk=batch.pk)
-
-            # Re-validate double-submit at close time. Two batches can both be
-            # left "open" with the same guide (the serializer/signal checks ran
-            # while both were open and saw no *finalised* conflict); without this
-            # re-check, closing both would export the guide in two XMLs → billed
-            # twice (financial + ANS violation). Lock the candidate guides so a
-            # concurrent close of a sibling batch cannot race past this check.
-            #
-            # Capture the guide id set ONCE under the batch-row lock. This is the
-            # SET OF RECORD for the rest of close(): we evaluate exactly these
-            # guides AND run the blocking-check over exactly these ids, so no
-            # guide can be present-but-unevaluated. A membership re-assertion just
-            # before finalize closes the add-after-capture window.
-            locked_guides = list(locked_batch.guides.select_for_update())
-            evaluated_ids = [g.pk for g in locked_guides]
-            try:
-                for guide in locked_guides:
-                    # Only finalised batches (closed/submitted) constitute a real
-                    # double-billing conflict at this point; another still-open
-                    # batch holding the same guide is fine — whichever closes
-                    # first wins, and the second close will then be rejected here.
-                    # Cancelled batches never conflict.
-                    locked_batch.check_guide_not_double_submitted(
-                        guide, statuses=["closed", "submitted"]
-                    )
-            except DjangoValidationError as exc:
-                # Surface model-layer ValidationError as an HTTP 400 (DRF) with a
-                # clear PT-BR message instead of an uncaught 500.
-                raise serializers.ValidationError({"guides": list(exc.messages)}) from exc
-
-            # Glosa-safety soft-stop (wedge PR G1). No-op when the glosa_safety
-            # feature flag is OFF for this tenant — gate behaves exactly as
-            # before. PER-GUIA: evaluate each guide under the lock, then 409 with
-            # ONLY the offending guides if any has an unacknowledged BLOCKING
-            # alert. The faturista removes/acknowledges those guides and
-            # re-closes; we do NOT close the batch nor block the clean guides.
-            from .services.glosa_safety import GlosaSafetyService
-
-            glosa_service = GlosaSafetyService(requesting_user=request.user)
-            # Evaluate exactly the captured guide-id set...
-            for guide in locked_guides:
-                glosa_service.evaluate_guide(guide, gate="batch_close")
-            # ...and check blocking alerts over the SAME id set (NOT a fresh
-            # batch.guides.all() re-query), so the evaluated set and the checked
-            # set are provably identical — a guide cannot be
-            # present-but-unevaluated between the two steps.
-            blocking = glosa_service.blocking_glosa_alerts_for_guides(evaluated_ids)
-            if blocking:
-                return Response(
-                    self._glosa_block_payload(blocking),
-                    status=status.HTTP_409_CONFLICT,
-                )
-
-            # Membership re-assertion: immediately before finalizing (batch row
-            # still locked, same atomic block), re-read the batch's current guide
-            # set. If it differs from the set we evaluated, a guide was
-            # added/removed mid-close — finalizing now would close a
-            # present-but-unevaluated guide. Reject with 409 instead; the
-            # faturista re-closes and the new set is re-evaluated.
-            current_ids = set(locked_batch.guides.values_list("pk", flat=True))
-            if current_ids != set(evaluated_ids):
-                return Response(
-                    {
-                        "code": "batch_modified_during_close",
-                        "detail": (
-                            "O lote foi modificado durante o fechamento; "
-                            "reavalie e feche novamente."
-                        ),
-                    },
-                    status=status.HTTP_409_CONFLICT,
-                )
-
-            # Finalize STRICTLY over the evaluated id set — never re-query the
-            # `.guides` relation here. Under READ COMMITTED a concurrent
-            # guides.add() can commit between the re-assertion above and these
-            # writes (Postgres FK FOR KEY SHARE does not conflict with the batch
-            # row's FOR NO KEY UPDATE lock); a fresh `.guides` query would then
-            # phantom-read that guide and bill/submit it WITHOUT it ever being
-            # evaluated. Scoping to evaluated_ids makes that impossible: only the
-            # guides we actually evaluated are summed and submitted.
-            total = locked_batch.guides.filter(pk__in=evaluated_ids).aggregate(
-                total=Sum("total_value")
-            )["total"] or Decimal("0")
-            locked_batch.status = "closed"
-            locked_batch.closed_at = timezone.now()
-            locked_batch.total_value = total
-            locked_batch.save(update_fields=["status", "closed_at", "total_value"])
-            locked_batch.guides.filter(pk__in=evaluated_ids, status="pending").update(
-                status="submitted"
+        except LoteAlteradoDuranteFechamento as exc:
+            return Response(
+                {"code": "batch_modified_during_close", "detail": str(exc)},
+                status=status.HTTP_409_CONFLICT,
             )
         return Response(TISSBatchSerializer(locked_batch).data)
 
