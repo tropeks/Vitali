@@ -23,15 +23,49 @@ COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.yml}"
 COMPOSE_ENV_FILE="${COMPOSE_ENV_FILE:-}"
 PASS=0
 FAIL=0
+SKIP=0
 ERRORS=()
+SKIPPED=()
 
-compose_cmd=(docker compose -f "$COMPOSE_FILE")
+# `COMPOSE_FILE` aceita a MESMA lista que o docker compose aceita — caminhos
+# separados por ':' — porque é assim que staging e lab sobem: um arquivo base
+# mais um overlay. Enquanto isto era um arquivo só, `[[ -f "$COMPOSE_FILE" ]]`
+# era falso na lab e as checagens 6 e 7 se declaravam "skipped (Docker Compose
+# file not available)" — com o resumo imprimindo "All smoke tests passed"
+# logo abaixo. Seis de nove passando e o script dizendo que estava tudo certo é
+# o verde que não significa verde do INTENT §Limites.
+#
+# `COMPOSE_PROJECT_NAME` faz falta pelo mesmo motivo: sem `-p`, o projeto é o
+# nome do diretório (`vitali`), a lab roda como `vitali-lab`, e o `ps` não
+# acharia contêiner nenhum — a checagem 6 reprovaria por endereço errado.
+IFS=':' read -r -a _compose_files <<< "$COMPOSE_FILE"
+COMPOSE_FILES_OK=1
+for _f in "${_compose_files[@]}"; do
+  [[ -f "$_f" ]] || COMPOSE_FILES_OK=0
+done
+
+compose_cmd=(docker compose)
+for _f in "${_compose_files[@]}"; do
+  compose_cmd+=(-f "$_f")
+done
+if [[ -n "${COMPOSE_PROJECT_NAME:-}" ]]; then
+  compose_cmd+=(-p "$COMPOSE_PROJECT_NAME")
+fi
 if [[ -n "$COMPOSE_ENV_FILE" ]]; then
   export STAGING_ENV_FILE="$COMPOSE_ENV_FILE"
   compose_cmd+=(--env-file "$COMPOSE_ENV_FILE")
 fi
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
+
+# Um pulo NÃO é um sucesso. Ele sai contado e aparece no resumo, e o resumo
+# recusa-se a dizer "All smoke tests passed" quando houve pulo: deploy que roda
+# 6 de 9 checagens e se declara saudável ensina a ignorar o resultado.
+skip() {
+  echo "  - pulado: $1"
+  SKIP=$((SKIP + 1))
+  SKIPPED+=("$1")
+}
 
 check() {
   local name="$1"
@@ -174,7 +208,7 @@ check "GET /static/admin/css/base.css → 200" "$STATIC_STATUS" "200"
 
 echo ""
 echo "6. Celery task execution..."
-if command -v docker >/dev/null 2>&1 && [[ -f "$COMPOSE_FILE" ]]; then
+if command -v docker >/dev/null 2>&1 && [[ "$COMPOSE_FILES_OK" == "1" ]]; then
   CELERY_RUNNING=$("${compose_cmd[@]}" ps --status running --services 2>/dev/null | grep -E '^celery-worker$' || true)
   if [[ -n "$CELERY_RUNNING" ]]; then
     # Enqueue from Django and wait for the worker result through the real broker.
@@ -196,7 +230,7 @@ print(result.get(timeout=10))
     check "Celery worker running" "not-running" "running"
   fi
 else
-  echo "  - Celery check skipped (Docker Compose file not available)"
+  skip "Celery (compose indisponível)"
 fi
 
 # ─── Check 7: Catálogos governados ───────────────────────────────────────────
@@ -215,7 +249,7 @@ fi
 
 echo ""
 echo "7. Catálogos governados..."
-if command -v docker >/dev/null 2>&1 && [[ -f "$COMPOSE_FILE" ]]; then
+if command -v docker >/dev/null 2>&1 && [[ "$COMPOSE_FILES_OK" == "1" ]]; then
   CATALOG_OUT=$("${compose_cmd[@]}" exec -T django python manage.py verify_catalogs --quiet 2>&1 || true)
   if echo "$CATALOG_OUT" | grep -q "Unknown command: 'verify_catalogs'"; then
     echo "  - verify_catalogs ausente na imagem (anterior a 2026-08-18) — check pulado"
@@ -227,25 +261,46 @@ if command -v docker >/dev/null 2>&1 && [[ -f "$COMPOSE_FILE" ]]; then
     echo "      carregue com: manage.py seed_catalogs --manifest <manifest.toml> --source-dir <dir>"
   fi
 else
-  echo "  - Catálogos check pulado (Docker Compose indisponível)"
+  skip "Catálogos (compose indisponível)"
 fi
 
 # ─── Check 8: HTTPS redirect (only for non-localhost) ────────────────────────
 
 echo ""
 echo "8. HTTPS redirect..."
-if [[ "$BASE_URL" == http://* ]] && [[ "$BASE_URL" != *localhost* ]]; then
-  REDIRECT_STATUS=$(curl_status 5 --no-location "$BASE_URL/health/")
-  check "HTTP → HTTPS redirect (301)" "$REDIRECT_STATUS" "301"
+# Com BASE_URL em https o redirect continua sendo testável — e é o que
+# interessa num host público: basta bater no http:// correspondente. Pular
+# aqui era pular justamente no ambiente onde a checagem vale.
+if [[ "$BASE_URL" == *localhost* ]] || [[ "$BASE_URL" == *127.0.0.1* ]]; then
+  skip "HTTPS redirect (alvo é localhost)"
 else
-  echo "  - HTTPS redirect check skipped (localhost or already HTTPS)"
+  HTTP_URL="${BASE_URL/#https:/http:}"
+  # Com retry porque o caminho até a borda é intermitente, não porque o
+  # redirect seja duvidoso: medido em 12/09 na lab, 7 de 8 tentativas devolvem
+  # 301 em ~0,1 s e uma estoura o --max-time SEM remote_ip — o DNS entrega
+  # AAAA primeiro e o egresso IPv6 da lab não alcança a Cloudflare. Sem retry
+  # esta checagem reprovaria um deploy são em ~1 de 8 execuções, que é a
+  # receita para a equipe aprender a reexecutar o smoke até ficar verde.
+  REDIRECT_STATUS=$(curl_status_retry 5 301 3 1 --no-location "$HTTP_URL/health/")
+  case "$REDIRECT_STATUS" in
+    301|302|307|308) check "HTTP → HTTPS redirect" "redirect" "redirect" ;;
+    *) check "HTTP → HTTPS redirect" "$REDIRECT_STATUS" "301/302/307/308" ;;
+  esac
 fi
 
 # ─── Summary ──────────────────────────────────────────────────────────────────
 
 echo ""
 echo "─────────────────────────────────────"
-echo "Results: $PASS passed, $FAIL failed"
+echo "Results: $PASS passed, $FAIL failed, $SKIP skipped"
+
+if [[ $SKIP -gt 0 ]]; then
+  echo ""
+  echo "SKIPPED checks (não contam como verde):"
+  for sk in "${SKIPPED[@]}"; do
+    echo "  - $sk"
+  done
+fi
 
 if [[ $FAIL -gt 0 ]]; then
   echo ""
@@ -256,6 +311,11 @@ if [[ $FAIL -gt 0 ]]; then
   echo ""
   echo "Deploy smoke test FAILED. Check logs: docker compose logs --tail=50"
   exit 1
+elif [[ $SKIP -gt 0 ]]; then
+  echo ""
+  echo "Smoke INCOMPLETO: $PASS de $((PASS + SKIP)) checagens rodaram. Nenhuma falhou,"
+  echo "mas isto não é um deploy verificado — resolva os pulos acima."
+  exit 2
 else
   echo ""
   echo "All smoke tests passed. Deploy looks healthy."
