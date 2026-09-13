@@ -627,3 +627,46 @@ describe('GuideDetailPage — tipo de faturamento (TISS)', () => {
     expect(screen.getByText(/o tipo de faturamento só muda enquanto a guia é rascunho/)).toBeInTheDocument();
   });
 });
+
+describe('GuideDetailPage lifecycle buttons (ordem 010)', () => {
+  it('shows "Declarar pronta" for a draft and "Enviar Guia" only after it becomes pending', async () => {
+    const user = userEvent.setup();
+
+    const pendingGuide = { ...draftGuide, status: 'pending' };
+    let declarada = false;
+    mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/marcar-pronta/') && init?.method === 'POST') {
+        declarada = true;
+        // `headers` explícito porque este caminho passa por `apiFetch`, que lê
+        // `response.headers.get('content-type')`.
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => pendingGuide,
+        } as Response);
+      }
+      if (url.endsWith('/api/v1/billing/guides/guide-1/') && init?.method !== 'POST') {
+        return okJson(declarada ? pendingGuide : draftGuide);
+      }
+      return okJson({ results: [] });
+    });
+
+    render(<GuideDetailPage />);
+
+    // Rascunho: o único ato disponível é declarar pronta. Enviar não aparece —
+    // era essa a porta dos fundos da issue #213.
+    const declarar = await screen.findByRole('button', { name: 'Declarar pronta' });
+    expect(screen.queryByRole('button', { name: 'Enviar Guia' })).toBeNull();
+
+    await user.click(declarar);
+
+    // Declarada pronta, a guia passa a pending e só então o envio aparece.
+    await waitFor(() => {
+      expect(declarada).toBe(true);
+    });
+    expect(await screen.findByRole('button', { name: 'Enviar Guia' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Declarar pronta' })).toBeNull();
+  });
+});

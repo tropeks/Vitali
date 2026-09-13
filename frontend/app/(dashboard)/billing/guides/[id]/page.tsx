@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import RemoteCombobox from '@/components/shared/RemoteCombobox';
+import { markGuideReady } from '@/lib/glosa-safety';
 
 const STATUS_BADGE: Record<string, string> = {
   draft: 'bg-neu-app text-neu-inkSoft',
@@ -170,6 +171,25 @@ export default function GuideDetailPage() {
     }
   };
 
+  // Ordem 010: o caminho de rascunho a enviada passa a exigir DOIS atos, cada um
+  // com sua linha no AuditLog. Declarar uma guia pronta afirma que ela foi
+  // conferida; enviar afirma que ela saiu para a operadora. Eram a mesma tecla.
+  const declararPronta = async () => {
+    setSubmitting(true);
+    setActionMsg('');
+    try {
+      await markGuideReady(String(id));
+      const res = await fetch(`/api/v1/billing/guides/${id}/`, {});
+      if (!res.ok) throw new Error(`${res.status}`);
+      setGuide(await res.json());
+      setActionMsg('Guia declarada pronta para envio.');
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const submitGuide = async () => {
     setSubmitting(true);
     setActionMsg('');
@@ -301,7 +321,8 @@ export default function GuideDetailPage() {
     );
   }
 
-  const canSubmit = guide && (guide.status === 'draft' || guide.status === 'pending');
+  const canDeclare = guide?.status === 'draft';
+  const canSubmit = guide?.status === 'pending';
   const isDenied = guide?.status === 'denied';
 
   return (
@@ -676,6 +697,17 @@ export default function GuideDetailPage() {
       )}
 
       {/* Action buttons */}
+      {canDeclare && (
+        <div className="flex gap-3">
+          <button
+            onClick={declararPronta}
+            disabled={submitting}
+            className="bg-gradient-to-b from-neu-brand to-neu-brandDeep border-t border-neu-brandEdge shadow-neu-btn-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:shadow-neu-btn-primary-hover disabled:opacity-50"
+          >
+            {submitting ? 'Declarando...' : 'Declarar pronta'}
+          </button>
+        </div>
+      )}
       {canSubmit && (
         <div className="flex gap-3">
           <button
