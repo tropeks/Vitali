@@ -1,3 +1,5 @@
+> **Registro de rollback — não é ordem; movido de `.maestro/orders` em 2026-09-13 para parar o supervisor.**
+
 <!-- Documento de operação. NÃO é uma ordem do maestro.
 
 Morou em `.maestro/orders/002-ROLLBACK-passo1.md` até 13/09 e foi movido para cá.
