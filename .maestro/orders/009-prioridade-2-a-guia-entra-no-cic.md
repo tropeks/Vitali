@@ -158,3 +158,67 @@ Aprovada pelo Imediato em 13/09, nas palavras dele:
 
 O achado do endpoint `submit` virou a **issue #213**, aberta antes de qualquer código
 desta ordem.
+
+---
+
+## Resultado
+
+### O par, medido em container na lab
+
+```
+ANTES  (9002bef, os testes sozinhos)          6 failed, 55 passed
+       cinco por a API não existir (ImportError: marcar_pronta_para_envio,
+       LoteComRascunho) e um por asserção — 'draft' != 'submitted'
+DEPOIS (eb21608)                            205 passed nas seis suítes afetadas
+REDE   (as 143 asserções protegidas)        143 passed
+FRONT                                         3 passed, incluindo o teste novo do
+                                              409 de rascunho
+```
+
+`antes.log` sha256 `cd7d5065…86f49bb3c` · `final.log` `ea49ebf5…6a8c488e5a`.
+Gate completo antes de cada push: `ruff check`, `ruff format --check`, `lint-imports`,
+`mypy` (1055 arquivos), `tsc --noEmit`, `next lint`.
+
+### A edição aditiva nas três asserções de fechamento
+
+Condição do Imediato: só acrescentar. Resultado de `git diff --numstat`:
+**17 adicionadas, 0 removidas.** Cada um dos três testes ganhou um
+`POST /guides/{id}/marcar-pronta/` antes do `close` que já afirmavam; nenhuma asserção
+enfraqueceu ou sumiu.
+
+### O que a cunha ganhou de graça
+
+`duplicate` (ANS 1702) **disparou** sobre dado real. A ordem 007 a registrou como
+inalcançável por construção: `_ACTIVE_GUIDE_STATUSES` exclui `draft` e toda guia de
+staging era rascunho. Com a cadeia deixando guia em `submitted`, a checagem passou a ter
+o que ver — a terceira das três, sem inventar número clínico nem contratual.
+
+### Duas quebras que eu causei, e o que cada uma ensinou
+
+**1. O harness da ordem 007.** O fechamento estrito barra rascunho ANTES de julgar glosa,
+e o `--prove-block` montava guia em rascunho esperando o 409 de glosa. Consertado para
+percorrer os dois portões em ordem: exercitar um gate com dado que o gate anterior recusa
+não prova nada sobre o segundo.
+
+**2. O recibo que mentiu.** Gravei um `order-9` com `exit 0` sobre uma execução que tinha
+quebrado com traceback. Causa: o comando do recibo canalizava o `docker exec` para um
+`sed`, e o status do pipeline veio do `sed`. É o mesmo defeito que esta série vem achando
+em toda parte — caminho de erro que reporta sucesso — desta vez dentro do meu próprio
+comando de prova, que é o pior lugar onde ele pode estar. A quebra por baixo era legítima:
+o harness escolhia o alerta da guia mais ANTIGA, e as antigas já estão em lote fechado,
+então a guarda de dupla apresentação disparava corretamente sobre um cenário que eu montei
+errado. Corrigido em `c9049d1`.
+
+**Regra que sai daqui, dada pelo Imediato:** o recibo é a ÚLTIMA ação no tip. Depois dele
+nada muda na árvore — nem documento, nem brief. Gravar e então commitar vence o recibo, e
+foi o que fiz duas vezes.
+
+### O que ficou de fora, de propósito
+
+Os três geradores (`from_lab_order`, `from_admission`, `bill_surgical_materials`) seguem
+entregando `draft`, travados por `test_guide_creators_stay_draft.py`. Declarar pronto na
+criação afirmaria à operadora que uma guia derivada de evento clínico está conferida sem
+ninguém ter olhado.
+
+O salto `draft → submitted` do endpoint `submit` da guia virou a **issue #213**, aberta
+antes de qualquer código desta ordem.
