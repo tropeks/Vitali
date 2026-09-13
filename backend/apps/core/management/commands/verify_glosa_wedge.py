@@ -229,16 +229,29 @@ class Command(BaseCommand):
         self.stdout.write("")
         self.stdout.write("prova do soft-stop (endpoints reais)")
 
+        # Escolhe um alerta cuja guia ainda POSSA entrar num lote.
+        #
+        # Ordenar por `guide__guide_number` crescente pegava a guia mais ANTIGA, e em
+        # staging as antigas já estão em lote fechado. `lote.guides.add()` então
+        # levantava `ValidationError: já consta no lote ... Double-billing bloqueado`
+        # — a guarda de dupla apresentação funcionando, sobre um cenário que este
+        # harness montou errado. Excluir as já finalizadas e pegar a guia mais NOVA
+        # resolve: a que `--demo-uncovered` acabou de criar é a que se quer exercitar.
+        ja_finalizadas = TISSBatch.objects.filter(status__in=["closed", "submitted"]).values_list(
+            "guides__pk", flat=True
+        )
         alerta = (
             GlosaSafetyAlert.objects.select_related("guide")
             .filter(severity="block", status="flagged")
-            .order_by("guide__guide_number")
+            .exclude(guide__pk__in=[pk for pk in ja_finalizadas if pk is not None])
+            .order_by("-guide__guide_number")
             .first()
         )
         if alerta is None:
             raise CommandError(
-                "nenhum alerta BLOQUEANTE aberto para exercitar. Rode antes: "
-                "verify_glosa_wedge --tenant <t> --demo-uncovered --evaluate"
+                "nenhum alerta BLOQUEANTE aberto sobre guia que ainda possa ser "
+                "lotada. Rode antes: verify_glosa_wedge --tenant <t> "
+                "--demo-uncovered --evaluate"
             )
         guia = alerta.guide
         self.stdout.write(
