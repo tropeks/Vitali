@@ -222,3 +222,7 @@ ninguém ter olhado.
 
 O salto `draft → submitted` do endpoint `submit` da guia virou a **issue #213**, aberta
 antes de qualquer código desta ordem.
+accepted_at: 2026-09-13T04:49:19-03:00
+accepted_session: desconhecido
+accepted_tree: ed41d9172f79a305c877772633d6af9672edb9c5
+accepted_intent: 5
