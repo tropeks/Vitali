@@ -354,3 +354,7 @@ Eu não apaguei e não disse que tinha apagado — o item ficou aberto. Ela agor
 carrega um dos três alertas `incomplete` que o §7 registra. Apagá-la remove um veredicto da
 cunha. Recomendo mantê-la até a 007 ser aceita, e então apagar guia e lote `2026090001`
 juntos — ela sozinha deixaria um lote vazio.
+accepted_at: 2026-09-12T21:59:34-03:00
+accepted_session: desconhecido
+accepted_tree: e05910ec2f01da0e5ce86fafc6768ac883f00abb
+accepted_intent: 5
