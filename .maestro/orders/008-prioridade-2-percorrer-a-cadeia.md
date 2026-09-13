@@ -108,3 +108,90 @@ Aprovada pelo Imediato em 13/09, com as condições dele, transcritas:
 A terceira condição é a que decide: as asserções existentes são o oráculo da extração. Se
 uma delas exigir edição, o contrato mudou e a extração está errada — e aí o certo é parar,
 não ajustar o teste até ficar verde.
+
+---
+
+## Resultado
+
+### O par, medido
+
+Container descartável na lab, imagem que o CI fixa, `postgres:16-alpine` e `redis:7-alpine`
+efêmeros. Docker é negado ao meu usuário na máquina de trabalho; a lab tem.
+
+```
+ANTES  (cdbc6a5, o teste sozinho)                    2 failed in 7.10s
+       AssertionError: 'open' != 'closed'
+       AssertionError: Decimal('0.00') != Decimal('100.00')
+       e "erros XSD : 0" no stdout capturado — a cadeia percorreu inteira, a
+       falha é o fechamento, não uma lacuna de fixtura
+DEPOIS (4cf5b18)                                     5 passed
+REDE   (asserções existentes, NENHUMA editada)     143 passed
+       apps/billing/tests/test_billing.py + apps/billing/tests/test_glosa_safety.py
+```
+
+`antes.log` sha256 `9d7d8b88…5c1a6880` · `depois.log` `a36c1604…ac5e94e20` · `rede.log`
+`eb62f1df…4583e31fdaf4b`. Ledger: `ordem-008-par` e `order-8`.
+
+### A regressão que as asserções existentes pegaram
+
+A terceira condição do Imediato — *"20 asserções existentes sem edição; se alguma precisar
+mudar, pare e reporte"* — não foi cerimônia. **Nenhuma precisou mudar; o código é que
+estava errado**, e foram elas que provaram.
+
+Eu levantei a recusa de dentro do `transaction.atomic()`. Isso reverte o bloco — e o que o
+bloco escreveu antes de recusar são os **alertas de glosa** que a avaliação acabara de
+persistir. O `return Response(...)` original sai do `with` normalmente e **comita**. Trocar
+`return` por `raise` parece equivalente e não é: o 409 passou a devolver ao cliente o id de
+um alerta que não existia mais, e o `acknowledge` seguinte respondia **404**.
+
+```
+test_acknowledge_block_then_reclose_succeeds   FALHOU nas 4 classes de test_glosa_safety.py
+AssertionError: 404 != 200
+```
+
+Conserto: a metade transacional (`_tentar_fechar`) **devolve** a recusa; `fechar_lote`
+levanta depois do commit. Isto é o que motivou partir a função em duas — por
+responsabilidade, não para caber no sensor de tamanho, que marcou a versão original com 95
+linhas. A parte transacional segue inteira de propósito: a fronteira dela é o alcance do
+lock de linha, e auxiliares que só são seguros numa ordem exata dentro da mesma transação
+seriam design pior.
+
+### Uma segunda lacuna de fixtura, da mesma família do CNES
+
+Sem CBO o teste morria no XSD antes de chegar à asserção. `CBOS` é enumeração **fechada**
+no XSD da ANS: string vazia não é campo em branco, é valor fora do conjunto, e o lote
+inteiro reprova. Pus `225125` — taxonomia real, a mesma que `seed_revenue_staging` usa. Sem
+isso o par teria falhado dos dois lados e provado nada, que é exatamente a armadilha em que
+a ordem 007 já caiu uma vez.
+
+### A prova em staging
+
+Imagem `sha256:737358e2…` (revisão `4cf5b18`) na lab, digest anterior `bbe3d8da…` anotado,
+pilha inteira `healthy`, smoke **10 passadas / 0 falhas / 0 puladas**. `latest` não se moveu
+— segue em `3bb9a53`, a build de onda0, como a guarda da ordem 005(c) manda.
+
+```
+5. Faturamento
+   status do lote: closed
+   valor do lote : R$ 100.00
+   fechado em    : 2026-09-13 04:31:51.262369+00:00
+```
+
+E lido do banco, não da saída do comando:
+
+```
+2026090005 | closed | 100.00 | 2026-09-13 04:31:51.262369+00
+guia no lote: 202609000006 | 100.00
+```
+
+### O que ficou de pé, e o que não
+
+De pé: a Prioridade 2 do INTENT passa a ter faturamento como **estado persistido**, não
+como número impresso. Os lotes `2026090003`, `2026090004` e `2026090005` estão `closed` com
+valor gravado; os da ordem 006 (`2026090001`, `2026090002`) ficam abertos e zerados de
+propósito, como registro do estado anterior.
+
+Não: a guia termina em `draft`, não em `submitted`. O fechamento só promove guia que está
+em `pending` (`status="pending"` no filtro), e a cadeia cria em `draft`. É comportamento do
+caminho original, não da extração, e está fora do escopo aprovado — fica registrado, não
+corrigido por conta própria.
