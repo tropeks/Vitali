@@ -322,7 +322,11 @@ jobs:
         run: cp .env.example .env
 
       - name: Validate smoke script syntax
-        run: bash -n scripts/smoke_test.sh scripts/backup.sh scripts/restore_test.sh scripts/backup_imaging.sh scripts/restore_test_imaging.sh scripts/pitr_check.sh scripts/pitr_basebackup.sh scripts/pitr_sync_wal.sh scripts/pitr_restore_test.sh scripts/provision_observability_secrets.sh
+        # run_restore_drill.sh nunca esteve nesta lista — a ordem 011 o pos, junto
+        # com os dois scripts novos. Script de recuperacao sem sequer checagem de
+        # sintaxe no CI e a forma mais barata de descobrir um erro de digitacao as
+        # 3 da manha, quando ninguem esta olhando.
+        run: bash -n scripts/smoke_test.sh scripts/backup.sh scripts/restore_test.sh scripts/run_restore_drill.sh scripts/drill_metric.sh scripts/install_drill_cron.sh scripts/backup_imaging.sh scripts/restore_test_imaging.sh scripts/pitr_check.sh scripts/pitr_basebackup.sh scripts/pitr_sync_wal.sh scripts/pitr_restore_test.sh scripts/provision_observability_secrets.sh
 
       - name: Validate docker-compose config
         run: docker compose config

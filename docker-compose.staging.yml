@@ -323,6 +323,30 @@ services:
     volumes:
       - ./scripts/backup.sh:/usr/local/bin/backup.sh:ro
       - backups:/backups
+    # Frescura do backup vira SINAL — ordem 011.
+    #
+    # Ate aqui o servico nao tinha healthcheck nenhum: se o crond parasse, ou se
+    # o backup falhasse toda noite, `docker ps` seguiria dizendo "Up" e ninguem
+    # descobriria. A metrica que o proprio backup.sh escreve ja existia e ninguem
+    # a lia — a pilha de observabilidade que avaliaria `VitaliBackupStale` nao
+    # roda na lab. Este healthcheck le o mesmo arquivo, sem Prometheus no meio.
+    #
+    # 26h de tolerancia, nao 24: o backup roda as 02:00 e uma corrida lenta ou um
+    # reinicio nao podem pintar de vermelho um pipeline saudavel. Alerta que
+    # dispara por barulho ensina a ignorar alerta (INTENT, Limites).
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          m=/backups/metrics/vitali_backup.prom;
+          [ -f "$$m" ] || exit 1;
+          t=$$(awk '/^vitali_backup_last_success_timestamp_seconds/{print $$2}' "$$m");
+          [ -n "$$t" ] || exit 1;
+          [ $$(( $$(date +%s) - $${t%%.*} )) -lt 93600 ] || exit 1
+      interval: 15m
+      timeout: 10s
+      retries: 2
+      start_period: 2m
     # Runs backup.sh at 02:00 UTC daily via busybox crond (built into alpine).
     # crond resets the process environment, so we snapshot the container env into
     # /etc/backup.env at startup; the cron job sources it before calling backup.sh.
