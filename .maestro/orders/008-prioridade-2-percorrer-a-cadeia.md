@@ -195,3 +195,7 @@ Não: a guia termina em `draft`, não em `submitted`. O fechamento só promove g
 em `pending` (`status="pending"` no filtro), e a cadeia cria em `draft`. É comportamento do
 caminho original, não da extração, e está fora do escopo aprovado — fica registrado, não
 corrigido por conta própria.
+accepted_at: 2026-09-13T01:40:18-03:00
+accepted_session: desconhecido
+accepted_tree: f1220fda1d9d3d593a4bbebd03b347840667699a
+accepted_intent: 5
