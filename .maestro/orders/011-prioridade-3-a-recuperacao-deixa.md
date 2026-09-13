@@ -136,3 +136,86 @@ Aprovada pelo Imediato em 13/09, nas palavras dele:
 
 A prova de uma noite real impõe prazo: o recibo `order-11` só pode ser gravado na manhã
 seguinte à implantação. Implantar e armar o cron não é prova; a prova é o que a noite deixou.
+
+---
+
+## Resultado
+
+### O par, medido em container na lab
+
+```
+ANTES  (o teste sozinho, sem o script)        5 failed
+DEPOIS (1d6c83f)                              5 passed
+gate    ruff check · ruff format --check · lint-imports · mypy (1057) · bash -n
+```
+
+`p011-antes.log` sha256 `e51b86c6…0001dc5ca` · `p011-depois.log` `b8dd70b4…d0e3b3528`.
+
+**Meu primeiro teste estava fraco, e medir pegou.** Os quatro casos negativos afirmavam só
+`returncode != 0`, então passavam **com o script ausente** — `bash` sai 127. Teste que fica
+verde pelo motivo errado não prova nada, que é o defeito desta série inteira. Apertados para
+exigir a recusa do portão (saída 1 com o motivo em `stderr`) e distinguir de chamada
+malformada (saída 2).
+
+### O ciclo, executado à mão
+
+```
+drill    exit 0 · 159s
+         fase 1: restore_test.sh PASSOU contra vitali_20260913T020000Z.dump.gpg
+         fase 2: inventário DIFERENTE — 24 linhas (escrita legítima em staging depois
+                 do dump; relatado integralmente, não reprova sozinho, por desenho)
+         limpeza: containers=0 · claros_tmp=0 · claros_work=0
+         cifrado removido, sha256 cfcb9037… registrado antes
+         métrica escrita e publicada no volume vitali-lab_backups
+db-backup  healthy pelo healthcheck novo, exit=0, lendo a métrica real
+smoke      12 passadas · 0 falhas · 0 puladas
+```
+
+### O sinal, provado nos DOIS sentidos
+
+Verde quando deve não prova nada sozinho — foi a lição da ordem 007. Envelhecendo a métrica
+do drill para 40 h:
+
+```
+✗ último drill de restore tem menos de 30h (got: 40h atrás, expected: <30h)
+Results: 11 passed, 1 failed, 0 skipped     SMOKE EXIT=1
+```
+
+Reprova, e **nomeia a checagem**. Métrica restaurada em seguida.
+
+### O que a medição me obrigou a mudar
+
+A **primeira** execução do drill falhou na fase 2 — "postgres efêmero não ficou pronto" —
+porque rodou no mesmo minuto de um `docker compose up --force-recreate`. Sozinha em seguida,
+passou. Não é detalhe: um tropeço desses às 03:00 não deixaria métrica, a tolerância de 30 h
+expiraria no meio da manhã seguinte, e o smoke ficaria vermelho **por barulho** — o que o
+§Limites proíbe explicitamente.
+
+Daí o retry único, dez minutos depois, com o comando repetido na própria linha do crontab
+(`1da988b`). A repetição é feia e fica: retry DENTRO do drill contaminaria "o drill passou",
+e um script gerado em disco ficaria fora do versionamento. Quem roda `crontab -l` vê a
+política inteira.
+
+### Um furo pego antes de rodar, não depois
+
+O cron escreveria a métrica num caminho do host; o smoke a lê de **dentro** do contêiner de
+backup, no volume. Não se encontrariam — e o "pulo contado" teria escondido isso atrás de uma
+explicação plausível ("métrica ausente"). O drill agora publica a cópia no volume por
+contêiner, no mesmo `metrics/` onde o `backup.sh` escreve a dele.
+
+### Cron armado
+
+```
+0 3 * * * cd /srv/vulcan/apps/vitali && { bash scripts/run_restore_drill.sh … \
+          || { sleep 600; bash scripts/run_restore_drill.sh … }; } >> drill/cron.log 2>&1
+```
+
+Instalado por `scripts/install_drill_cron.sh`, idempotente, marcado por comentário próprio.
+O backup roda 02:00; o drill vem às 03:00.
+
+### O que esta ordem NÃO fez
+
+Não subiu Prometheus nem Grafana — a decisão foi sinal no healthcheck e no smoke, sem novo
+serviço. As regras de `docker/observability/alerts.yml` seguem sem quem as avalie, e isso
+continua aberto. Não tocou em `restore_test.sh`, o drill canônico. Não mexeu em offsite
+(ordem 004, NÃO AGORA).
