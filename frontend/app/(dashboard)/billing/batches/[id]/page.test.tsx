@@ -150,3 +150,74 @@ describe('BatchDetailPage glosa interception', () => {
     expect(screen.queryByText('Risco de glosa')).not.toBeInTheDocument()
   })
 })
+
+describe('BatchDetailPage draft-guide interception (ordem 009)', () => {
+  it('intercepts batch_has_draft_guides 409, declares each guide ready, and retries close', async () => {
+    const user = userEvent.setup()
+
+    const draftBlock = {
+      code: 'batch_has_draft_guides',
+      detail:
+        'Há guias em rascunho neste lote. Fechar lote significa enviar, então declare as guias abaixo prontas para envio (ou remova-as do lote) e feche novamente.',
+      guides: [
+        { guide_id: 'guide-1', guide_number: '202609000001', status: 'draft' },
+        { guide_id: 'guide-2', guide_number: '202609000002', status: 'draft' },
+      ],
+    }
+
+    let closeAttempts = 0
+    const declaradas: string[] = []
+    mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/billing/batches/batch-1/') && init?.method !== 'POST') {
+        return okJson(openBatch)
+      }
+      const pronta = url.match(/\/api\/v1\/billing\/guides\/([^/]+)\/marcar-pronta\//)
+      if (pronta && init?.method === 'POST') {
+        declaradas.push(pronta[1])
+        // `headers` explícito: este caminho passa por `apiFetch`, que lê
+        // `response.headers.get('content-type')` (lib/api.ts:148). Os helpers
+        // `okJson`/`statusJson` deste arquivo não têm headers — servem aos
+        // caminhos que usam `fetch` direto ou devolvem 204. Não os altero para
+        // não mexer nos testes que já dependem deles.
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => ({ id: pronta[1], status: 'pending' }),
+        } as Response)
+      }
+      if (url.includes('/api/v1/billing/batches/batch-1/close/') && init?.method === 'POST') {
+        closeAttempts += 1
+        if (closeAttempts === 1) {
+          return statusJson(409, draftBlock)
+        }
+        return statusJson(200, closedBatch)
+      }
+      return okJson({})
+    })
+
+    render(<BatchDetailPage />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Fechar Lote' })).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Fechar Lote' }))
+
+    // O aviso lista QUAIS guias estão em rascunho — saber que "há rascunho" não
+    // diz ao faturista o que fazer.
+    const painel = await screen.findByTestId('batch-draft-guides')
+    expect(painel).toHaveTextContent('202609000001')
+    expect(painel).toHaveTextContent('202609000002')
+
+    await user.click(screen.getByRole('button', { name: 'Declarar prontas e fechar' }))
+
+    // Cada guia listada é declarada pronta, e só então o fechamento é refeito.
+    await waitFor(() => {
+      expect(closeAttempts).toBe(2)
+    })
+    expect(declaradas).toEqual(['guide-1', 'guide-2'])
+    expect(await screen.findByText('Lote fechado com sucesso!')).toBeInTheDocument()
+  })
+})

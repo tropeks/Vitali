@@ -142,3 +142,26 @@ class VerifyRevenueChainClosesBatchTests(TenantTestCase):
             sum(item.total_value for item in guia.items.all()),
             "o valor gravado no lote diverge da soma dos itens da guia que ele contém",
         )
+
+    def test_a_guia_termina_enviada(self) -> None:
+        """A guia tem de sair do rascunho: a cadeia a declara pronta e o lote a envia.
+
+        Registrado como ressalva no fim da ordem 008 — o lote fechava e a guia ficava
+        `draft`, porque nada movia `draft` para `pending` e o fechamento só promovia
+        `pending`. Vira teste na ordem 009, que fez a cadeia declarar a própria guia
+        pronta antes de fechar.
+
+        Importa além da coerência: `_ACTIVE_GUIDE_STATUSES` exclui `draft`, então guia
+        que nunca sai do rascunho é invisível para a checagem `duplicate` da cunha de
+        glosa.
+        """
+        call_command("verify_revenue_chain", "--tenant", self.tenant.schema_name, "--create")
+
+        guia = TISSGuide.objects.get()
+        guia.refresh_from_db()
+        self.assertEqual(
+            guia.status,
+            "submitted",
+            "o lote fechou mas a guia continuou fora do ciclo de vida — lote fechado "
+            "cheio de rascunho é o sinal verde que não significa verde",
+        )

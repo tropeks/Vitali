@@ -223,21 +223,35 @@ class Command(BaseCommand):
         from rest_framework.test import APIClient
 
         from apps.billing.models import GlosaSafetyAlert, TISSBatch
+        from apps.billing.services.batch_lifecycle import marcar_pronta_para_envio
         from apps.core.models import AuditLog, User
 
         self.stdout.write("")
         self.stdout.write("prova do soft-stop (endpoints reais)")
 
+        # Escolhe um alerta cuja guia ainda POSSA entrar num lote.
+        #
+        # Ordenar por `guide__guide_number` crescente pegava a guia mais ANTIGA, e em
+        # staging as antigas já estão em lote fechado. `lote.guides.add()` então
+        # levantava `ValidationError: já consta no lote ... Double-billing bloqueado`
+        # — a guarda de dupla apresentação funcionando, sobre um cenário que este
+        # harness montou errado. Excluir as já finalizadas e pegar a guia mais NOVA
+        # resolve: a que `--demo-uncovered` acabou de criar é a que se quer exercitar.
+        ja_finalizadas = TISSBatch.objects.filter(status__in=["closed", "submitted"]).values_list(
+            "guides__pk", flat=True
+        )
         alerta = (
             GlosaSafetyAlert.objects.select_related("guide")
             .filter(severity="block", status="flagged")
-            .order_by("guide__guide_number")
+            .exclude(guide__pk__in=[pk for pk in ja_finalizadas if pk is not None])
+            .order_by("-guide__guide_number")
             .first()
         )
         if alerta is None:
             raise CommandError(
-                "nenhum alerta BLOQUEANTE aberto para exercitar. Rode antes: "
-                "verify_glosa_wedge --tenant <t> --demo-uncovered --evaluate"
+                "nenhum alerta BLOQUEANTE aberto sobre guia que ainda possa ser "
+                "lotada. Rode antes: verify_glosa_wedge --tenant <t> "
+                "--demo-uncovered --evaluate"
             )
         guia = alerta.guide
         self.stdout.write(
@@ -293,6 +307,28 @@ class Command(BaseCommand):
         host = dominio.domain
 
         url_close = reverse("batch-close", args=[lote.pk])
+
+        # Portão 1 — rascunho (ordem 009). O fechamento estrito barra ANTES de
+        # julgar glosa, então este harness passa pelos dois portões em ordem. Até a
+        # ordem 009 ele só conhecia o segundo, e quebrou quando o primeiro nasceu:
+        # exercitar um gate com dado que o gate anterior recusa não prova o segundo.
+        r0 = client.post(url_close, {}, format="json", HTTP_HOST=host, secure=True)
+        self.stdout.write(f"  POST {url_close} (guia em rascunho) -> {r0.status_code}")
+        if r0.status_code != 409 or (r0.data or {}).get("code") != "batch_has_draft_guides":
+            raise CommandError(
+                f"esperava 409 batch_has_draft_guides com a guia em rascunho, veio "
+                f"{r0.status_code}: {getattr(r0, 'data', None)}"
+            )
+        self.stdout.write(f"    409 nomeando o rascunho: {(r0.data or {}).get('guides')}")
+        lote.refresh_from_db()
+        if lote.status != "open":
+            raise CommandError(f"o lote fechou apesar do rascunho: {lote.status}")
+
+        marcar_pronta_para_envio(guia=guia, actor=usuario)
+        guia.refresh_from_db()
+        self.stdout.write(f"  guia declarada pronta -> {guia.status}")
+
+        # Portão 2 — glosa bloqueante.
         r1 = client.post(url_close, {}, format="json", HTTP_HOST=host, secure=True)
         self.stdout.write(f"  POST {url_close} -> {r1.status_code}")
         if r1.status_code != 409:

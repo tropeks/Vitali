@@ -6,7 +6,10 @@ import { ApiError } from '@/lib/api';
 import {
   isGlosaSafetyBlock,
   isBatchModifiedDuringClose,
+  isBatchHasDraftGuides,
+  markGuideReady,
   type GlosaSafetyBlock,
+  type BatchHasDraftGuides,
 } from '@/lib/glosa-safety';
 import { GlosaSafetyModal } from '@/components/billing/GlosaSafetyModal';
 
@@ -52,6 +55,7 @@ export default function BatchDetailPage() {
   const [busy, setBusy] = useState(false);
   const [downloadUrl, setDownloadUrl] = useState('');
   const [glosaBlock, setGlosaBlock] = useState<GlosaSafetyBlock | null>(null);
+  const [draftBlock, setDraftBlock] = useState<BatchHasDraftGuides | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Refetch the batch (and its guides) — used on initial load and after a
@@ -84,6 +88,7 @@ export default function BatchDetailPage() {
         throw new ApiError(res.status, data);
       }
       setGlosaBlock(null);
+      setDraftBlock(null);
       setBatch(data);
       setActionMsg('Lote fechado com sucesso!');
     } catch (e: any) {
@@ -91,6 +96,14 @@ export default function BatchDetailPage() {
       if (block) {
         // Glosa interception: open the modal instead of the generic error.
         setGlosaBlock(block);
+        return;
+      }
+      const drafts = isBatchHasDraftGuides(e);
+      if (drafts) {
+        // Ordem 009: o lote tem guia que ninguém declarou pronta. Fechar lote
+        // significa enviar, então a tela lista QUAIS faltam e pede o ato
+        // explícito — em vez de promovê-las por baixo do pano.
+        setDraftBlock(drafts);
         return;
       }
       if (isBatchModifiedDuringClose(e)) {
@@ -110,8 +123,29 @@ export default function BatchDetailPage() {
   }, [id, loadBatch]);
 
   const closeBatch = () => {
+    setDraftBlock(null);
     void submitClose();
   };
+
+  // Declara prontas as guias que o 409 listou e refaz o fechamento. Cada chamada
+  // grava AuditLog no backend nomeando quem declarou — por isso é um clique
+  // deliberado, e não algo que o botão "Fechar" faça sozinho.
+  const declararProntasEFechar = useCallback(async () => {
+    if (!draftBlock) return;
+    setBusy(true); setError('');
+    try {
+      for (const g of draftBlock.guides) {
+        await markGuideReady(g.guide_id);
+      }
+      setDraftBlock(null);
+    } catch (e: any) {
+      setError(e instanceof ApiError ? `${e.status}` : e.message);
+      setBusy(false);
+      return;
+    }
+    setBusy(false);
+    void submitClose();
+  }, [draftBlock, submitClose]);
 
   const exportXml = async () => {
     setBusy(true); setError(''); setActionMsg('');
@@ -201,6 +235,37 @@ export default function BatchDetailPage() {
         )}
       </div>
 
+      {draftBlock && (
+        <div
+          data-testid="batch-draft-guides"
+          className="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-4 py-3 text-sm space-y-3"
+        >
+          <p className="font-medium">{draftBlock.detail}</p>
+          <ul className="list-disc list-inside space-y-1">
+            {draftBlock.guides.map((g) => (
+              <li key={g.guide_id}>
+                Guia <span className="font-mono">{g.guide_number}</span> — rascunho
+              </li>
+            ))}
+          </ul>
+          <div className="flex gap-2">
+            <button
+              onClick={() => void declararProntasEFechar()}
+              disabled={busy}
+              className="px-3 py-1.5 rounded-md bg-amber-600 text-white text-sm font-medium disabled:opacity-50"
+            >
+              Declarar prontas e fechar
+            </button>
+            <button
+              onClick={() => setDraftBlock(null)}
+              disabled={busy}
+              className="px-3 py-1.5 rounded-md border border-amber-300 text-sm disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">{error}</div>
       )}
