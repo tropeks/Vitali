@@ -123,6 +123,9 @@ class GuideImmutabilityTestCase(TenantTestCase):
     def test_patch_submitted_guide_is_blocked(self):
         client = self._auth(self.fat_token)
         guide_id = self._create_guide(client).json()["id"]
+        # Ordem 010: enviar exige guia declarada pronta. Passo acrescentado ao
+        # fluxo — nenhuma asserção deste teste mudou.
+        client.post(f"/api/v1/billing/guides/{guide_id}/marcar-pronta/")
         submit_resp = client.post(f"/api/v1/billing/guides/{guide_id}/submit/")
         self.assertEqual(submit_resp.status_code, 200, submit_resp.content)
 
@@ -147,6 +150,9 @@ class GuideImmutabilityTestCase(TenantTestCase):
         mesmo que precisasse)."""
         client = self._auth(self.fat_token)
         guide_id = self._create_guide(client).json()["id"]
+        # Ordem 010: enviar exige guia declarada pronta. Passo acrescentado ao
+        # fluxo — nenhuma asserção deste teste mudou.
+        client.post(f"/api/v1/billing/guides/{guide_id}/marcar-pronta/")
         client.post(f"/api/v1/billing/guides/{guide_id}/submit/")
 
         resp = client.patch(
@@ -228,6 +234,9 @@ class GuideImmutabilityTestCase(TenantTestCase):
         no lote exportado. Mesma trava dos demais campos (Onda2 2.3)."""
         client = self._auth(self.fat_token)
         guide_id = self._create_guide(client).json()["id"]
+        # Ordem 010: enviar exige guia declarada pronta. Passo acrescentado ao
+        # fluxo — nenhuma asserção deste teste mudou.
+        client.post(f"/api/v1/billing/guides/{guide_id}/marcar-pronta/")
         submit_resp = client.post(f"/api/v1/billing/guides/{guide_id}/submit/")
         self.assertEqual(submit_resp.status_code, 200, submit_resp.content)
 
@@ -248,6 +257,9 @@ class GuideImmutabilityTestCase(TenantTestCase):
         mesmo risco de divergir do que foi transmitido à operadora."""
         client = self._auth(self.fat_token)
         guide_id = self._create_guide(client).json()["id"]
+        # Ordem 010: enviar exige guia declarada pronta. Passo acrescentado ao
+        # fluxo — nenhuma asserção deste teste mudou.
+        client.post(f"/api/v1/billing/guides/{guide_id}/marcar-pronta/")
         submit_resp = client.post(f"/api/v1/billing/guides/{guide_id}/submit/")
         self.assertEqual(submit_resp.status_code, 200, submit_resp.content)
 

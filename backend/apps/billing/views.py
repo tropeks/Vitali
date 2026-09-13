@@ -1322,25 +1322,35 @@ class TISSGuideViewSet(AuditReadMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="submit")
     def submit(self, request, pk=None):
-        """Mark guide as submitted (status: pending → submitted)."""
-        from apps.core.signals import _write_audit
+        """Marca a guia como enviada — ``pending`` → ``submitted`` (ordem 010, #213).
+
+        Aceitava ``draft`` e saltava direto para ``submitted``, pulando ``pending``,
+        contra a própria docstring anterior. Era a porta dos fundos do ciclo de vida
+        que a ordem 009 estabeleceu: uma guia virava "Enviada" sem lote, sem validação
+        contra o XSD e sem ninguém tê-la declarado pronta.
+
+        A regra vive em ``services/batch_lifecycle.marcar_enviada``; esta view só
+        traduz a recusa em HTTP, e a resposta NOMEIA o endpoint que destrava — erro
+        que não diz o próximo passo obriga quem o recebe a ler o código.
+        """
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        from .services.batch_lifecycle import marcar_enviada
 
         guide = self.get_object()
-        if guide.status not in ("draft", "pending"):
+        try:
+            guide = marcar_enviada(guia=guide, actor=request.user)
+        except DjangoValidationError as exc:
             return Response(
-                {"detail": f"Cannot submit guide with status '{guide.status}'."},
+                {
+                    "code": "guide_not_ready",
+                    "detail": (
+                        f"{'; '.join(exc.messages)} Use "
+                        f"POST /api/v1/billing/guides/{guide.pk}/marcar-pronta/ antes."
+                    ),
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        old_status = guide.status
-        guide.status = "submitted"
-        guide.save(update_fields=["status", "updated_at"])
-        _write_audit(
-            f"guide_{guide.guide_number}_status_{old_status}→submitted",
-            "tiss_guide",
-            str(guide.pk),
-            old_data={"status": old_status},
-            new_data={"status": "submitted"},
-        )
         return Response(TISSGuideSerializer(guide).data)
 
 

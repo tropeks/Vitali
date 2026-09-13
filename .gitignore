@@ -154,3 +154,10 @@ cache/
 # User uploads (potential PHI) must never enter VCS — CSO #1
 uploads/*
 !uploads/.gitkeep
+
+# Permissões locais do Claude Code — ordem 010.
+# `settings.local.json` é o arquivo PESSOAL da máquina; o compartilhado é o
+# `settings.json`. Este esteve versionado desde o primeiro commit (57de3bb), com 113
+# regras de allowlist — entre elas `Bash(git push:*)`, `Bash(docker exec:*)` e caminhos
+# de outra máquina —, de modo que todo clone herdava as permissões de quem o criou.
+.claude/settings.local.json

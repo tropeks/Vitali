@@ -63,6 +63,53 @@ class LoteAlteradoDuranteFechamento(FechamentoRecusado):
         super().__init__("O lote foi modificado durante o fechamento; reavalie e feche novamente.")
 
 
+@transaction.atomic
+def marcar_enviada(*, guia: Any, actor: Any) -> Any:
+    """``pending`` → ``submitted``: a transição validada, fora do fechamento de lote.
+
+    **Por que ela precisa recusar rascunho** (issue #213, ordem 010). Antes, o endpoint
+    ``submit`` aceitava ``draft`` e gravava ``submitted`` direto, pulando ``pending`` —
+    contra a própria docstring. Uma guia virava "Enviada" sem lote, sem validação contra
+    o XSD e sem ninguém tê-la declarado pronta.
+
+    ``submitted`` não é rótulo inofensivo: entra em ``_ACTIVE_GUIDE_STATUSES``
+    (``services/glosa_safety.py``), contando como apresentada para a checagem
+    ``duplicate`` da cunha de glosa, e entra no denominador da taxa de glosa. Guia
+    marcada sem envio real infla os dois — o sinal deixa de significar o que diz.
+
+    O caminho normal para ``submitted`` é o fechamento do lote (``fechar_lote``). Esta é
+    a transição avulsa, para quando a guia foi transmitida por fora do lote, e por isso
+    ela é auditada com ação própria (``guide_submitted``), consultável como
+    ``guide_marked_ready`` — não uma f-string montada na view.
+    """
+    from apps.core.models import AuditLog
+
+    travada = type(guia).objects.select_for_update().get(pk=guia.pk)
+    if travada.status != "pending":
+        raise DjangoValidationError(
+            f"Só guia declarada pronta pode ser enviada; esta está em "
+            f"'{travada.status}'. Declare-a pronta antes (marcar-pronta)."
+        )
+
+    travada.status = "submitted"
+    travada.save(update_fields=["status", "updated_at"])
+
+    AuditLog.objects.create(
+        user=actor,
+        action="guide_submitted",
+        resource_type="tiss_guide",
+        resource_id=str(travada.pk),
+        old_data={"status": "pending"},
+        new_data={
+            "status": "submitted",
+            "guide_number": travada.guide_number,
+            "provider_id": str(travada.provider_id),
+        },
+    )
+    guia.status = "submitted"
+    return travada
+
+
 class LoteComRascunho(FechamentoRecusado):
     """O lote contém guia que ninguém declarou pronta. View: 409.
 

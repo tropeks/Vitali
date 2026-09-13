@@ -394,6 +394,9 @@ class BillingTestCase(TenantTestCase):
         resp = self._create_guide()
         guide_id = resp.json()["id"]
         client = self._auth(self.fat_token)
+        # Ordem 010: enviar exige guia declarada pronta. Passo acrescentado ao
+        # fluxo — nenhuma asserção deste teste mudou.
+        client.post(f"/api/v1/billing/guides/{guide_id}/marcar-pronta/")
         submit_resp = client.post(f"/api/v1/billing/guides/{guide_id}/submit/")
         self.assertEqual(submit_resp.status_code, 200)
         self.assertEqual(submit_resp.json()["status"], "submitted")
