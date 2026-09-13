@@ -207,12 +207,36 @@ if [ -n "$REFERENCE" ] && [ -n "$INVENTORY_SQL" ]; then
     -e POSTGRES_PASSWORD="$PGPW" -e POSTGRES_USER=vitali -e POSTGRES_DB=vitali \
     "$PG_IMAGE" >/dev/null
 
-  for _ in $(seq 1 60); do
-    if docker exec "$DRILL_CONTAINER" pg_isready -U vitali -d vitali >/dev/null 2>&1; then break; fi
+  # `-h 127.0.0.1` — a raiz do defeito, e a linha que conserta.
+  #
+  # A imagem oficial do postgres sobe um servidor TEMPORARIO para o `initdb`,
+  # derruba e sobe o definitivo. O temporario escuta SO no socket unix. Esta
+  # espera omitia o `-h` e portanto ia pelo socket: respondia ao temporario, o
+  # laco dava `break`, e a chamada seguinte caia no meio do reinicio. O rastreio
+  # de 13/09 mostra as duas linhas coladas — a do laco passou, a de confirmacao
+  # falhou —, e a fase 2 morreu em 2 de 3 execucoes do mesmo dia.
+  #
+  # O `restore_test.sh` (fase 1) NUNCA sofreu disso porque ja usa
+  # `-h 127.0.0.1`: por TCP o temporario nao responde, entao a primeira resposta
+  # ja e a do servidor definitivo. Esta linha alinha a fase 2 com a irma que
+  # funciona.
+  #
+  # As tres respostas seguidas ficam como cinto adicional, nao como o conserto.
+  # Importa mais agora do que quando este script era manual: as 03:00 nao ha
+  # ninguem para reparar que o drill nao rodou, e a metrica ausente so apareceria
+  # no smoke da manha, como se o backup e nao o drill estivesse doente.
+  SEGUIDAS=0
+  for _ in $(seq 1 90); do
+    if docker exec "$DRILL_CONTAINER" pg_isready -h 127.0.0.1 -U vitali -d vitali >/dev/null 2>&1; then
+      SEGUIDAS=$((SEGUIDAS + 1))
+      [ "$SEGUIDAS" -ge 3 ] && break
+    else
+      SEGUIDAS=0
+    fi
     sleep 2
   done
-  docker exec "$DRILL_CONTAINER" pg_isready -U vitali -d vitali >/dev/null 2>&1 \
-    || { echo "[drill] ✗ postgres efemero da fase 2 nao ficou pronto" >&2; exit 1; }
+  [ "$SEGUIDAS" -ge 3 ] \
+    || { echo "[drill] ✗ postgres efemero da fase 2 nao ficou pronto (estavel)" >&2; exit 1; }
 
   # O claro nunca toca o disco do host: decifra e entra por stdin no container.
   gpg --batch --quiet --yes --passphrase "$BACKUP_ENCRYPTION_KEY" --decrypt "$ARTIFACT_PATH" 2>/dev/null \
