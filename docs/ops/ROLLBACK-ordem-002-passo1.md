@@ -1,5 +1,16 @@
-<!-- maestro-order v1
-absorbed_by: 002
+> **Registro de rollback — não é ordem; movido de `.maestro/orders` em 2026-09-13 para parar o supervisor.**
+
+<!-- Documento de operação. NÃO é uma ordem do maestro.
+
+Morou em `.maestro/orders/002-ROLLBACK-passo1.md` até 13/09 e foi movido para cá.
+Motivo, medido: o supervisor do Maestro lê o diretório de ordens, derivava daqui uma
+"ordem 002" duplicada da real, e não honra o `absorbed_by` que o cabeçalho antigo
+declarava. O resultado era um aviso de "ordem 002 provada e sem aceite" no fim de toda
+rodada, sobre uma ordem que está aceita e encerrada desde 11/09 — cinco vezes numa
+sessão só. Sinal que vive vermelho ensina a ignorar vermelho (INTENT §Limites), então
+a correção é tirar o fantasma de existência, não silenciar o aviso.
+
+Conteúdo abaixo intacto.
 -->
 > **Absorvido pela ordem 002.** Este documento registrou o estado da lab antes do passo 1
 > e serviu de caminho de volta. O rollback **foi executado** — a primeira tentativa caiu no
