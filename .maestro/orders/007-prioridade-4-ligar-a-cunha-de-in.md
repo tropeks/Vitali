@@ -329,15 +329,25 @@ billing_tissbatch: 2026090001 | open | total_value 0.00
 
 `verify_revenue_chain` passo 5 soma os itens **em memória** (`total = sum(...)`,
 `verify_revenue_chain.py:185`) e escreve o valor na saída do comando — nunca em
-`lote.total_value`, e nunca fecha o lote. Não existe, em todo o `billing`, caminho que
-grave `TISSBatch.total_value` ou mova o status de `open`. Então o que a ordem 006 provou,
-com precisão: **guia válida contra o XSD → lote contendo a guia → valor apurável maior que
-zero**. O que ela **não** provou: faturamento como estado persistido.
+`lote.total_value`, e nunca fecha o lote.
+
+> **Correção, no mesmo dia.** Eu escrevi aqui que *"não existe, em todo o `billing`,
+> caminho que grave `TISSBatch.total_value` ou mova o status de `open`"*. **É falso.** O
+> endpoint de fechamento faz exatamente isso — `billing/views.py:1444-1449` agrega
+> `Sum("total_value")` das guias e grava `status`, `closed_at` e `total_value` num
+> `save(update_fields=...)`. Eu tinha procurado em `services/*.py` e em `models.py` e não
+> em `views.py`, e transformei "não encontrei" em "não existe". A prova do passo 3, abaixo,
+> fecha um lote de verdade: `status=closed total_value=100.00`.
+
+O que a ordem 006 provou, com precisão: **guia válida contra o XSD → lote contendo a guia →
+valor apurável maior que zero**. O que ela **não** provou: faturamento como estado
+persistido — não porque o sistema não saiba fazê-lo, mas porque o comando da caminhada
+nunca chama o caminho que o faz.
 
 **Isto não invalida a 006** — o XSD passou com 0 erros e a receita é apurável a partir de
-dado persistido — mas invalida a palavra "faturado" do jeito que eu a usei, e é assunto de
-Prioridade 2, não desta ordem. Fica proposto como ordem própria: fechar lote (`status`,
-`total_value`, `closed_at`) com teste, já que hoje o lote nasce aberto e ninguém o fecha.
+dado persistido — mas invalida a palavra "faturado" do jeito que eu a usei. Fica proposto
+como ordem própria, de Prioridade 2: `verify_revenue_chain` percorrer a cadeia até o
+FECHAMENTO, pelo mesmo caminho que a operação usa, em vez de parar numa soma impressa.
 
 **A guia órfã continua lá.** O Imediato autorizou apagar a `202609000001` (dado de teste).
 Eu não apaguei e não disse que tinha apagado — o item ficou aberto. Ela agora **é prova**:

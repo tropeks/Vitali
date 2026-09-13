@@ -62,6 +62,16 @@ class Command(BaseCommand):
             action="store_true",
             help="Avalia as guias e PERSISTE os alertas (sem isto, só lê o que já existe)",
         )
+        parser.add_argument(
+            "--prove-block",
+            action="store_true",
+            help=(
+                "Exercita o soft-stop DE VERDADE, pelos endpoints HTTP: fecha um lote "
+                "com alerta bloqueante aberto (espera 409), faz o override (espera a "
+                "linha no AuditLog) e fecha de novo (espera sucesso). Sem isto o "
+                "comando só DESCREVE o gate — e descrição não é prova."
+            ),
+        )
 
     def handle(self, *args: Any, **options: Any) -> None:
         from django_tenants.utils import tenant_context
@@ -77,6 +87,8 @@ class Command(BaseCommand):
             if options["demo_uncovered"]:
                 self._guia_nao_coberta()
             self._rodar(bool(options["evaluate"]))
+            if options["prove_block"]:
+                self._provar_bloqueio(tenant)
 
     def _rodar(self, avaliar: bool) -> None:
         from apps.billing.models import GlosaSafetyAlert, TISSGuide
@@ -195,4 +207,148 @@ class Command(BaseCommand):
         self.stdout.write(
             f"guia não-coberta criada: {guia.guide_number} com TUSS {fora.code} "
             f"(fora da tabela '{tabela.name}')"
+        )
+
+    def _provar_bloqueio(self, tenant: Any) -> None:
+        """Passo 3 da ordem 007: o lote com alerta aberto é bloqueado, e o override é auditado.
+
+        Passa pelos ENDPOINTS, não pelo service. A diferença não é cerimônia: o
+        gate de fechamento vive em `billing/views.py` e o registro de override
+        vive em `GlosaSafetyAlert.acknowledge()`. Chamar o service direto
+        provaria o segundo e pularia o primeiro — e foi exatamente um override
+        feito fora da view que expôs, na primeira rodada desta ordem, que o
+        AuditLog não recebia nada.
+        """
+        from django.urls import reverse
+        from rest_framework.test import APIClient
+
+        from apps.billing.models import GlosaSafetyAlert, TISSBatch
+        from apps.core.models import AuditLog, User
+
+        self.stdout.write("")
+        self.stdout.write("prova do soft-stop (endpoints reais)")
+
+        alerta = (
+            GlosaSafetyAlert.objects.select_related("guide")
+            .filter(severity="block", status="flagged")
+            .order_by("guide__guide_number")
+            .first()
+        )
+        if alerta is None:
+            raise CommandError(
+                "nenhum alerta BLOQUEANTE aberto para exercitar. Rode antes: "
+                "verify_glosa_wedge --tenant <t> --demo-uncovered --evaluate"
+            )
+        guia = alerta.guide
+        self.stdout.write(
+            f"  alerta aberto : {alerta.check_code} ANS {alerta.ans_glosa_code} "
+            f"na guia {guia.guide_number}"
+        )
+
+        lote = TISSBatch.objects.filter(guides=guia, status="open").first()
+        if lote is None:
+            lote = TISSBatch.objects.create(provider=guia.provider)
+            lote.guides.add(guia)
+            self.stdout.write(f"  lote criado   : {lote.batch_number or lote.pk}")
+        else:
+            self.stdout.write(f"  lote existente: {lote.batch_number or lote.pk}")
+
+        # Escolhe por CAPACIDADE, não por flag de superusuário: `IsFaturistaOrAdmin`
+        # aceita superuser OU quem tem `billing.read`/`billing.write`. Filtrar por
+        # `is_superuser` reprovava num tenant que simplesmente não tem nenhum — e
+        # reprovava por endereço errado, dizendo "sem superusuário" quando o que
+        # o endpoint quer é o papel.
+        # Preferência explícita: quem ESCREVE em billing. Fechar lote e contornar
+        # alerta são escrita; pegar o primeiro que tem `billing.read` daria um
+        # usuário com menos direito do que a operação exige e provaria menos.
+        usuario = None
+        for teste in (
+            lambda u: u.is_superuser,
+            lambda u: u.has_role_permission("billing.write"),
+            lambda u: u.has_role_permission("billing.read"),
+        ):
+            for candidato in User.objects.filter(is_active=True).order_by("id"):
+                if teste(candidato):
+                    usuario = candidato
+                    break
+            if usuario is not None:
+                break
+        if usuario is None:
+            raise CommandError(
+                "nenhum usuário ativo com billing.read/billing.write (nem superusuário) "
+                "para exercitar os endpoints — o gate é IsFaturistaOrAdmin"
+            )
+        self.stdout.write(f"  usuário       : {usuario.email}")
+
+        dominio = tenant.domains.filter(is_primary=True).first()
+        if dominio is None:
+            raise CommandError(f"tenant {tenant.schema_name} sem domínio primário")
+
+        # `secure=True` em toda chamada: production.py liga SECURE_SSL_REDIRECT, e
+        # sem isso o test client leva 301 do middleware e nunca alcança a view —
+        # o comando reprovaria dizendo "esperava 409, veio 301", culpando o gate
+        # por um redirect de esquema.
+        client = APIClient()
+        client.force_authenticate(user=usuario)
+        host = dominio.domain
+
+        url_close = reverse("batch-close", args=[lote.pk])
+        r1 = client.post(url_close, {}, format="json", HTTP_HOST=host, secure=True)
+        self.stdout.write(f"  POST {url_close} -> {r1.status_code}")
+        if r1.status_code != 409:
+            raise CommandError(
+                f"esperava 409 com alerta bloqueante aberto, veio {r1.status_code}: "
+                f"{getattr(r1, 'data', None)}"
+            )
+        ofensoras = (r1.data or {}).get("guides") or (r1.data or {}).get("guias") or r1.data
+        self.stdout.write(f"    409 com as guias ofensoras: {ofensoras}")
+        lote.refresh_from_db()
+        if lote.status != "open":
+            raise CommandError(f"o lote mudou de status apesar do 409: {lote.status}")
+        self.stdout.write(f"    lote continua '{lote.status}' — o soft-stop não fechou nada")
+
+        antes = AuditLog.objects.filter(action="glosa_alert_overridden").count()
+        url_ack = reverse("glosa-safety-alert-acknowledge", args=[alerta.pk])
+        motivo = "ordem 007 passo 3: procedimento acordado fora da tabela vigente (staging)"
+        r2 = client.post(
+            # O corpo é `{"reason": ...}` — o campo do MODELO chama-se
+            # `override_reason`, e mandar esse nome aqui produz um 400 enganoso:
+            # "o motivo deve ter pelo menos 10 caracteres" sobre um motivo longo,
+            # porque a view lê `reason` e recebe string vazia.
+            url_ack,
+            {"reason": motivo},
+            format="json",
+            HTTP_HOST=host,
+            secure=True,
+        )
+        self.stdout.write(f"  POST {url_ack} -> {r2.status_code}")
+        if r2.status_code not in (200, 201):
+            raise CommandError(f"override recusado ({r2.status_code}): {getattr(r2, 'data', None)}")
+        depois = AuditLog.objects.filter(action="glosa_alert_overridden").count()
+        self.stdout.write(f"    AuditLog glosa_alert_overridden: {antes} -> {depois}")
+        if depois != antes + 1:
+            raise CommandError(
+                "o override NÃO gerou linha no AuditLog — sem isso não há flywheel "
+                "alerta -> override -> desfecho (ordem 007, emenda do Imediato)"
+            )
+        linha = (
+            AuditLog.objects.filter(action="glosa_alert_overridden").order_by("-created_at").first()
+        )
+        assert linha is not None
+        self.stdout.write(f"    linha: resource={linha.resource_type}/{linha.resource_id}")
+        self.stdout.write(f"    old_data={linha.old_data}")
+        self.stdout.write(f"    new_data={linha.new_data}")
+
+        r3 = client.post(url_close, {}, format="json", HTTP_HOST=host, secure=True)
+        self.stdout.write(f"  POST {url_close} (apos override) -> {r3.status_code}")
+        if r3.status_code >= 400:
+            raise CommandError(
+                f"apos o override o fechamento ainda falhou ({r3.status_code}): "
+                f"{getattr(r3, 'data', None)}"
+            )
+        lote.refresh_from_db()
+        self.stdout.write(f"    lote agora: status={lote.status} total_value={lote.total_value}")
+        self.stdout.write("")
+        self.stdout.write(
+            "PROVADO: alerta aberto bloqueia (409), override audita, fechamento libera"
         )
