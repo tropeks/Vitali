@@ -140,3 +140,7 @@ Aprovada pelo Imediato em 13/09, nas palavras dele:
 > frontend com dois atos explícitos; `settings.local.json` sai do versionamento **sem mover
 > regra nenhuma** para o `settings.json` — a lista das 113 vem no relatório para eu decidir.
 > Testes que falham antes. Nada para master.
+accepted_at: 2026-09-13T07:25:24-03:00
+accepted_session: desconhecido
+accepted_tree: 02ae73beb501108edf5379c877cfaa23c6790451
+accepted_intent: 5
