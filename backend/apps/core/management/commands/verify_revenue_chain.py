@@ -82,7 +82,7 @@ class Command(BaseCommand):
             TISSGuide,
             TISSGuideItem,
         )
-        from apps.billing.services.batch_lifecycle import fechar_lote
+        from apps.billing.services.batch_lifecycle import fechar_lote, marcar_pronta_para_envio
         from apps.billing.services.xml_engine import (
             generate_batch_xml,
             generate_guide_xml,
@@ -211,6 +211,16 @@ class Command(BaseCommand):
             # decisão — e é a diferença entre as duas que a ordem 007 já cobrou.
             self.stdout.write("5. Faturamento")
             usuario = User.objects.filter(is_active=True).order_by("id").first()
+            # A cadeia declara a PRÓPRIA guia pronta — ordem 009.
+            #
+            # Pode fazê-lo honestamente porque monta a guia completa de propósito e
+            # acabou de validá-la contra o XSD no passo 4. Os geradores automáticos
+            # (pedido de exame, internação, caso cirúrgico) NÃO fazem isto: guia
+            # derivada de evento clínico nasce rascunho porque ninguém a conferiu, e
+            # declará-la pronta na criação seria afirmar à operadora algo que não se
+            # sabe. Ver `test_guide_creators_stay_draft.py`.
+            marcar_pronta_para_envio(guia=guia, actor=usuario)
+            self.stdout.write(f"   guia declarada: {guia.status}")
             fechar_lote(lote=lote, actor=usuario)
             lote.refresh_from_db()
             self.stdout.write(f"   status do lote: {lote.status}")

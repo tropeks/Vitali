@@ -539,6 +539,12 @@ class BillingTestCase(TenantTestCase):
         TISSBatch.guides.through.objects.create(tissbatch_id=b1, tissguide_id=guide.pk)
         TISSBatch.guides.through.objects.create(tissbatch_id=b2, tissguide_id=guide.pk)
 
+        # Ordem 009: fechar lote significa enviar, então a guia precisa ser
+        # declarada pronta antes. Passo acrescentado ao fluxo — nenhuma
+        # asserção deste teste mudou.
+        pronta = client.post(f"/api/v1/billing/guides/{guide_id}/marcar-pronta/")
+        self.assertEqual(pronta.status_code, 200)
+
         # First close wins.
         close1 = client.post(f"/api/v1/billing/batches/{b1}/close/")
         self.assertEqual(close1.status_code, 200)
@@ -634,6 +640,12 @@ class BillingTestCase(TenantTestCase):
         )
         self.assertEqual(add.status_code, 200)
 
+        # Ordem 009: fechar lote significa enviar, então a guia precisa ser
+        # declarada pronta antes. Passo acrescentado ao fluxo — nenhuma
+        # asserção deste teste mudou.
+        pronta = client.post(f"/api/v1/billing/guides/{guide_id}/marcar-pronta/")
+        self.assertEqual(pronta.status_code, 200)
+
         close = client.post(f"/api/v1/billing/batches/{b2}/close/")
         self.assertEqual(close.status_code, 200)
         self.assertEqual(close.json()["status"], "closed")
@@ -655,6 +667,11 @@ class BillingTestCase(TenantTestCase):
             format="json",
         )
         self.assertEqual(add.status_code, 200)
+        # Ordem 009: fechar lote significa enviar, então a guia precisa ser
+        # declarada pronta antes. Passo acrescentado ao fluxo — nenhuma
+        # asserção deste teste mudou.
+        pronta = client.post(f"/api/v1/billing/guides/{guide_id}/marcar-pronta/")
+        self.assertEqual(pronta.status_code, 200)
         close = client.post(f"/api/v1/billing/batches/{b}/close/")
         self.assertEqual(close.status_code, 200)
         self.assertEqual(close.json()["status"], "closed")

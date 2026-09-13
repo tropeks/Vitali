@@ -1297,6 +1297,29 @@ class TISSGuideViewSet(AuditReadMixin, viewsets.ModelViewSet):
             logger.exception("XML generation failed for guide %s", guide.guide_number)
             return Response({"detail": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=True, methods=["post"], url_path="marcar-pronta")
+    def marcar_pronta(self, request, pk=None):
+        """Declara a guia pronta para envio: ``draft`` → ``pending`` (ordem 009).
+
+        É o passo que o fechamento estrito de lote passou a exigir. Fica separado do
+        fechamento de propósito: quem declara uma guia pronta está afirmando que ela foi
+        conferida, e isso é ato de pessoa, com linha no ``AuditLog`` — não efeito
+        colateral de clicar em "fechar".
+        """
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        from .services.batch_lifecycle import marcar_pronta_para_envio
+
+        guide = self.get_object()
+        try:
+            guide = marcar_pronta_para_envio(guia=guide, actor=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {"code": "guide_not_draft", "detail": "; ".join(exc.messages)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(TISSGuideSerializer(guide).data)
+
     @action(detail=True, methods=["post"], url_path="submit")
     def submit(self, request, pk=None):
         """Mark guide as submitted (status: pending → submitted)."""
@@ -1352,6 +1375,7 @@ class TISSBatchViewSet(viewsets.ModelViewSet):
         from .services.batch_lifecycle import (
             GlosaBloqueante,
             LoteAlteradoDuranteFechamento,
+            LoteComRascunho,
             LoteNaoAberto,
             fechar_lote,
         )
@@ -1370,12 +1394,38 @@ class TISSBatchViewSet(viewsets.ModelViewSet):
                 self._glosa_block_payload(exc.blocking),
                 status=status.HTTP_409_CONFLICT,
             )
+        except LoteComRascunho as exc:
+            return Response(
+                self._rascunho_block_payload(exc.rascunhos),
+                status=status.HTTP_409_CONFLICT,
+            )
         except LoteAlteradoDuranteFechamento as exc:
             return Response(
                 {"code": "batch_modified_during_close", "detail": str(exc)},
                 status=status.HTTP_409_CONFLICT,
             )
         return Response(TISSBatchSerializer(locked_batch).data)
+
+    @staticmethod
+    def _rascunho_block_payload(rascunhos):
+        """Corpo do 409 de lote com rascunho — ordem 009.
+
+        Mesma forma por guia do bloqueio de glosa, de propósito: a tela de lote já
+        sabe ler essa estrutura, então a recusa nova entra pelo caminho existente em
+        vez de inventar um terceiro formato de 409.
+        """
+        return {
+            "code": "batch_has_draft_guides",
+            "detail": (
+                "Há guias em rascunho neste lote. Fechar lote significa enviar, então "
+                "declare as guias abaixo prontas para envio (ou remova-as do lote) e "
+                "feche novamente."
+            ),
+            "guides": [
+                {"guide_id": str(g.id), "guide_number": g.guide_number, "status": g.status}
+                for g in rascunhos
+            ],
+        }
 
     @staticmethod
     def _glosa_block_payload(blocking):

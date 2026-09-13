@@ -23,6 +23,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
@@ -60,6 +61,63 @@ class LoteAlteradoDuranteFechamento(FechamentoRecusado):
 
     def __init__(self) -> None:
         super().__init__("O lote foi modificado durante o fechamento; reavalie e feche novamente.")
+
+
+class LoteComRascunho(FechamentoRecusado):
+    """O lote contém guia que ninguém declarou pronta. View: 409.
+
+    Carrega as guias em ``draft`` para que a resposta diga QUAIS declarar pronta —
+    "há rascunho no lote" manda o faturista procurar; a lista manda ele agir.
+    """
+
+    def __init__(self, rascunhos: list[Any]) -> None:
+        self.rascunhos = rascunhos
+        numeros = ", ".join(g.guide_number or str(g.pk) for g in rascunhos)
+        super().__init__(
+            "O lote contém guia em rascunho, que ninguém declarou pronta para envio: "
+            f"{numeros}. Declare-as prontas ou remova-as do lote antes de fechar."
+        )
+
+
+@transaction.atomic
+def marcar_pronta_para_envio(*, guia: Any, actor: Any) -> Any:
+    """``draft`` → ``pending``: alguém declara que esta guia pode ir à operadora.
+
+    **Por que é um ato, e não um efeito colateral.** Fechar lote significa enviar, e
+    guia enviada entra em ``_ACTIVE_GUIDE_STATUSES``: passa a contar como apresentada
+    para a checagem ``duplicate`` da cunha de glosa e para o denominador da taxa de
+    glosa. Promover automaticamente na criação afirmaria que uma guia derivada de um
+    pedido de exame ou de uma internação está conferida sem ninguém ter olhado.
+
+    Por isso escreve ``AuditLog``, pela mesma razão do override de glosa da ordem 007:
+    é um humano afirmando algo sobre dado que vai sair da clínica, e sem a linha não há
+    quem nem quando.
+    """
+    from apps.core.models import AuditLog
+
+    travada = type(guia).objects.select_for_update().get(pk=guia.pk)
+    if travada.status != "draft":
+        raise DjangoValidationError(
+            f"Só guia em rascunho pode ser declarada pronta; esta está em '{travada.status}'."
+        )
+
+    travada.status = "pending"
+    travada.save(update_fields=["status", "updated_at"])
+
+    AuditLog.objects.create(
+        user=actor,
+        action="guide_marked_ready",
+        resource_type="tiss_guide",
+        resource_id=str(travada.pk),
+        old_data={"status": "draft"},
+        new_data={
+            "status": "pending",
+            "guide_number": travada.guide_number,
+            "provider_id": str(travada.provider_id),
+        },
+    )
+    guia.status = "pending"
+    return travada
 
 
 def fechar_lote(*, lote: TISSBatch, actor: Any) -> TISSBatch:
@@ -131,6 +189,19 @@ def _tentar_fechar(*, lote: TISSBatch, actor: Any) -> tuple[TISSBatch, Fechament
         # first wins, and the second close will then be rejected here.
         # Cancelled batches never conflict.
         locked_batch.check_guide_not_double_submitted(guide, statuses=["closed", "submitted"])
+
+    # Nenhuma guia em rascunho fecha lote — ordem 009, decisão do Imediato.
+    #
+    # Fechar lote significa "enviado". Guia que ninguém declarou pronta não pode sair
+    # no XML: era isso que deixava os seis lotes `closed` de staging cheios de
+    # rascunho, e é o "sinal verde tem que significar verde" do INTENT §Limites.
+    #
+    # Roda ANTES da avaliação de glosa de propósito: julgar por glosa uma guia que
+    # sequer foi declarada pronta gasta alerta sobre rascunho e polui a interceptação
+    # com dado que ainda está sendo montado.
+    rascunhos = [g for g in locked_guides if g.status == "draft"]
+    if rascunhos:
+        return locked_batch, LoteComRascunho(rascunhos)
 
     # Glosa-safety soft-stop (wedge PR G1). No-op when the glosa_safety
     # feature flag is OFF for this tenant — gate behaves exactly as

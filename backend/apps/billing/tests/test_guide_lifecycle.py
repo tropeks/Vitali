@@ -150,10 +150,10 @@ class GuideLifecycleTests(TenantTestCase):
         assert linha is not None
         self.assertEqual(linha.resource_type, "tiss_guide")
         self.assertEqual(linha.resource_id, str(self.guia.pk))
-        self.assertEqual(linha.old_data.get("status"), "draft")
-        self.assertEqual(linha.new_data.get("status"), "pending")
+        self.assertEqual((linha.old_data or {}).get("status"), "draft")
+        self.assertEqual((linha.new_data or {}).get("status"), "pending")
         self.assertEqual(
-            linha.new_data.get("guide_number"),
+            (linha.new_data or {}).get("guide_number"),
             self.guia.guide_number,
             "a linha tem de dizer QUAL guia foi declarada pronta, não só o id interno",
         )

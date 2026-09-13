@@ -9,6 +9,11 @@
  * A second 409 shape (`batch_modified_during_close`) means the batch guide set
  * changed mid-close → the UI must refetch the batch and let the user retry.
  *
+ * A third (`batch_has_draft_guides`, ordem 009) means the batch holds guides that
+ * nobody declared ready to send. Closing a batch MEANS sending it, so a draft cannot
+ * go out in the XML: the biller declares each listed guide ready — an audited act,
+ * not a side effect of clicking "close" — and retries.
+ *
  * The reachable interception point wired in the UI is the batch-close gate
  * (see app/(dashboard)/billing/batches/[id]/page.tsx).
  */
@@ -78,4 +83,46 @@ export async function acknowledgeGlosaAlert(alertId: string, reason: string): Pr
     method: 'POST',
     body: JSON.stringify({ reason }),
   })
+}
+
+export interface DraftGuide {
+  guide_id: string
+  guide_number: string
+  status: string
+}
+
+export interface BatchHasDraftGuides {
+  code: 'batch_has_draft_guides'
+  detail: string
+  guides: DraftGuide[]
+}
+
+/**
+ * Returns the parsed body when `err` is an ApiError carrying a 409
+ * `batch_has_draft_guides` response, otherwise null. The guides listed are the ones
+ * still in rascunho — the biller needs to know WHICH to declare ready, not merely
+ * that some exist.
+ */
+export function isBatchHasDraftGuides(err: unknown): BatchHasDraftGuides | null {
+  if (!(err instanceof ApiError)) return null
+  if (err.status !== 409) return null
+  const body = err.body
+  if (
+    body &&
+    typeof body === 'object' &&
+    body.code === 'batch_has_draft_guides' &&
+    Array.isArray(body.guides)
+  ) {
+    return body as BatchHasDraftGuides
+  }
+  return null
+}
+
+/**
+ * Declares a guide ready to send (draft → pending). Separate from the close on
+ * purpose: whoever declares a guide ready is asserting it was checked, and the
+ * backend writes an AuditLog row naming them.
+ */
+export async function markGuideReady(guideId: string): Promise<void> {
+  await apiFetch(`/api/v1/billing/guides/${guideId}/marcar-pronta/`, { method: 'POST' })
 }
