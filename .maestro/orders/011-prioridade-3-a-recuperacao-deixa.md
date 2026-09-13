@@ -219,3 +219,7 @@ Não subiu Prometheus nem Grafana — a decisão foi sinal no healthcheck e no s
 serviço. As regras de `docker/observability/alerts.yml` seguem sem quem as avalie, e isso
 continua aberto. Não tocou em `restore_test.sh`, o drill canônico. Não mexeu em offsite
 (ordem 004, NÃO AGORA).
+accepted_at: 2026-09-13T10:01:14-03:00
+accepted_session: desconhecido
+accepted_tree: 953be0d646b38187ce85d56f8bd17941eebd892d
+accepted_intent: 5
