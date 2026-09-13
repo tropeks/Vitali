@@ -41,6 +41,7 @@ WORKDIR=""
 REFERENCE=""
 INVENTORY_SQL=""
 ARTIFACT_NAME=""
+METRICS_DIR=""
 FROM_S3=0
 PG_IMAGE="${PG_IMAGE:-postgres:16-alpine}"
 
@@ -52,6 +53,7 @@ while [ $# -gt 0 ]; do
     --reference) REFERENCE="$2"; shift 2 ;;
     --inventory-sql) INVENTORY_SQL="$2"; shift 2 ;;
     --artifact) ARTIFACT_NAME="$2"; shift 2 ;;
+    --metrics-dir) METRICS_DIR="$2"; shift 2 ;;
     --from-s3) FROM_S3=1; shift ;;
     *) echo "[drill] argumento desconhecido: $1" >&2; exit 2 ;;
   esac
@@ -173,6 +175,22 @@ echo "[drill] bytes    : $(stat -c%s "$ARTIFACT_PATH")"
 # ── Fase 1: o drill canonico, intocado ──────────────────────────────────────
 echo ""
 echo "[drill] ─── fase 1: scripts/restore_test.sh ───────────────────────────"
+# Guard: este drill NUNCA toca o banco de staging — ordem 011, condicao do
+# Imediato. As duas fases sobem postgres efemero proprio, com nome sufixado por
+# $$ (`vitali-restore-drill-$$` e `vitali-inventory-drill-$$`), entao hoje isso e
+# verdade POR CONSTRUCAO. O guard existe para que continue verdade: um
+# POSTGRES_HOST/PGHOST herdado do ambiente e a forma pela qual alguem
+# redirecionaria o restore para um banco real sem perceber.
+if [ -n "${POSTGRES_HOST:-}" ] || [ -n "${PGHOST:-}" ]; then
+  echo "[drill] ✗ POSTGRES_HOST/PGHOST definido no ambiente" \
+       "(${POSTGRES_HOST:-}${PGHOST:-}). Este drill restaura SOMENTE em postgres" \
+       "efemero proprio; um host herdado poderia aponta-lo para o banco de" \
+       "staging. Limpe a variavel e rode de novo." >&2
+  exit 2
+fi
+
+DRILL_INICIO="$(date +%s)"
+
 DRILL_RC=0
 BACKUP_DIR="$WORKDIR" bash "$HERE/restore_test.sh" || DRILL_RC=$?
 if [ "$DRILL_RC" -ne 0 ]; then
@@ -256,3 +274,33 @@ if [ "$RESTOS_CONTAINER" -ne 0 ] || [ "$CLAROS_TMP" -ne 0 ] || [ "$CLAROS_WORK" 
   exit 1
 fi
 echo "[drill] ✓ drill completo e limpo"
+
+# A metrica vem por ULTIMO, e passa pelo portao de `drill_metric.sh` — ordem 011.
+# Os contadores vao como foram medidos; quem decide se escreve e o escritor, nao
+# este script. Se o portao recusar, o drill inteiro sai nao-zero: um drill que
+# passou mas nao conseguiu registrar que passou nao e um drill bem-sucedido para
+# quem le a metrica de manha.
+if [ -n "$METRICS_DIR" ]; then
+  bash "$HERE/drill_metric.sh" \
+    --metrics-dir "$METRICS_DIR" \
+    --duration "$(( $(date +%s) - DRILL_INICIO ))" \
+    --fase1 ok \
+    --containers "$RESTOS_CONTAINER" \
+    --claros-tmp "$CLAROS_TMP" \
+    --claros-work "$CLAROS_WORK"
+
+  # A metrica precisa aterrissar no MESMO lugar que a do backup: o diretorio
+  # `metrics/` dentro do volume `backups`. E de la que o smoke le, de dentro do
+  # container de backup — e o mountpoint do volume e root-only no host, entao
+  # este drill (que roda como usuario comum) nao escreve la direto.
+  #
+  # Por isso a escrita e em duas etapas: `drill_metric.sh` grava no workdir, com
+  # o portao de higiene; a copia entra no volume por container, como o artefato
+  # ja sai de la por container. Se as duas metricas morassem em lugares
+  # diferentes, o smoke procuraria a do drill onde ela nunca estaria — e o
+  # "pulo contado" que ele imprime esconderia isso atras de uma explicacao
+  # plausivel.
+  docker run --rm -v "$VOLUME":/v -v "$METRICS_DIR":/m:ro "$PG_IMAGE" \
+    sh -c 'mkdir -p /v/metrics && cp /m/vitali_restore_drill.prom /v/metrics/'
+  echo "[drill] metrica publicada no volume $VOLUME (metrics/vitali_restore_drill.prom)"
+fi

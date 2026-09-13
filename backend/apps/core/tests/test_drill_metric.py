@@ -54,9 +54,7 @@ class DrillMetricGateTests(SimpleTestCase):
             f"esperava a recusa do portão (1), veio {r.returncode}. stderr: {r.stderr}",
         )
         self.assertIn(motivo, r.stderr, f"a recusa não diz o porquê. stderr: {r.stderr}")
-        self.assertFalse(
-            self._arquivo().exists(), "a métrica foi escrita apesar da recusa"
-        )
+        self.assertFalse(self._arquivo().exists(), "a métrica foi escrita apesar da recusa")
 
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()

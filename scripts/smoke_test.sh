@@ -288,6 +288,59 @@ else
   esac
 fi
 
+# ─── Checks 9 e 10: recuperação — ordem 011 ──────────────────────────────────
+#
+# O backup e o drill deixam de ser invisíveis. Até aqui o smoke podia passar
+# 10/10 com o pipeline de backup parado há semanas: nada aqui olhava para ele, e
+# a regra `VitaliBackupStale` que olharia depende de uma pilha de observabilidade
+# que não roda na lab. Agora o próprio deploy pergunta.
+#
+# Tolerâncias: backup 26h (roda 02:00), drill 30h (roda 03:00). Ambas com folga
+# de uma corrida lenta, porque alerta que dispara por barulho ensina a ignorar
+# alerta — INTENT §Limites.
+
+_idade_metrica() {
+  # Ecoa a idade em segundos da métrica $2 no arquivo $1, lida de dentro do
+  # container de backup (o volume é dele). Ecoa vazio quando não há métrica —
+  # e quem chama trata ausência como PULO CONTADO, nunca como sucesso.
+  local arquivo="$1" metrica="$2" carimbo
+  carimbo=$("${compose_cmd[@]}" exec -T db-backup sh -c \
+    "awk '/^${metrica}/{print \$2}' /backups/metrics/${arquivo} 2>/dev/null" 2>/dev/null \
+    | tr -d '\r' | head -1)
+  [[ -n "$carimbo" ]] || return 0
+  echo $(( $(date +%s) - ${carimbo%%.*} ))
+}
+
+echo ""
+echo "9. Backup recente..."
+if command -v docker >/dev/null 2>&1 && [[ "$COMPOSE_FILES_OK" == "1" ]]; then
+  IDADE_BACKUP="$(_idade_metrica vitali_backup.prom vitali_backup_last_success_timestamp_seconds)"
+  if [[ -z "$IDADE_BACKUP" ]]; then
+    skip "Backup recente (métrica ausente — o pipeline nunca registrou sucesso)"
+  elif [[ "$IDADE_BACKUP" -lt 93600 ]]; then
+    check "último backup tem menos de 26h" "ok" "ok"
+  else
+    check "último backup tem menos de 26h" "$((IDADE_BACKUP / 3600))h atrás" "<26h"
+  fi
+else
+  skip "Backup recente (compose indisponível)"
+fi
+
+echo ""
+echo "10. Drill de restore recente..."
+if command -v docker >/dev/null 2>&1 && [[ "$COMPOSE_FILES_OK" == "1" ]]; then
+  IDADE_DRILL="$(_idade_metrica vitali_restore_drill.prom vitali_restore_drill_last_success_timestamp_seconds)"
+  if [[ -z "$IDADE_DRILL" ]]; then
+    skip "Drill recente (métrica ausente — nenhum drill completo e limpo registrado)"
+  elif [[ "$IDADE_DRILL" -lt 108000 ]]; then
+    check "último drill de restore tem menos de 30h" "ok" "ok"
+  else
+    check "último drill de restore tem menos de 30h" "$((IDADE_DRILL / 3600))h atrás" "<30h"
+  fi
+else
+  skip "Drill recente (compose indisponível)"
+fi
+
 # ─── Summary ──────────────────────────────────────────────────────────────────
 
 echo ""
