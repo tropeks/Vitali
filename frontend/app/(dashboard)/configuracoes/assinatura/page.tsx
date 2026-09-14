@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { AlertCircle, ExternalLink } from 'lucide-react';
-import { getAccessToken } from '@/lib/auth';
 import { PageShell, KpiTile, SectionState, StatusBadge } from '@/components/shared';
 import { SUBSCRIPTION_STATUS_META, resolveBadgeMeta } from '@/lib/operational-ui';
 
@@ -58,10 +57,6 @@ export default function AssinaturaPage() {
 
   useEffect(() => {
     async function load() {
-      if (!getAccessToken()) {
-        setLoading(false);
-        return;
-      }
       try {
         const res = await fetch('/api/subscription', { cache: 'no-store' });
         if (res.status === 204) return;

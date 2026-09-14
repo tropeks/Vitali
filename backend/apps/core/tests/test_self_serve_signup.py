@@ -233,6 +233,22 @@ class SubscriptionWebhookTests(TenantTestCase):
         self.tenant.refresh_from_db()
         self.assertEqual(self.tenant.status, Tenant.Status.ACTIVE)
 
+    def test_activation_does_not_provision_tenant_schema(self):
+        """A webhook updates only the public row, never invokes Tenant.save().
+
+        django-tenants can interpret ``save()`` on a loaded Tenant as a request
+        to provision/reconcile its schema. Billing callbacks must be safe even
+        when the tenant schema is unavailable, so this regression test makes
+        that side effect explicit.
+        """
+        with patch.object(Tenant, "save", side_effect=AssertionError("schema provisioning")):
+            resp = self._post(
+                {"event": "PAYMENT_RECEIVED", "payment": {"subscription": "sub_abc123"}}
+            )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.tenant.refresh_from_db()
+        self.assertEqual(self.tenant.status, Tenant.Status.ACTIVE)
+
     def test_invalid_token_returns_401_and_does_not_activate(self):
         resp = self._post(
             {"event": "PAYMENT_RECEIVED", "payment": {"subscription": "sub_abc123"}},

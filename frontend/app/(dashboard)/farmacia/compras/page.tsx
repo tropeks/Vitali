@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getAccessToken } from '@/lib/auth';
 import { Plus } from 'lucide-react';
 import RemoteCombobox from '@/components/shared/RemoteCombobox';
 
@@ -71,9 +70,7 @@ export default function ComprasPage() {
 
   useEffect(() => {
     async function load() {
-      const token = getAccessToken();
-      if (!token) return;
-      const headers = { Authorization: `Bearer ${token}` };
+      const headers = {};
       try {
         const supplier = selectedSupplier ? `&supplier=${encodeURIComponent(selectedSupplier.id)}` : '';
         const ordRes = await fetch(`/api/v1/pharmacy/purchase-orders/?page_size=200${supplier}`, { headers });

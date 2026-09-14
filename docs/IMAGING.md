@@ -104,6 +104,18 @@ one global cursor — matching the global nature of the feed.
 | `ORTHANC_USERNAME` | `""` | Basic-auth user (blank → no auth header). |
 | `ORTHANC_PASSWORD` | `""` | Basic-auth password. |
 | `ORTHANC_HTTP_TIMEOUT` | `10` | Per-request timeout (seconds). |
+| `ORTHANC_WEBHOOK_SECRET` | `""` | Shared secret the Orthanc Lua plugin echoes back as `X-Orthanc-Webhook-Secret`. Webhook refuses (`503`) when unset, so it can never run unauthenticated — it does NOT fall back to "no auth" like the other three. |
+
+**Onda 2 / item 2.9 audit note (2026-08-18):** `ORTHANC_URL` was absent from
+every `docker-compose*.yml`, `.env.example` and `.env.staging.example` — the
+default `""` above was silently reached in every environment, and the feature
+(webhook + poller) was inert everywhere despite the `orthanc` service running.
+Fixed: `ORTHANC_URL` is now hardcoded to `http://orthanc:8042` in the
+`django`/`celery-worker` services of all three compose files (internal DNS
+name, not a secret, so hardcoding it can't be silently skipped the way an
+env-file line can). `ORTHANC_USERNAME`/`ORTHANC_PASSWORD` are passed through
+from the deploy env file as before. See `scripts/check_orthanc_config.sh` for
+the regression guard and `docs/DEPLOY.md` (Post-Deploy Verification).
 
 These are **operator configuration, not user input**. The egress target
 (`ORTHANC_URL`) is set by the deployer, so SSRF-style concerns about where the

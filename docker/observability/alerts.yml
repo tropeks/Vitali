@@ -37,3 +37,21 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: "PostgreSQL connections exceed 80%"
+  - name: vitali-backup
+    rules:
+      # INERT TODAY: vitali_backup_last_success_timestamp_seconds does not exist
+      # yet in Prometheus. No series ⇒ this rule has no data to evaluate and
+      # never fires — it does not silently pass as "ok", it silently does
+      # nothing, which is a real gap until the metric pipeline below ships.
+      # Wiring plan (see delivery report — NOT done here, scripts/ is owned by
+      # another agent): scripts/backup.sh writes a Prometheus textfile-format
+      # gauge to /backups/metrics/vitali_backup.prom (atomic tmp+mv) after a
+      # successful dump; node-exporter's textfile collector (this repo, see
+      # docker-compose.observability.yml `node-exporter`) picks it up from the
+      # same `backups` volume, mounted read-only.
+      - alert: VitaliBackupStale
+        expr: time() - vitali_backup_last_success_timestamp_seconds > 26 * 3600
+        for: 10m
+        labels: {severity: critical}
+        annotations:
+          summary: "PostgreSQL backup is older than 26h (last successful dump timestamp is stale)"

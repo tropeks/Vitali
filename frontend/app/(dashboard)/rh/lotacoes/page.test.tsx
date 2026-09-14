@@ -22,10 +22,6 @@ vi.mock('@/lib/api', () => ({
   },
 }))
 
-vi.mock('@/lib/auth', () => ({
-  getAccessToken: () => 'test-token',
-}))
-
 import { apiFetch } from '@/lib/api'
 const mockApiFetch = vi.mocked(apiFetch)
 

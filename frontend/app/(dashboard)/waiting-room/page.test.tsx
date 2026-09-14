@@ -93,6 +93,7 @@ describe('WaitingRoomPage', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Sala de Espera Operacional')).toBeInTheDocument()
+      expect(screen.getAllByText('Ana Lima').length).toBeGreaterThan(0)
     })
 
     expect(screen.getAllByText('Ana Lima').length).toBeGreaterThan(0)

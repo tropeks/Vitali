@@ -27,6 +27,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.mixins import AuditReadMixin
 from apps.core.permissions import HasPermission
 
 from .serializers_transfusion_admin import (
@@ -170,13 +171,14 @@ class TransfusionChecarView(APIView):
         parameters=[_REQUEST_PARAM, _PATIENT_PARAM],
     ),
 )
-class TransfusionAdministrationViewSet(viewsets.ReadOnlyModelViewSet):
+class TransfusionAdministrationViewSet(AuditReadMixin, viewsets.ReadOnlyModelViewSet):
     """Administrações transfusionais (append-only, read-only). read=hemoterapia.read.
 
     ``reacao`` action records a hemovigilância reaction (gated hemoterapia.transfuse).
     """
 
     serializer_class = TransfusionAdministrationSerializer
+    audit_resource_type = "TransfusionAdministration"
 
     def get_permissions(self):
         if self.action == "reacao":
@@ -236,11 +238,12 @@ class TransfusionAdministrationViewSet(viewsets.ReadOnlyModelViewSet):
         parameters=[_ADMINISTRATION_PARAM, _PATIENT_PARAM],
     ),
 )
-class TransfusionReactionViewSet(viewsets.ReadOnlyModelViewSet):
+class TransfusionReactionViewSet(AuditReadMixin, viewsets.ReadOnlyModelViewSet):
     """Reações transfusionais (append-only, read-only). read=hemoterapia.read.
     Filter ``?administration=``."""
 
     serializer_class = TransfusionReactionSerializer
+    audit_resource_type = "TransfusionReaction"
 
     def get_permissions(self):
         return [IsAuthenticated(), HasPermission("hemoterapia.read")]

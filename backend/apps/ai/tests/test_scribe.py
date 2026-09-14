@@ -16,6 +16,7 @@ from django.test import override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from apps.ai.consent import ConsentResult
 from apps.test_utils import TenantTestCase
 
 # ─── Unit tests for _parse_soap_json ─────────────────────────────────────────
@@ -109,6 +110,16 @@ class TestGenerateSoapTask(TenantTestCase):
             professional=professional,
             encounter_date=timezone.now(),
         )
+        # Onda 3 / 3.2: generate_soap_task() now enforces consent (global
+        # flag + signed DPA + ceiling) for the async path too. These tests
+        # are about task orchestration, not consent — consent.py and
+        # test_scribe_scrubbing below cover that directly.
+        self._consent_patch = patch(
+            "apps.ai.services_scribe.requires_ai_consent",
+            return_value=ConsentResult(True),
+        )
+        self._consent_patch.start()
+        self.addCleanup(self._consent_patch.stop)
 
     def _make_session(self, transcription="Paciente com febre há 2 dias"):
         from apps.ai.models import AIScribeSession
@@ -166,6 +177,85 @@ class TestGenerateSoapTask(TenantTestCase):
 
         # Should not raise — just logs an error
         generate_soap_task(session_id=str(uuid.uuid4()))
+
+
+# ─── Onda 3 / 3.1+3.2: scrubbing + consent gate reach the gateway ────────────
+
+
+class TestGenerateSoapConsentAndScrubbing(TenantTestCase):
+    """
+    generate_soap() is the entry point apps.ai.tasks.generate_soap_task calls.
+    These tests exercise it directly so we can inspect exactly what payload
+    reaches ClaudeGateway.complete() and prove the consent gate actually
+    blocks the call rather than just being wired in and never enforced.
+    """
+
+    def setUp(self):
+        from apps.emr.models import Patient
+
+        self.patient = Patient.objects.create(
+            full_name="Maria das Dores Ferreira",
+            cpf="123.456.789-00",
+            birth_date=datetime.date(1990, 4, 12),
+            gender="F",
+        )
+
+    def test_scrubbed_text_reaches_gateway_not_raw_phi(self):
+        from apps.ai.services_scribe import generate_soap
+
+        transcription = (
+            "Paciente Maria das Dores Ferreira, CPF 123.456.789-00, nascida em 12/04/1990, "
+            "relata dor de cabeça há 3 dias."
+        )
+        soap_response = json.dumps(
+            {"subjective": "dor de cabeça", "objective": "", "assessment": "", "plan": ""}
+        )
+
+        with (
+            patch(
+                "apps.ai.services_scribe.requires_ai_consent",
+                return_value=ConsentResult(True),
+            ),
+            patch("apps.ai.services_scribe.ClaudeGateway") as MockGateway,
+        ):
+            MockGateway.return_value.complete.return_value = (soap_response, 10, 10)
+            generate_soap(
+                transcription, patient=self.patient, tenant_schema=self.tenant.schema_name
+            )
+            call_kwargs = MockGateway.return_value.complete.call_args.kwargs
+            sent_text = call_kwargs["user"]
+
+        # The raw identifiers must NOT be in what was sent to Claude...
+        self.assertNotIn("Maria das Dores Ferreira", sent_text)
+        self.assertNotIn("123.456.789-00", sent_text)
+        self.assertNotIn("12/04/1990", sent_text)
+        # ...but the clinically relevant content must survive scrubbing.
+        self.assertIn("dor de cabeça", sent_text)
+        # And stable tokens replaced them.
+        self.assertIn("[NOME_", sent_text)
+        self.assertIn("[CPF_", sent_text)
+        self.assertIn("[NASC_", sent_text)
+
+    def test_consent_denied_blocks_llm_call_and_logs_degraded(self):
+        from apps.ai.models import AIUsageLog
+        from apps.ai.services_scribe import generate_soap
+
+        with (
+            patch(
+                "apps.ai.services_scribe.requires_ai_consent",
+                return_value=ConsentResult(False, "dpa_not_signed"),
+            ),
+            patch("apps.ai.services_scribe.ClaudeGateway") as MockGateway,
+        ):
+            result = generate_soap(
+                "Paciente relata febre",
+                patient=self.patient,
+                tenant_schema=self.tenant.schema_name,
+            )
+
+        MockGateway.return_value.complete.assert_not_called()
+        self.assertEqual(result, {"subjective": "", "objective": "", "assessment": "", "plan": ""})
+        self.assertTrue(AIUsageLog.objects.filter(event_type="degraded").exists())
 
 
 # ─── View tests ───────────────────────────────────────────────────────────────

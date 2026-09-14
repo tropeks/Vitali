@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { apiFetch } from '@/lib/api'
 import { SectionState } from '@/components/shared'
 import {
@@ -49,6 +49,7 @@ export default function PriceMatrix({ contractId, services, facilities }: PriceM
   // Local edit buffers for the contract-scoped price of each service.
   const [priceInputs, setPriceInputs] = useState<Record<string, string>>({})
   const [billableInputs, setBillableInputs] = useState<Record<string, boolean>>({})
+  const editedInputs = useRef(new Set<string>())
 
   // Per-service override draft rows (only rendered when opened).
   const [drafts, setDrafts] = useState<Record<string, OverrideDraft>>({})
@@ -86,11 +87,13 @@ export default function PriceMatrix({ contractId, services, facilities }: PriceM
     const nextBillable: Record<string, boolean> = {}
     for (const s of services) {
       const existing = contractScoped[s.id]
-      nextPrice[s.id] = existing?.price ?? ''
-      nextBillable[s.id] = existing?.is_billable ?? true
+      if (!editedInputs.current.has(s.id)) {
+        nextPrice[s.id] = existing?.price ?? ''
+        nextBillable[s.id] = existing?.is_billable ?? true
+      }
     }
-    setPriceInputs(nextPrice)
-    setBillableInputs(nextBillable)
+    setPriceInputs((prev) => ({ ...prev, ...nextPrice }))
+    setBillableInputs((prev) => ({ ...prev, ...nextBillable }))
   }, [services, contractScoped])
 
   const overridesByService = useMemo(() => {
@@ -119,6 +122,7 @@ export default function PriceMatrix({ contractId, services, facilities }: PriceM
           body: JSON.stringify(payload),
         }
       )
+      editedInputs.current.delete(service.id)
       await load()
     } catch {
       setError(true)
@@ -215,9 +219,10 @@ export default function PriceMatrix({ contractId, services, facilities }: PriceM
                     placeholder="0,00"
                     className={INPUT_CLASS}
                     value={priceInputs[s.id] ?? ''}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      editedInputs.current.add(s.id)
                       setPriceInputs((prev) => ({ ...prev, [s.id]: e.target.value }))
-                    }
+                    }}
                   />
                   <label className="flex items-center gap-1.5 text-xs text-slate-600">
                     <input

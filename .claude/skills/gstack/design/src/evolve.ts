@@ -8,6 +8,7 @@
 import fs from "fs";
 import path from "path";
 import { requireApiKey } from "./auth";
+import { receiptedFetch } from "./receipted-fetch";
 
 export interface EvolveOptions {
   screenshot: string;  // Path to current site screenshot
@@ -52,10 +53,10 @@ export async function evolve(options: EvolveOptions): Promise<void> {
   ].join("\n");
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 120_000);
+  const timeout = setTimeout(() => controller.abort(), 240_000);
 
   try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
+    const response = await receiptedFetch("evolve-image-request", "https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${apiKey}`,
@@ -71,6 +72,13 @@ export async function evolve(options: EvolveOptions): Promise<void> {
 
     if (!response.ok) {
       const error = await response.text();
+      if (response.status === 403 && error.includes("organization must be verified")) {
+        throw new Error(
+          "OpenAI organization verification required.\n"
+          + "Go to https://platform.openai.com/settings/organization to verify.\n"
+          + "After verification, wait up to 15 minutes for access to propagate.",
+        );
+      }
       throw new Error(`API error (${response.status}): ${error.slice(0, 300)}`);
     }
 
@@ -106,7 +114,7 @@ async function analyzeScreenshot(apiKey: string, imageBase64: string): Promise<s
   const timeout = setTimeout(() => controller.abort(), 30_000);
 
   try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await receiptedFetch("evolve-screenshot-analysis-request", "https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${apiKey}`,

@@ -1,42 +1,196 @@
-{# Resumo de Internação Guide fragment — TISS 4.01.00 #}
+{# Guia de Resumo de Internação — TISS 4.01.00 (ctm_internacaoResumoGuia,
+   tissGuiasV4_01_00.xsd).
+   Fatia 0 (Onda 4): reescrita contra o XSD real — a versão anterior emitia
+   os mesmos campos inválidos de cabecalhoGuia do sadt_guide.xml.j2 (ver
+   comentário lá) e depois <procedimentosExecutados> direto, pulando os
+   elementos obrigatórios que vêm antes na sequência real
+   (numeroGuiaSolicitacaoInternacao, dadosAutorizacao, dadosBeneficiario,
+   dadosExecutante, dadosInternacao, dadosSaidaInternacao).
+
+   Forma corrigida NAQUELA fatia (a lista abaixo é histórica, não o estado
+   de hoje): cabecalhoGuia no formato real do XSD
+   (ct_guiaCabecalho = registroANS + numeroGuiaPrestador, mesmo de
+   consulta_guide.xml.j2). O próximo elemento obrigatório na sequência,
+   <numeroGuiaSolicitacaoInternacao> (referência textual a uma guia de
+   solicitação de internação anterior), não tem fonte de dado separada no
+   Vitali — não modelamos essa guia como documento distinto. DECISÃO DO
+   CAPITÃO (Onda 4, aprovada — ver
+   docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §3): a guia de resumo
+   REFERENCIA A SI MESMA. Não é bug nem placeholder — é decisão de produto
+   deliberada de declarar à operadora que solicitação e resumo são o mesmo
+   documento, usando o próprio numeroGuiaPrestador da guia.
+
+   dadosAutorizacao (ct_autorizacaoInternacao) resolvido em fatia seguinte, a partir
+   de dado já existente — ver xml_engine._resolve_internacao_authorization:
+   senha vem de TISSGuide.authorization_number OU da Authorization aprovada
+   resolvida; dataAutorizacao vem SEMPRE de Authorization.valid_from (nunca
+   fabricada). generate_guide_xml falha alto (TISSXMLGenerationError) quando
+   não há fonte honesta para os dois — este template nunca é renderizado
+   nesse caso.
+
+   Fatia anterior (mesma leva): dadosBeneficiario (ct_beneficiarioDados) é o
+   MESMO tipo já usado em consulta_guide.xml.j2/sadt_guide.xml.j2 —
+   numeroCarteira + atendimentoRN="N" (default, sem dado de recém-nascido no
+   model). dadosExecutante é forma nova (contratadoExecutante/ct_contratadoDados
+   + CNES sibling, em vez do bloco contratadoExecutante+profissionalExecutante
+   de guiaConsulta), mas o DADO é o mesmo já resolvido em todo template desta
+   pasta: professional.cnes_code (encounter.professional), mesmo placeholder
+   de codigoPrestadorNaOperadora usado no cabeçalho do lote — ver comentário em
+   batch_envelope.xml.j2.
+
+   ESTA FATIA fecha dadosInternacao, dadosSaidaInternacao e valorTotal — os
+   três últimos elementos obrigatórios da sequência. Com eles, a guia de resumo
+   de internação passa a ser XSD-VÁLIDA de ponta a ponta (o xfail do teste caiu).
+
+   dadosInternacao (ctm_internacaoDados) tem OITO filhos obrigatórios, não os
+   quatro que o doc de pesquisa §3 listava — medido com lxml sobre
+   tissGuiasV4_01_00.xsd. Seis vêm da internação vinculada
+   (carater_atendimento/tipo_internacao/regime_internacao + admission_datetime
+   e actual_discharge_datetime, que dão os quatro campos de data/hora do
+   período de faturamento) e um da guia (tipo_faturamento, campo novo desta
+   fatia — o período faturado é atributo do DOCUMENTO, não da estada: ver
+   TISSGuide.TipoFaturamento em models.py). Todos resolvidos em
+   xml_engine._resolve_internacao_dados, que falha alto e acionável quando
+   qualquer um falta — este template nunca renderiza com dado fabricado, e por
+   isso não tem nenhum `if`/default aqui dentro.
+
+   Datas/horas chegam CRUAS (aware/UTC, como no banco) e são convertidas para o
+   fuso da clínica pelos próprios filtros format_date/format_time (_to_local em
+   xml_engine.py). st_data/st_hora são locais e sem offset: sem essa conversão,
+   uma internação das 21:30 de São Paulo seria declarada à operadora como tendo
+   começado no DIA SEGUINTE. A conversão vive no filtro, não neste template nem
+   no resolver, porque é o único ponto por onde TODA data do TISS passa.
+
+   FECHADO NESTA FATIA: procedimentosExecutados. Era o item 1 do residual —
+   a guia saía sem NENHUMA linha de procedimento, e nenhuma operadora paga isso.
+   TISSGuideItem ganhou execution_date e reduction_increase_factor (migration
+   0036) e as cinco pontes clínico→faturamento passaram a datar cada linha da
+   fonte clínica real, nunca de now(). Ver o bloco no corpo do template.
+
+   RESIDUAL QUE PERMANECE (schema-válido, mas honesto declarar):
+   1. valorTotal usa a Alternativa A do doc §4: só valorTotalGeral, os sete
+      breakdowns por categoria omitidos. Glosa por falta de breakdown é prática
+      real — ver o alerta longo no próprio <valorTotal> abaixo.
+   2. As linhas faturadas ANTES desta fatia não têm execution_date e não há como
+      backfillar honestamente: a emissão falha alto nelas, de propósito.
+   Ver docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §2/§4/§7. #}
 <ans:guiaResumoInternacao>
   <ans:cabecalhoGuia>
     <ans:registroANS>{{ guide.provider.ans_code }}</ans:registroANS>
     <ans:numeroGuiaPrestador>{{ guide.guide_number }}</ans:numeroGuiaPrestador>
-    <ans:numeroGuiaOperadora>{{ guide.guide_number }}</ans:numeroGuiaOperadora>
-    <ans:dataAutorizacao>{{ guide.created_at | format_date }}</ans:dataAutorizacao>
-    <ans:senhaAutorizacao>{{ guide.authorization_number or '' }}</ans:senhaAutorizacao>
-    <ans:dataValidadeSenha>{{ guide.created_at | format_date }}</ans:dataValidadeSenha>
-    <ans:numeroCarteira>{{ guide.insured_card_number }}</ans:numeroCarteira>
-    <ans:nomeBeneficiario>{{ guide.patient.full_name | truncate(70, false, '') }}</ans:nomeBeneficiario>
-    <ans:dataNascimentoBeneficiario>{{ guide.patient.birth_date | format_date }}</ans:dataNascimentoBeneficiario>
-    <ans:codigoCBO>{{ professional.cbo_code if professional else '225120' }}</ans:codigoCBO>
-    <ans:CNES>{{ professional.cnes_code if professional else '' }}</ans:CNES>
-    <ans:dataInicioFaturamento>{{ guide.created_at | format_date }}</ans:dataInicioFaturamento>
-    <ans:dataFinalFaturamento>{{ guide.created_at | format_date }}</ans:dataFinalFaturamento>
   </ans:cabecalhoGuia>
-  <ans:procedimentosExecutados>
-{% for item in guide.items.all() %}
-    <ans:procedimentoExecutado>
-      <ans:codigoTabela>22</ans:codigoTabela>
-      <ans:codigoProcedimento>{{ item.tuss_code.code }}</ans:codigoProcedimento>
-      <ans:descricaoProcedimento>{{ item.description | truncate(100, false, '') }}</ans:descricaoProcedimento>
-      <ans:quantidadeExecutada>{{ item.quantity | format_decimal }}</ans:quantidadeExecutada>
-      <ans:valorUnitario>{{ item.unit_value | format_currency }}</ans:valorUnitario>
-      <ans:valorTotal>{{ item.total_value | format_currency }}</ans:valorTotal>
-    </ans:procedimentoExecutado>
-{% endfor %}
-  </ans:procedimentosExecutados>
+  {# Autorreferência deliberada (decisão do Capitão): a guia de resumo de
+     internação não tem "guia de solicitação" separada no Vitali, então
+     declara a si mesma como a solicitação. #}
+  <ans:numeroGuiaSolicitacaoInternacao>{{ guide.guide_number }}</ans:numeroGuiaSolicitacaoInternacao>
+  <ans:dadosAutorizacao>
+    <ans:dataAutorizacao>{{ autorizacao_data | format_date }}</ans:dataAutorizacao>
+    <ans:senha>{{ autorizacao_senha }}</ans:senha>
+  </ans:dadosAutorizacao>
+  <ans:dadosBeneficiario>
+    <ans:numeroCarteira>{{ guide.insured_card_number }}</ans:numeroCarteira>
+    {# atendimentoRN: sem dado de origem no model — "N" é o default seguro,
+       mesmo usado em consulta_guide.xml.j2/sadt_guide.xml.j2. #}
+    <ans:atendimentoRN>N</ans:atendimentoRN>
+  </ans:dadosBeneficiario>
   <ans:dadosExecutante>
-    <ans:CNES>{{ professional.cnes_code if professional else '' }}</ans:CNES>
+    <ans:contratadoExecutante>
+      {# codigoPrestadorNaOperadora: mesmo placeholder do cabeçalho do lote —
+         ver comentário em batch_envelope.xml.j2 e em
+         consulta_guide.xml.j2/contratadoExecutante. #}
+      <ans:codigoPrestadorNaOperadora>{{ executante_cnes }}</ans:codigoPrestadorNaOperadora>
+    </ans:contratadoExecutante>
+    <ans:CNES>{{ executante_cnes }}</ans:CNES>
   </ans:dadosExecutante>
+  <ans:dadosInternacao>
+    <ans:caraterAtendimento>{{ internacao_carater_atendimento }}</ans:caraterAtendimento>
+    <ans:tipoFaturamento>{{ internacao_tipo_faturamento }}</ans:tipoFaturamento>
+    {# Período de faturamento: início = internação, fim = alta efetiva. As
+       quatro linhas saem do MESMO par de datetimes; format_date/format_time
+       fazem a conversão de fuso. #}
+    <ans:dataInicioFaturamento>{{ internacao_inicio | format_date }}</ans:dataInicioFaturamento>
+    <ans:horaInicioFaturamento>{{ internacao_inicio | format_time }}</ans:horaInicioFaturamento>
+    <ans:dataFinalFaturamento>{{ internacao_fim | format_date }}</ans:dataFinalFaturamento>
+    <ans:horaFinalFaturamento>{{ internacao_fim | format_time }}</ans:horaFinalFaturamento>
+    <ans:tipoInternacao>{{ internacao_tipo }}</ans:tipoInternacao>
+    <ans:regimeInternacao>{{ internacao_regime }}</ans:regimeInternacao>
+    {# <declaracoes> (nascido/óbito/DORN) é minOccurs="0" e o Vitali não modela
+       declaração de nascido vivo nem de óbito — omitido, não fabricado. #}
+  </ans:dadosInternacao>
+  <ans:dadosSaidaInternacao>
+    {# <diagnostico> (CID de saída) é minOccurs="0"/maxOccurs="4". guide.cid10_codes
+       existe, mas é o CID do atendimento, não o diagnóstico de ENCERRAMENTO da
+       internação — não são o mesmo campo semântico. Omitido por ser opcional. #}
+    {# indicadorAcidente (dm_indicadorAcidente): obrigatório, sem dado de origem
+       no model — "9" (não acidente) é o mesmo default seguro já documentado e
+       usado em consulta_guide.xml.j2/<indicacaoAcidente>. #}
+    <ans:indicadorAcidente>9</ans:indicadorAcidente>
+    <ans:motivoEncerramento>{{ internacao_motivo_encerramento }}</ans:motivoEncerramento>
+  </ans:dadosSaidaInternacao>
+  {# <procedimentosExecutados> (minOccurs="0", ct_procedimentoExecutadoInt).
+     É opcional no XSD e ERA omitido — a guia saía schema-válida com o total
+     geral e zero discriminação de itens, que nenhuma operadora paga. Agora é
+     emitido: TISSGuideItem ganhou execution_date e reduction_increase_factor, e
+     as cinco pontes clínico→faturamento passaram a datar cada linha da fonte
+     real (diária/taxa pela service_date, exame pelo resulted_at, cirurgia e
+     material pela incisão, medicamento pelo dispensed_at do sinal).
+
+     O bloco só aparece quando há itens — guia sem linha nenhuma continua válida
+     pelo minOccurs="0", e emitir <procedimentosExecutados/> vazio quebraria o
+     maxOccurs="unbounded" do filho, que exige ao menos um.
+
+     Toda a validação (data ausente, quantidade fracionária num campo inteiro,
+     codigoTabela fora de dm_tabela, valor/fator fora de faixa) mora em
+     xml_engine._resolve_internacao_procedimentos e FALHA ALTA antes de chegar
+     aqui — este template nunca é renderizado com item inválido, e por isso não
+     tem defesa nenhuma inline. #}
+  {% if procedimentos %}
+  <ans:procedimentosExecutados>
+    {% for p in procedimentos %}
+    <ans:procedimentoExecutado>
+      <ans:sequencialItem>{{ p.sequencial }}</ans:sequencialItem>
+      <ans:dataExecucao>{{ p.data_execucao | format_date }}</ans:dataExecucao>
+      <ans:procedimento>
+        <ans:codigoTabela>{{ p.tabela }}</ans:codigoTabela>
+        <ans:codigoProcedimento>{{ p.codigo }}</ans:codigoProcedimento>
+        <ans:descricaoProcedimento>{{ p.descricao }}</ans:descricaoProcedimento>
+      </ans:procedimento>
+      <ans:quantidadeExecutada>{{ p.quantidade }}</ans:quantidadeExecutada>
+      {# reducaoAcrescimo é FATOR multiplicativo, não valor: 1.00 = sem redução
+         nem acréscimo. Ver o comentário do campo em billing/models.py para a
+         evidência (o tipo irmão o chama de fatorReducaoAcrescimo e a faixa
+         st_decimal3-2 vai só até 9,99). #}
+      <ans:reducaoAcrescimo>{{ p.fator | format_currency }}</ans:reducaoAcrescimo>
+      <ans:valorUnitario>{{ p.valor_unitario | format_currency }}</ans:valorUnitario>
+      <ans:valorTotal>{{ p.valor_total | format_currency }}</ans:valorTotal>
+    </ans:procedimentoExecutado>
+    {% endfor %}
+  </ans:procedimentosExecutados>
+  {% endif %}
   <ans:valorTotal>
+    {# ct_guiaValorTotal: sete campos de categoria (minOccurs="0") + o
+       valorTotalGeral obrigatório, NESTA ORDEM — é uma <sequence>, então emitir
+       fora de ordem invalida o XML.
+
+       O breakdown é TUDO-OU-NADA, decidido em xml_engine._resolve_valor_total:
+       só sai quando TODO item tem billing_category e a soma bate com
+       total_value. Guia com qualquer linha anterior à Onda 4 sai só com o total
+       geral, exatamente como saía antes desta fatia.
+
+       Um breakdown parcial seria PIOR que nenhum: a operadora soma os campos,
+       não fecha com o total geral, e glosa a guia inteira — trocaríamos "faltou
+       detalhe" por "a conta está errada". Categoria zerada também não sai: um
+       <valorOPME>0.00</valorOPME> AFIRMA que a guia tem zero de OPME, quando o
+       fato é que ela não tem OPME nenhum.
+
+       A categoria nunca é inferida do TUSS: dm_tabela não serve, porque a
+       tabela 18 contém diárias, taxas E gases medicinais — três campos TISS
+       distintos. Cada ponte grava o que sabe ao criar o item, e a distinção que
+       nenhuma sabia (taxa × gás) passou a ser capturada em InpatientFee.category
+       por quem lança. #}
+    {% for campo in valor_total_breakdown %}
+    <ans:{{ campo.tag }}>{{ campo.valor | format_currency }}</ans:{{ campo.tag }}>
+    {% endfor %}
     <ans:valorTotalGeral>{{ guide.total_value | format_currency }}</ans:valorTotalGeral>
   </ans:valorTotal>
-{% for cid in guide.cid10_codes %}
-  <ans:diagnostico>
-    <ans:codigoDiagnostico>{{ cid.code }}</ans:codigoDiagnostico>
-    <ans:indicadorAcidente>N</ans:indicadorAcidente>
-  </ans:diagnostico>
-{% endfor %}
 </ans:guiaResumoInternacao>

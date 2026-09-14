@@ -261,6 +261,16 @@ CELERY_TASK_REJECT_ON_WORKER_LOST = env.bool("CELERY_TASK_REJECT_ON_WORKER_LOST"
 CELERY_WORKER_PREFETCH_MULTIPLIER = env.int("CELERY_WORKER_PREFETCH_MULTIPLIER", default=4)
 CELERY_TASK_SOFT_TIME_LIMIT = env.int("CELERY_TASK_SOFT_TIME_LIMIT", default=270)
 CELERY_TASK_TIME_LIMIT = env.int("CELERY_TASK_TIME_LIMIT", default=300)
+# Onda 1, item 1.7: kill switch for the tenant-schema propagation signal
+# handlers in vitali/celery.py (before_task_publish / task_prerun /
+# task_postrun). Default True because the propagation IS the fix for a
+# confirmed cross-tenant/data-invisibility bug — by-ID tasks (prescription
+# safety checks, SOAP generation, WhatsApp confirmations, waitlist cascades,
+# ...) execute in whatever schema the worker's DB connection was last left
+# in, not the tenant that enqueued them. Flip to False only to roll back to
+# today's (buggy) behaviour without a deploy — e.g. if the propagation itself
+# is suspected of causing an incident — while a fix or full rollback ships.
+CELERY_TENANT_PROPAGATION = env.bool("CELERY_TENANT_PROPAGATION", default=True)
 CELERY_TASK_ROUTES = {
     "apps.triage.tasks.*": {"queue": "critical"},
     "apps.emr.tasks_waitlist.*": {"queue": "critical"},
@@ -355,6 +365,10 @@ AI_RATE_LIMIT_PER_HOUR = env.int("AI_RATE_LIMIT_PER_HOUR", default=100)
 AI_SUGGEST_TIMEOUT_S = env.int("AI_SUGGEST_TIMEOUT_S", default=5)
 FEATURE_AI_TUSS = env.bool("FEATURE_AI_TUSS", default=False)
 FEATURE_AI_SCRIBE = env.bool("FEATURE_AI_SCRIBE", default=False)
+# Onda 3 / 3.2: was implicitly default=True via getattr() at each call site —
+# the only LLM path that opened itself while every other one defaulted OFF.
+# Aligned with FEATURE_AI_TUSS/FEATURE_AI_SCRIBE.
+FEATURE_AI_GLOSA = env.bool("FEATURE_AI_GLOSA", default=False)
 FEATURE_WHISPER_FALLBACK = env.bool("FEATURE_WHISPER_FALLBACK", default=True)
 SCRIBE_SESSION_RETENTION_DAYS = env.int("SCRIBE_SESSION_RETENTION_DAYS", default=90)
 

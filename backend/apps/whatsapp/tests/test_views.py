@@ -11,10 +11,13 @@ from apps.test_utils import TenantTestCase
 from apps.whatsapp.models import MessageLog, WhatsAppContact
 
 
-def _make_user(role_name="admin"):
-    role, _ = Role.objects.get_or_create(
-        name=role_name,
-        defaults={"permissions": ["whatsapp.read", "whatsapp.write"]},
+def _make_user(role_name="admin", permissions=("triage.read",)):
+    # 3.10: contacts/message-logs are gated on triage.read (RBAC.md §2 —
+    # module ≠ authorized). Role name is irrelevant to authorization; only
+    # the permissions list is (see role_has_admin_capability docstring).
+    role = Role.objects.create(
+        name=f"{role_name}-{id(object())}",
+        permissions=list(permissions),
     )
     return User.objects.create_user(
         email=f"wa_{role_name}_{id(role)}@test.com",
@@ -209,3 +212,36 @@ class WhatsAppContactViewSetTests(TenantTestCase):
         self.client.logout()
         resp = self.client.get("/api/v1/whatsapp/health/")
         self.assertIn(resp.status_code, [401, 403])
+
+
+class WhatsAppRbacPermissionTests(TenantTestCase):
+    """3.10 regression: module-active alone must NOT grant access to patient
+    phone numbers / message content (RBAC.md §2). Only a role that carries
+    triage.read (or the admin capability) may read contacts/message-logs."""
+
+    def setUp(self):
+        FeatureFlag.objects.get_or_create(
+            tenant=self.__class__.tenant,
+            module_key="whatsapp",
+            defaults={"is_enabled": True},
+        )
+        self.client = APIClient()
+        self.client.defaults["SERVER_NAME"] = self.__class__.domain.domain
+
+    def test_role_without_triage_read_gets_403_on_contacts(self):
+        user = _make_user(role_name="farmaceutico", permissions=["pharmacy.read"])
+        self.client.force_authenticate(user=user)
+        resp = self.client.get("/api/v1/whatsapp/contacts/")
+        self.assertEqual(resp.status_code, 403)
+
+    def test_role_without_triage_read_gets_403_on_message_logs(self):
+        user = _make_user(role_name="farmaceutico", permissions=["pharmacy.read"])
+        self.client.force_authenticate(user=user)
+        resp = self.client.get("/api/v1/whatsapp/message-logs/")
+        self.assertEqual(resp.status_code, 403)
+
+    def test_role_with_triage_read_can_list_contacts(self):
+        user = _make_user(role_name="recepcao", permissions=["triage.read"])
+        self.client.force_authenticate(user=user)
+        resp = self.client.get("/api/v1/whatsapp/contacts/")
+        self.assertEqual(resp.status_code, 200)

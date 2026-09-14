@@ -85,6 +85,30 @@ from apps.emr.models import Admission
 logger = logging.getLogger(__name__)
 
 
+# InpatientFee.Category -> campo de ct_guiaValorTotal. Tradução explícita, e não
+# reúso do mesmo valor de string nos dois enums, porque são vocabulários de
+# camadas diferentes: um é o que o hospital lança, o outro é o que a ANS pede.
+_CATEGORIA_POR_TAXA: dict[str, str] = {
+    InpatientFee.Category.TAXA: TISSGuideItem.BillingCategory.TAXAS_ALUGUEIS,
+    InpatientFee.Category.GAS_MEDICINAL: TISSGuideItem.BillingCategory.GASES_MEDICINAIS,
+}
+
+
+def _earliest(current: date | None, candidate: date | None) -> date | None:
+    """Menor das duas datas, tolerando ``None`` dos dois lados.
+
+    Usada na agregação por TUSS: o item que funde vários dias declara como
+    ``dataExecucao`` o dia em que aquela linha começou. ``None`` é ausência, não
+    "infinito" — se nenhuma das fontes tiver data, o item nasce sem data e a
+    emissão do XML falha alto em vez de carimbar uma.
+    """
+    if candidate is None:
+        return current
+    if current is None:
+        return candidate
+    return min(current, candidate)
+
+
 def _billable_window_end(admission: Admission, *, today: date) -> date:
     """Último ``service_date` faturável (inclusivo) da janela de diárias.
 
@@ -183,9 +207,10 @@ def record_inpatient_fee(
     unit: str = InpatientFee.Unit.UNIDADE,
     service_date: date | None = None,
     notes: str = "",
+    category: str = "",
     actor=None,
 ) -> InpatientFee:
-    """B6 — Lança uma taxa/gás medicinal numa internação ativa.
+    """B6/Onda2 2.2 — Lança uma taxa/gás medicinal numa internação ativa.
 
     Ao contrário da diária, que é acumulada automaticamente pela estada, a taxa é
     um lançamento **explícito**: quem sabe que a incubadora ficou ligada 6 horas é
@@ -200,15 +225,35 @@ def record_inpatient_fee(
       punir o dado antigo.
     * **quantidade positiva** — 0 hora de oxigênio não é um lançamento.
     * **internação ativa** — depois da alta a conta está fechada.
+
+    Idempotência
+    ------------
+    Ao contrário de ``DailyCharge`` (uma por dia, ``UniqueConstraint`` no banco),
+    uma taxa **legitimamente repete** no mesmo dia — incubadora, oxigênio e bomba
+    de infusão convivem, e o mesmo gás pode ser lançado em turnos diferentes com
+    durações diferentes. Não dá para travar por ``(admission, tuss_code,
+    service_date)`` sem inventar uma restrição que a clínica não pediu.
+
+    O que caracteriza reenvio acidental (duplo clique, retry de rede) em vez de
+    dois lançamentos reais é a **repetição exata**: mesmo TUSS, mesmo dia, mesma
+    quantidade e mesma unidade. Duas administrações de fato distintas quase
+    sempre diferem em quantidade (duração/dose) — e mesmo quando não diferem,
+    ``generate_internacao_guide_for_admission`` agrega por TUSS somando as
+    quantidades, então um "falso positivo" raro (duas horas reais idênticas)
+    chegaria ao mesmo total faturado de qualquer forma. Por isso o critério de
+    igualdade em ``(admission, tuss_code, service_date, quantity, unit)`` é
+    seguro: nunca perde receita real, e sempre blinda contra duplicata de
+    reenvio. ``notes`` fica fora do critério de propósito (mesma taxa, anotação
+    diferente, ainda é a mesma taxa).
+
+    Sem ``UniqueConstraint`` no banco (mudança em ``inpatient_models.py``, fora
+    do escopo deste sprint) a idempotência depende do lock em ``Admission`` para
+    serializar chamadas concorrentes na mesma internação — outra opção é uma
+    ``UniqueConstraint(admission, tuss_code, service_date, quantity, unit)``
+    quando essa migration puder ser feita.
     """
     if quantity is None or Decimal(quantity) <= 0:
         raise ValidationError("Quantidade da taxa deve ser maior que zero.")
-
-    if admission.status != Admission.Status.ADMITTED:
-        raise ValidationError(
-            "Internação não está ativa; não aceita lançamento de taxa. "
-            "Corrija pela guia já emitida."
-        )
 
     table_number = getattr(tuss_code, "table_number", None)
     if table_number and table_number != "18":
@@ -217,16 +262,51 @@ def record_inpatient_fee(
             "exige um código da tabela 18 (diárias, taxas e gases medicinais)."
         )
 
-    return InpatientFee.objects.create(
-        admission=admission,
-        service_date=service_date or timezone.now().date(),
-        tuss_code=tuss_code,
-        description=(tuss_code.description or "")[:500],
-        quantity=Decimal(quantity),
-        unit=unit,
-        notes=notes,
-        created_by=actor,
-    )
+    quantity = Decimal(quantity)
+    resolved_service_date = service_date or timezone.now().date()
+
+    with transaction.atomic():
+        # Trava a internação (mesmo padrão de accrue_daily_charges) para que duas
+        # chamadas concorrentes com os mesmos dados não passem ambas pelo cheque
+        # de duplicata antes de qualquer uma commitar.
+        admission = Admission.objects.select_for_update(of=("self",)).get(pk=admission.pk)
+
+        if admission.status != Admission.Status.ADMITTED:
+            raise ValidationError(
+                "Internação não está ativa; não aceita lançamento de taxa. "
+                "Corrija pela guia já emitida."
+            )
+
+        existing = (
+            InpatientFee.objects.filter(
+                admission=admission,
+                tuss_code=tuss_code,
+                service_date=resolved_service_date,
+                quantity=quantity,
+                unit=unit,
+            )
+            .order_by("created_at")
+            .first()
+        )
+        if existing is not None:
+            return existing
+
+        return InpatientFee.objects.create(
+            admission=admission,
+            service_date=resolved_service_date,
+            tuss_code=tuss_code,
+            description=(tuss_code.description or "")[:500],
+            quantity=quantity,
+            unit=unit,
+            # Taxa × gás medicinal: a tabela 18 do TUSS não separa, e
+            # ct_guiaValorTotal tem um campo para cada. Quem lança à beira do
+            # leito sabe qual é — informar aqui é o que permite o breakdown do
+            # valorTotal fechar. Omitido: a linha fica sem categoria e a guia sai
+            # só com valorTotalGeral, sem breakdown (nunca um que não fecha).
+            category=category,
+            notes=notes,
+            created_by=actor,
+        )
 
 
 def generate_internacao_guide_for_admission(admission: Admission) -> TISSGuide:
@@ -318,21 +398,54 @@ def generate_internacao_guide_for_admission(admission: Admission) -> TISSGuide:
         # Agrega as diárias por TUSS (transferência entre tipos de leito → 1 item
         # por TUSS distinto, quantidade = nº de diárias). Agregado em Python para
         # não esbarrar no gotcha do mypy com .values().annotate().
+        # `execution_date` do item agregado: a MAIS ANTIGA `service_date` do grupo.
+        # A agregação por TUSS funde vários dias num item só, então "a data do
+        # item" não é única — `dataExecucao` (ct_procedimentoExecutadoInt) é um
+        # campo escalar e alguma data tem de sair. A mais antiga é a única com
+        # significado defensável: é o dia em que aquela linha COMEÇOU a ser
+        # executada, e `quantidadeExecutada` diz por quantos dias/horas ela
+        # correu. A guia declara o período completo em dataInicioFaturamento/
+        # dataFinalFaturamento, então a operadora não perde o intervalo.
+        # TRADE-OFF EXPLÍCITO: se uma operadora exigir uma linha por dia, o fix é
+        # PARAR de agregar aqui (1 item por DailyCharge), não trocar a data
+        # escolhida — desagregar é mudança de forma, não de dado, porque
+        # DailyCharge/InpatientFee continuam existindo linha a linha.
         aggregated: dict[int, dict] = {}
         for charge in charges:
             entry = aggregated.setdefault(
-                charge.tuss_code_id, {"tuss": charge.tuss_code, "quantity": Decimal(0)}
+                charge.tuss_code_id,
+                {
+                    "tuss": charge.tuss_code,
+                    "quantity": Decimal(0),
+                    "execution_date": None,
+                    "category": "",
+                },
             )
             entry["quantity"] += Decimal(charge.quantity)
+            entry["execution_date"] = _earliest(entry["execution_date"], charge.service_date)
+            # DailyCharge É a diária de leito — categoria é fato, não inferência.
+            entry["category"] = TISSGuideItem.BillingCategory.DIARIAS
 
         # B6 — as taxas entram na mesma agregação por TUSS. Dois lançamentos do
         # mesmo gás em dias diferentes viram UM item com a soma das horas, que é
         # como a operadora espera receber.
         for fee in fees:
             entry = aggregated.setdefault(
-                fee.tuss_code_id, {"tuss": fee.tuss_code, "quantity": Decimal(0)}
+                fee.tuss_code_id,
+                {
+                    "tuss": fee.tuss_code,
+                    "quantity": Decimal(0),
+                    "execution_date": None,
+                    "category": "",
+                },
             )
             entry["quantity"] += Decimal(fee.quantity)
+            entry["execution_date"] = _earliest(entry["execution_date"], fee.service_date)
+            # Taxa × gás medicinal são campos SEPARADOS em ct_guiaValorTotal e a
+            # tabela 18 do TUSS não os separa — a distinção vem de InpatientFee.
+            # category, capturada por quem lançou. Lançamento antigo (sem
+            # categoria) deixa o item sem categoria, e a guia sai sem breakdown.
+            entry["category"] = _CATEGORIA_POR_TAXA.get(fee.category, "")
 
         for entry in aggregated.values():
             tuss = entry["tuss"]
@@ -342,6 +455,8 @@ def generate_internacao_guide_for_admission(admission: Admission) -> TISSGuide:
                 description=tuss.description or "",
                 quantity=entry["quantity"],
                 unit_value=_unit_value(price_table, tuss),
+                execution_date=entry["execution_date"],
+                billing_category=entry["category"],
             )
 
         return guide

@@ -11,8 +11,6 @@
  * is a `PortalApiError` carrying the HTTP status.
  */
 
-import { getAccessToken } from "@/lib/auth";
-
 export class PortalApiError extends Error {
   constructor(
     public status: number,
@@ -42,10 +40,10 @@ async function portalFetch<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
-  const token = getAccessToken();
+  // No client-side Authorization header: /api/v1/* is served by the Next.js
+  // proxy, which reads the httpOnly access_token cookie server-side.
   const headers: HeadersInit = {
     "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(init.headers ?? {}),
   };
   const resp = await fetch(`/api/v1${path}`, { ...init, headers });
@@ -67,11 +65,7 @@ async function portalFetch<T>(
  * JSON object). Shares the same auth + typed-error handling as `portalFetch`.
  */
 async function portalFetchBlob(path: string): Promise<Blob> {
-  const token = getAccessToken();
-  const headers: HeadersInit = {
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-  const resp = await fetch(`/api/v1${path}`, { headers });
+  const resp = await fetch(`/api/v1${path}`);
   if (resp.status === 401) {
     throw new PortalUnauthorizedError(await resp.json().catch(() => ({})));
   }

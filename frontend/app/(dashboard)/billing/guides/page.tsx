@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { getAccessToken } from '@/lib/auth';
 
 const STATUS_BADGE: Record<string, string> = {
   draft: 'bg-neu-app text-neu-inkSoft',
@@ -37,16 +36,13 @@ export default function GuidesPage() {
   const [search, setSearch] = useState('');
 
   const load = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) { setError('Sessão expirada'); setLoading(false); return; }
     setLoading(true);
     try {
       const params = new URLSearchParams();
       if (statusFilter) params.set('status', statusFilter);
       if (search) params.set('search', search);
       const res = await fetch(`/api/v1/billing/guides/?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+              });
       if (!res.ok) throw new Error(`${res.status}`);
       const data = await res.json();
       const results = Array.isArray(data) ? data : data.results ?? [];

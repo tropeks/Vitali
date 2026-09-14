@@ -1,0 +1,18 @@
+# Operadoras FICTÍCIAS para staging — ordem 006.
+#
+# NÃO são operadoras reais e não devem virar dado de produção.
+#
+# `ans_code` respeita st_registroANS do XSD oficial da ANS
+# (tissSimpleTypesV4_01_00.xsd: restriction base=string, maxLength 6,
+# pattern [0-9]{6}) — seis dígitos, para a guia validar. Os valores usados aqui
+# começam em 000000, que casa o padrão e é inconfundivelmente não-atribuído:
+# registro ANS real é atribuído pela agência e não é zero.
+#
+# O sufixo "(FICTÍCIA — staging)" no nome é o que impede a confusão na tela: quem
+# abrir a lista de operadoras vê, sem precisar consultar documentação, que aquilo
+# não é contrato de ninguém.
+#
+# Carga: manage.py import_insurances --file <este arquivo> --tenant demo --dry-run
+#        manage.py import_insurances --file <este arquivo> --tenant demo
+ans_code;name;cnpj;is_active
+000000;Operadora Demonstração (FICTÍCIA — staging);;true

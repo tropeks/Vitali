@@ -1,0 +1,54 @@
+# Vitali Alertmanager — one receiver, severity-aware repeat cadence.
+#
+# The webhook target is NOT baked into this file. The `alertmanager` service in
+# docker-compose.observability.yml writes ALERTMANAGER_WEBHOOK_URL to
+# /run/alertmanager/webhook_url (tmpfs) at container start, and the receiver
+# below reads it via `url_file`. Alertmanager validates that a webhook_config
+# has a url OR a url_file at config-load time, but does NOT read the file's
+# contents until it actually needs to send a notification — so this config is
+# always valid and the service starts/stays healthy even when the variable is
+# empty. An empty/missing file just makes notification attempts fail (visible
+# as alertmanager_notifications_failed_total{integration="webhook"} and in the
+# container logs), not a boot crash. See .env.example for how to point this at
+# a real destination.
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: vitali-webhook
+  group_by: ['alertname', 'severity']
+  # 30s: bundle near-simultaneous firings (e.g. several mountpoints crossing
+  # the disk threshold in the same scrape) into one notification instead of
+  # paging once per label combination.
+  group_wait: 30s
+  # 5m: how long to wait before folding a newly-firing alert into an existing
+  # group's next notification, instead of pinging immediately for every
+  # addition.
+  group_interval: 5m
+  # Default repeat for anything without a severity route below (defensive
+  # fallback only — every rule in alerts.yml sets severity today).
+  repeat_interval: 4h
+  routes:
+    # Critical = clinical/availability risk (telemetry down, error-ratio spike,
+    # stale backup). Re-notify hourly until acked/resolved: long enough to not
+    # be the 5-minute spam that trains an operator to mute the channel, short
+    # enough that an unresolved clinical-data risk doesn't go quiet for a full
+    # shift.
+    - matchers:
+        - severity = "critical"
+      receiver: vitali-webhook
+      repeat_interval: 1h
+    # Warning = capacity/degradation, not yet an outage (disk, Redis memory,
+    # Postgres connections). 12h keeps it inside the next business-hours check
+    # without repaging overnight for something that, by definition, isn't on
+    # fire yet.
+    - matchers:
+        - severity = "warning"
+      receiver: vitali-webhook
+      repeat_interval: 12h
+
+receivers:
+  - name: vitali-webhook
+    webhook_configs:
+      - url_file: /run/alertmanager/webhook_url
+        send_resolved: true

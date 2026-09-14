@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { apiFetch, ApiError } from '@/lib/api'
-import { DISPOSITION_OPTIONS } from './inpatient-types'
+import { DISPOSITION_OPTIONS, MOTIVO_ENCERRAMENTO_OPTIONS } from './inpatient-types'
 
 interface DischargeModalProps {
   admissionId: string
@@ -13,8 +13,11 @@ interface DischargeModalProps {
 
 /**
  * Dar alta (adt.discharge) — close an active admission via
- * POST /api/v1/admissions/{id}/discharge/ {disposition, reason?}. The bed is
- * freed server-side by the ADT service; a 409 surfaces as a friendly message.
+ * POST /api/v1/admissions/{id}/discharge/ {disposition, disposition_ans_code?,
+ * reason?}. `disposition_ans_code` (dm_motivoSaida, TISS) is a sibling of the
+ * clinical `disposition` — captured alongside it for billing, never derived
+ * from it. The bed is freed server-side by the ADT service; a 409 surfaces as
+ * a friendly message.
  */
 export default function DischargeModal({
   admissionId,
@@ -23,6 +26,8 @@ export default function DischargeModal({
   onDischarged,
 }: DischargeModalProps) {
   const [disposition, setDisposition] = useState(DISPOSITION_OPTIONS[0].value)
+  // dm_motivoSaida (TISS) — irmão de `disposition`, opcional; '' = não informado.
+  const [dispositionAnsCode, setDispositionAnsCode] = useState('')
   const [reason, setReason] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -31,6 +36,7 @@ export default function DischargeModal({
     setSubmitting(true)
     setError(null)
     const body: Record<string, string> = { disposition }
+    if (dispositionAnsCode) body.disposition_ans_code = dispositionAnsCode
     if (reason.trim()) body.reason = reason.trim()
     try {
       await apiFetch(`/api/v1/admissions/${admissionId}/discharge/`, {
@@ -71,6 +77,25 @@ export default function DischargeModal({
             className="w-full rounded-md border border-slate-300 bg-neu-input px-3 py-2 text-neu-ink"
           >
             {DISPOSITION_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-neu-ink">
+            Motivo de encerramento (TISS, opcional)
+          </span>
+          <select
+            aria-label="Motivo de encerramento (TISS, opcional)"
+            value={dispositionAnsCode}
+            onChange={(e) => setDispositionAnsCode(e.target.value)}
+            className="w-full rounded-md border border-slate-300 bg-neu-input px-3 py-2 text-neu-ink"
+          >
+            <option value="">Não informado</option>
+            {MOTIVO_ENCERRAMENTO_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { getAccessToken, UserDTO } from '@/lib/auth';
+import { UserDTO } from '@/lib/auth';
 
 const STATUS_BADGE: Record<string, string> = {
   draft: 'bg-neu-app text-neu-inkSoft',
@@ -23,11 +23,8 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 function apiFetch(path: string) {
-  const token = getAccessToken();
-  if (!token) return Promise.reject(new Error('Sessão expirada'));
-  return fetch(`/api/v1${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  }).then(r => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); });
+  return fetch(`/api/v1${path}`)
+    .then(r => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); });
 }
 
 function currentMonthLabel() {
@@ -85,9 +82,6 @@ export default function BillingOverviewPage() {
   const syncStatus = useTUSSSyncStatus();
 
   useEffect(() => {
-    const token = getAccessToken();
-    if (!token) { setError('Sessão expirada'); setLoading(false); return; }
-
     Promise.all([
       apiFetch('/billing/guides/?ordering=-created_at&page_size=10'),
       apiFetch('/billing/batches/?status=open'),

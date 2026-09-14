@@ -19,6 +19,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.core.mixins import AuditReadMixin
 from apps.core.permissions import HasPermission
 
 from .serializers_adt import (
@@ -245,6 +246,7 @@ class BedViewSet(_BedsPermissionMixin, viewsets.ModelViewSet):
     list=extend_schema(parameters=[_PATIENT_PARAM, _ADM_STATUS_PARAM, _BED_PARAM]),
 )
 class AdmissionViewSet(
+    AuditReadMixin,
     mixins.CreateModelMixin,
     mixins.RetrieveModelMixin,
     mixins.ListModelMixin,
@@ -258,6 +260,7 @@ class AdmissionViewSet(
     """
 
     serializer_class = AdmissionSerializer
+    audit_resource_type = "Admission"
 
     def get_permissions(self):
         permission_by_action = {
@@ -304,6 +307,9 @@ class AdmissionViewSet(
                 admission_datetime=data.get("admission_datetime"),
                 expected_discharge_datetime=data.get("expected_discharge_datetime"),
                 isolation_precaution=data.get("isolation_precaution", "nenhuma"),
+                carater_atendimento=data.get("carater_atendimento", ""),
+                tipo_internacao=data.get("tipo_internacao", ""),
+                regime_internacao=data.get("regime_internacao", ""),
                 encounter=data.get("encounter"),
                 actor=request.user,
             )
@@ -324,6 +330,7 @@ class AdmissionViewSet(
                 admission=admission,
                 disposition=payload.validated_data["disposition"],
                 actual_discharge_datetime=payload.validated_data.get("actual_discharge_datetime"),
+                disposition_ans_code=payload.validated_data.get("disposition_ans_code", ""),
                 actor=request.user,
                 reason=payload.validated_data.get("reason", ""),
             )
@@ -451,10 +458,11 @@ class AdmissionViewSet(
 @extend_schema_view(
     list=extend_schema(parameters=[_ADMISSION_PARAM]),
 )
-class AdmissionEventViewSet(viewsets.ReadOnlyModelViewSet):
+class AdmissionEventViewSet(AuditReadMixin, viewsets.ReadOnlyModelViewSet):
     """Read-only append-only ADT event log. Gated ``beds.read`` (leitura ADT)."""
 
     serializer_class = AdmissionEventSerializer
+    audit_resource_type = "AdmissionEvent"
 
     def get_permissions(self):
         return [IsAuthenticated(), HasPermission("beds.read")]

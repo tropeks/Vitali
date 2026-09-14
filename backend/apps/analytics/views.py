@@ -14,10 +14,16 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.billing.models import InsuranceProvider, TISSBatch, TISSGuide
-from apps.core.permissions import ModuleRequiredPermission
+from apps.core.permissions import HasPermission, ModuleRequiredPermission
 from apps.emr.models import Appointment, Encounter, Patient, Professional
 
 _BILLING_MODULE = ModuleRequiredPermission("billing")
+# 3.10: module-only gate let ANY authenticated tenant user (nurse, receptionist,
+# ...) read consolidated billing/revenue/glosa-by-insurer figures — module tells
+# you the tenant PAID for billing, not that THIS user may see it (RBAC.md §2).
+# billing.read is the real per-role gate, same one BILLING_PERMISSIONS/
+# ADMIN_PERMISSIONS/CLINICAL_PRESCRIBER_PERMISSIONS already carry.
+_BILLING_READ = HasPermission("billing.read")
 
 
 def _today():
@@ -36,6 +42,15 @@ class OverviewView(APIView):
     Revenue (sum of paid TISS guide values) is included when billing data exists.
     """
 
+    # 3.10 audit (deliberately UNCHANGED — see delivery notes): tightening this to
+    # billing.read/reports.read would break AnalyticsPermissionRelaxationTests
+    # (apps/analytics/tests/test_overview.py, "CP-1"), which asserts these
+    # operational dashboard endpoints stay reachable for a role with ZERO
+    # permissions and no billing module — a documented product decision, not an
+    # oversight. The one real gap here is `revenue` riding along in this
+    # specific payload with no split from the rest of the KPIs; flagged as a
+    # follow-up, not fixed in this pass (would need a product call on whether to
+    # split the response or gate the whole view against CP-1's intent).
     permission_classes = [IsAuthenticated]
 
     _VALID_PERIODS = {"today", "week", "month"}
@@ -395,7 +410,7 @@ def _competency_for_month(d: date) -> str:
 class BillingOverviewView(APIView):
     """GET /api/v1/analytics/billing/overview/ — current-month KPI cards."""
 
-    permission_classes = [IsAuthenticated, _BILLING_MODULE]  # type: ignore[list-item]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE, _BILLING_READ]  # type: ignore[list-item]
 
     def get(self, request):
         today = _today()
@@ -450,7 +465,7 @@ class BillingOperationalView(APIView):
     ``at_risk`` represents denied or appealed guides requiring action.
     """
 
-    permission_classes = [IsAuthenticated, _BILLING_MODULE]  # type: ignore[list-item]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE, _BILLING_READ]  # type: ignore[list-item]
 
     def get(self, request):
         competency = request.query_params.get("competency") or _competency_for_month(_today())
@@ -498,7 +513,7 @@ class BillingOperationalView(APIView):
 class MonthlyRevenueView(APIView):
     """GET /api/v1/analytics/billing/monthly-revenue/?months=6"""
 
-    permission_classes = [IsAuthenticated, _BILLING_MODULE]  # type: ignore[list-item]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE, _BILLING_READ]  # type: ignore[list-item]
 
     def get(self, request):
         months = _months_param(request)
@@ -546,7 +561,7 @@ class DenialByInsurerView(APIView):
     Returns top insurers by denied value, excluding those with <10 non-draft guides.
     """
 
-    permission_classes = [IsAuthenticated, _BILLING_MODULE]  # type: ignore[list-item]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE, _BILLING_READ]  # type: ignore[list-item]
     _VOLUME_FLOOR = 10
 
     def get(self, request):
@@ -590,7 +605,7 @@ class BatchThroughputView(APIView):
     created_at → creation month, closed_at → closure month.
     """
 
-    permission_classes = [IsAuthenticated, _BILLING_MODULE]  # type: ignore[list-item]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE, _BILLING_READ]  # type: ignore[list-item]
 
     def get(self, request):
         months = _months_param(request)
@@ -646,7 +661,7 @@ class BatchThroughputView(APIView):
 class GlosaAccuracyView(APIView):
     """GET /api/v1/analytics/billing/glosa-accuracy/ — prediction accuracy per insurer (S-037)."""
 
-    permission_classes = [IsAuthenticated, _BILLING_MODULE]  # type: ignore[list-item]
+    permission_classes = [IsAuthenticated, _BILLING_MODULE, _BILLING_READ]  # type: ignore[list-item]
 
     def get(self, request):
         from apps.ai.models import GlosaPrediction

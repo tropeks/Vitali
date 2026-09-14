@@ -24,7 +24,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.core.permissions import ModuleRequiredPermission
+from apps.core.permissions import HasPermission, ModuleRequiredPermission
 
 from .context import get_context, set_context
 from .fsm import ConversationFSM
@@ -35,6 +35,15 @@ from .serializers import MessageLogSerializer, WhatsAppContactSerializer
 logger = logging.getLogger(__name__)
 
 _WHATSAPP_MODULE = ModuleRequiredPermission("whatsapp")
+# 3.10: module-only gate let ANY authenticated tenant user read patient phone
+# numbers (search_fields includes "phone"/"patient__full_name") and WhatsApp
+# message CONTENT — module tells you the tenant enabled WhatsApp, not that
+# this user may read patient PII/conversation content (RBAC.md §2). These two
+# viewsets ARE the symptom-checker/triage conversation surface (see the
+# triage.* namespace note on EMERGENCY_PERMISSIONS in constants), so
+# triage.read is the real per-role gate — already carried by admin, medico/
+# dentista and recepcao in DEFAULT_ROLES.
+_TRIAGE_READ = HasPermission("triage.read")
 _RATE_LIMIT_WINDOW = 60  # seconds
 _RATE_LIMIT_MAX = 20  # messages per window per contact
 _PROCESSED_IDS_MAX = 20  # bounded FIFO of Evolution message-ids kept per session
@@ -338,7 +347,7 @@ class MessageLogPagination(PageNumberPagination):
 
 class WhatsAppContactViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = WhatsAppContactSerializer
-    permission_classes = [IsAuthenticated, _WHATSAPP_MODULE]  # type: ignore[list-item]
+    permission_classes = [IsAuthenticated, _WHATSAPP_MODULE, _TRIAGE_READ]  # type: ignore[list-item]
     pagination_class = MessageLogPagination
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["phone", "patient__full_name"]
@@ -350,7 +359,7 @@ class WhatsAppContactViewSet(viewsets.ReadOnlyModelViewSet):
 
 class MessageLogViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = MessageLogSerializer
-    permission_classes = [IsAuthenticated, _WHATSAPP_MODULE]  # type: ignore[list-item]
+    permission_classes = [IsAuthenticated, _WHATSAPP_MODULE, _TRIAGE_READ]  # type: ignore[list-item]
     pagination_class = MessageLogPagination
     filter_backends = [filters.OrderingFilter]
     ordering = ["-created_at"]

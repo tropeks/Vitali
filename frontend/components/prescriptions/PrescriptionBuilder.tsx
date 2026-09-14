@@ -12,7 +12,6 @@ import {
   Search,
   Trash2,
 } from 'lucide-react';
-import { getAccessToken } from '@/lib/auth';
 import { SafetyBadge } from './SafetyBadge';
 import { SafetyAlertModal } from './SafetyAlertModal';
 import type { SafetyAlert } from './SafetyBadge';
@@ -116,11 +115,9 @@ const DOSE_ROLE_OPTIONS: { value: string; label: string }[] = [
 ];
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const token = getAccessToken();
   const res = await fetch(`/api/v1${path}`, {
     ...options,
     headers: {
-      Authorization: `Bearer ${token}`,
       ...(options?.body ? { 'Content-Type': 'application/json' } : {}),
       ...(options?.headers ?? {}),
     },
@@ -423,10 +420,7 @@ export function PrescriptionBuilder({ encounterId, readOnly = false }: Prescript
     setPrintingId(prescriptionId);
     setError(null);
     try {
-      const token = getAccessToken();
-      const res = await fetch(`/api/v1/prescriptions/${prescriptionId}/pdf/`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await fetch(`/api/v1/prescriptions/${prescriptionId}/pdf/`);
       if (!res.ok) throw new Error(`Erro ${res.status}`);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);

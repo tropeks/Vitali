@@ -4,10 +4,12 @@ Core serializers for Vitali.
 
 import re
 
+from django.contrib.auth.password_validation import validate_password as _django_validate_password
+from django.core.exceptions import ValidationError as _DjangoValidationError
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
-from .models import FeatureFlag, Role, Tenant, User
+from .models import AuditLog, FeatureFlag, Role, Tenant, User
 
 # ─── Role & User ──────────────────────────────────────────────────────────────
 
@@ -19,11 +21,58 @@ class RoleSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "is_system")
 
 
+class AuditTrailEntrySerializer(serializers.ModelSerializer):
+    """DPO-facing view of AuditLog (3.4 — Onda 3): WHO accessed WHAT and WHEN,
+    never the clinical content itself.
+
+    Deliberately omits ``old_data``/``new_data``: those columns carry full
+    field snapshots (e.g. a ``create``/``update`` row on ``Prescription`` can
+    embed the entire clinical payload). This endpoint answers "quem acessou o
+    prontuário do paciente X", not "o que estava no prontuário" — surfacing the
+    snapshots here would turn a metadata/traceability endpoint into a bulk PHI
+    export gated only by ``IsTenantAdmin``, bypassing the per-module
+    permissions (``emr.read``, ``sae.read``, ...) that normally gate that
+    content. See AuditTrailListView for the permission rationale.
+    """
+
+    user_email = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AuditLog
+        fields = (
+            "id",
+            "user",
+            "user_email",
+            "action",
+            "resource_type",
+            "resource_id",
+            "ip_address",
+            "created_at",
+        )
+        read_only_fields = fields
+
+    def get_user_email(self, obj):
+        return obj.user.email if obj.user_id else None
+
+
+class TenantScopedRoleField(serializers.PrimaryKeyRelatedField):
+    """PrimaryKeyRelatedField restricted to Role.for_current_tenant() (0.4/0.5).
+
+    ``queryset=Role.objects.all()`` bound at class-definition time (module
+    import) is evaluated before any request/tenant context exists — it would
+    freeze the choice set to whatever schema was active at import, and worse,
+    let a tenant-A admin assign a role_id belonging to tenant B (the RBAC
+    namespace leak the audit found). Overriding ``get_queryset`` re-resolves
+    ``connection.tenant`` on every request/validation instead.
+    """
+
+    def get_queryset(self):
+        return Role.for_current_tenant()
+
+
 class UserSerializer(serializers.ModelSerializer):
     role = RoleSerializer(read_only=True)
-    role_id = serializers.PrimaryKeyRelatedField(
-        queryset=Role.objects.all(), source="role", write_only=True, required=False
-    )
+    role_id = TenantScopedRoleField(source="role", write_only=True, required=False)
 
     class Meta:
         model = User
@@ -41,14 +90,26 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class UserCreateSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, min_length=8)
-    role_id = serializers.PrimaryKeyRelatedField(
-        queryset=Role.objects.all(), source="role", required=False
-    )
+    # 3.5: was min_length=8 with no strength check at all — an admin could
+    # provision a coworker with "password123456". Aligned with the other two
+    # password-setting paths (SetPasswordView, ChangePasswordSerializer).
+    password = serializers.CharField(write_only=True, min_length=12)
+    role_id = TenantScopedRoleField(source="role", required=False)
 
     class Meta:
         model = User
         fields = ("email", "full_name", "cpf", "password", "role_id")
+
+    def validate_password(self, value: str) -> str:
+        # No saved instance yet — build an unsaved pseudo-user so
+        # UserAttributeSimilarityValidator can compare against the email/name
+        # being provisioned, same as Django does for a real user.
+        pseudo_user = User(
+            email=self.initial_data.get("email", ""),
+            full_name=self.initial_data.get("full_name", ""),
+        )
+        _validate_strong_password(value, user=pseudo_user)
+        return value
 
     def create(self, validated_data):
         password = validated_data.pop("password")
@@ -232,8 +293,18 @@ class SelfServeSignupSerializer(serializers.Serializer):
         return value.strip().lower()
 
 
-def _validate_strong_password(value: str):
-    """Enforce: min 12 chars, uppercase, lowercase, digit, special char."""
+def _validate_strong_password(value: str, user: User | None = None):
+    """Enforce: min 12 chars, uppercase, lowercase, digit, special char — plus
+    Django's configured AUTH_PASSWORD_VALIDATORS (settings/base.py:135-140:
+    UserAttributeSimilarityValidator, MinimumLengthValidator,
+    CommonPasswordValidator, NumericPasswordValidator).
+
+    3.5 audit finding: those four validators were defined in settings but
+    ``validate_password`` was never called anywhere in the codebase, so they
+    were dead code — a regex-only check (as before) doesn't catch a strong-
+    looking but leaked/dictionary password (CommonPasswordValidator) or one
+    built from the user's own name/e-mail (UserAttributeSimilarityValidator).
+    """
     if len(value) < 12:
         raise serializers.ValidationError(_("Senha deve ter no mínimo 12 caracteres."))
     if not re.search(r"[A-Z]", value):
@@ -244,6 +315,10 @@ def _validate_strong_password(value: str):
         raise serializers.ValidationError(_("Senha deve conter pelo menos um número."))
     if not re.search(r"[^A-Za-z0-9]", value):
         raise serializers.ValidationError(_("Senha deve conter pelo menos um caractere especial."))
+    try:
+        _django_validate_password(value, user=user)
+    except _DjangoValidationError as exc:
+        raise serializers.ValidationError(list(exc.messages)) from exc
 
 
 # ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -259,7 +334,9 @@ class ChangePasswordSerializer(serializers.Serializer):
     new_password = serializers.CharField(write_only=True, min_length=12)
 
     def validate_new_password(self, value: str) -> str:
-        _validate_strong_password(value)
+        request = self.context.get("request")
+        user = getattr(request, "user", None) if request else None
+        _validate_strong_password(value, user=user)
         return value
 
 

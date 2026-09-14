@@ -15,7 +15,8 @@ from django.utils.translation import gettext_lazy as _
 from django_tenants.utils import schema_context
 from rest_framework import generics, permissions, status
 from rest_framework import throttling as rest_framework_throttling
-from rest_framework.permissions import IsAdminUser, IsAuthenticated
+from rest_framework.exceptions import ValidationError as DRFValidationError
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
@@ -42,6 +43,7 @@ from .serializers import (
     UserCreateSerializer,
     UserDTOSerializer,
     UserSerializer,
+    _validate_strong_password,
 )
 from .tenant_auth import enforce_refresh_membership, login_allowed, tokens_for_user
 
@@ -148,15 +150,43 @@ def _create_invitation_for_user(user, *, requesting_user):
 
 
 class UserInvitationView(APIView):
-    """POST /api/v1/auth/invite/ — admin creates a UserInvitation + emails the link."""
+    """POST /api/v1/auth/invite/ — admin creates a UserInvitation + emails the link.
 
-    permission_classes = [IsAuthenticated, IsAdminUser]
+    0.4 audit follow-up: this was gated on ``IsAdminUser`` (bare ``is_staff``,
+    global — not tenant-aware), while every other user/role-provisioning view
+    in this module requires ``IsTenantAdmin`` (the non-forgeable admin
+    capability check). Tightened here for the same reason. The ``user_id``
+    lookup itself deliberately stays UNSCOPED by tenant — see the note below;
+    that half of the finding needs a dedicated follow-up, not a mechanical
+    queryset filter.
+    """
+
+    permission_classes = [IsAuthenticated, IsTenantAdmin]
 
     def post(self, request):
         user_id = request.data.get("user_id")
         if not user_id:
             return Response({"error": "user_id required"}, status=400)
         try:
+            # NOTE (0.4 follow-up, deliberately NOT scoped to
+            # User.for_current_tenant() here): a freshly created User (via
+            # UserListCreateView POST) has NO UserTenantMembership yet — that
+            # row is only created when the invite is ACCEPTED (see
+            # SetPasswordView below), and this endpoint IS how a newly
+            # provisioned user gets their first membership. Scoping this
+            # lookup by active membership would 404 every legitimate new-hire
+            # invite. Inviting an EXISTING user from another tenant is also a
+            # supported feature (multi-clinic staff — see
+            # User.effective_role docstring), so "no existing membership"
+            # isn't a safe substitute filter either. The remaining exposure —
+            # a tenant admin can target ANY user_id on the platform, and the
+            # created UserInvitation is stamped with the INVITING tenant
+            # (apps.core.models.UserInvitation.tenant), so acceptance binds
+            # the invitee into the inviter's tenant regardless of the
+            # invitee's current tenant — is real and needs a dedicated fix
+            # (e.g. requiring the target either have no memberships yet, or
+            # an explicit consent/accept-only-what-you-asked-for step), not a
+            # queryset scope. Flagged for a follow-up item.
             user = User.objects.get(id=user_id)
         except User.DoesNotExist:
             return Response({"error": "User not found"}, status=404)
@@ -198,6 +228,14 @@ class SetPasswordView(APIView):
             return Response({"error": "PASSWORD_TOO_SHORT"}, status=400)
 
         user = invitation.user
+        # 3.5: this was the only length check on this path (>=8 chars, nothing
+        # else) — AUTH_PASSWORD_VALIDATORS was configured in settings but
+        # never invoked here, so e.g. "password123456" was accepted outright.
+        try:
+            _validate_strong_password(password, user=user)
+        except DRFValidationError as exc:
+            return Response({"error": "PASSWORD_TOO_WEAK", "details": exc.detail}, status=400)
+
         user.set_password(password)
         user.must_change_password = False
         user.save(update_fields=["password", "must_change_password"])
@@ -432,7 +470,7 @@ class ChangePasswordView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def put(self, request):
-        serializer = ChangePasswordSerializer(data=request.data)
+        serializer = ChangePasswordSerializer(data=request.data, context={"request": request})
         if not serializer.is_valid():
             return Response(
                 {
@@ -679,7 +717,11 @@ class UserListCreateView(generics.ListCreateAPIView):
         return UserSerializer
 
     def get_queryset(self):
-        return User.objects.select_related("role").filter(is_active=True)
+        # 0.4: scoped by active UserTenantMembership for the current tenant —
+        # a bare User.objects query leaked every clinic's staff (name, e-mail,
+        # role) to any authenticated user of any other clinic. See
+        # User.for_current_tenant.
+        return User.for_current_tenant().select_related("role").filter(is_active=True)
 
 
 class UserDetailView(generics.RetrieveUpdateAPIView):
@@ -696,12 +738,28 @@ class UserDetailView(generics.RetrieveUpdateAPIView):
         return [permissions.IsAuthenticated(), IsTenantAdmin()]
 
     def get_queryset(self):
-        # IDOR fix (finding 2): a non-admin may only retrieve/update THEIR OWN
-        # record; admins (gated above for writes) may address any user.
-        qs = User.objects.select_related("role").all()
+        # IDOR fix (finding 2, hardened for 0.4): a non-admin may only
+        # retrieve/update THEIR OWN record. Admins (gated above for writes)
+        # are scoped to User.for_current_tenant() instead of User.objects.all()
+        # — an admin from tenant A used to be able to GET *and* PATCH (incl.
+        # role_id reassignment) any user on the whole platform.
+        #
+        # Self-access is OR'd in unconditionally (not just for the non-admin
+        # branch): User.for_current_tenant() depends on an active
+        # UserTenantMembership row for the CURRENT tenant, and
+        # ENFORCE_TENANT_MEMBERSHIP is being flipped on in this same wave.
+        # Before backfill_tenant_memberships has run for a legacy user (or
+        # whenever the flag is off), that membership row may not exist yet —
+        # scoping self-access through for_current_tenant() alone would then
+        # 404-lock an already-authenticated user (admin or not) out of their
+        # own profile. There is nothing to leak by letting a user read/patch
+        # their own row regardless of membership bookkeeping — they already
+        # know who they are; role_id writes stay admin-gated in
+        # perform_update below regardless of this queryset.
+        self_qs = User.objects.select_related("role").filter(id=self.request.user.id)
         if is_tenant_admin(self.request.user):
-            return qs
-        return qs.filter(id=self.request.user.id)
+            return (User.for_current_tenant().select_related("role") | self_qs).distinct()
+        return self_qs
 
     def perform_update(self, serializer):
         # Defense in depth: even though writes are admin-gated above, never let a
@@ -714,7 +772,19 @@ class UserDetailView(generics.RetrieveUpdateAPIView):
 class RoleListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated, IsTenantAdmin]
     serializer_class = RoleSerializer
-    queryset = Role.objects.all()
+
+    def get_queryset(self):
+        # 0.4/0.5: scoped to the current tenant's own roles + system roles — a
+        # bare Role.objects query shared the RBAC namespace between competing
+        # clinics. See Role.for_current_tenant.
+        return Role.for_current_tenant()
+
+    def perform_create(self, serializer):
+        # 0.5: stamp new roles with the creating tenant. Leaving tenant=None
+        # here would make every freshly created role a de-facto system role
+        # (Role.for_current_tenant treats tenant=None as shared/global),
+        # reopening the same cross-tenant RBAC leak for all future roles.
+        serializer.save(tenant=getattr(connection, "tenant", None))
 
 
 # ─── Feature flags view ───────────────────────────────────────────────────────

@@ -37,24 +37,71 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
+      # Um metadata POR IMAGEM — ordem 005.
+      #
+      # Antes havia um so, configurado com BACKEND_IMAGE, e a saida dele era
+      # usada apenas no `labels:` do build do backend. Frontend e viewer nao
+      # recebiam `labels:` nenhum: medido em 12/09, a imagem do frontend que a
+      # lab roda tem `Config.Labels: null`, enquanto a do backend traz
+      # `org.opencontainers.image.revision = d4521fae…`. Uma imagem sem revision
+      # nao diz de qual commit saiu — foi exatamente o buraco que a ordem 001
+      # encontrou no frontend construido a mao no PVE, e que o CI estava
+      # reproduzindo em silencio.
+      #
+      # Nao da para reusar um metadata so: `image.title` e `image.description`
+      # saem do nome da imagem, entao as tres precisam do seu.
+      # `latest` so se move a partir de onda0-perimetro-multitenant — ordem 005 (c).
+      #
+      # Ate 12/09 os `tags:` dos tres builds eram escritos a mao e incluiam
+      # `:latest` SEM condicao de branch. Um build despachado de qualquer branch
+      # movia a tag: foi o que aconteceu na ordem 002, quando um build da onda0
+      # levou `vitali-frontend:latest` e `vitali-backend:latest` para um commit
+      # fora do master — e eu relatei o contrario, lendo o
+      # `enable={{is_default_branch}}` daqui, que so alimenta `labels:`.
+      #
+      # Agora os `tags:` saem DESTE passo, e a condicao e explicita. Nao se usa
+      # `{{is_default_branch}}` porque o default do repo e `master`, enquanto o
+      # trabalho de fato acontece na onda0: a tag seguiria congelada num branch
+      # que ninguem move. Quando o Capitao tornar a onda0 o default, isto vira
+      # `enable={{is_default_branch}}` e a linha some.
+      #
+      # `format=long` preserva o nome das tags existentes (`sha-` + 40 chars).
+      # Sem ele o metadata-action encurta para 7 e quebra quem referencia a tag
+      # longa — a lab nao, que esta por digest, mas o habito sim.
+      - name: Extract metadata (backend)
+        id: meta_backend
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ${{ env.BACKEND_IMAGE }}
           tags: |
-            type=sha,prefix=sha-
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-,format=long
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/onda0-perimetro-multitenant' }}
+
+      - name: Extract metadata (frontend)
+        id: meta_frontend
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ${{ env.FRONTEND_IMAGE }}
+          tags: |
+            type=sha,prefix=sha-,format=long
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/onda0-perimetro-multitenant' }}
+
+      - name: Extract metadata (viewer)
+        id: meta_viewer
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ${{ env.VIEWER_IMAGE }}
+          tags: |
+            type=sha,prefix=sha-,format=long
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/onda0-perimetro-multitenant' }}
 
       - name: Build and push backend image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: ./backend
           push: true
-          tags: |
-            ${{ env.BACKEND_IMAGE }}:sha-${{ github.sha }}
-            ${{ env.BACKEND_IMAGE }}:latest
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.meta_backend.outputs.tags }}
+          labels: ${{ steps.meta_backend.outputs.labels }}
           cache-from: type=registry,ref=${{ env.BACKEND_IMAGE }}:latest
           cache-to: type=inline
 
@@ -63,9 +110,8 @@ jobs:
         with:
           context: ./frontend
           push: true
-          tags: |
-            ${{ env.FRONTEND_IMAGE }}:sha-${{ github.sha }}
-            ${{ env.FRONTEND_IMAGE }}:latest
+          tags: ${{ steps.meta_frontend.outputs.tags }}
+          labels: ${{ steps.meta_frontend.outputs.labels }}
           cache-from: type=registry,ref=${{ env.FRONTEND_IMAGE }}:latest
           cache-to: type=inline
 
@@ -74,8 +120,7 @@ jobs:
         with:
           context: ./docker/ohif
           push: true
-          tags: |
-            ${{ env.VIEWER_IMAGE }}:sha-${{ github.sha }}
-            ${{ env.VIEWER_IMAGE }}:latest
+          tags: ${{ steps.meta_viewer.outputs.tags }}
+          labels: ${{ steps.meta_viewer.outputs.labels }}
           cache-from: type=registry,ref=${{ env.VIEWER_IMAGE }}:latest
           cache-to: type=inline

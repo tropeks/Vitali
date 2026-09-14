@@ -16,6 +16,7 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 
+from apps.core.mixins import AuditReadMixin
 from apps.core.permissions import HasPermission
 
 from .serializers_sae import (
@@ -42,10 +43,11 @@ class _SaePermissionMixin:
 @extend_schema_view(
     list=extend_schema(parameters=[_PATIENT_PARAM, _ENCOUNTER_PARAM]),
 )
-class NursingDiagnosisViewSet(_SaePermissionMixin, viewsets.ModelViewSet):
+class NursingDiagnosisViewSet(AuditReadMixin, _SaePermissionMixin, viewsets.ModelViewSet):
     """Nursing diagnoses (NANDA). Writes are enfermeiro-privativo (``sae.write``)."""
 
     serializer_class = NursingDiagnosisSerializer
+    audit_resource_type = "NursingDiagnosis"
 
     def get_queryset(self):
         qs = NursingDiagnosis_qs()
@@ -66,10 +68,11 @@ class NursingDiagnosisViewSet(_SaePermissionMixin, viewsets.ModelViewSet):
 @extend_schema_view(
     list=extend_schema(parameters=[_PATIENT_PARAM, _ENCOUNTER_PARAM]),
 )
-class NursingCareplanViewSet(_SaePermissionMixin, viewsets.ModelViewSet):
+class NursingCareplanViewSet(AuditReadMixin, _SaePermissionMixin, viewsets.ModelViewSet):
     """Care plans: expected NOC outcome + target for a diagnosis."""
 
     serializer_class = NursingCareplanSerializer
+    audit_resource_type = "NursingCareplan"
 
     def get_queryset(self):
         from .models import NursingCareplan
@@ -91,10 +94,13 @@ class NursingCareplanViewSet(_SaePermissionMixin, viewsets.ModelViewSet):
         log_audit(self.request, "sae_careplan_create", "NursingCareplan", obj.id)
 
 
-class NursingCareplanInterventionViewSet(_SaePermissionMixin, viewsets.ModelViewSet):
+class NursingCareplanInterventionViewSet(
+    AuditReadMixin, _SaePermissionMixin, viewsets.ModelViewSet
+):
     """NIC interventions attached to a care plan (careplan 1—* NIC)."""
 
     serializer_class = NursingCareplanInterventionSerializer
+    audit_resource_type = "NursingCareplanIntervention"
 
     def get_queryset(self):
         from .models import NursingCareplanIntervention
@@ -116,10 +122,11 @@ class NursingCareplanInterventionViewSet(_SaePermissionMixin, viewsets.ModelView
 @extend_schema_view(
     list=extend_schema(parameters=[_PATIENT_PARAM]),
 )
-class NursingPrescriptionItemViewSet(_SaePermissionMixin, viewsets.ModelViewSet):
+class NursingPrescriptionItemViewSet(AuditReadMixin, _SaePermissionMixin, viewsets.ModelViewSet):
     """Executable nursing prescription lines (drive aprazamento). Enfermeiro-privativo."""
 
     serializer_class = NursingPrescriptionItemSerializer
+    audit_resource_type = "NursingPrescriptionItem"
 
     def get_queryset(self):
         from .models import NursingPrescriptionItem
@@ -144,10 +151,11 @@ class NursingPrescriptionItemViewSet(_SaePermissionMixin, viewsets.ModelViewSet)
 @extend_schema_view(
     list=extend_schema(parameters=[_PATIENT_PARAM, _ENCOUNTER_PARAM]),
 )
-class NursingEvolutionViewSet(_SaePermissionMixin, viewsets.ModelViewSet):
+class NursingEvolutionViewSet(AuditReadMixin, _SaePermissionMixin, viewsets.ModelViewSet):
     """Nursing evolution notes (evolução)."""
 
     serializer_class = NursingEvolutionSerializer
+    audit_resource_type = "NursingEvolution"
 
     def get_queryset(self):
         from .models import NursingEvolution

@@ -4,11 +4,6 @@ import AISettingsPage from './page'
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
-// Mock @/lib/auth — the page uses getAccessToken() directly
-vi.mock('@/lib/auth', () => ({
-  getAccessToken: () => 'test-token',
-}))
-
 // DPASignModal is not the focus — stub it out
 vi.mock('@/components/settings/DPASignModal', () => ({
   DPASignModal: () => null,

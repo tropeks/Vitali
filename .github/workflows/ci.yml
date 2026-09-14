@@ -1,10 +1,31 @@
 name: CI
 
+# Gatilhos — ordem 005.
+#
+# Ate 12/09 o CI so disparava em push para main|master|develop e em PR CONTRA
+# essas bases. Um PR de `order/NNN` para `onda0-perimetro-multitenant` nao casava
+# nenhum filtro, entao **codigo de ordem so encontrava o gate depois de mesclado**:
+# nas ordens 002 e 003 foi preciso mesclar para conseguir testar, o que inverte a
+# ordem natural de descobrir que algo quebrou. INTENT §Limites, "sinal verde tem
+# que significar verde" — aqui nao havia sinal nenhum.
+#
+# `paths-ignore`: a suite leva 35-43 min em cinco jobs, e boa parte dos commits
+# de ordem toca so `.maestro/` e `docs/`. Rodar Playwright para consertar uma
+# frase de runbook queima runner por nada.
+#
+# ATENCAO ao mexer nisto: `paths-ignore` num `pull_request` faz o check NAO
+# EXISTIR, e nao "passar". Se algum dia houver branch protection com required
+# check, um PR so de documentacao fica travado esperando algo que nunca vai
+# rodar. Conferido em 12/09: nem `master` nem `onda0-perimetro-multitenant` tem
+# protecao, entao nao ha required check para travar. Se ligar protecao, troque
+# `paths-ignore` por um job que reporta sucesso.
 on:
   push:
-    branches: [main, master, develop]
+    branches: [main, master, develop, 'order/**']
+    paths-ignore: ['.maestro/**', 'docs/**', '**/*.md']
   pull_request:
-    branches: [main, master, develop]
+    branches: [main, master, develop, onda0-perimetro-multitenant]
+    paths-ignore: ['.maestro/**', 'docs/**', '**/*.md']
 
 env:
   PYTHON_VERSION: "3.12"
@@ -301,7 +322,11 @@ jobs:
         run: cp .env.example .env
 
       - name: Validate smoke script syntax
-        run: bash -n scripts/smoke_test.sh scripts/backup.sh scripts/restore_test.sh scripts/backup_imaging.sh scripts/restore_test_imaging.sh scripts/pitr_check.sh scripts/pitr_basebackup.sh scripts/pitr_sync_wal.sh scripts/pitr_restore_test.sh scripts/provision_observability_secrets.sh
+        # run_restore_drill.sh nunca esteve nesta lista — a ordem 011 o pos, junto
+        # com os dois scripts novos. Script de recuperacao sem sequer checagem de
+        # sintaxe no CI e a forma mais barata de descobrir um erro de digitacao as
+        # 3 da manha, quando ninguem esta olhando.
+        run: bash -n scripts/smoke_test.sh scripts/backup.sh scripts/restore_test.sh scripts/run_restore_drill.sh scripts/drill_metric.sh scripts/install_drill_cron.sh scripts/backup_imaging.sh scripts/restore_test_imaging.sh scripts/pitr_check.sh scripts/pitr_basebackup.sh scripts/pitr_sync_wal.sh scripts/pitr_restore_test.sh scripts/provision_observability_secrets.sh
 
       - name: Validate docker-compose config
         run: docker compose config

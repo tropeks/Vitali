@@ -56,7 +56,10 @@ class AIUsageLog(models.Model):
     tokens_out = models.PositiveIntegerField(default=0)
     latency_ms = models.PositiveIntegerField(default=0)
     model = models.CharField(max_length=100, default="claude-haiku-4-5-20251001")
-    input_text = models.TextField(blank=True)
+    # LGPD (Onda 3 / 3.1): may contain a (scrubbed, but not guaranteed PHI-free)
+    # excerpt of clinical text — encrypted at rest, same pattern as
+    # AIScribeSession.raw_transcription.
+    input_text = EncryptedTextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

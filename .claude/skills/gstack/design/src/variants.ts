@@ -7,12 +7,19 @@
 import fs from "fs";
 import path from "path";
 import { requireApiKey } from "./auth";
+import { receiptedFetch } from "./receipted-fetch";
 import { parseBrief } from "./brief";
+import { normalizeIntFlag } from "./flag-utils";
 
 export interface VariantsOptions {
   brief?: string;
   briefFile?: string;
-  count: number;
+  /**
+   * Raw CLI flag value or a number. Normalized inside variants() (#2032):
+   * nonsense errors loudly; above STYLE_VARIATIONS.length clamps with a
+   * warning — past that index variants degrade to duplicate base-brief runs.
+   */
+  count?: number | string | boolean;
   outputDir: string;
   size?: string;
   quality?: string;
@@ -31,30 +38,37 @@ const STYLE_VARIATIONS = [
 
 /**
  * Generate a single variant with retry on 429.
+ *
+ * Exported for testability. Pass `fetchFn` to inject a stubbed fetch in tests;
+ * production code uses the global fetch by default.
  */
-async function generateVariant(
+export async function generateVariant(
   apiKey: string,
   prompt: string,
   outputPath: string,
   size: string,
   quality: string,
+  fetchFn: typeof globalThis.fetch = globalThis.fetch,
 ): Promise<{ path: string; success: boolean; error?: string }> {
   const maxRetries = 3;
+  const MAX_RETRY_AFTER_MS = 60_000; // cap honored Retry-After to bound stalls
   let lastError = "";
+  let skipLeadingDelay = false;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    if (attempt > 0) {
+    if (attempt > 0 && !skipLeadingDelay) {
       // Exponential backoff: 2s, 4s, 8s
       const delay = Math.pow(2, attempt) * 1000;
       console.error(`  Rate limited, retrying in ${delay / 1000}s...`);
       await new Promise(r => setTimeout(r, delay));
     }
+    skipLeadingDelay = false;
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120_000);
+    const timeout = setTimeout(() => controller.abort(), 240_000);
 
     try {
-      const response = await fetch("https://api.openai.com/v1/responses", {
+      const response = await receiptedFetch("variants-image-request", "https://api.openai.com/v1/responses", {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${apiKey}`,
@@ -66,17 +80,43 @@ async function generateVariant(
           tools: [{ type: "image_generation", size, quality }],
         }),
         signal: controller.signal,
-      });
+      }, fetchFn);
 
       clearTimeout(timeout);
 
       if (response.status === 429) {
         lastError = "Rate limited (429)";
+        const retryAfter = response.headers.get("retry-after");
+        if (retryAfter) {
+          const trimmed = retryAfter.trim();
+          let waitMs: number | null = null;
+          if (/^\d+$/.test(trimmed)) {
+            // delta-seconds (RFC 7231)
+            waitMs = Math.min(Number.parseInt(trimmed, 10) * 1000, MAX_RETRY_AFTER_MS);
+          } else {
+            // HTTP-date (RFC 7231)
+            const dateMs = Date.parse(trimmed);
+            if (!Number.isNaN(dateMs)) {
+              waitMs = Math.min(Math.max(0, dateMs - Date.now()), MAX_RETRY_AFTER_MS);
+            }
+          }
+          if (waitMs !== null) {
+            if (waitMs > 0) {
+              await new Promise(resolve => setTimeout(resolve, waitMs));
+            }
+            // Honored Retry-After (incl. 0 / past date "retry now") — skip the
+            // next iteration's leading exponential sleep so we don't double-wait.
+            skipLeadingDelay = true;
+          }
+        }
         continue;
       }
 
       if (!response.ok) {
         const error = await response.text();
+        if (response.status === 403 && error.includes("organization must be verified")) {
+          return { path: outputPath, success: false, error: "OpenAI organization verification required. Go to https://platform.openai.com/settings/organization to verify." };
+        }
         return { path: outputPath, success: false, error: `API error (${response.status}): ${error.slice(0, 200)}` };
       }
 
@@ -92,7 +132,7 @@ async function generateVariant(
     } catch (err: any) {
       clearTimeout(timeout);
       if (err.name === "AbortError") {
-        return { path: outputPath, success: false, error: "Timeout (120s)" };
+        return { path: outputPath, success: false, error: "Timeout (240s)" };
       }
       lastError = err.message;
     }
@@ -120,7 +160,15 @@ export async function variants(options: VariantsOptions): Promise<void> {
     return;
   }
 
-  const count = Math.min(options.count, 7); // Cap at 7 style variations
+  // #2032: normalize at the consumption site so every caller (CLI or
+  // programmatic) gets the loud-on-nonsense contract; the ceiling derives
+  // from STYLE_VARIATIONS so it self-adjusts when styles are added.
+  const count = normalizeIntFlag(options.count, {
+    name: "count",
+    def: 3,
+    min: 1,
+    max: STYLE_VARIATIONS.length,
+  });
   const size = options.size || "1536x1024";
 
   console.error(`Generating ${count} variants...`);

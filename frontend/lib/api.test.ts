@@ -1,25 +1,17 @@
 /**
  * Tests for lib/api.ts — apiFetch wrapper.
  *
- * NOTE: Vitest is not installed in this project (no vitest in package.json).
- * These tests are written to the Vitest API so they can be run once vitest
- * is added as a devDependency (Sprint 19+). To add:
- *   npm install --save-dev vitest @vitest/coverage-v8
- * and add a vitest.config.ts referencing the Next.js tsconfig paths.
+ * apiFetch never reads or attaches a JWT client-side: /api/* is served by the
+ * Next.js proxy (app/api/[...path]/route.ts), which reads the httpOnly
+ * access_token cookie on the server and injects the Authorization header
+ * before forwarding to Django. These tests assert the wrapper's own
+ * responsibilities — 403/401 handling, single-flight refresh, session
+ * expiry redirect — without any client-readable token.
  *
- * Run (once set up): npx vitest run lib/api.test.ts
+ * Run: npx vitest run lib/api.test.ts
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { apiFetch, ApiError } from './api'
-
-// ─── Mock lib/auth ─────────────────────────────────────────────────────────────
-
-vi.mock('./auth', () => ({
-  getAccessToken: vi.fn(() => null),
-}))
-
-import { getAccessToken } from './auth'
-const mockGetAccessToken = vi.mocked(getAccessToken)
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -35,7 +27,6 @@ function makeResponse(status: number, body: unknown, contentType = 'application/
 
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn())
-  mockGetAccessToken.mockReturnValue(null)
 
   // Allow setting window.location.href
   Object.defineProperty(window, 'location', {
@@ -118,21 +109,17 @@ describe('apiFetch', () => {
     expect((caught as ApiError).status).toBe(500)
   })
 
-  it('injects Authorization header when getAccessToken returns a token', async () => {
-    mockGetAccessToken.mockReturnValue('tok123')
+  it('never attaches a client-side Authorization header — the proxy injects it server-side', async () => {
     vi.mocked(fetch).mockResolvedValue(makeResponse(200, { ok: true }))
 
     await apiFetch('/api/v1/me')
 
     const [, init] = vi.mocked(fetch).mock.calls[0]
     const headers = init?.headers as Headers
-    expect(headers.get('Authorization')).toBe('Bearer tok123')
+    expect(headers.has('Authorization')).toBe(false)
   })
 
-  it('refreshes once and retries a 401 with the rotated access token', async () => {
-    mockGetAccessToken
-      .mockReturnValueOnce('expired-token')
-      .mockReturnValueOnce('rotated-token')
+  it('refreshes once and retries a 401 (proxy picks up the rotated cookie automatically)', async () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(makeResponse(401, { detail: 'Token expired' }))
       .mockResolvedValueOnce(makeResponse(200, { ok: true }))
@@ -142,7 +129,7 @@ describe('apiFetch', () => {
 
     expect(vi.mocked(fetch).mock.calls[1][0]).toBe('/api/auth/refresh')
     const retryHeaders = vi.mocked(fetch).mock.calls[2][1]?.headers as Headers
-    expect(retryHeaders.get('Authorization')).toBe('Bearer rotated-token')
+    expect(retryHeaders.has('Authorization')).toBe(false)
   })
 
   it('clears the session and redirects to login when refresh is expired', async () => {
@@ -160,7 +147,6 @@ describe('apiFetch', () => {
   it('uses a single refresh for concurrent 401 responses', async () => {
     let releaseRefresh: ((response: Response) => void) | undefined
     const refreshResponse = new Promise<Response>((resolve) => { releaseRefresh = resolve })
-    mockGetAccessToken.mockReturnValue('rotated-token')
     vi.mocked(fetch).mockImplementation((path) => {
       if (path === '/api/auth/refresh') return refreshResponse
       const apiCalls = vi.mocked(fetch).mock.calls.filter(([url]) => url === '/api/v1/me').length

@@ -2,10 +2,17 @@
  * Centralized fetch wrapper for Vitali frontend.
  *
  * Handles:
- *   - JWT Authorization header injection (uses getAccessToken from lib/auth)
  *   - PASSWORD_CHANGE_REQUIRED 403 → redirect to /auth/change-password (T5/T12)
  *   - single-flight JWT refresh + one retry on 401
  *   - expired refresh session cleanup + redirect to login preserving `next`
+ *
+ * The JWT itself is never read or attached client-side: `/api/*` is served by
+ * the Next.js proxy (app/api/[...path]/route.ts), which reads the httpOnly
+ * access_token cookie on the server and injects the Authorization header
+ * before forwarding to Django. The browser sends the httpOnly cookie
+ * automatically (fetch's default credentials mode is same-origin) — a fresh
+ * access_token cookie from /api/auth/refresh is picked up on the very next
+ * request with no client-side bookkeeping.
  *
  * Usage:
  *   const data = await apiFetch('/api/v1/me')
@@ -14,7 +21,6 @@
  *     body: JSON.stringify(payload),
  *   })
  */
-import { getAccessToken } from './auth'
 
 let refreshInFlight: Promise<Response> | null = null
 
@@ -34,11 +40,7 @@ export class ApiError extends Error {
 }
 
 function fetchWithAccessToken(path: string, fetchInit: RequestInit): Promise<Response> {
-  const token = getAccessToken()
   const headers = new Headers(fetchInit.headers)
-  if (token && !headers.has('Authorization')) {
-    headers.set('Authorization', `Bearer ${token}`)
-  }
   return fetch(path, { ...fetchInit, headers })
 }
 
@@ -66,10 +68,17 @@ async function redirectExpiredSession(): Promise<never> {
   throw new ApiError(401, { detail: 'Session expired.' }, 'Sessão expirada — redirecionando')
 }
 
-export async function apiFetch<T = any>(
+/** Result of {@link apiFetchWithStatus} — payload plus the raw HTTP status,
+ * needed by callers that must tell an idempotent 200 apart from a fresh 201. */
+export interface ApiFetchResult<T> {
+  data: T
+  status: number
+}
+
+export async function apiFetchWithStatus<T = any>(
   path: string,
   options: ApiFetchOptions = {}
-): Promise<T> {
+): Promise<ApiFetchResult<T>> {
   const { skipPasswordChangeRedirect, ...fetchInit } = options
 
   const headers = new Headers(fetchInit.headers)
@@ -132,13 +141,25 @@ export async function apiFetch<T = any>(
 
   // Handle 204 No Content
   if (response.status === 204) {
-    return undefined as T
+    return { data: undefined as T, status: response.status }
   }
 
   // Try JSON; fall back to text
   const contentType = response.headers.get('content-type') ?? ''
-  if (contentType.includes('application/json')) {
-    return response.json()
-  }
-  return response.text() as unknown as T
+  const data = contentType.includes('application/json')
+    ? await response.json()
+    : ((await response.text()) as unknown as T)
+  return { data, status: response.status }
+}
+
+/**
+ * Thin wrapper over {@link apiFetchWithStatus} that drops the status and
+ * returns just the payload — the shape most callers want.
+ */
+export async function apiFetch<T = any>(
+  path: string,
+  options: ApiFetchOptions = {}
+): Promise<T> {
+  const { data } = await apiFetchWithStatus<T>(path, options)
+  return data
 }

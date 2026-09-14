@@ -125,6 +125,66 @@ describe('AdmitPatientModal', () => {
     vi.useRealTimers()
   })
 
+  it('shows the three TISS taxonomy selects and sends them in the payload', async () => {
+    vi.useFakeTimers()
+    routeApi()
+    render(<AdmitPatientModal patientId="patient-1" onClose={vi.fn()} onAdmitted={vi.fn()} />)
+    await vi.runAllTimersAsync()
+
+    await pickProfessional(/internador/, /Dra\. Carla/)
+    await pickProfessional(/respons/, /Dr\. João/)
+    fireEvent.change(screen.getByRole('combobox', { name: 'Caráter do atendimento (TISS)' }), {
+      target: { value: '2' },
+    })
+    fireEvent.change(screen.getByRole('combobox', { name: 'Tipo de internação (TISS)' }), {
+      target: { value: '2' },
+    })
+    fireEvent.change(screen.getByRole('combobox', { name: 'Regime de internação (TISS)' }), {
+      target: { value: '1' },
+    })
+    fireEvent.change(screen.getByRole('combobox', { name: 'Leito livre' }), {
+      target: { value: 'bed-1' },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /Confirmar internação/ }))
+    await vi.runAllTimersAsync()
+
+    const postCall = mockApiFetch.mock.calls.find(
+      ([url, init]) => url === '/api/v1/admissions/' && init?.method === 'POST',
+    )
+    const body = JSON.parse(postCall![1].body)
+    expect(body.carater_atendimento).toBe('2')
+    expect(body.tipo_internacao).toBe('2')
+    expect(body.regime_internacao).toBe('1')
+    vi.useRealTimers()
+  })
+
+  it('leaves the TISS taxonomies blank and still admits successfully', async () => {
+    vi.useFakeTimers()
+    routeApi()
+    render(<AdmitPatientModal patientId="patient-1" onClose={vi.fn()} onAdmitted={vi.fn()} />)
+    await vi.runAllTimersAsync()
+
+    await pickProfessional(/internador/, /Dra\. Carla/)
+    await pickProfessional(/respons/, /Dr\. João/)
+    fireEvent.change(screen.getByRole('combobox', { name: 'Leito livre' }), {
+      target: { value: 'bed-1' },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /Confirmar internação/ }))
+    await vi.runAllTimersAsync()
+
+    const postCall = mockApiFetch.mock.calls.find(
+      ([url, init]) => url === '/api/v1/admissions/' && init?.method === 'POST',
+    )
+    expect(postCall).toBeTruthy()
+    const body = JSON.parse(postCall![1].body)
+    expect(body.carater_atendimento).toBe('')
+    expect(body.tipo_internacao).toBe('')
+    expect(body.regime_internacao).toBe('')
+    vi.useRealTimers()
+  })
+
   it('validates that professionals and a bed are selected before posting', async () => {
     vi.useFakeTimers()
     routeApi()

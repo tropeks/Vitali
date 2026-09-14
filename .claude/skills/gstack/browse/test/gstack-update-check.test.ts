@@ -17,14 +17,21 @@ let gstackDir: string;
 let stateDir: string;
 
 function run(extraEnv: Record<string, string> = {}, args: string[] = []) {
+  // gstack-config (which this script shells out to for update_check) resolves
+  // state as GSTACK_STATE_ROOT > GSTACK_HOME > GSTACK_STATE_DIR > ~/.gstack.
+  // Strip the higher-precedence vars so harness-env leftovers can never
+  // outrank the per-test GSTACK_STATE_DIR isolation.
+  const env: Record<string, string | undefined> = {
+    ...process.env,
+    GSTACK_DIR: gstackDir,
+    GSTACK_STATE_DIR: stateDir,
+    GSTACK_REMOTE_URL: `file://${join(gstackDir, 'REMOTE_VERSION')}`,
+  };
+  delete env.GSTACK_STATE_ROOT;
+  delete env.GSTACK_HOME;
+  Object.assign(env, extraEnv); // per-test overrides always win, deliberately
   const result = Bun.spawnSync(['bash', SCRIPT, ...args], {
-    env: {
-      ...process.env,
-      GSTACK_DIR: gstackDir,
-      GSTACK_STATE_DIR: stateDir,
-      GSTACK_REMOTE_URL: `file://${join(gstackDir, 'REMOTE_VERSION')}`,
-      ...extraEnv,
-    },
+    env,
     stdout: 'pipe',
     stderr: 'pipe',
   });
@@ -42,6 +49,14 @@ beforeEach(() => {
   const binDir = join(gstackDir, 'bin');
   mkdirSync(binDir);
   symlinkSync(join(import.meta.dir, '..', '..', 'bin', 'gstack-config'), join(binDir, 'gstack-config'));
+  // v1.63+: the script sources bin/gstack-egress-lib.sh unconditionally
+  // (receipted fetch helpers). A real install always has it beside
+  // gstack-config; without this link every test failed at the source line —
+  // masked until the suite-truncation fix because the runner died first.
+  symlinkSync(
+    join(import.meta.dir, '..', '..', 'bin', 'gstack-egress-lib.sh'),
+    join(binDir, 'gstack-egress-lib.sh'),
+  );
 });
 
 afterEach(() => {
@@ -495,6 +510,40 @@ describe('gstack-update-check', () => {
   });
 
   // ─── Split TTL tests ─────────────────────────────────────────
+
+  // ─── Semver-order guard ─────────────────────────────────────
+  // When the upstream raw CDN serves a stale (older) VERSION right after a
+  // release, the script previously emitted a backwards UPGRADE_AVAILABLE
+  // line. The guard treats REMOTE < LOCAL as up-to-date.
+
+  test('remote older than local (stale CDN) → silent, cache UP_TO_DATE', () => {
+    writeFileSync(join(gstackDir, 'VERSION'), '1.34.0.0\n');
+    writeFileSync(join(gstackDir, 'REMOTE_VERSION'), '1.33.2.0\n');
+
+    const { exitCode, stdout } = run();
+    expect(exitCode).toBe(0);
+    expect(stdout).toBe('');
+    const cache = readFileSync(join(stateDir, 'last-update-check'), 'utf-8');
+    expect(cache).toContain('UP_TO_DATE 1.34.0.0');
+  });
+
+  test('multi-segment sort: 1.9.0.0 < 1.10.0.0', () => {
+    writeFileSync(join(gstackDir, 'VERSION'), '1.9.0.0\n');
+    writeFileSync(join(gstackDir, 'REMOTE_VERSION'), '1.10.0.0\n');
+
+    const { stdout } = run();
+    expect(stdout).toBe('UPGRADE_AVAILABLE 1.9.0.0 1.10.0.0');
+  });
+
+  test('multi-segment reverse sort: 1.10.0.0 > 1.9.0.0 → no rewind', () => {
+    writeFileSync(join(gstackDir, 'VERSION'), '1.10.0.0\n');
+    writeFileSync(join(gstackDir, 'REMOTE_VERSION'), '1.9.0.0\n');
+
+    const { stdout } = run();
+    expect(stdout).toBe('');
+    const cache = readFileSync(join(stateDir, 'last-update-check'), 'utf-8');
+    expect(cache).toContain('UP_TO_DATE 1.10.0.0');
+  });
 
   test('UP_TO_DATE cache expires after 60 min (not 720)', () => {
     writeFileSync(join(gstackDir, 'VERSION'), '0.3.3\n');

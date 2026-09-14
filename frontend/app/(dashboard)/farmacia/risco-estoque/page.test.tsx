@@ -2,10 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import RiscoEstoquePage from './page'
 
-vi.mock('@/lib/auth', () => ({
-  getAccessToken: () => 'test-token',
-}))
-
 const mockFetch = vi.fn()
 global.fetch = mockFetch as unknown as typeof fetch
 

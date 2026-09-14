@@ -23,6 +23,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.core.mixins import AuditReadMixin
 from apps.core.permissions import HasPermission
 
 from .serializers_emergency import (
@@ -68,11 +69,12 @@ _BOLETIM_PARAM = OpenApiParameter(
 @extend_schema_view(
     list=extend_schema(parameters=[_PATIENT_PARAM, _STATUS_PARAM]),
 )
-class EmergencyEncounterViewSet(viewsets.ModelViewSet):
+class EmergencyEncounterViewSet(AuditReadMixin, viewsets.ModelViewSet):
     """Boletins de emergência (BAE). Reads ``emergency.read`` / writes
     ``emergency.manage``; the ``classify`` action needs ``emergency.classify``."""
 
     serializer_class = EmergencyEncounterSerializer
+    audit_resource_type = "EmergencyEncounter"
 
     def get_permissions(self):
         read_actions = {"list", "retrieve", "board"}
@@ -190,10 +192,11 @@ class EmergencyEncounterViewSet(viewsets.ModelViewSet):
 @extend_schema_view(
     list=extend_schema(parameters=[_BOLETIM_PARAM]),
 )
-class RiskClassificationViewSet(viewsets.ReadOnlyModelViewSet):
+class RiskClassificationViewSet(AuditReadMixin, viewsets.ReadOnlyModelViewSet):
     """Read-only append-only risk-classification history. Gated ``emergency.read``."""
 
     serializer_class = RiskClassificationSerializer
+    audit_resource_type = "RiskClassification"
 
     def get_permissions(self):
         return [IsAuthenticated(), HasPermission("emergency.read")]

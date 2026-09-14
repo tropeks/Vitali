@@ -506,3 +506,39 @@ class GlosaAccuracyTests(BillingAnalyticsBaseCase):
         resp = self.client.get("/api/v1/analytics/billing/glosa-accuracy/")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json(), [])
+
+
+class BillingAnalyticsRbacPermissionTests(TenantTestCase):
+    """3.10 regression: the billing module being active is not enough — a
+    tenant user without billing.read (e.g. a nurse) must not read consolidated
+    revenue/glosa/denial figures (RBAC.md §2)."""
+
+    ENDPOINTS = [
+        "/api/v1/analytics/billing/overview/",
+        "/api/v1/analytics/billing/operational/",
+        "/api/v1/analytics/billing/monthly-revenue/",
+        "/api/v1/analytics/billing/denial-by-insurer/",
+        "/api/v1/analytics/billing/batch-throughput/",
+        "/api/v1/analytics/billing/glosa-accuracy/",
+    ]
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.defaults["SERVER_NAME"] = self.__class__.domain.domain
+        FeatureFlag.objects.update_or_create(
+            tenant=self.__class__.tenant, module_key="billing", defaults={"is_enabled": True}
+        )
+        role = Role.objects.create(name="enfermeiro", permissions=["emr.read", "pharmacy.dispense"])
+        self.user = User.objects.create_user(
+            email="nurse@analytics-rbac.test",
+            full_name="Nurse No Billing",
+            password="Str0ng!Pass#2024",
+            role=role,
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_role_without_billing_read_gets_403(self):
+        for url in self.ENDPOINTS:
+            with self.subTest(url=url):
+                resp = self.client.get(url)
+                self.assertEqual(resp.status_code, 403)

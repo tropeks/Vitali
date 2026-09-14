@@ -34,6 +34,17 @@ async function proxy(request: NextRequest): Promise<NextResponse> {
   headers.set("X-Forwarded-Host", forwardedHost);
   headers.set("X-Forwarded-Proto", "https");
 
+  // Inject the Authorization header from the httpOnly access_token cookie —
+  // the client never holds the token (no access_token_js mirror). Any
+  // Authorization header the client sent is discarded: the httpOnly cookie
+  // read here on the server is the only source of truth.
+  const accessToken = request.cookies.get("access_token")?.value;
+  if (accessToken) {
+    headers.set("Authorization", `Bearer ${accessToken}`);
+  } else {
+    headers.delete("Authorization");
+  }
+
   let body: BodyInit | undefined;
   if (!["GET", "HEAD"].includes(request.method)) {
     body = await request.arrayBuffer();

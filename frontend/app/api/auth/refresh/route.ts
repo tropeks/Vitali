@@ -55,14 +55,6 @@ export async function POST(req: NextRequest) {
     maxAge: 15 * 60,
   });
 
-  response.cookies.set("access_token_js", data.access, {
-    httpOnly: false,
-    secure: IS_PROD,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 15 * 60,
-  });
-
   // SimpleJWT rotation returns a new refresh token
   if (data.refresh) {
     response.cookies.set("refresh_token", data.refresh, {

@@ -12,7 +12,6 @@ import {
   ShieldAlert,
   Truck,
 } from 'lucide-react'
-import { getAccessToken } from '@/lib/auth'
 import {
   getStockStatusMeta,
   PRESCRIPTION_STATUS_META,
@@ -72,11 +71,8 @@ function listFromResponse<T>(data: ApiList<T>): T[] {
 }
 
 async function apiGet<T>(path: string): Promise<T> {
-  const token = getAccessToken()
-  if (!token) throw new Error('Sessão expirada')
   const response = await fetch(`/api/v1${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
+      })
   if (!response.ok) throw new Error(`Falha ${response.status}`)
   return response.json()
 }

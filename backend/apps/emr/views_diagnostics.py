@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.core.mixins import AuditReadMixin
 from apps.core.permissions import HasPermission
 
 from .models import CriticalLabResult, LabInstrument, LabOrderItem, LabSpecimen
@@ -29,11 +30,12 @@ class LabInstrumentViewSet(DiagnosticsPermissionsMixin, viewsets.ModelViewSet):
     serializer_class = LabInstrumentSerializer
 
 
-class LabSpecimenViewSet(DiagnosticsPermissionsMixin, viewsets.ModelViewSet):
+class LabSpecimenViewSet(AuditReadMixin, DiagnosticsPermissionsMixin, viewsets.ModelViewSet):
     queryset = LabSpecimen.objects.select_related("order", "collected_by").prefetch_related(
         "events"
     )
     serializer_class = LabSpecimenSerializer
+    audit_resource_type = "LabSpecimen"
 
     @action(detail=True, methods=["post"])
     def transition(self, request, pk=None):
@@ -55,11 +57,14 @@ class LabSpecimenViewSet(DiagnosticsPermissionsMixin, viewsets.ModelViewSet):
         return Response(self.get_serializer(specimen).data)
 
 
-class CriticalLabResultViewSet(DiagnosticsPermissionsMixin, viewsets.ReadOnlyModelViewSet):
+class CriticalLabResultViewSet(
+    AuditReadMixin, DiagnosticsPermissionsMixin, viewsets.ReadOnlyModelViewSet
+):
     queryset = CriticalLabResult.objects.select_related(
         "order_item", "detected_by", "acknowledged_by"
     )
     serializer_class = CriticalLabResultSerializer
+    audit_resource_type = "CriticalLabResult"
 
     @action(detail=False, methods=["post"])
     def detect(self, request):

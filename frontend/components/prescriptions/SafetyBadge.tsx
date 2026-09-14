@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { getAccessToken } from '@/lib/auth';
 import { Loader2, ShieldCheck, AlertTriangle, XCircle } from 'lucide-react';
 
 export interface SafetyAlert {
@@ -30,11 +29,7 @@ const POLL_INTERVAL_MS = 2000;
 const MAX_POLLS = 5; // 10s total
 
 async function fetchSafetyStatus(prescriptionId: string, itemId: string): Promise<SafetyStatus> {
-  const token = getAccessToken();
-  const res = await fetch(
-    `/api/v1/prescription-items/${itemId}/safety-check/`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
+  const res = await fetch(`/api/v1/prescription-items/${itemId}/safety-check/`);
   if (!res.ok) return { status: 'error', alerts: [] };
   return res.json();
 }

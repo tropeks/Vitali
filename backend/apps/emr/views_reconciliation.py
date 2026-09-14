@@ -19,6 +19,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.core.mixins import AuditReadMixin
 from apps.core.permissions import HasPermission
 
 from .models import Encounter
@@ -34,10 +35,11 @@ from .views import log_audit
 _READ_ACTIONS = {"list", "retrieve"}
 
 
-class MedicationReconciliationViewSet(viewsets.ModelViewSet):
+class MedicationReconciliationViewSet(AuditReadMixin, viewsets.ModelViewSet):
     """Per-encounter medication reconciliation with immutable, audited decisions."""
 
     serializer_class = MedicationReconciliationSerializer
+    audit_resource_type = "MedicationReconciliation"
     http_method_names = ("get", "post", "head", "options")
 
     def get_queryset(self):

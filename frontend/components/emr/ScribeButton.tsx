@@ -2,7 +2,6 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Mic, MicOff, Loader2, CheckCircle2, AlertTriangle, X, Sparkles } from 'lucide-react';
-import { getAccessToken } from '@/lib/auth';
 import { useAIConfig } from '@/hooks/useAIConfig';
 import { AudioRecorder } from './AudioRecorder';
 
@@ -25,11 +24,9 @@ const POLL_INTERVAL_MS = 2000;
 const MAX_POLLS = 30; // 60s timeout
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const token = getAccessToken();
   const res = await fetch(`/api/v1${path}`, {
     ...options,
     headers: {
-      Authorization: `Bearer ${token}`,
       ...(options?.body ? { 'Content-Type': 'application/json' } : {}),
       ...(options?.headers ?? {}),
     },
@@ -125,13 +122,9 @@ export function ScribeButton({ encounterId, soapNoteId, onApplied }: ScribeButto
     if (!soap || !soapNoteId) return;
     setApplying(true);
     try {
-      const token = getAccessToken();
       const res = await fetch(`/api/v1/soap-notes/${soapNoteId}/`, {
         method: 'PATCH',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(soap),
       });
       if (!res.ok) throw new Error(`Erro ${res.status}`);

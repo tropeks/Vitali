@@ -8,7 +8,6 @@ import { SOAPEditor } from '@/components/encounters/SOAPEditor';
 import { PrescriptionBuilder } from '@/components/prescriptions/PrescriptionBuilder';
 import { ScribeButton } from '@/components/emr/ScribeButton';
 import { ImagingPanel } from '@/components/imaging/ImagingPanel';
-import { getAccessToken } from '@/lib/auth';
 import { useHasModule } from '@/hooks/useHasModule';
 import Link from 'next/link';
 import {
@@ -112,19 +111,16 @@ const isEncounterTab = (value: string): value is EncounterTab =>
   ENCOUNTER_TABS.some((tab) => tab.id === value);
 
 async function apiFetch(path: string) {
-  const token = getAccessToken();
   const res = await fetch(`/api/v1${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+      });
   if (!res.ok) throw new Error(`${res.status}`);
   return res.json();
 }
 
 async function apiPost(path: string, body?: Record<string, unknown>) {
-  const token = getAccessToken();
   const res = await fetch(`/api/v1${path}`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) throw new Error(`${res.status}`);
@@ -132,10 +128,9 @@ async function apiPost(path: string, body?: Record<string, unknown>) {
 }
 
 async function apiPatch(path: string, body: Record<string, unknown>) {
-  const token = getAccessToken();
   const res = await fetch(`/api/v1${path}`, {
     method: 'PATCH',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`${res.status}`);
@@ -348,11 +343,8 @@ function FaturamentoCard({ encounterId }: { encounterId: string }) {
   const [hidden, setHidden] = useState(false);
 
   useEffect(() => {
-    const token = getAccessToken();
-    if (!token) { setLoading(false); return; }
     fetch(`/api/v1/billing/guides/?encounter=${encounterId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+          })
       .then(r => {
         if (r.status === 403) { setHidden(true); return null; }
         if (!r.ok) throw new Error(`${r.status}`);

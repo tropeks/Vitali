@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { getAccessToken } from '@/lib/auth';
 
 function fmtDate(val: any) {
   if (!val) return '—';
@@ -16,11 +15,8 @@ export default function PriceTablesPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const token = getAccessToken();
-    if (!token) { setError('Sessão expirada'); setLoading(false); return; }
     fetch('/api/v1/billing/price-tables/', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+          })
       .then(r => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); })
       .then(data => setTables(Array.isArray(data) ? data : data.results ?? []))
       .catch(e => setError(e.message))

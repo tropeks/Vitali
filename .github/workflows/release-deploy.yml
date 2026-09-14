@@ -50,11 +50,37 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (labels)
-        id: meta
+      # Um metadata POR IMAGEM — ordem 005. Estas sao as imagens de PRODUCAO:
+      # sem `org.opencontainers.image.revision` ninguem consegue dizer de qual
+      # commit saiu o que esta no ar. Ate 12/09 so o backend recebia `labels:`,
+      # exatamente como no deploy-staging.yml.
+      - name: Extract metadata (backend)
+        id: meta_backend
         uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6
         with:
           images: ${{ env.BACKEND_IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=ref,event=tag
+            type=sha,prefix=sha-
+
+      - name: Extract metadata (frontend)
+        id: meta_frontend
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6
+        with:
+          images: ${{ env.FRONTEND_IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=ref,event=tag
+            type=sha,prefix=sha-
+
+      - name: Extract metadata (viewer)
+        id: meta_viewer
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6
+        with:
+          images: ${{ env.VIEWER_IMAGE }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -69,7 +95,7 @@ jobs:
           tags: |
             ${{ env.BACKEND_IMAGE }}:${{ github.ref_name }}
             ${{ env.BACKEND_IMAGE }}:sha-${{ github.sha }}
-          labels: ${{ steps.meta.outputs.labels }}
+          labels: ${{ steps.meta_backend.outputs.labels }}
           cache-from: type=registry,ref=${{ env.BACKEND_IMAGE }}:latest
           cache-to: type=inline
 
@@ -81,6 +107,7 @@ jobs:
           tags: |
             ${{ env.FRONTEND_IMAGE }}:${{ github.ref_name }}
             ${{ env.FRONTEND_IMAGE }}:sha-${{ github.sha }}
+          labels: ${{ steps.meta_frontend.outputs.labels }}
           cache-from: type=registry,ref=${{ env.FRONTEND_IMAGE }}:latest
           cache-to: type=inline
 
@@ -92,5 +119,6 @@ jobs:
           tags: |
             ${{ env.VIEWER_IMAGE }}:${{ github.ref_name }}
             ${{ env.VIEWER_IMAGE }}:sha-${{ github.sha }}
+          labels: ${{ steps.meta_viewer.outputs.labels }}
           cache-from: type=registry,ref=${{ env.VIEWER_IMAGE }}:latest
           cache-to: type=inline

@@ -1,0 +1,10 @@
+# Tabela de preço DIDÁTICA para staging — ordem 006.
+#
+# Valores REDONDOS de propósito: a conta do lote tem de ser conferível de cabeça.
+# Não são valores praticados por operadora nenhuma, e não devem virar preço real.
+#
+# `tuss_code` referencia o catálogo TUSS já carregado (core.TUSSCode, 54.139
+# códigos em staging). O comando recusa código que não exista — preço de
+# procedimento inexistente é dado inventado, o que o INTENT §Limites proíbe.
+tuss_code;negotiated_value;description
+10101012;100.00;Consulta em consultório (didático)

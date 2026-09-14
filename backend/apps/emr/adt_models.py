@@ -316,6 +316,92 @@ class Admission(models.Model):
         AEROSSOL = "aerossol", "Aerossol"
         PROTETOR = "protetor", "Protetor (reverso)"
 
+    # ── Taxonomias TISS 4.01.00 (Resumo de Internação, ctm_internacaoResumoGuia) ──
+    # Valores extraídos programaticamente (lxml) de
+    # apps/billing/schemas/tissSimpleTypesV4_01_00.xsd — os CODES (``value``) são
+    # exatos, copiados do ``xs:enumeration`` de cada ``simpleType``. O XSD NÃO traz
+    # ``xs:documentation`` para nenhum desses domínios, então os rótulos em
+    # português não vêm do schema: são o texto oficial das tabelas de domínio da
+    # ANS para os domínios pequenos e estáveis (caráter/tipo/regime, ≤5 valores
+    # cada), e ficam explicitamente marcados como "a confirmar" para os códigos de
+    # ``dm_motivoSaida`` (34) que não têm precedente testado no repo — não
+    # fabricar rótulo clínico/financeiro sem checar o manual ANS (ver
+    # docs/research/VITALI_ONDA4_TISS_MODELAGEM.md §5/§8). Mesmo padrão de
+    # ``AihAutorizacao.CaraterInternacao``/``MotivoSaida`` (apps/billing/sus_models.py):
+    # os códigos SUS daquele precedente ('01'/'02') são DIFERENTES dos códigos TISS
+    # aqui ('1'/'2') — não são o mesmo domínio, apesar da semântica parecida.
+    class CaraterAtendimento(models.TextChoices):
+        """TISS ``dm_caraterAtendimento``. NÃO confundir com o código SUS
+        ``AihAutorizacao.CaraterInternacao`` ('01'/'02') — domínios distintos."""
+
+        ELETIVO = "1", "Eletivo"
+        URGENCIA_EMERGENCIA = "2", "Urgência/Emergência"
+
+    class TipoInternacao(models.TextChoices):
+        """TISS ``dm_tipoInternacao`` — especialidade da internação (não é a
+        origem: isso é ``AdmissionSource``)."""
+
+        CLINICO = "1", "Clínico"
+        CIRURGICO = "2", "Cirúrgico"
+        OBSTETRICO = "3", "Obstétrico"
+        PEDIATRICO = "4", "Pediátrico"
+        PSIQUIATRICO = "5", "Psiquiátrico"
+
+    class RegimeInternacao(models.TextChoices):
+        """TISS ``dm_regimeInternacao``."""
+
+        HOSPITALAR = "1", "Hospitalar"
+        HOSPITAL_DIA = "2", "Hospital-dia"
+        DOMICILIAR = "3", "Domiciliar"
+
+    class MotivoEncerramento(models.TextChoices):
+        """TISS ``dm_motivoSaida`` (28 códigos, tabela de domínio 34 —
+        ``dadosSaidaInternacao.motivoEncerramento``). NÃO substitui
+        ``Admission.disposition`` (vocabulário clínico da equipe assistencial,
+        já usado pela tela de alta) — é um segundo campo, preenchido junto, só
+        para a guia TISS.
+
+        Códigos 11–32 têm rótulo confirmado (tabela clássica de motivo de
+        saída/permanência, idêntica em estrutura à usada por AihAutorizacao/SUS,
+        historicamente estável). Códigos 41–67 são exclusivos do domínio TISS
+        (sem equivalente na tabela SUS) e o rótulo NÃO foi conferido contra o
+        manual de tabelas de domínio da ANS — marcados explicitamente como
+        pendente em vez de arriscar um rótulo clínico/financeiro inventado.
+        """
+
+        ALTA_MELHORADO = "11", "Alta melhorado"
+        ALTA_A_PEDIDO = "12", "Alta a pedido"
+        ALTA_POR_EVASAO = "14", "Alta por evasão"
+        ALTA_PREVISAO_RETORNO = "15", "Alta com previsão de retorno para acompanhamento do paciente"
+        ALTA_OUTROS_MOTIVOS = "16", "Alta por outros motivos"
+        ALTA_PUERPERA_RN = "18", "Alta da puérpera e do recém-nascido"
+        ALTA_PUERPERA = "19", "Alta da puérpera"
+        TRANSFERENCIA_DOMICILIAR = "21", "Transferência para internação domiciliar"
+        PERMANENCIA_DOENCA = "22", "Permanência por características próprias da doença"
+        PERMANENCIA_INTERCORRENCIA = "23", "Permanência por intercorrência"
+        PERMANENCIA_IMPOSSIBILIDADE_SOCIAL = "24", "Permanência por impossibilidade social"
+        TRANSFERENCIA_OUTRO_ESTABELECIMENTO = "25", "Transferência para outro estabelecimento"
+        PERMANENCIA_OUTROS_MOTIVOS = "26", "Permanência por outros motivos"
+        OBITO_DO_MEDICO_ASSISTENTE = (
+            "27",
+            "Óbito com declaração de óbito fornecida pelo médico assistente",
+        )
+        OBITO_DO_IML = "28", "Óbito com declaração de óbito fornecida pelo IML"
+        OBITO_DO_SVO = "31", "Óbito com declaração de óbito fornecida pelo SVO"
+        ENCERRAMENTO_ADMINISTRATIVO = "32", "Encerramento administrativo"
+        # Faixa 41–67: só o código é confiável (extraído do XSD); rótulo pendente.
+        CODIGO_41 = "41", "Código 41 (rótulo a confirmar no manual ANS)"
+        CODIGO_42 = "42", "Código 42 (rótulo a confirmar no manual ANS)"
+        CODIGO_43 = "43", "Código 43 (rótulo a confirmar no manual ANS)"
+        CODIGO_51 = "51", "Código 51 (rótulo a confirmar no manual ANS)"
+        CODIGO_61 = "61", "Código 61 (rótulo a confirmar no manual ANS)"
+        CODIGO_62 = "62", "Código 62 (rótulo a confirmar no manual ANS)"
+        CODIGO_63 = "63", "Código 63 (rótulo a confirmar no manual ANS)"
+        CODIGO_64 = "64", "Código 64 (rótulo a confirmar no manual ANS)"
+        CODIGO_65 = "65", "Código 65 (rótulo a confirmar no manual ANS)"
+        CODIGO_66 = "66", "Código 66 (rótulo a confirmar no manual ANS)"
+        CODIGO_67 = "67", "Código 67 (rótulo a confirmar no manual ANS)"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     patient = models.ForeignKey(
         "emr.Patient", on_delete=models.PROTECT, related_name="admissions", verbose_name="Paciente"
@@ -384,6 +470,47 @@ class Admission(models.Model):
         choices=IsolationPrecaution.choices,
         default=IsolationPrecaution.NENHUMA,
         db_index=True,
+    )
+
+    # ── Taxonomias TISS 4.01.00 (Resumo de Internação) ────────────────────────
+    # Todos opcionais (blank=True, default=""): internações já gravadas continuam
+    # válidas sem backfill, e a guia TISS de internação só existe para uma parte
+    # das internações (nem toda internação vira faturamento TISS). Capturados na
+    # admissão (carater/tipo/regime) e na alta (disposition_ans_code) — mesmo
+    # ponto de entrada dos campos clínicos irmãos (admission_source/disposition).
+    carater_atendimento = models.CharField(  # noqa: DJ001
+        "Caráter do atendimento (TISS)",
+        max_length=1,
+        choices=CaraterAtendimento.choices,
+        blank=True,
+        default="",
+        help_text="dm_caraterAtendimento — eletivo ou urgência/emergência, para a guia TISS.",
+    )
+    tipo_internacao = models.CharField(  # noqa: DJ001
+        "Tipo de internação (TISS)",
+        max_length=1,
+        choices=TipoInternacao.choices,
+        blank=True,
+        default="",
+        help_text="dm_tipoInternacao — especialidade da internação, para a guia TISS.",
+    )
+    regime_internacao = models.CharField(  # noqa: DJ001
+        "Regime de internação (TISS)",
+        max_length=1,
+        choices=RegimeInternacao.choices,
+        blank=True,
+        default="",
+        help_text="dm_regimeInternacao — hospitalar/hospital-dia/domiciliar, para a guia TISS.",
+    )
+    # NÃO substitui `disposition` (vocabulário clínico da tela de alta) — campo
+    # irmão, preenchido na mesma ação, só para <dadosSaidaInternacao> da guia.
+    disposition_ans_code = models.CharField(  # noqa: DJ001
+        "Motivo de encerramento (TISS)",
+        max_length=2,
+        choices=MotivoEncerramento.choices,
+        blank=True,
+        default="",
+        help_text="dm_motivoSaida — motivo de encerramento ANS, para a guia TISS de internação.",
     )
 
     created_at = models.DateTimeField(auto_now_add=True)

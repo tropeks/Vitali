@@ -11,6 +11,7 @@ from typing import Any
 
 from django.conf import settings
 from django.db import connection, transaction
+from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
@@ -662,8 +663,15 @@ class SubscriptionWebhookView(APIView):
                 return Response({"status": "ok"})
 
             if tenant.status != Tenant.Status.ACTIVE:
+                # Do not call Tenant.save() here: django-tenants treats every
+                # save on a freshly loaded Tenant as schema provisioning
+                # (auto_create_schema=True). A webhook must only update the
+                # public row and never create/reconcile a tenant schema.
                 tenant.status = Tenant.Status.ACTIVE
-                tenant.save(update_fields=["status", "updated_at"])
+                Tenant.objects.filter(pk=tenant.pk).update(
+                    status=Tenant.Status.ACTIVE,
+                    updated_at=timezone.now(),
+                )
             if subscription.status != Subscription.Status.ACTIVE:
                 subscription.status = Subscription.Status.ACTIVE
                 subscription.save(update_fields=["status"])

@@ -15,6 +15,7 @@ here (the parent does that cross-module integration).
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 
+from apps.core.mixins import AuditReadMixin
 from apps.core.permissions import HasPermission
 
 from .models import Allergy, Immunization, ProblemListItem
@@ -28,8 +29,13 @@ from .views import log_audit
 _READ_ACTIONS = {"list", "retrieve"}
 
 
-class _PatientScopedEMRViewSet(viewsets.ModelViewSet):
-    """Shared behaviour: emr.read/emr.write split + optional ?patient filter."""
+class _PatientScopedEMRViewSet(AuditReadMixin, viewsets.ModelViewSet):
+    """Shared behaviour: emr.read/emr.write split + optional ?patient filter.
+
+    ``audit_resource_type`` here does double duty: it names both the create
+    audit action (below) and the read audit action inherited from
+    ``AuditReadMixin``.
+    """
 
     audit_resource_type = ""
     audit_create_action = ""

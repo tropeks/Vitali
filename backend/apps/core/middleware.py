@@ -171,6 +171,42 @@ class FeatureFlagMiddleware:
         return response
 
 
+# ─── Shared JWT resolution for middleware (pre-view auth) ────────────────────
+
+
+def _resolve_jwt_auth(request):
+    """
+    Resolve ``(user, validated_token)`` via ``TenantJWTAuthentication`` and
+    cache the result on the request.
+
+    DRF authentication is lazy — it only fires inside the view layer, once
+    ``request.user``/``request.auth`` are accessed — but middleware runs
+    BEFORE the view. ``MFARequiredMiddleware`` and
+    ``PasswordChangeRequiredMiddleware`` both need to know who the Bearer
+    token belongs to, and the former runs first in ``MIDDLEWARE``, so both
+    call this helper: the token is decoded/validated at most once per
+    request even though two middlewares consult it.
+
+    This is a READ, not an enforcement point — it must never turn a request
+    into a 500 or a parallel authenticator. Returns ``None`` on a missing
+    Authorization header, an invalid/expired token, an inactive user, or any
+    other authentication failure, and always falls through to
+    ``get_response`` — the view's own DRF authentication remains the single
+    source of 401 responses for uncredentialed/bad requests.
+    """
+    if hasattr(request, "_jwt_auth_cache"):
+        return request._jwt_auth_cache
+    result = None
+    try:
+        from apps.core.authentication import TenantJWTAuthentication
+
+        result = TenantJWTAuthentication().authenticate(request)
+    except Exception:
+        result = None
+    request._jwt_auth_cache = result
+    return result
+
+
 # ─── S-062: MFA Required Middleware ──────────────────────────────────────────
 
 _MFA_EXEMPT_PATHS = {
@@ -208,13 +244,32 @@ class MFARequiredMiddleware:
 
     def __call__(self, request):
         user = getattr(request, "user", None)
+        token_payload = None
+        if user is not None and user.is_authenticated:
+            # Session-authenticated caller (e.g. Django admin, which is the
+            # only surface AuthenticationMiddleware actually populates
+            # request.user for). No JWT claim to read — mfa_verified stays
+            # False, so a covered staff account still has to prove MFA via
+            # the device check below.
+            token_payload = getattr(request, "auth", None)
+        else:
+            # Bearer-token API traffic: request.user is AnonymousUser here
+            # because DRF authentication is lazy and hasn't run yet (that's
+            # the S-062-NEW bug — this middleware used to stop right here,
+            # silently no-op'ing for every API request). Resolve the JWT
+            # explicitly, mirroring PasswordChangeRequiredMiddleware.
+            resolved = _resolve_jwt_auth(request)
+            if resolved is not None:
+                user, token_payload = resolved
+            else:
+                user = None
+
         if user and user.is_authenticated:
             from apps.core.mfa import mfa_enrollment_grace_expired, mfa_required_for
 
             if mfa_required_for(user):
                 path = request.path_info
                 if not any(path.endswith(p) or path == p for p in _MFA_EXEMPT_PATHS):
-                    token_payload = getattr(request, "auth", None)
                     mfa_verified = False
                     if token_payload and hasattr(token_payload, "get"):
                         mfa_verified = bool(token_payload.get("mfa_verified"))
@@ -272,19 +327,18 @@ class PasswordChangeRequiredMiddleware:
         Return the authenticated user, attempting JWT resolution when the
         session user is anonymous. This is necessary because DRF authentication
         is lazy and only fires inside the view layer — middleware runs first.
+
+        Delegates to ``_resolve_jwt_auth``, the same helper
+        ``MFARequiredMiddleware`` uses (and, since that middleware runs
+        earlier in ``MIDDLEWARE``, whatever it already decoded is reused here
+        via the request-level cache instead of re-validating the token).
         """
         user = getattr(request, "user", None)
         if user is not None and user.is_authenticated:
             return user
-        # Attempt JWT authentication so Bearer tokens are honoured in middleware.
-        try:
-            from apps.core.authentication import TenantJWTAuthentication
-
-            result = TenantJWTAuthentication().authenticate(request)
-            if result is not None:
-                return result[0]
-        except Exception:
-            pass
+        resolved = _resolve_jwt_auth(request)
+        if resolved is not None:
+            return resolved[0]
         return None
 
     def __call__(self, request):

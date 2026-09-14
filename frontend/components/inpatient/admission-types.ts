@@ -35,6 +35,12 @@ export interface Admission {
   expected_discharge_datetime?: string | null
   actual_discharge_datetime?: string | null
   disposition?: string | null
+  /** Taxonomias TISS 4.01.00 (Resumo de Internação) — todas opcionais, `""` quando ausentes. */
+  carater_atendimento?: string
+  tipo_internacao?: string
+  regime_internacao?: string
+  /** dm_motivoSaida — irmão de `disposition`, não substituto; read-only, setado via /discharge/. */
+  disposition_ans_code?: string
   status: string
   created_at?: string | null
   updated_at?: string | null
@@ -107,6 +113,29 @@ export const DISPOSITION_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'obito', label: 'Óbito' },
   { value: 'evasao', label: 'Evasão' },
   { value: 'outro', label: 'Outro' },
+]
+
+// ─── Taxonomias TISS (Admission.CaraterAtendimento / TipoInternacao /
+// RegimeInternacao) — mirrors `backend/apps/emr/adt_models.py` verbatim.
+// Todas opcionais: o valor `''` representa "não informado" (blank=True no model).
+
+export const CARATER_ATENDIMENTO_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: '1', label: 'Eletivo' },
+  { value: '2', label: 'Urgência/Emergência' },
+]
+
+export const TIPO_INTERNACAO_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: '1', label: 'Clínico' },
+  { value: '2', label: 'Cirúrgico' },
+  { value: '3', label: 'Obstétrico' },
+  { value: '4', label: 'Pediátrico' },
+  { value: '5', label: 'Psiquiátrico' },
+]
+
+export const REGIME_INTERNACAO_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: '1', label: 'Hospitalar' },
+  { value: '2', label: 'Hospital-dia' },
+  { value: '3', label: 'Domiciliar' },
 ]
 
 export const EVENT_TYPE_META: Record<string, { label: string; badgeClass: string }> = {

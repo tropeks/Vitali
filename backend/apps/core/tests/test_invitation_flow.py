@@ -102,7 +102,7 @@ class UserInvitationFlowTests(TenantTestCase):
         _invitation, token = _make_valid_token(self.invite_user)
         resp = self.client.post(
             f"/api/v1/auth/set-password/{token}/",
-            {"password": "NewPass123!"},
+            {"password": "NewPass1234!"},
             format="json",
         )
         self.assertEqual(resp.status_code, 200, resp.json())
@@ -122,7 +122,7 @@ class UserInvitationFlowTests(TenantTestCase):
         _invitation, token = _make_valid_token(self.invite_user)
         self.client.post(
             f"/api/v1/auth/set-password/{token}/",
-            {"password": "NewPass123!"},
+            {"password": "NewPass1234!"},
             format="json",
         )
         self.invite_user.refresh_from_db()
@@ -137,7 +137,7 @@ class UserInvitationFlowTests(TenantTestCase):
         url = f"/api/v1/auth/set-password/{token}/"
 
         # First use — should succeed
-        resp1 = self.client.post(url, {"password": "FirstPass1!"}, format="json")
+        resp1 = self.client.post(url, {"password": "FirstPass12!"}, format="json")
         self.assertEqual(resp1.status_code, 200)
 
         # consumed_at set
@@ -165,7 +165,7 @@ class UserInvitationFlowTests(TenantTestCase):
 
         resp = self.client.post(
             f"/api/v1/auth/set-password/{expired_token}/",
-            {"password": "SomePass1!"},
+            {"password": "SomePass123!"},
             format="json",
         )
         self.assertEqual(resp.status_code, 410)
@@ -190,7 +190,7 @@ class UserInvitationFlowTests(TenantTestCase):
 
         resp = self.client.post(
             f"/api/v1/auth/set-password/{tampered}/",
-            {"password": "SomePass1!"},
+            {"password": "SomePass123!"},
             format="json",
         )
         self.assertEqual(resp.status_code, 400)

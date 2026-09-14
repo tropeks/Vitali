@@ -48,6 +48,7 @@ from apps.billing.models import (
     TISSGuide,
     TISSGuideItem,
 )
+from apps.billing.services.execution_dates import to_local_date
 from apps.core.models import TUSSCode
 from apps.emr.models import LabOrder, PatientInsurance
 
@@ -115,6 +116,13 @@ def generate_sadt_guide_for_lab_order(order: LabOrder) -> TISSGuide:
             provider=provider,
             price_table=price_table,
             lab_order=order,
+            # O médico que PEDIU o exame é literalmente o solicitante da guia
+            # SP/SADT — fato do fluxo, não inferência. `requested_by` é um
+            # core.User; só vira solicitante quem tem perfil de profissional
+            # (conselho/UF/CBO), porque é isso que profissionalSolicitante exige.
+            # Recepcionista que registra um pedido não tem conselho e não pode
+            # ser declarada solicitante: fica nulo e o XML falha alto.
+            requesting_professional=getattr(order.requested_by, "professional", None),
             status="draft",
             insured_card_number=insurance.card_number or "",
             competency=competency,
@@ -134,6 +142,14 @@ def generate_sadt_guide_for_lab_order(order: LabOrder) -> TISSGuide:
                 description=item.test_name or item.test.name,
                 quantity=Decimal("1"),
                 unit_value=_unit_value(price_table, tuss),
+                # dataExecucao do exame: quando ele foi RESULTADO, não quando foi
+                # pedido. `order.requested_at` existe e seria tentador, mas pedir
+                # não é executar — usá-lo seria carimbar a data do pedido como se
+                # fosse a da execução. Item ainda sem resultado nasce sem data e a
+                # emissão do XML falha alto (mesma regra das taxonomias vazias).
+                execution_date=to_local_date(item.resulted_at),
+                # Exame laboratorial é procedimento — entra em valorProcedimentos.
+                billing_category=TISSGuideItem.BillingCategory.PROCEDIMENTOS,
             )
 
         # No ordered test resolved to a payer-billable TUSS procedure — there is

@@ -58,6 +58,18 @@ services:
     environment:
       DJANGO_SETTINGS_MODULE: vitali.settings.production
       HEALTHCHECK_HOST: ${HEALTHCHECK_HOST:-localhost}
+      # Hardcoded (not left to secrets.env) so core.E002 cannot be silently
+      # bypassed by an incomplete secrets file. Run backfill_tenant_memberships
+      # BEFORE first deploy with this set — see .env.example.
+      ENFORCE_TENANT_MEMBERSHIP: "true"
+      # Onda 2 / item 2.9: same reasoning as ENFORCE_TENANT_MEMBERSHIP above —
+      # hardcoded (not left to secrets.env) so the Orthanc webhook/poller can't
+      # silently go inert from a missing env var (settings/base.py defaults
+      # ORTHANC_URL to ""). ORTHANC_USERNAME/PASSWORD are real credentials,
+      # already required (`:?`) below for the orthanc/nginx services.
+      ORTHANC_URL: http://orthanc:8042
+      ORTHANC_USERNAME: ${ORTHANC_USERNAME}
+      ORTHANC_PASSWORD: ${ORTHANC_PASSWORD}
     depends_on:
       postgres:
         condition: service_healthy
@@ -85,17 +97,42 @@ services:
       DJANGO_SETTINGS_MODULE: vitali.settings.production
       VITALI_ROLE: worker
       CELERY_DATABASE_URL: ${CELERY_DATABASE_URL}
+      # See django service: hardcoded so it can't be silently disabled.
+      ENFORCE_TENANT_MEMBERSHIP: "true"
+      # Onda 2 / item 2.9: this is the process that actually executes
+      # imaging.sync_orthanc_studies (celery-beat only schedules it) — see
+      # django service comment above.
+      ORTHANC_URL: http://orthanc:8042
+      ORTHANC_USERNAME: ${ORTHANC_USERNAME}
+      ORTHANC_PASSWORD: ${ORTHANC_PASSWORD}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "celery -A vitali inspect ping -t 10 >/dev/null 2>&1 || exit 1"]
-      interval: 30s
-      timeout: 15s
+      # MEDIDO em 25/08, dentro dos containers de staging: esta sonda sobe o
+      # Django inteiro a cada execucao, e o custo disso depende do orcamento de
+      # CPU do container. `celery-beat` (cpus=0.25) levou **24,9s**; o
+      # `celery-worker` (cpus=1.0), **11,7s**. Com o `timeout: 15s` anterior o
+      # beat estourava SEMPRE (`exit=-1`, "Health check exceeded timeout") e
+      # ficava `unhealthy` permanente com o agendador despachando tarefa
+      # normalmente — o log provava isso a cada minuto. O worker passava por
+      # 3,3s de margem, ou seja, a um pico de carga de comecar a piscar.
+      #
+      # A sonda nunca esteve errada: ela foi escrita e validada contra o
+      # `docker-compose.yml` base, que **nao declara limite de CPU**. Os limites
+      # entraram depois, so em staging e prod, e o timeout nao foi revisitado.
+      #
+      # `-t 5` corta 5s da espera por resposta; `timeout: 45s` da folga real
+      # sobre os 24,9s medidos; `interval: 60s` reduz pela metade a frequencia
+      # com que um container de 0,25 CPU gasta o proprio orcamento provando que
+      # esta vivo, em vez de despachar tarefa.
+      test: ["CMD-SHELL", "celery -A vitali inspect ping -t 5 >/dev/null 2>&1 || exit 1"]
+      interval: 60s
+      timeout: 45s
       retries: 3
-      start_period: 60s
+      start_period: 90s
     mem_limit: 1g
     cpus: 1.0
 
@@ -109,17 +146,36 @@ services:
       DJANGO_SETTINGS_MODULE: vitali.settings.production
       VITALI_ROLE: beat
       CELERY_DATABASE_URL: ${CELERY_DATABASE_URL}
+      # See django service: hardcoded so it can't be silently disabled.
+      ENFORCE_TENANT_MEMBERSHIP: "true"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "celery -A vitali inspect ping -t 10 >/dev/null 2>&1 || exit 1"]
-      interval: 30s
-      timeout: 15s
+      # MEDIDO em 25/08, dentro dos containers de staging: esta sonda sobe o
+      # Django inteiro a cada execucao, e o custo disso depende do orcamento de
+      # CPU do container. `celery-beat` (cpus=0.25) levou **24,9s**; o
+      # `celery-worker` (cpus=1.0), **11,7s**. Com o `timeout: 15s` anterior o
+      # beat estourava SEMPRE (`exit=-1`, "Health check exceeded timeout") e
+      # ficava `unhealthy` permanente com o agendador despachando tarefa
+      # normalmente — o log provava isso a cada minuto. O worker passava por
+      # 3,3s de margem, ou seja, a um pico de carga de comecar a piscar.
+      #
+      # A sonda nunca esteve errada: ela foi escrita e validada contra o
+      # `docker-compose.yml` base, que **nao declara limite de CPU**. Os limites
+      # entraram depois, so em staging e prod, e o timeout nao foi revisitado.
+      #
+      # `-t 5` corta 5s da espera por resposta; `timeout: 45s` da folga real
+      # sobre os 24,9s medidos; `interval: 60s` reduz pela metade a frequencia
+      # com que um container de 0,25 CPU gasta o proprio orcamento provando que
+      # esta vivo, em vez de despachar tarefa.
+      test: ["CMD-SHELL", "celery -A vitali inspect ping -t 5 >/dev/null 2>&1 || exit 1"]
+      interval: 60s
+      timeout: 45s
       retries: 3
-      start_period: 60s
+      start_period: 90s
     mem_limit: 256m
     cpus: 0.25
 
@@ -181,7 +237,16 @@ services:
       - "127.0.0.1:8042:8042"
       - "${ORTHANC_DICOM_BIND_ADDRESS:-127.0.0.1}:4242:4242"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS -u $${ORTHANC_USERNAME}:$${ORTHANC_PASSWORD} http://127.0.0.1:8042/system || exit 1"]
+      # A imagem do Orthanc NAO tem curl nem wget (verificado em 25/08 contra
+      # orthancteam/orthanc:26.6.1: curl AUSENTE, wget AUSENTE, python3 presente).
+      # O healthcheck anterior chamava curl e falhava com
+      # `/bin/sh: 1: curl: not found` em TODA execucao — o container ficava
+      # permanentemente `unhealthy` com o servico perfeitamente no ar. Monitor que
+      # vive vermelho e pior que monitor nenhum: ensina todo mundo a ignorar vermelho.
+      # `python3` existe na imagem, e esta e a MESMA idiom que o healthcheck do
+      # servico `django` deste arquivo ja usava. Usar `os.environ` em vez de
+      # interpolacao de shell evita de quebra a armadilha do `$$` do compose.
+      test: ["CMD-SHELL", "python3 -c \"import base64,os,urllib.request as u; c=os.environ['ORTHANC_USERNAME']+':'+os.environ['ORTHANC_PASSWORD']; h={'Authorization':'Basic '+base64.b64encode(c.encode()).decode()}; u.urlopen(u.Request('http://127.0.0.1:8042/system',headers=h),timeout=5)\" || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 4
@@ -265,6 +330,19 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # crond runs in the foreground (`crond -f`, PID 1's child) all day and only
+    # forks pg_dump once at 02:00 UTC — there's no HTTP/socket to probe, so the
+    # signal is "is the scheduler still alive". alpine's busybox ps/grep are
+    # always present (no procps dependency, unlike `pgrep -x`). Long interval:
+    # this isn't latency-sensitive, and Docker restarts the container (losing
+    # today's schedule state) on the first failed retry chain, which we don't
+    # want to trigger from a slow but harmless blip.
+    healthcheck:
+      test: ["CMD-SHELL", "ps | grep -q '[c]rond'"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
     mem_limit: 256m
     cpus: 0.25
 

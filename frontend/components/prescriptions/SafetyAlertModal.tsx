@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { X, AlertTriangle, XCircle, ShieldAlert } from 'lucide-react';
-import { getAccessToken } from '@/lib/auth';
 import type { SafetyAlert } from './SafetyBadge';
 
 interface SafetyAlertModalProps {
@@ -27,13 +26,9 @@ const SEVERITY_STYLES: Record<string, { bg: string; text: string; border: string
 };
 
 async function acknowledgeAlert(alertId: string, reason: string): Promise<void> {
-  const token = getAccessToken();
   const res = await fetch(`/api/v1/safety-alerts/${alertId}/acknowledge/`, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ reason }),
   });
   if (!res.ok) {

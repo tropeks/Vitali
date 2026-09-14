@@ -77,7 +77,13 @@ IMPORTANT:
       workingDirectory: docReleaseDir,
       maxTurns: 30,
       allowedTools: ['Bash', 'Read', 'Write', 'Edit', 'Grep', 'Glob'],
-      timeout: 180_000,
+      // 300s, not 180s: a 30-turn multi-step doc workflow under 40-way
+      // in-shard CI concurrency timed out at exactly 180s on its final
+      // attempt twice on PR #2593 (rounds 4 and 13) while passing four
+      // other rounds — marginal at 180s, same contention story as
+      // review-dashboard-via and retro-base-branch. Outer bun timeout
+      // rises to 360s for headroom.
+      timeout: 300_000,
       testName: 'document-release',
       runId,
     });
@@ -114,7 +120,7 @@ IMPORTANT:
     } else {
       console.warn('README was NOT updated — agent may not have found the feature');
     }
-  }, 240_000);
+  }, 360_000);
 });
 
 // --- Ship workflow with local bare remote ---
@@ -467,8 +473,18 @@ describeIfSelected('Codex skill E2E', ['codex-review'], () => {
     run('git', ['add', 'user_controller.rb']);
     run('git', ['commit', '-m', 'add vulnerable controller']);
 
-    // Copy the codex skill file
-    fs.copyFileSync(path.join(ROOT, 'codex', 'SKILL.md'), path.join(codexDir, 'codex-SKILL.md'));
+    // Extract only the review-relevant section from codex SKILL.md (~120 lines vs 1075).
+    // Full SKILL.md is 55KB / ~14K tokens — takes 8 Read calls to consume, exhausting turns.
+    const full = fs.readFileSync(path.join(ROOT, 'codex', 'SKILL.md'), 'utf-8');
+    const startMarker = '# /codex — Multi-AI Second Opinion';
+    const endMarker = '## Plan File Review Report';
+    const start = full.indexOf(startMarker);
+    const end = full.indexOf(endMarker, start);
+    const reviewSection = full.slice(
+      start >= 0 ? start : 0,
+      end > start ? end : undefined,
+    );
+    fs.writeFileSync(path.join(codexDir, 'codex-SKILL.md'), reviewSection);
   });
 
   afterAll(() => {
@@ -485,15 +501,15 @@ describeIfSelected('Codex skill E2E', ['codex-review'], () => {
 
     const result = await runSkillTest({
       prompt: `You are in a git repo on branch feature/add-vuln with changes against main.
-Read codex-SKILL.md for the /codex skill instructions.
-Run /codex review to review the current diff against main.
+Read codex-SKILL.md for the /codex review instructions (it's short — ~120 lines).
+Follow those instructions to run codex review against the diff on this branch.
 Write the full output (including the GATE verdict) to ${codexDir}/codex-output.md`,
       workingDirectory: codexDir,
-      maxTurns: 15,
+      maxTurns: 25,
       timeout: 300_000,
       testName: 'codex-review',
       runId,
-      model: 'claude-opus-4-6',
+      model: 'claude-opus-4-7',
     });
 
     logCost('/codex review', result);

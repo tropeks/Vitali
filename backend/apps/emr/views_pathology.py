@@ -1,6 +1,7 @@
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 
+from apps.core.mixins import AuditReadMixin
 from apps.core.permissions import HasPermission
 
 from .models import PathologyReport, PathologySpecimen
@@ -18,8 +19,9 @@ class PathologyPermissionsMixin:
         return [IsAuthenticated(), HasPermission(permission)]
 
 
-class PathologyReportViewSet(PathologyPermissionsMixin, viewsets.ModelViewSet):
+class PathologyReportViewSet(AuditReadMixin, PathologyPermissionsMixin, viewsets.ModelViewSet):
     serializer_class = PathologyReportSerializer
+    audit_resource_type = "PathologyReport"
 
     def get_queryset(self):
         qs = PathologyReport.objects.select_related(
@@ -42,8 +44,9 @@ class PathologyReportViewSet(PathologyPermissionsMixin, viewsets.ModelViewSet):
         serializer.save(created_by=self.request.user)
 
 
-class PathologySpecimenViewSet(PathologyPermissionsMixin, viewsets.ModelViewSet):
+class PathologySpecimenViewSet(AuditReadMixin, PathologyPermissionsMixin, viewsets.ModelViewSet):
     serializer_class = PathologySpecimenSerializer
+    audit_resource_type = "PathologySpecimen"
 
     def get_queryset(self):
         qs = PathologySpecimen.objects.select_related("report")

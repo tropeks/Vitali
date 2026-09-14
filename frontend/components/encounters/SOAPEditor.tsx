@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { getAccessToken } from '@/lib/auth';
 import { CID10Suggest } from '@/components/emr/CID10Suggest';
 
 interface SOAPNote {
@@ -24,10 +23,9 @@ interface SOAPEditorProps {
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 async function patchSoap(id: number, data: Partial<SOAPNote>): Promise<void> {
-  const token = getAccessToken();
   const res = await fetch(`/api/v1/soap-notes/${id}/`, {
     method: 'PATCH',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error(`${res.status}`);

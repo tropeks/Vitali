@@ -21,15 +21,25 @@ class TestWaitlist(TenantTestCase):
     def setUp(self):
         from django.contrib.auth import get_user_model
 
+        from apps.core.models import Role
         from apps.emr.models import Patient, Professional, WaitlistEntry
 
         User = get_user_model()
 
+        # 3.10: waitlist staff-view/mutation is gated on schedule.write (real
+        # tenant-role permission), not the Django-admin is_staff flag — see
+        # apps/emr/views_waitlist.py. is_staff=True is kept here only as
+        # incidental legacy data, it grants nothing on this endpoint anymore.
+        staff_role = Role.objects.create(
+            name="recepcao-waitlist-test",
+            permissions=["schedule.read", "schedule.write"],
+        )
         self.user1 = User.objects.create_user(
             email="waitlist_doc1@clinic.test",
             password="TestPass123!",
             full_name="Doc One",
             is_staff=True,
+            role=staff_role,
         )
         self.user2 = User.objects.create_user(
             email="waitlist_doc2@clinic.test",
@@ -239,3 +249,36 @@ class TestWaitlist(TenantTestCase):
 
         self.entry1.refresh_from_db()
         self.assertEqual(self.entry1.status, "cancelled")
+
+    def test_is_staff_alone_no_longer_grants_waitlist_access(self):
+        """3.10 regression: a user with is_staff=True but no schedule.write
+        role permission must NOT be able to specify patient_id or cancel an
+        entry — is_staff is the Django-admin flag, not a tenant role."""
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        from apps.core.models import Role
+
+        no_perm_role = Role.objects.create(name="no-perms", permissions=[])
+        bare_staff_user = self.professional2.user
+        bare_staff_user.is_staff = True
+        bare_staff_user.role = no_perm_role
+        bare_staff_user.save(update_fields=["is_staff", "role"])
+
+        client = APIClient()
+        client.defaults["SERVER_NAME"] = self.__class__.domain.domain
+        refresh = RefreshToken.for_user(bare_staff_user)
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {str(refresh.access_token)}")
+
+        today = date.today()
+        data = {
+            "patient_id": str(self.patient1.id),
+            "professional_id": str(self.professional1.id),
+            "preferred_date_from": today.isoformat(),
+            "preferred_date_to": (today + timedelta(days=14)).isoformat(),
+        }
+        resp = client.post("/api/v1/waitlist/", data)
+        self.assertEqual(resp.status_code, 403)
+
+        resp = client.delete(f"/api/v1/waitlist/{self.entry1.id}/")
+        self.assertEqual(resp.status_code, 403)

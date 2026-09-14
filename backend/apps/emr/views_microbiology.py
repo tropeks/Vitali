@@ -1,6 +1,7 @@
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 
+from apps.core.mixins import AuditReadMixin
 from apps.core.permissions import HasPermission
 
 from .models import AntibiogramEntry, IsolatedOrganism, MicrobiologyResult
@@ -19,8 +20,11 @@ class MicrobiologyPermissionsMixin:
         return [IsAuthenticated(), HasPermission(permission)]
 
 
-class MicrobiologyResultViewSet(MicrobiologyPermissionsMixin, viewsets.ModelViewSet):
+class MicrobiologyResultViewSet(
+    AuditReadMixin, MicrobiologyPermissionsMixin, viewsets.ModelViewSet
+):
     serializer_class = MicrobiologyResultSerializer
+    audit_resource_type = "MicrobiologyResult"
 
     def get_queryset(self):
         qs = MicrobiologyResult.objects.select_related("order_item", "created_by").prefetch_related(
@@ -43,8 +47,9 @@ class MicrobiologyResultViewSet(MicrobiologyPermissionsMixin, viewsets.ModelView
         serializer.save(created_by=self.request.user)
 
 
-class IsolatedOrganismViewSet(MicrobiologyPermissionsMixin, viewsets.ModelViewSet):
+class IsolatedOrganismViewSet(AuditReadMixin, MicrobiologyPermissionsMixin, viewsets.ModelViewSet):
     serializer_class = IsolatedOrganismSerializer
+    audit_resource_type = "IsolatedOrganism"
 
     def get_queryset(self):
         qs = IsolatedOrganism.objects.select_related("result").prefetch_related("antibiogram")
@@ -54,8 +59,9 @@ class IsolatedOrganismViewSet(MicrobiologyPermissionsMixin, viewsets.ModelViewSe
         return qs
 
 
-class AntibiogramEntryViewSet(MicrobiologyPermissionsMixin, viewsets.ModelViewSet):
+class AntibiogramEntryViewSet(AuditReadMixin, MicrobiologyPermissionsMixin, viewsets.ModelViewSet):
     serializer_class = AntibiogramEntrySerializer
+    audit_resource_type = "AntibiogramEntry"
 
     def get_queryset(self):
         qs = AntibiogramEntry.objects.select_related("organism")
