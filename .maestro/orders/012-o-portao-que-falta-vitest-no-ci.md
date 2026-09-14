@@ -142,3 +142,7 @@ cron rearmado            a linha estava sem --inventory-sql; a fase 2 desta noit
 - Direção vigente na criação: INTENT v5 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 012` (você não fecha a própria ordem).
+accepted_at: 2026-09-14T17:32:15-03:00
+accepted_session: desconhecido
+accepted_tree: 4442efe1635eb1857818012d82dd241e1bd84a0b
+accepted_intent: 5

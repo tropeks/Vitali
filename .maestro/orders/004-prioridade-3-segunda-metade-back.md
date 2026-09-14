@@ -7,6 +7,9 @@ branch: order/004-backup-offsite
 intent_version: 4
 intent_hash: e88157e6
 author_session: desconhecido
+deferred_by: Capitão
+deferred_at: 2026-09-12
+deferred_reason: a lab é ambiente de teste e a R640 está no mesmo rack do host VMware — offsite só quando o Vitali virar produto, e aí para a nuvem, não para outro nó da Vulcan
 -->
 # Ordem 004 — Prioridade 3, segunda metade: backup fora do host — destino offsite, retenção, cifra com a mesma chave e drill de restore a partir do offsite
 
