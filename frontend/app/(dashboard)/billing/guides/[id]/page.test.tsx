@@ -475,7 +475,18 @@ describe('GuideDetailPage — tipo de faturamento (TISS)', () => {
     const summaryTerm = screen.getAllByText('Tipo de faturamento (TISS)').find((el) => el.tagName === 'DT');
     expect(summaryTerm).toBeDefined();
     expect(summaryTerm!.parentElement).toHaveTextContent('Código 2 (rótulo a confirmar no manual ANS)');
-    expect(screen.getByLabelText('Tipo de faturamento (TISS)')).toHaveValue('2');
+
+    // O valor do select espera as OPÇÕES, não o cabeçalho — ordem 012.
+    //
+    // O `waitFor` acima aguarda o heading do painel, que renderiza de imediato;
+    // o `select` só assume '2' depois que o fetch de
+    // `tipo-faturamento-options` resolve. Afirmar fora da espera era corrida:
+    // este teste falhava isolado, passava na suíte completa, e em 14/09 passou a
+    // falhar também na completa. A asserção é a MESMA — só passou a ser
+    // aguardada, como os `await ... readiness` que já existem neste repo.
+    await waitFor(() => {
+      expect(screen.getByLabelText('Tipo de faturamento (TISS)')).toHaveValue('2');
+    });
   });
 
   it('hides panel, summary row and the choices request for a guide that never emits the field', async () => {

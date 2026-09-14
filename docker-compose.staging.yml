@@ -322,6 +322,9 @@ services:
       BACKUP_S3_COMPAT: ${BACKUP_S3_COMPAT:-}
     volumes:
       - ./scripts/backup.sh:/usr/local/bin/backup.sh:ro
+      # O SQL de inventario entra junto: o backup tira a foto do banco no mesmo
+      # instante do dump, e e contra ela que o drill compara o restore (ordem 012).
+      - ./scripts/inventario.sql:/usr/local/bin/inventario.sql:ro
       - backups:/backups
     # Frescura do backup vira SINAL — ordem 011.
     #

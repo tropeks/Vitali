@@ -68,7 +68,11 @@ LOG="$APP_DIR/drill/cron.log"
 # gerado em disco, fora do versionamento, ou um retry DENTRO do drill — e retry
 # dentro da coisa que se mede contamina "o drill passou". Assim quem roda
 # `crontab -l` ve a politica inteira, sem procurar.
-DRILL="bash scripts/run_restore_drill.sh --env-file ${APP_DIR}/.env.staging --volume ${VOLUME} --workdir ${APP_DIR}/drill --metrics-dir ${APP_DIR}/drill/metrics"
+# `--inventory-sql` entra na ordem 012: sem ele a fase 2 saia "nao executada" e o
+# drill noturno provava so que o restore terminou, nao que trouxe o dado. A
+# referencia e a foto que o backup.sh grava ao lado do artefato — o drill a
+# prefere sozinho, e reprova quando ela existe e diverge.
+DRILL="bash scripts/run_restore_drill.sh --env-file ${APP_DIR}/.env.staging --volume ${VOLUME} --workdir ${APP_DIR}/drill --metrics-dir ${APP_DIR}/drill/metrics --inventory-sql ${REPO}/scripts/inventario.sql"
 LINHA="0 ${HORA} * * * cd ${REPO} && { ${DRILL} || { sleep 600; ${DRILL}; }; } >> ${LOG} 2>&1"
 
 mkdir -p "$APP_DIR/drill"

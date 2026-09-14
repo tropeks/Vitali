@@ -167,7 +167,7 @@ jobs:
 
   # ─── Frontend: Lint + Type Check ─────────────────────────────────────────────
   frontend-lint:
-    name: Frontend — Lint & Types
+    name: Frontend — Lint, Types & Unit
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -191,6 +191,18 @@ jobs:
 
       - name: TypeScript check
         run: npm run type-check
+
+      # Ordem 012. Ate aqui a suite unitaria do frontend — 172 arquivos, 790
+      # testes — nao tinha portao NENHUM: este job rodava ESLint e tsc, e o
+      # outro rodava Playwright. Verde quando medido em 13/09, e nada garantia
+      # amanha. E o mesmo defeito da auditoria de leitura em 2 de 40 viewsets,
+      # do outro lado da casa.
+      #
+      # Passo neste job, e nao job novo, por economia de CI: aqui o `npm ci` ja
+      # aconteceu. Um job separado gastaria outro runner e outra instalacao de
+      # dependencias para rodar os mesmos ~40s de teste.
+      - name: Vitest (unit)
+        run: npm test
 
   # ─── Frontend: E2E (Playwright) ─────────────────────────────────────────────
   frontend-e2e:

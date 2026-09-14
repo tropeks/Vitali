@@ -84,6 +84,37 @@ PGPASSWORD="${POSTGRES_PASSWORD}" pg_dump \
 SIZE="$(du -sh "${BACKUP_FILE}" | cut -f1)"
 echo "[backup] Written: ${BACKUP_FILE} (${SIZE})"
 
+# ── Inventario do instante do dump (ordem 012) ──────────────────────────────
+#
+# POR QUE AQUI, e nao no drill. A fase 2 do drill comparava o restore contra
+# `migracao/inventario-LAB.txt`, uma foto ESTATICA de 11/09 — logo divergia
+# sempre, e o script corretamente se recusava a tratar isso como reprovacao.
+# Comparacao que nunca pode falhar nao e comparacao: prova que o script rodou,
+# nao que a recuperacao trouxe o dado.
+#
+# Este e o unico instante em que a foto e o dump descrevem o MESMO estado. A
+# foto vai ao lado do artefato, com o mesmo carimbo, e o drill compara contra
+# ela — e ai divergencia VIRA reprovacao, que e o que um drill existe para achar.
+#
+# Falha aqui nao derruba o backup: um dump sem inventario ainda e um dump, e
+# recusa-lo seria trocar recuperacao por relatorio. O drill sabe distinguir o
+# artefato que tem foto do que nao tem.
+INVENTORY_SQL_PATH="${INVENTORY_SQL_PATH:-/usr/local/bin/inventario.sql}"
+INVENTORY_FILE="${BACKUP_DIR}/vitali_${TIMESTAMP}.inventario.txt"
+if [ -f "${INVENTORY_SQL_PATH}" ]; then
+  if PGPASSWORD="${POSTGRES_PASSWORD}" psql \
+      --host="${POSTGRES_HOST}" --port="${POSTGRES_PORT}" \
+      --username="${POSTGRES_USER}" --dbname="${POSTGRES_DB}" \
+      -v ON_ERROR_STOP=1 < "${INVENTORY_SQL_PATH}" > "${INVENTORY_FILE}" 2>&1; then
+    echo "[backup] Inventario do dump: ${INVENTORY_FILE} ($(wc -l < "${INVENTORY_FILE}") linhas)"
+  else
+    echo "[backup] AVISO: inventario do dump falhou — o drill nao podera comparar este artefato" >&2
+    rm -f "${INVENTORY_FILE}"
+  fi
+else
+  echo "[backup] AVISO: ${INVENTORY_SQL_PATH} ausente — sem inventario para este artefato" >&2
+fi
+
 # The artifact we retain/upload — becomes the .gpg file whenever a key is set
 # (the default-required case; see the guard above). Only a deliberate
 # BACKUP_ALLOW_PLAINTEXT=1 run reaches here with no key.
@@ -207,10 +238,30 @@ echo "[backup] Metric written: ${METRICS_FILE}"
 
 # ── Local retention (delete dumps older than the KEEP_LAST most-recent) ─────
 # Matches both .dump and .dump.gpg artifacts.
-OLD_DUMPS="$(ls -1t "${BACKUP_DIR}"/vitali_*.dump "${BACKUP_DIR}"/vitali_*.dump.gpg 2>/dev/null | tail -n "+$((KEEP_LAST + 1))")"
+#
+# O `|| true` NAO e enfeite — ordem 012, e custou um exit 1 por noite.
+#
+# Este script roda com `set -euo pipefail` (linha 45). O glob
+# `vitali_*.dump` NUNCA casa quando a cifra esta ligada, porque o texto claro e
+# apagado logo apos o gpg. Com `pipefail`, o `ls` que falha vence o status do
+# `tail`, a atribuicao sai nao-zero e o `set -e` mata o script AQUI — depois de
+# a metrica de sucesso ja ter sido escrita.
+#
+# O efeito medido em 14/09: todo backup cifrado saia 1, a retencao KEEP_LAST
+# NUNCA rodou, e o healthcheck e o smoke da ordem 011 diziam "healthy" por cima
+# de um script que falhava. Caminho de erro que reporta sucesso, no lugar mais
+# caro que ele podia estar.
+OLD_DUMPS="$(ls -1t "${BACKUP_DIR}"/vitali_*.dump "${BACKUP_DIR}"/vitali_*.dump.gpg 2>/dev/null | tail -n "+$((KEEP_LAST + 1))" || true)"
 if [ -n "${OLD_DUMPS}" ]; then
   echo "[backup] Pruning $(echo "${OLD_DUMPS}" | wc -l | tr -d ' ') old backup(s)…"
   echo "${OLD_DUMPS}" | xargs rm -v
+  # A foto do inventario acompanha o artefato que ela descreve: mantida enquanto
+  # o dump existe, removida junto quando ele sai. Deixa-la para tras encheria o
+  # volume de fotos de dumps que ninguem mais tem como restaurar.
+  for _velho in ${OLD_DUMPS}; do
+    _base="${_velho%.gpg}"; _base="${_base%.dump}"
+    rm -f "${_base}.inventario.txt"
+  done
 fi
 
 echo "[backup] Done — ${KEEP_LAST} most-recent backup(s) retained in ${BACKUP_DIR}"
