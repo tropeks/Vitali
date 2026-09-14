@@ -20,6 +20,17 @@ name: CI
 # protecao, entao nao ha required check para travar. Se ligar protecao, troque
 # `paths-ignore` por um job que reporta sucesso.
 on:
+  # Gatilho manual — ordem 012, e ele fecha uma lacuna do regime de economia de CI.
+  #
+  # Sem isto nao existe maneira de PEDIR uma execucao: `push` e `pull_request`
+  # ignoram `.maestro/**`, `docs/**` e `**/*.md`, e num `synchronize` o filtro de
+  # path e avaliado contra os arquivos que AQUELE push mudou — entao um commit
+  # vazio (medido em 14/09, tip 3f8008d) nao dispara nada. A unica saida era
+  # inventar mudanca de codigo para acordar o CI, que e exatamente o oposto de
+  # "uma execucao por ordem, no tip final".
+  #
+  # Uso: gh workflow run ci.yml --ref <branch>
+  workflow_dispatch:
   push:
     branches: [main, master, develop, 'order/**']
     paths-ignore: ['.maestro/**', 'docs/**', '**/*.md']
