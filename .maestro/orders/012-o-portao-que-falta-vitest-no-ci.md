@@ -80,6 +80,62 @@ ICP, checklist jurídico e CBHPM/LOINC são mão do Capitão, por ordem expressa
 esta ordem não entra neles. Também não sobe observabilidade nem mexe em `restore_test.sh`.
 
 
+---
+
+## Resultado — medido, 14/09
+
+### O que a fase 2 comparava, e por que nunca podia reprovar
+
+A referência era `migracao/inventario-LAB.txt`, **foto estática de 11/09 que nem estava
+versionada**. Um restore de hoje diverge dela sempre — daí as "24 linhas divergentes" em toda
+execução, que o script corretamente se recusava a tratar como reprovação. Comparação que não
+pode falhar não prova recuperação: prova que o script rodou.
+
+Agora `backup.sh` tira a foto no instante do `pg_dump`, ao lado do artefato — o único momento
+em que foto e dump descrevem o mesmo estado — e o drill a prefere sozinho, derivando o nome do
+próprio artefato. Divergência com foto presente **reprova**.
+
+```
+contra a foto do próprio dump     IDENTICO · exit 0
+com a foto adulterada             exit 1, nomeando a linha divergente
+```
+
+### O defeito pré-existente que apareceu no caminho
+
+`backup.sh` roda com `set -euo pipefail` e a retenção usa o glob `vitali_*.dump`, que **nunca
+casa** com a cifra ligada (o texto claro é apagado logo após o gpg). Sob `pipefail` o `ls` que
+falha vence o `tail`, a atribuição sai não-zero e o `set -e` mata o script **logo depois de a
+métrica de sucesso já ter sido escrita**.
+
+Raio medido, artefato a artefato:
+
+| pergunta | medição |
+|---|---|
+| o `.gpg` saía íntegro? | **sim** — o `exit 1` é a última linha, depois de gpg, da remoção do claro e da métrica. 7 de 7 artefatos decifram e têm TOC legível (2.974 itens nos recentes) |
+| o drill restaurou de cifrado? | **sempre** — 4 drills, todos `.dump.gpg`. O noturno de 14/09 03:00 restaurou o artefato das 02:00 da mesma noite, a execução que saiu 1: 269 migrations, 2 tenants, 4 pacientes em `demo` |
+| quantos acumularam? | **8 no pico**, um acima de `KEEP_LAST=7`. 147 MB; disco da lab em 12% de 465 GB. A primeira execução consertada podou `vitali_20260911T230846Z.dump.gpg` |
+| desde quando? | primeira execução afetada **11/09 23:08:46 UTC** — o primeiro backup cifrado que existiu. Defeito no código desde **13/06 (`d307f1e`)**, o commit que introduziu a cifra e trocou o glob único por dois |
+
+O limite do sinal que isto expõe: o healthcheck e o smoke da ordem 011 diziam `healthy` por
+cima de um script que saía 1, porque leem a métrica — escrita **antes** da linha que falhava.
+Eles provam "existe backup recente e restaurável", não "o script terminou bem". O `crond` do
+busybox não manda exit code a lugar nenhum.
+
+### vitest ganhou portão, e o portão achou uma frouxidão
+
+Entrou como passo no job de frontend que já existe (renomeado `Frontend — Lint, Types &
+Unit`). Pôr sob portão expôs um teste instável — o de guia de internação esperava o cabeçalho
+do painel, que renderiza na hora, e então afirmava o valor do `select`, que só chega depois do
+fetch das opções. A asserção é a mesma; passou a ser aguardada. Suíte completa 3×: 790, 790,
+790.
+
+### Fechamento
+
+```
+CI em 624c41e            VERDE (uma execução, na ponta)
+cron rearmado            a linha estava sem --inventory-sql; a fase 2 desta noite compara
+```
+
 ## Contrato de execução
 - Trabalhe APENAS no branch `order/012-portao-que-falta`; NUNCA no main/master.
 - Prove com o ledger: `maestro evidence --record --label order-12 -- <suíte>` no tip do branch.
