@@ -199,7 +199,8 @@ if [ "$DRILL_RC" -ne 0 ]; then
 fi
 
 # ── Fase 2: segundo restore, independente, para comparar o inventario ───────
-if [ -n "$REFERENCE" ] && [ -n "$INVENTORY_SQL" ]; then
+# A fase 2 roda com o SQL de inventario; a referencia pode vir do proprio dump.
+if [ -n "$INVENTORY_SQL" ]; then
   echo ""
   echo "[drill] ─── fase 2: inventario tabela a tabela ──────────────────────"
   PGPW="inventory-drill-$$"
@@ -247,15 +248,58 @@ if [ -n "$REFERENCE" ] && [ -n "$INVENTORY_SQL" ]; then
   docker exec -i -e PGPASSWORD="$PGPW" "$DRILL_CONTAINER" \
     psql -h 127.0.0.1 -U vitali -d vitali -v ON_ERROR_STOP=1 < "$INVENTORY_SQL" > "$ATUAL" 2>&1
 
-  echo "[drill] referencia: $REFERENCE"
+  # A referencia PREFERIDA e a foto tirada no instante do dump, que o backup.sh
+  # grava ao lado do artefato desde a ordem 012. Comparar contra ela é comparar
+  # duas descricoes do MESMO estado — e por isso divergencia vira REPROVACAO.
+  #
+  # O `--reference` estatico continua aceito, para artefato antigo que nao tem
+  # foto. Nesse caso a comparacao RELATA e nao reprova, porque nao pode: a foto
+  # de 11/09 contra um restore de hoje diverge sempre, e tratar isso como falha
+  # ensinaria a ignorar a fase 2 inteira.
+  # Deriva a base UMA vez. Encadear duas substituicoes sobre a mesma variavel
+  # duplica o sufixo quando a primeira ja casou — peguei isso relendo, antes de
+  # rodar.
+  SNAPSHOT_BASE="${ARTIFACT_PATH%.gpg}"
+  SNAPSHOT_BASE="${SNAPSHOT_BASE%.dump}"
+  SNAPSHOT="${SNAPSHOT_BASE}.inventario.txt"
+  SNAPSHOT_NOME="$(basename "$SNAPSHOT")"
+  if [ ! -f "$SNAPSHOT" ]; then
+    docker run --rm --user "$(id -u):$(id -g)" -v "$VOLUME":/v:ro -v "$WORKDIR":/out "$PG_IMAGE" \
+      sh -c "cp /v/'$SNAPSHOT_NOME' /out/ 2>/dev/null" || true
+  fi
+
+  if [ -f "$SNAPSHOT" ]; then
+    REFERENCIA_USADA="$SNAPSHOT"
+    REFERENCIA_TIPO="foto do instante do dump"
+    REPROVA_SE_DIFERE=1
+  elif [ -n "$REFERENCE" ]; then
+    REFERENCIA_USADA="$REFERENCE"
+    REFERENCIA_TIPO="referencia estatica (artefato sem foto — relata, nao reprova)"
+    REPROVA_SE_DIFERE=0
+  else
+    REFERENCIA_USADA=""
+    REFERENCIA_TIPO="nenhuma"
+    REPROVA_SE_DIFERE=0
+  fi
+
+  echo "[drill] referencia: ${REFERENCIA_USADA:-<ausente>} ($REFERENCIA_TIPO)"
   echo "[drill] restaurado: $ATUAL"
-  if diff -u "$REFERENCE" "$ATUAL" > "$WORKDIR/inventario.diff"; then
-    FASE2_STATUS="IDENTICO ao inventario de referencia"
+  if [ -z "$REFERENCIA_USADA" ]; then
+    FASE2_STATUS="SEM REFERENCIA — o artefato nao tem inventario e nenhum --reference foi dado"
+    echo "[drill] ! $FASE2_STATUS"
+  elif diff -u "$REFERENCIA_USADA" "$ATUAL" > "$WORKDIR/inventario.diff"; then
+    FASE2_STATUS="IDENTICO a $REFERENCIA_TIPO"
     echo "[drill] ✓ $FASE2_STATUS"
   else
-    FASE2_STATUS="DIFERENTE — $(grep -c '^[+-][^+-]' "$WORKDIR/inventario.diff" || true) linha(s) divergentes"
+    DIVERGENTES="$(grep -c '^[+-][^+-]' "$WORKDIR/inventario.diff" || true)"
+    FASE2_STATUS="DIFERENTE — $DIVERGENTES linha(s) divergentes"
     echo "[drill] ! $FASE2_STATUS — diff COMPLETO abaixo, sem resumo:"
     cat "$WORKDIR/inventario.diff"
+    if [ "$REPROVA_SE_DIFERE" -eq 1 ]; then
+      docker rm -f "$DRILL_CONTAINER" >/dev/null 2>&1 || true
+      echo "[drill] ✗ o restore NAO reproduz o inventario do proprio dump — recuperacao nao provada" >&2
+      exit 1
+    fi
   fi
   docker rm -f "$DRILL_CONTAINER" >/dev/null 2>&1 || true
 fi

@@ -20,6 +20,17 @@ name: CI
 # protecao, entao nao ha required check para travar. Se ligar protecao, troque
 # `paths-ignore` por um job que reporta sucesso.
 on:
+  # Gatilho manual — ordem 012, e ele fecha uma lacuna do regime de economia de CI.
+  #
+  # Sem isto nao existe maneira de PEDIR uma execucao: `push` e `pull_request`
+  # ignoram `.maestro/**`, `docs/**` e `**/*.md`, e num `synchronize` o filtro de
+  # path e avaliado contra os arquivos que AQUELE push mudou — entao um commit
+  # vazio (medido em 14/09, tip 3f8008d) nao dispara nada. A unica saida era
+  # inventar mudanca de codigo para acordar o CI, que e exatamente o oposto de
+  # "uma execucao por ordem, no tip final".
+  #
+  # Uso: gh workflow run ci.yml --ref <branch>
+  workflow_dispatch:
   push:
     branches: [main, master, develop, 'order/**']
     paths-ignore: ['.maestro/**', 'docs/**', '**/*.md']
@@ -167,7 +178,7 @@ jobs:
 
   # ─── Frontend: Lint + Type Check ─────────────────────────────────────────────
   frontend-lint:
-    name: Frontend — Lint & Types
+    name: Frontend — Lint, Types & Unit
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -191,6 +202,18 @@ jobs:
 
       - name: TypeScript check
         run: npm run type-check
+
+      # Ordem 012. Ate aqui a suite unitaria do frontend — 172 arquivos, 790
+      # testes — nao tinha portao NENHUM: este job rodava ESLint e tsc, e o
+      # outro rodava Playwright. Verde quando medido em 13/09, e nada garantia
+      # amanha. E o mesmo defeito da auditoria de leitura em 2 de 40 viewsets,
+      # do outro lado da casa.
+      #
+      # Passo neste job, e nao job novo, por economia de CI: aqui o `npm ci` ja
+      # aconteceu. Um job separado gastaria outro runner e outra instalacao de
+      # dependencias para rodar os mesmos ~40s de teste.
+      - name: Vitest (unit)
+        run: npm test
 
   # ─── Frontend: E2E (Playwright) ─────────────────────────────────────────────
   frontend-e2e:
