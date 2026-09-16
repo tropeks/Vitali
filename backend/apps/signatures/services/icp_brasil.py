@@ -138,15 +138,39 @@ class ICPBrasilSigner:
         # as the source of truth for `is_icp_brasil`.
         chain = ICPBrasilChainValidator().validate(cert, extra_intermediates=additional)
 
+        aplicar = getattr(settings, "ICP_BRASIL_ENFORCE_CHAIN", True)
+
+        if chain.is_truststore_empty and aplicar:
+            # ── Ordem 015: store vazio RECUSA. ───────────────────────────────
+            #
+            # Até aqui este ramo degradava de proposito: logava um warning e
+            # deixava a assinatura passar, gravada com is_icp_brasil=False.
+            # Medido em staging em 16/09, o efeito e este: as ancoras morrem num
+            # `up -d`, o medico assina, a API responde 201, a linha entra no
+            # banco — e a assinatura NAO TEM VALOR LEGAL. Sem erro, sem alerta,
+            # sem vermelho. O caminho de erro reportando sucesso, no lugar em que
+            # ele custa a validade juridica de um prontuario.
+            #
+            # Um warning em log nao e sinal: ninguem le log de staging a tempo de
+            # impedir a assinatura que ja foi dada como boa.
+            #
+            # ICP_BRASIL_ENFORCE_CHAIN=False (dev/CI) mantem o regime antigo, que
+            # segue coberto por teste — deixa e de ser o PADRAO.
+            logger.error(
+                "ICP-Brasil: assinatura RECUSADA — %s. Popule o trust store com "
+                "`manage.py refresh_icp_truststore` (ou --file <bundle>).",
+                chain.reason,
+            )
+            raise ICPBrasilSignerError(chain.reason)
+
         if chain.is_truststore_empty:
-            # Cannot validate without anchors — degrade gracefully (do NOT block),
-            # but make the operational gap loud so the store gets populated.
+            # Sem enforcement: o regime antigo, explicitamente escolhido.
             logger.warning(
                 "ICP-Brasil chain validation DISABLED: %s. Signature recorded as "
                 "non-ICP-Brasil. Populate the store with `manage.py refresh_icp_truststore`.",
                 chain.reason,
             )
-        elif getattr(settings, "ICP_BRASIL_ENFORCE_CHAIN", True) and not chain.trusted:
+        elif aplicar and not chain.trusted:
             # Populated store + enforcement on + untrusted cert → reject.
             logger.warning("ICP-Brasil chain validation FAILED: %s", chain.reason)
             raise ICPBrasilSignerError(chain.reason)

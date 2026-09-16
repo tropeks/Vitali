@@ -34,3 +34,17 @@ CELERY_TASK_ALWAYS_EAGER = env.bool("CELERY_TASK_ALWAYS_EAGER", default=False)
 if E2E_MODE:  # noqa: F405 — defined in base.py from the E2E_MODE env var
     # cast: mypy sees REST_FRAMEWORK as dict[str, object] through the star import
     cast(dict[str, str], REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"])["login"] = "100/min"  # noqa: F405
+
+
+# ── Cadeia ICP-Brasil: dev e CI assinam sem âncoras (ordem 015) ──────────────
+#
+# A partir da ordem 015, trust store vazio + ICP_BRASIL_ENFORCE_CHAIN=True faz o
+# signer RECUSAR a assinatura, em vez de gravá-la como não-ICP em silêncio — é o
+# que staging e produção precisam, porque assinatura sem valor legal gravada com
+# 201 é o pior "verde que não significa verde" deste sistema.
+#
+# Dev e CI não têm (nem devem ter) o bundle do ITI: aqui o regime antigo continua,
+# agora por ESCOLHA EXPLÍCITA e não por herança do default. Sem esta linha, toda
+# a suíte de assinatura passaria a falhar por falta de âncoras — falha que não
+# diria nada sobre o código sob teste.
+ICP_BRASIL_ENFORCE_CHAIN = env.bool("ICP_BRASIL_ENFORCE_CHAIN", default=False)  # noqa: F405
