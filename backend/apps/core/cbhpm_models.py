@@ -61,12 +61,44 @@ class CBHPMItem(TerminologyCatalog):
         help_text="Identificador do sistema de terminologia (sempre 'cbhpm' aqui).",
     )
 
-    porte = models.DecimalField(
-        "Porte (valor numérico em CH)",
+    # ── O porte é CÓDIGO, não número (ordem 013) ─────────────────────────────
+    #
+    # Este campo nasceu DecimalField, rotulado "quantidade de CH". Na CBHPM
+    # publicada pela AMB o porte é CLASSE HIERÁRQUICA — "3B", "13C" — e, em toda
+    # a Medicina Laboratorial, FRAÇÃO de uma classe: "0,01 de 1A". Medido na
+    # edição 2022 rev. ago/2023: das 4.883 linhas do livro, ZERO têm porte
+    # numérico e 1.046 são fracionárias.
+    #
+    # Guardar "1A" como 1 perderia a fração e inflaria o porte de 25 a 100 vezes
+    # no capítulo mais volumoso — INTENT §Limites, nenhum número contratual
+    # inventado. A única leitura fiel do livro é a string publicada.
+    porte = models.CharField(
+        "Porte (classe CBHPM)",
+        max_length=32,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text=(
+            "Classe de porte como publicada na CBHPM (ex.: '3B', '13C', "
+            "'0,01 de 1A'). Vazio = não informado. NÃO é valor monetário."
+        ),
+    )
+    # ── E a valoração vive à parte, porque é contrato, não catálogo ──────────
+    #
+    # A CBHPM classifica; quantos CH vale cada classe, e quanto vale o CH em
+    # reais, é negociado entre clínica e operadora — o §1.2 do próprio livro diz
+    # que os portes "não expressam valores monetários". Então este campo só se
+    # popula por tabela de valoração CONTRATADA, nunca pelo import do livro, e
+    # fica no default inerte até lá.
+    porte_ch = models.DecimalField(
+        "Porte em CH (quantidade)",
         max_digits=10,
         decimal_places=4,
         default=Decimal("0"),
-        help_text="Valor numérico do porte (quantidade de CH) — multiplicador da valoração.",
+        help_text=(
+            "Quantidade de CH correspondente ao porte, vinda da tabela de "
+            "valoração contratada. Zero = sem valoração — e aí valor() é zero."
+        ),
     )
     valor_ch = models.DecimalField(
         "Valor CH/UCO",
@@ -128,15 +160,20 @@ class CBHPMItem(TerminologyCatalog):
         ]
 
     def valor(self) -> Decimal:
-        """Valoração do procedimento: ``porte × valor_ch`` (Decimal exato).
+        """Valoração do procedimento: ``porte_ch × valor_ch`` (Decimal exato).
 
         Pure Decimal arithmetic — never float — so honorários never drift by
         binary-floating rounding. Returns ``Decimal('0')`` while either factor
         is at its inert default (never fabricates a value).
+
+        Ordem 013: o multiplicador saiu de ``porte`` para ``porte_ch``. ``porte``
+        virou a classe publicada ("3B", "0,01 de 1A"), que não é número e não
+        multiplica nada. Importar o livro passa a NÃO produzir preço — e é assim
+        que tem de ser: preço é contrato.
         """
-        porte = self.porte if self.porte is not None else Decimal("0")
+        porte_ch = self.porte_ch if self.porte_ch is not None else Decimal("0")
         valor_ch = self.valor_ch if self.valor_ch is not None else Decimal("0")
-        return porte * valor_ch
+        return porte_ch * valor_ch
 
     def __str__(self):
         return f"{self.code} — {self.display[:60]}"

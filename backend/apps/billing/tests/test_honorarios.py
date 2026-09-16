@@ -33,7 +33,7 @@ class HonorariosGuideTestCase(TenantTestCase):
         self.cbhpm = CBHPMItem.objects.create(
             code="40404040",
             display="Honorário porte",
-            porte=Decimal("15.0000"),
+            porte_ch=Decimal("15.0000"),
             valor_ch=Decimal("3.000000"),
         )
 

@@ -44,7 +44,7 @@ class TestCBHPMValuation(TenantTestCase):
         item = CBHPMItem.objects.create(
             code="30715016",
             display="Apendicectomia",
-            porte=Decimal("7.2500"),
+            porte_ch=Decimal("7.2500"),
             valor_ch=Decimal("12.500000"),
         )
         result = item.valor()
@@ -56,7 +56,7 @@ class TestCBHPMValuation(TenantTestCase):
         item = CBHPMItem.objects.create(
             code="10101012",
             display="Consulta",
-            porte=Decimal("0.1000"),
+            porte_ch=Decimal("0.1000"),
             valor_ch=Decimal("0.200000"),
         )
         self.assertEqual(item.valor(), Decimal("0.02000000"))

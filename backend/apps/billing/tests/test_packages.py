@@ -30,7 +30,7 @@ class PackageTestCase(TenantTestCase):
         self.cbhpm = CBHPMItem.objects.create(
             code="30101018",
             display="Procedimento porte",
-            porte=Decimal("10.0000"),
+            porte_ch=Decimal("10.0000"),
             valor_ch=Decimal("2.000000"),
         )
 
