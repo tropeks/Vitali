@@ -76,9 +76,27 @@ comportamento correto — e é melhor descobrir isso por um `400` do que por um
 prontuário sem validade jurídica seis meses depois.
 
 
+## Absorção
+
+Mesclada em `onda0-perimetro-multitenant` pelo PR #219. Como nas ordens 013 e 014, o
+ledger não registra a absorção: `--absorbed-by` exige um branch chamado `main` e o
+principal deste repositório é `master` — quarta ocorrência do mesmo defeito do maestro,
+já na lista de issues do Imediato. Fica escrito aqui.
+
+**Ordem de operação antes de isto valer em produção:**
+
+1. deploy do `#218` — o volume `icp_truststore`
+2. `refresh_icp_truststore --file <ACcompactado.p7b>` dentro do contêiner
+3. só então a 015 em produção, senão ninguém assina — por escolha, não por acidente
+
+
 ## Contrato de execução
 - Trabalhe APENAS no branch `order/015-store-vazio-recusa`; NUNCA no main/master.
 - Prove com o ledger: `maestro evidence --record --label order-15 -- <suíte>` no tip do branch.
 - Direção vigente na criação: INTENT v5 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 015` (você não fecha a própria ordem).
+accepted_at: 2026-09-16T16:38:40-03:00
+accepted_session: desconhecido
+accepted_tree: 983e61cb1079b668753f46bf012f0032d0699b83
+accepted_intent: 5
