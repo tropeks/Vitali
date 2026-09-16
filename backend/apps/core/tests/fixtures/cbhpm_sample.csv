@@ -1,5 +1,8 @@
 # Tiny synthetic CBHPM/AMB catalog fixture (M1-S1) — NOT real CBHPM data.
-CODIGO;DESCRICAO;PORTE;VALOR_CH;PORTE_ANESTESICO;NUMERO_FILME;NUMERO_AUXILIARES;VIGENCIA
-10101012;FAKE-Consulta em consultório;1.5000;12.500000;0;0;0;2024
-30715016;FAKE-Apendicectomia;7.2500;12,50;4;0;1;2024
-40901165;FAKE-Radiografia de tórax;2.0000;10.000000;0;1.2500;0;2024
+# Ordem 013: PORTE passa a ser a CLASSE publicada ("1B", "7A"), como no livro da
+# AMB, e a quantidade de CH ganha coluna propria (PORTE_CH), que so existe em
+# tabela de valoracao CONTRATADA. Antes as duas coisas dividiam a mesma coluna.
+CODIGO;DESCRICAO;PORTE;PORTE_CH;VALOR_CH;PORTE_ANESTESICO;NUMERO_FILME;NUMERO_AUXILIARES;VIGENCIA
+10101012;FAKE-Consulta em consultório;1B;1.5000;12.500000;0;0;0;2024
+30715016;FAKE-Apendicectomia;7A;7.2500;12,50;4;0;1;2024
+40901165;FAKE-Radiografia de tórax;2B;2.0000;10.000000;0;1.2500;0;2024

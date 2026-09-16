@@ -14,6 +14,8 @@ Usage:
 
 Expected CSV (semicolon-delimited, UTF-8; lines starting with '#' are comments):
     CODIGO;DESCRICAO;PORTE;VALOR_CH;PORTE_ANESTESICO;NUMERO_FILME;NUMERO_AUXILIARES;VIGENCIA
+    (PORTE = classe publicada: '3B', '0,01 de 1A'. PORTE_CH, opcional, e a
+     quantidade de CH da tabela de valoracao CONTRATADA — nunca vem do livro.)
 
 Only CODIGO and DESCRICAO are required; every other column is optional and left
 at its inert default when absent. No value is fabricated here — the importer
@@ -24,6 +26,7 @@ reported), not aborting the batch.
 
 import csv
 import logging
+import re
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
@@ -38,7 +41,12 @@ logger = logging.getLogger(__name__)
 _COLUMN_ALIASES = {
     "code": ("CODIGO", "codigo", "Código", "COD", "CBHPM", "code"),
     "display": ("DESCRICAO", "descricao", "Descrição", "PROCEDIMENTO", "display"),
-    "porte": ("PORTE", "porte", "PORTE_CH"),
+    # PORTE_CH saiu daqui na ordem 013: e outra coisa. "PORTE" e a classe
+    # publicada ("3B", "0,01 de 1A"); "PORTE_CH" e a quantidade de CH da tabela
+    # de valoracao CONTRATADA. Misturar os dois era o que fazia o importador
+    # tentar ler "3B" como decimal.
+    "porte": ("PORTE", "porte"),
+    "porte_ch": ("PORTE_CH", "porte_ch", "CH_PORTE"),
     "valor_ch": ("VALOR_CH", "valor_ch", "CH", "UCO", "VALOR_UCO", "valor_uco"),
     "porte_anestesico": ("PORTE_ANESTESICO", "porte_anestesico", "PORTE_ANEST", "ANESTESICO"),
     "numero_filme": ("NUMERO_FILME", "numero_filme", "FILME", "N_FILME"),
@@ -62,6 +70,28 @@ def _to_decimal(value: str | None) -> Decimal:
         return Decimal(raw)
     except InvalidOperation as exc:
         raise ValueError(f"invalid decimal value {value!r}") from exc
+
+
+_PORTE_VALIDO = re.compile(r"^(?:\d{1,2}[ABC]?|[0-9]+,[0-9]+ de \d{1,2}[ABC]?)$")
+
+
+def _porte_publicado(value: str | None) -> str:
+    """Devolve a classe de porte como publicada, ou levanta.
+
+    Aceita as duas formas que a CBHPM usa: a classe cheia ("3B", "13C") e a
+    fracao de classe da Medicina Laboratorial ("0,01 de 1A"). Travessao e vazio
+    viram string vazia — "nao informado" é um estado legítimo.
+
+    Levantar em qualquer outra coisa é deliberado: o ``CatalogImporter`` isola a
+    linha e a reporta, em vez de gravar um porte que ninguem publicou. Porte
+    errado aqui vira honorario errado la na frente.
+    """
+    bruto = (value or "").strip()
+    if bruto in ("", "-", "\u2013", "\u2014"):
+        return ""
+    if not _PORTE_VALIDO.match(bruto):
+        raise ValueError(f"porte fora do vocabulario da CBHPM: {value!r}")
+    return bruto
 
 
 def _to_int(value: str | None) -> int:
@@ -90,7 +120,8 @@ class CBHPMImporter(CatalogImporter):
             raise ValueError("row is missing a non-empty 'display' (DESCRICAO)")
         return {
             "display": display,
-            "porte": _to_decimal(row.get("porte")),
+            "porte": _porte_publicado(row.get("porte")),
+            "porte_ch": _to_decimal(row.get("porte_ch")),
             "valor_ch": _to_decimal(row.get("valor_ch")),
             "porte_anestesico": (row.get("porte_anestesico") or "").strip(),
             "numero_filme": _to_decimal(row.get("numero_filme")),

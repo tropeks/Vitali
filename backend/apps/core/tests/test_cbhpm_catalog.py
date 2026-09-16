@@ -37,7 +37,8 @@ class TestCBHPMItemModel(TenantTestCase):
         item.refresh_from_db()
         self.assertEqual(item.system, "cbhpm")  # redeclared default
         self.assertTrue(item.active)
-        self.assertEqual(item.porte, Decimal("0"))
+        self.assertEqual(item.porte, "")
+        self.assertEqual(item.porte_ch, Decimal("0"))
         self.assertEqual(item.valor_ch, Decimal("0"))
         self.assertEqual(item.numero_auxiliares, 0)
         self.assertEqual(item.normalized_display, "consulta em consultorio")
@@ -56,7 +57,10 @@ class TestImportCBHPMValid(TenantTestCase):
         run_import(source=str(SAMPLE))
         apendice = CBHPMItem.objects.get(code="30715016")
         # Stored + read back exactly — no float drift, comma decimal parsed.
-        self.assertEqual(apendice.porte, Decimal("7.2500"))
+        # Ordem 013: PORTE e a classe publicada; a quantidade de CH mudou de
+        # coluna (PORTE_CH), nao de valor — a asseracao decimal continua aqui.
+        self.assertEqual(apendice.porte, "7A")
+        self.assertEqual(apendice.porte_ch, Decimal("7.2500"))
         self.assertEqual(apendice.valor_ch, Decimal("12.500000"))
         self.assertEqual(apendice.porte_anestesico, "4")
         self.assertEqual(apendice.numero_auxiliares, 1)
