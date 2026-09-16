@@ -80,9 +80,22 @@ staging enquanto a licença está com o Capitão, e **cobrar por ela não**. Est
 a forma do campo, o importador e a prova — o import fica para quando a licença voltar.
 
 
+## Absorção
+
+Mesclada em `onda0-perimetro-multitenant` pelo PR #217, com os cinco jobs verdes em
+`36dd241`. **O ledger não registra a absorção**: `maestro order --accept --absorbed-by
+main` exige um branch chamado `main`, e o principal deste repositório é `master` —
+terceira vez que este defeito aparece, e já está na lista de issues do Imediato para o
+Maestro. Fica escrito aqui, que é onde quem procurar vai achar.
+
+
 ## Contrato de execução
 - Trabalhe APENAS no branch `order/013-cbhpm-porte-codigo`; NUNCA no main/master.
 - Prove com o ledger: `maestro evidence --record --label order-13 -- <suíte>` no tip do branch.
 - Direção vigente na criação: INTENT v5 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 013` (você não fecha a própria ordem).
+accepted_at: 2026-09-16T09:25:04-03:00
+accepted_session: desconhecido
+accepted_tree: 04e5c0658e762780296676596f8d18bf27c044e9
+accepted_intent: 5
