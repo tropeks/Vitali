@@ -83,6 +83,22 @@ services:
         condition: service_healthy
     volumes:
       - static_files:/app/staticfiles
+      # ── Truststore ICP-Brasil (ordem 014) ─────────────────────────────────
+      # As ancoras vivem em VOLUME, nao na imagem. Medido em 16/09: as ancoras
+      # instaladas a mao no contentor morreram no primeiro `up -d` — o deploy do
+      # vulcan-infra as 15:39 apagou o que eu pusera as 15:27.
+      #
+      # Isso importa porque a degradacao e SILENCIOSA: com o store vazio,
+      # `ICP_BRASIL_ENFORCE_CHAIN` deliberadamente NAO bloqueia a assinatura
+      # (chain.py: "trust store not populated"), e toda assinatura passa a ser
+      # gravada com is_icp_brasil=False. O medico assina, o sistema responde 201,
+      # e a assinatura perde o valor legal sem que ninguem veja — o verde
+      # mentiroso que o INTENT §Limites proibe.
+      #
+      # Popular: docker compose exec django python manage.py refresh_icp_truststore
+      # (ou --file <bundle>, enquanto o TLS do acraiz.icpbrasil.gov.br estiver
+      # servindo cadeia incompleta — medido em 16/09).
+      - icp_truststore:/app/apps/signatures/truststore
       - media_files:/app/media
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import os, urllib.request; req=urllib.request.Request('http://127.0.0.1:8000/readiness/', headers={'Host': os.environ.get('HEALTHCHECK_HOST', 'localhost'), 'X-Forwarded-Proto': 'https'}); urllib.request.urlopen(req, timeout=5)\" || exit 1"]
@@ -414,6 +430,7 @@ services:
     cpus: 0.25
 
 volumes:
+  icp_truststore:
   postgres_data:
   redis_data:
   static_files:
