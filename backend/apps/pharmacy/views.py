@@ -840,7 +840,8 @@ class StockItemViewSet(viewsets.ModelViewSet):
         return Response(self.get_serializer(item).data)
 
 
-class StockMovementViewSet(viewsets.ModelViewSet):
+class StockMovementViewSet(AuditReadMixin, viewsets.ModelViewSet):
+    audit_resource_type = "StockMovement"
     serializer_class = StockMovementSerializer
     http_method_names = ["get", "post", "head", "options"]  # no PUT/PATCH/DELETE (append-only)
 
