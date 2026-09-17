@@ -16,6 +16,8 @@ from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 
+from apps.core.mixins import AuditReadMixin
+
 from .models import (
     Dependent,
     DutyRoster,
@@ -368,9 +370,25 @@ class WorkScheduleViewSet(HRManagePermissionMixin, viewsets.ModelViewSet):  # ty
         )
 
 
-class OccupationalHealthExamViewSet(HRManagePermissionMixin, viewsets.ModelViewSet):  # type: ignore[misc]
+class OccupationalHealthExamViewSet(AuditReadMixin, HRManagePermissionMixin, viewsets.ModelViewSet):  # type: ignore[misc]
+    """ASO/SST — dado de saúde ocupacional (LGPD art. 5º II). Ordem 017: lê
+    `exam_type`, `result`, `restrictions` e `certificate_reference` — deixa
+    trilha. Ver `apps/core/audit_coverage.MODELS_SENSIVEIS["hr.OccupationalHealthExam"]`.
+    """
+
     queryset = OccupationalHealthExam.objects.select_related("employee__user").all()
     serializer_class = OccupationalHealthExamSerializer
+    audit_resource_type = "occupational_health_exam"
+    # AUDIT_LIST_PARAMS = () de propósito, não esquecimento: este viewset não
+    # tem get_queryset, filterset_fields nem DjangoFilterBackend — nem
+    # `?employee=` nem `?search=` (sem `search_fields`) filtram nada, list()
+    # sempre traz todo mundo. Herdar o default ("patient", "search") do mixin
+    # registraria um recorte que não aconteceu — trilha falsa é pior que
+    # ausente (CFM/LGPD art. 37 exige que o registro descreva a operação
+    # real). Enquanto for assim, só `retrieve` deixa trilha aqui; list() sem
+    # filtro que funcione é buraco conhecido, levado ao diretor como questão
+    # própria — não conserte adicionando um filtro só para a trilha.
+    AUDIT_LIST_PARAMS: tuple[str, ...] = ()  # type: ignore[assignment]
 
     def perform_create(self, serializer):
         from apps.core.models import AuditLog
@@ -390,10 +408,27 @@ class OccupationalHealthExamViewSet(HRManagePermissionMixin, viewsets.ModelViewS
         )
 
 
-class TimeEntryViewSet(viewsets.ReadOnlyModelViewSet):
+class TimeEntryViewSet(AuditReadMixin, viewsets.ReadOnlyModelViewSet):
+    """Ponto do funcionário. Ordem 017: ler o ponto de alguém é vigilância
+    laboral (LGPD art. 37, não art. 5º II) — deixa trilha. Ver
+    `apps/core/audit_coverage.MODELS_SENSIVEIS["hr.TimeEntry"]`.
+    """
+
     queryset = TimeEntry.objects.select_related("employee__user", "recorded_by").all()
     serializer_class = TimeEntrySerializer
     permission_classes = [IsAuthenticated]
+    audit_resource_type = "time_entry"
+    # Só "employee" — sem "search" (sem `search_fields`, seria inerte, ver as
+    # outras três viewsets de RH). O mixin registra o CRITÉRIO PEDIDO, não o
+    # conjunto devolvido (contrato dele, ver AuditReadMixin docstring): para
+    # quem tem `hr.manage`, get_queryset() abaixo aplica de fato
+    # `.filter(employee_id=...)`, então `{"employee": X}` descreve a resposta.
+    # Para quem NÃO tem `hr.manage`, o mesmo get_queryset() força o escopo
+    # para o próprio usuário e ignora `?employee=` — mas a tentativa continua
+    # valendo registro: alguém sem `hr.manage` mandando `?employee=<outro>`
+    # é sondagem do ponto de terceiro, o evento que o art. 37 quer capturado,
+    # mesmo que a resposta não tenha vazado nada.
+    AUDIT_LIST_PARAMS = ("employee",)  # type: ignore[assignment]
 
     def _can_manage(self):
         role = self.request.user.effective_role()
@@ -454,11 +489,31 @@ class PositionViewSet(HRManagePermissionMixin, _AuditedCreateMixin, viewsets.Mod
     audit_resource_type = "position"
 
 
-class DependentViewSet(HRManagePermissionMixin, _AuditedCreateMixin, viewsets.ModelViewSet):  # type: ignore[misc]
+class DependentViewSet(  # type: ignore[misc]
+    AuditReadMixin, HRManagePermissionMixin, _AuditedCreateMixin, viewsets.ModelViewSet
+):
+    """Dependente de funcionário. Ordem 017: `full_name`/`birth_date`/`cpf` são
+    dado pessoal de um TERCEIRO que nunca consentiu aqui — deixa trilha. Ver
+    `apps/core/audit_coverage.MODELS_SENSIVEIS["hr.Dependent"]`.
+
+    ``audit_resource_type`` é compartilhado por `AuditReadMixin` (trilha de
+    leitura, esta ordem) e por `_AuditedCreateMixin` (trilha de criação,
+    pré-existente) — o mesmo valor ("dependent") serve às duas, sem conflito.
+    """
+
     queryset = Dependent.objects.select_related("employee__user").all()
     serializer_class = DependentSerializer
     audit_action = "dependent_created"
     audit_resource_type = "dependent"
+    # AUDIT_LIST_PARAMS = () de propósito, não esquecimento: este viewset não
+    # tem get_queryset, filterset_fields nem DjangoFilterBackend — nem
+    # `?employee=` nem `?search=` (sem `search_fields`) filtram nada, list()
+    # sempre traz todo mundo. Herdar o default ("patient", "search") do mixin
+    # registraria um recorte que não aconteceu — trilha falsa é pior que
+    # ausente. Enquanto for assim, só `retrieve` deixa trilha aqui; list()
+    # sem filtro que funcione é buraco conhecido, levado ao diretor como
+    # questão própria — não conserte adicionando um filtro só para a trilha.
+    AUDIT_LIST_PARAMS: tuple[str, ...] = ()  # type: ignore[assignment]
 
 
 class EmployeeAssignmentViewSet(HRManagePermissionMixin, viewsets.ModelViewSet):  # type: ignore[misc]
@@ -526,10 +581,25 @@ class RosterSlotViewSet(RosterScopedQuerysetMixin, _AuditedCreateMixin, viewsets
         return [IsAuthenticated(), RosterAccessPermission()]
 
 
-class LeaveRequestViewSet(HRManagePermissionMixin, viewsets.ModelViewSet):  # type: ignore[misc]
+class LeaveRequestViewSet(AuditReadMixin, HRManagePermissionMixin, viewsets.ModelViewSet):  # type: ignore[misc]
+    """Afastamento/férias. Ordem 017: `leave_type` (`sick`/`maternity`) e
+    `reason` livre são dado de saúde/gravidez (LGPD art. 5º II) — deixa
+    trilha. Ver `apps/core/audit_coverage.MODELS_SENSIVEIS["hr.LeaveRequest"]`.
+    """
+
     queryset = LeaveRequest.objects.select_related("employee__user", "approval").all()
     serializer_class = LeaveRequestSerializer
     http_method_names = ["get", "post", "head", "options"]
+    audit_resource_type = "leave_request"
+    # AUDIT_LIST_PARAMS = () de propósito, não esquecimento: este viewset não
+    # tem get_queryset, filterset_fields nem DjangoFilterBackend — nem
+    # `?employee=` nem `?search=` (sem `search_fields`) filtram nada, list()
+    # sempre traz todo mundo. Herdar o default ("patient", "search") do mixin
+    # registraria um recorte que não aconteceu — trilha falsa é pior que
+    # ausente. Enquanto for assim, só `retrieve` deixa trilha aqui; list()
+    # sem filtro que funcione é buraco conhecido, levado ao diretor como
+    # questão própria — não conserte adicionando um filtro só para a trilha.
+    AUDIT_LIST_PARAMS: tuple[str, ...] = ()  # type: ignore[assignment]
 
     def create(self, request, *args, **kwargs):
         from rest_framework.exceptions import PermissionDenied as DRFPermissionDenied
