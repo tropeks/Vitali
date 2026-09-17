@@ -52,6 +52,7 @@ from apps.billing.sus_models import (
     BpaIndividualizado,
     SusCompetencia,
 )
+from apps.core.mixins import AuditReadMixin
 from apps.core.permissions import HasPermission
 from apps.core.sigtap_catalog_models import SIGTAPProcedure
 from apps.emr.adt_models import Admission
@@ -195,8 +196,10 @@ class BpaConsolidadoViewSet(_SusPermissionMixin, viewsets.ModelViewSet):
 @extend_schema_view(
     list=extend_schema(tags=["sus"], summary="Lista BPA-I", parameters=[_COMPETENCIA_PARAM]),
 )
-class BpaIndividualizadoViewSet(_SusPermissionMixin, viewsets.ReadOnlyModelViewSet):
+class BpaIndividualizadoViewSet(AuditReadMixin, _SusPermissionMixin, viewsets.ReadOnlyModelViewSet):
     """BPA-I (individualizado, com paciente). Read-only — gerado pelo bridge. Read=sus.read."""
+
+    audit_resource_type = "BpaIndividualizado"
 
     serializer_class = BpaIndividualizadoSerializer
 
@@ -214,8 +217,10 @@ class BpaIndividualizadoViewSet(_SusPermissionMixin, viewsets.ReadOnlyModelViewS
     ),
     create=extend_schema(tags=["sus"], summary="Cria autorização APAC"),
 )
-class ApacAutorizacaoViewSet(_SusPermissionMixin, viewsets.ModelViewSet):
+class ApacAutorizacaoViewSet(AuditReadMixin, _SusPermissionMixin, viewsets.ModelViewSet):
     """APAC (autorização de alta complexidade, S3). Read=sus.read / write=sus.write."""
+
+    audit_resource_type = "ApacAutorizacao"
 
     serializer_class = ApacAutorizacaoSerializer
 
@@ -283,8 +288,10 @@ class ApacAutorizacaoViewSet(_SusPermissionMixin, viewsets.ModelViewSet):
     ),
     create=extend_schema(tags=["sus"], summary="Cria procedimento secundário APAC"),
 )
-class ApacProcedimentoSecundarioViewSet(_SusPermissionMixin, viewsets.ModelViewSet):
+class ApacProcedimentoSecundarioViewSet(AuditReadMixin, _SusPermissionMixin, viewsets.ModelViewSet):
     """Procedimentos secundários de uma APAC (S3). Read=sus.read / write=sus.write."""
+
+    audit_resource_type = "ApacProcedimentoSecundario"
 
     serializer_class = ApacProcedimentoSecundarioSerializer
 
@@ -302,8 +309,10 @@ class ApacProcedimentoSecundarioViewSet(_SusPermissionMixin, viewsets.ModelViewS
     ),
     create=extend_schema(tags=["sus"], summary="Cria autorização AIH"),
 )
-class AihAutorizacaoViewSet(_SusPermissionMixin, viewsets.ModelViewSet):
+class AihAutorizacaoViewSet(AuditReadMixin, _SusPermissionMixin, viewsets.ModelViewSet):
     """AIH (autorização de internação hospitalar, AI1). Read=sus.read / write=sus.write."""
+
+    audit_resource_type = "AihAutorizacao"
 
     serializer_class = AihAutorizacaoSerializer
 
@@ -428,8 +437,10 @@ class AihAutorizacaoViewSet(_SusPermissionMixin, viewsets.ModelViewSet):
     ),
     create=extend_schema(tags=["sus"], summary="Cria procedimento secundário AIH"),
 )
-class AihProcedimentoSecundarioViewSet(_SusPermissionMixin, viewsets.ModelViewSet):
+class AihProcedimentoSecundarioViewSet(AuditReadMixin, _SusPermissionMixin, viewsets.ModelViewSet):
     """Procedimentos secundários de uma AIH (AI1). Read=sus.read / write=sus.write."""
+
+    audit_resource_type = "AihProcedimentoSecundario"
 
     serializer_class = AihProcedimentoSecundarioSerializer
 

@@ -24,6 +24,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.mixins import AuditReadMixin
 from apps.core.permissions import HasPermission, ModuleRequiredPermission
 
 from .context import get_context, set_context
@@ -345,7 +346,8 @@ class MessageLogPagination(PageNumberPagination):
     max_page_size = 100
 
 
-class WhatsAppContactViewSet(viewsets.ReadOnlyModelViewSet):
+class WhatsAppContactViewSet(AuditReadMixin, viewsets.ReadOnlyModelViewSet):
+    audit_resource_type = "WhatsAppContact"
     serializer_class = WhatsAppContactSerializer
     permission_classes = [IsAuthenticated, _WHATSAPP_MODULE, _TRIAGE_READ]  # type: ignore[list-item]
     pagination_class = MessageLogPagination
@@ -357,7 +359,8 @@ class WhatsAppContactViewSet(viewsets.ReadOnlyModelViewSet):
         return WhatsAppContact.objects.select_related("patient")
 
 
-class MessageLogViewSet(viewsets.ReadOnlyModelViewSet):
+class MessageLogViewSet(AuditReadMixin, viewsets.ReadOnlyModelViewSet):
+    audit_resource_type = "MessageLog"
     serializer_class = MessageLogSerializer
     permission_classes = [IsAuthenticated, _WHATSAPP_MODULE, _TRIAGE_READ]  # type: ignore[list-item]
     pagination_class = MessageLogPagination

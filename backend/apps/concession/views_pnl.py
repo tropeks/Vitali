@@ -17,6 +17,7 @@ from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.core.mixins import AuditReadMixin
 from apps.core.models import AuditLog
 from apps.organization.models import Facility
 
@@ -100,12 +101,14 @@ class MaterialUnitCostViewSet(viewsets.ModelViewSet):
     list=extend_schema(responses=ExamConsumptionSerializer(many=True)),
     retrieve=extend_schema(responses=ExamConsumptionSerializer),
 )
-class ExamConsumptionViewSet(viewsets.ReadOnlyModelViewSet):
+class ExamConsumptionViewSet(AuditReadMixin, viewsets.ReadOnlyModelViewSet):
     """B0-T4 — append-only consumption ledger (list/retrieve only) plus a manual
     ``record`` endpoint for non-DICOM exams.
 
     The model refuses updates/deletes, so no PUT/PATCH/DELETE is exposed.
     """
+
+    audit_resource_type = "ExamConsumption"
 
     queryset = ExamConsumption.objects.select_related("unit", "service").all()
     serializer_class = ExamConsumptionSerializer

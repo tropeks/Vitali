@@ -273,7 +273,8 @@ class ProfessionalSettlementViewSet(viewsets.ModelViewSet):
         return Response(self.get_serializer(obj).data)
 
 
-class AccountsReceivableViewSet(viewsets.ModelViewSet):
+class AccountsReceivableViewSet(AuditReadMixin, viewsets.ModelViewSet):
+    audit_resource_type = "AccountsReceivable"
     serializer_class = AccountsReceivableSerializer
     permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -319,7 +320,8 @@ class AccountingCategoryViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
 
 
-class AccountingEntryViewSet(viewsets.ModelViewSet):
+class AccountingEntryViewSet(AuditReadMixin, viewsets.ModelViewSet):
+    audit_resource_type = "AccountingEntry"
     serializer_class = AccountingEntrySerializer
     permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
@@ -396,7 +398,8 @@ class AccountingEntryViewSet(viewsets.ModelViewSet):
         )
 
 
-class BankTransactionViewSet(viewsets.ModelViewSet):
+class BankTransactionViewSet(AuditReadMixin, viewsets.ModelViewSet):
+    audit_resource_type = "BankTransaction"
     serializer_class = BankTransactionSerializer
     permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
@@ -860,6 +863,7 @@ class SurgicalMaterialBillingRequestSerializer(serializers.Serializer):
 
 
 class InpatientFeeViewSet(
+    AuditReadMixin,
     mixins.CreateModelMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
@@ -882,6 +886,8 @@ class InpatientFeeViewSet(
     exigir permissão de faturamento manteria a receita trancada por autorização
     em vez de por ausência de rota. Decisão do Capitão em 2026-08-18.
     """
+
+    audit_resource_type = "InpatientFee"
 
     serializer_class = InpatientFeeSerializer
     permission_classes = [IsAuthenticated, _BILLING_MODULE, CanRecordInpatientFee]  # type: ignore[list-item]
@@ -1354,7 +1360,8 @@ class TISSGuideViewSet(AuditReadMixin, viewsets.ModelViewSet):
         return Response(TISSGuideSerializer(guide).data)
 
 
-class TISSBatchViewSet(viewsets.ModelViewSet):
+class TISSBatchViewSet(AuditReadMixin, viewsets.ModelViewSet):
+    audit_resource_type = "TISSBatch"
     serializer_class = TISSBatchSerializer
     permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
     filter_backends = [filters.OrderingFilter]
