@@ -18,7 +18,14 @@ from __future__ import annotations
 
 from django.test import SimpleTestCase
 
-from apps.core.audit_coverage import ISENTAS, exigem_trilha, views_registradas
+from apps.core.audit_coverage import (
+    ISENTAS,
+    MODELS_SEM_DADO_SENSIVEL,
+    MODELS_SENSIVEIS,
+    exigem_trilha,
+    mixin_fora_de_ordem,
+    views_registradas,
+)
 
 
 class CoberturaDeAuditoriaDeLeituraTests(SimpleTestCase):
@@ -26,14 +33,14 @@ class CoberturaDeAuditoriaDeLeituraTests(SimpleTestCase):
         faltando = [v for v in exigem_trilha() if not v["tem_trilha"]]
         if faltando:
             detalhe = "\n".join(
-                f"  {v['app']}.{v['view']} ({v['model']}) — alcança paciente por: {v['caminho']}"
+                f"  {v['app']}.{v['view']} ({v['model']}) — exige trilha por: {v['motivo']}"
                 for v in faltando
             )
             self.fail(
-                f"{len(faltando)} view(s) leem dado ligado a paciente sem deixar trilha.\n"
+                f"{len(faltando)} view(s) leem dado sensível sem deixar trilha.\n"
                 f"{detalhe}\n\n"
                 "Acrescente `AuditReadMixin` e `audit_resource_type`, ou — se a view "
-                "realmente não lê prontuário — declare a isenção em "
+                "realmente não lê dado sensível — declare a isenção em "
                 "`apps/core/audit_coverage.ISENTAS` COM O MOTIVO."
             )
 
@@ -56,4 +63,70 @@ class CoberturaDeAuditoriaDeLeituraTests(SimpleTestCase):
                 len(motivo.strip()),
                 40,
                 f"a isenção de {view} não explica nada — isenção sem motivo vira hábito",
+            )
+
+    def test_todo_model_sensivel_tem_motivo_escrito(self) -> None:
+        """Ordem 017: entrar em MODELS_SENSIVEIS exige dizer o campo e a lei."""
+        for model, motivo in MODELS_SENSIVEIS.items():
+            self.assertGreater(
+                len(motivo.strip()),
+                40,
+                f"{model} está em MODELS_SENSIVEIS sem motivo — "
+                "diga qual CAMPO carrega o dado sensível",
+            )
+
+    def test_todo_model_sem_dado_sensivel_tem_motivo_escrito(self) -> None:
+        """Ordem 017: ficar de fora da trilha é declaração, não esquecimento."""
+        for model, motivo in MODELS_SEM_DADO_SENSIVEL.items():
+            self.assertGreater(
+                len(motivo.strip()),
+                40,
+                f"{model} está em MODELS_SEM_DADO_SENSIVEL sem motivo — "
+                "isenção sem motivo vira hábito",
+            )
+
+    def test_toda_view_do_app_hr_esta_classificada(self) -> None:
+        """Ordem 017: piso de enumeração da faixa 2, equivalente ao da faixa 1.
+
+        Toda view do app `hr` registrada no roteador precisa estar classificada:
+        OU exige trilha e a tem (o model está em `MODELS_SENSIVEIS`, ou alcança
+        `Patient`), OU o model dela consta em `MODELS_SEM_DADO_SENSIVEL` com
+        motivo. Uma view de RH nova sem nenhuma das duas classificações reprova
+        — não fica invisível por omissão.
+        """
+        views_hr = [v for v in views_registradas() if v["app"] == "hr"]
+        self.assertGreater(
+            len(views_hr), 0, "nenhuma view do app hr foi enumerada — travessia quebrada?"
+        )
+
+        nao_classificadas = [
+            v for v in views_hr if not v["motivo"] and v["model"] not in MODELS_SEM_DADO_SENSIVEL
+        ]
+        if nao_classificadas:
+            detalhe = "\n".join(f"  {v['view']} ({v['model']})" for v in nao_classificadas)
+            self.fail(
+                f"{len(nao_classificadas)} view(s) do app hr sem classificação.\n"
+                f"{detalhe}\n\n"
+                "Toda view de RH precisa constar de MODELS_SENSIVEIS (com trilha) "
+                "ou de MODELS_SEM_DADO_SENSIVEL (sem trilha), ambos com motivo "
+                "escrito em apps/core/audit_coverage.py."
+            )
+
+    def test_auditreadmixin_e_sempre_a_primeira_base(self) -> None:
+        """`tem_trilha` (issubclass) é cego à posição da base — este teste não é.
+
+        Se `AuditReadMixin` deixar de ser a PRIMEIRA base de uma view, os mixins
+        do DRF (`RetrieveModelMixin`/`ListModelMixin`) vencem no MRO, o `super()`
+        do mixin de auditoria nunca é alcançado, e a trilha morre em silêncio —
+        `issubclass(cls, AuditReadMixin)` continua `True` e não acusa nada. É o
+        modo de falha que as ordens 016 e 017 nomeiam como lição; vale para o
+        sistema inteiro, não só para o RH.
+        """
+        fora_de_ordem = mixin_fora_de_ordem()
+        if fora_de_ordem:
+            detalhe = "\n".join(f"  {linha}" for linha in fora_de_ordem)
+            self.fail(
+                f"{len(fora_de_ordem)} view(s) com AuditReadMixin fora da primeira "
+                f"base — a trilha dessas views está morta:\n{detalhe}\n\n"
+                "Ponha AuditReadMixin como PRIMEIRA base na declaração da classe."
             )
