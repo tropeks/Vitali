@@ -138,3 +138,7 @@ Nenhuma migration, nenhuma mudança de model, nenhuma mudança de permissão.
 - Direção vigente na criação: INTENT v5 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 019` (você não fecha a própria ordem).
+accepted_at: 2026-09-18T17:20:31-03:00
+accepted_session: desconhecido
+accepted_tree: 9f4d7621c9577eab27b7fc20747dc8a9cd385cc9
+accepted_intent: 5
