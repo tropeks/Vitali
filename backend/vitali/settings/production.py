@@ -90,6 +90,18 @@ del (
 
 ENVIRONMENT = env("ENVIRONMENT", default="production")
 
+# ─── Audit log purge — pinned OFF (order 020) ────────────────────────────────
+# No separate settings/staging.py exists: staging runs THIS module
+# (DJANGO_SETTINGS_MODULE=vitali.settings.production in both
+# docker-compose.staging.yml and docker-compose.prod.yml — see also
+# scripts/backup.sh's own comment on this). Pinning it here therefore covers
+# staging AND production with one line, and — the point of pinning it at
+# all — turning it on later is a one-line diff a reviewer cannot miss,
+# instead of an environment variable someone could set without review.
+# core_auditlog is the LGPD art. 37 audit trail; nothing may expurgo it in
+# either environment without the Imediato's explicit sign-off.
+AUDIT_LOG_PURGE_ENABLED = False
+
 # ─── Security headers ─────────────────────────────────────────────────────────
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True

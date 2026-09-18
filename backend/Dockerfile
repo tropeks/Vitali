@@ -6,7 +6,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# System deps for psycopg2 + cryptography + WeasyPrint (Cairo/Pango/fonts)
+# System deps for psycopg2 + cryptography + WeasyPrint (Cairo/Pango/fonts).
+# gnupg (order 020): apps.core.cold_storage shells out to the same `gpg
+# --symmetric --cipher-algo AES256` invocation scripts/backup.sh already uses
+# (BACKUP_ENCRYPTION_KEY) to cold-encrypt an audit-log partition before the
+# retention purge is allowed to DROP it — reusing the existing key/mechanism
+# instead of inventing a new one.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     gcc \
@@ -19,6 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpng-dev \
     libfreetype6-dev \
     fonts-liberation \
+    gnupg \
     && rm -rf /var/lib/apt/lists/*
 
 # Non-root runtime user (frontend image already runs as non-root). Ownership is

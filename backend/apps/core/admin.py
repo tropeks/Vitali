@@ -3,7 +3,6 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.translation import gettext_lazy as _
 
 from .models import (
-    AuditLog,
     Domain,
     FeatureFlag,
     Plan,
@@ -96,21 +95,16 @@ class UserAdmin(BaseUserAdmin):
     )
 
 
-@admin.register(AuditLog)
-class AuditLogAdmin(admin.ModelAdmin):
-    list_display = ("action", "resource_type", "resource_id", "user", "ip_address", "created_at")
-    list_filter = ("action", "resource_type")
-    search_fields = ("resource_id", "user__email")
-    readonly_fields = tuple(f.name for f in AuditLog._meta.get_fields() if hasattr(f, "name"))
-
-    def has_add_permission(self, request):
-        return False
-
-    def has_change_permission(self, request, obj=None):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False
+# AuditLog is intentionally NOT registered with the Django admin (order 020).
+# Its primary key became composite ((id, created_at, schema_name) — Postgres
+# requires the partition key in the PK; see apps/core/models.py:AuditLog) and
+# Django's admin flatly refuses to register a composite-pk model
+# ("has a composite primary key, so it cannot be registered with admin") —
+# it relies on a single-column pk throughout its URL routing. The old
+# AuditLogAdmin was already read-only (add/change/delete all False); that
+# read access lives on in the DPO-facing endpoint instead — see
+# AuditTrailListView (apps/core/views_audit.py), which was already the
+# intended read path (AuditLogAdmin was a secondary, superuser-only view).
 
 
 @admin.register(TUSSSyncLog)

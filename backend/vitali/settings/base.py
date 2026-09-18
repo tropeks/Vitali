@@ -372,6 +372,39 @@ FEATURE_AI_GLOSA = env.bool("FEATURE_AI_GLOSA", default=False)
 FEATURE_WHISPER_FALLBACK = env.bool("FEATURE_WHISPER_FALLBACK", default=True)
 SCRIBE_SESSION_RETENTION_DAYS = env.int("SCRIBE_SESSION_RETENTION_DAYS", default=90)
 
+# ─── Audit log retention (order 020) ─────────────────────────────────────────
+# core_auditlog is the LGPD art. 37 audit trail — append-only, DB-immutable
+# (migration 0019) and RANGE(created_at)/LIST(schema_name)-partitioned
+# (migration 0043). It has NO expiry by default in ANY environment: both the
+# window and the switch below are unset/off until a human sets them
+# deliberately. See apps/core/management/commands/purge_audit_logs.py — the
+# command itself refuses to run unless BOTH are explicitly configured, naming
+# whichever is missing, and even then defaults to --dry-run.
+#
+# Purge is never DELETE. It exports the expiring partition to an encrypted,
+# LOCALLY-verified cold copy first (apps.core.cold_storage) and only then
+# DROPs the (now cold-archived) partition (apps.core.partitioning) — see the
+# Capitão's amendment to order 020. Fábrica = reter, nunca apagar.
+AUDIT_LOG_RETENTION_DAYS = env.int("AUDIT_LOG_RETENTION_DAYS", default=None)
+AUDIT_LOG_PURGE_ENABLED = env.bool("AUDIT_LOG_PURGE_ENABLED", default=False)
+
+# Local target for the cold-export step above (apps.core.cold_storage_backends
+# .LocalDiskColdStorageBackend) — "alvo local para teste" while no S3/Glacier
+# destination exists yet. Lives next to what scripts/backup.sh already writes
+# to disk; a future S3 Glacier backend is a separate, explicitly-deferred
+# piece of work (see the order-020 report) and would add its own setting(s)
+# rather than repurpose this one.
+AUDIT_LOG_COLD_STORAGE_DIR = env(
+    "AUDIT_LOG_COLD_STORAGE_DIR", default=str(BASE_DIR / "var" / "auditlog_cold")
+)
+
+# Exposed as a plain Django setting (production.py previously only read this
+# inline, via env(), for its own boot-time check) so apps.core.cold_storage
+# can reuse the EXACT SAME key/mechanism scripts/backup.sh already uses for
+# encryption, rather than invent new key management for the audit-log cold
+# export (Capitão's amendment to order 020).
+BACKUP_ENCRYPTION_KEY = env("BACKUP_ENCRYPTION_KEY", default="")
+
 # ─── Dose-safety wedge (PR B) ───────────────────────────────────────────────
 # Weight-staleness window (decision D-T2): a per-kg dose check requires a patient
 # weight no older than this. Beyond it the weight is treated as stale → WEIGHT_GATE
