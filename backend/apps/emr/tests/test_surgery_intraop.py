@@ -467,6 +467,22 @@ class TestTimelineAndReadOnly(IntraOpTestBase):
         resp = self._client(self.nobody).get(f"{BASE}/surgical-cases/{case.id}/timeline/")
         assert resp.status_code == 403, resp.content
 
+    def test_timeline_writes_view_record_audit(self):
+        """Ordem 019 item 2 — `timeline` não é `retrieve`/`list`, mas passa a
+        gravar leitura via `AUDIT_READ_ACTIONS` (apps/emr/views_surgery.py).
+
+        `AuditLog` é append-only (ordem 020) — não dá para limpar a tabela, então
+        a linha nova é a que ficou acima da marca do maior `id` visto antes."""
+        from apps.core.models import AuditLog
+
+        case = self._case()
+        marca = AuditLog.objects.order_by("-id").values_list("id", flat=True).first() or 0
+        resp = self._client(self.reader).get(f"{BASE}/surgical-cases/{case.id}/timeline/")
+        assert resp.status_code == 200, resp.content
+        log = AuditLog.objects.get(action="view_record", resource_type="SurgicalCase", id__gt=marca)
+        assert log.resource_id == str(case.id)
+        assert log.new_data == {"action": "timeline"}
+
     def test_times_viewset_is_read_only(self):
         case = self._case(status=SurgicalCase.Status.CONFIRMADA)
         intraop.record_time(case, SurgicalTime.Event.SALA_ENTRADA)

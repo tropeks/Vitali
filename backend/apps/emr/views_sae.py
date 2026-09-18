@@ -48,6 +48,9 @@ class NursingDiagnosisViewSet(AuditReadMixin, _SaePermissionMixin, viewsets.Mode
 
     serializer_class = NursingDiagnosisSerializer
     audit_resource_type = "NursingDiagnosis"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     def get_queryset(self):
         qs = NursingDiagnosis_qs()
@@ -73,6 +76,9 @@ class NursingCareplanViewSet(AuditReadMixin, _SaePermissionMixin, viewsets.Model
 
     serializer_class = NursingCareplanSerializer
     audit_resource_type = "NursingCareplan"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     def get_queryset(self):
         from .models import NursingCareplan
@@ -101,6 +107,9 @@ class NursingCareplanInterventionViewSet(
 
     serializer_class = NursingCareplanInterventionSerializer
     audit_resource_type = "NursingCareplanIntervention"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     def get_queryset(self):
         from .models import NursingCareplanIntervention
@@ -127,6 +136,9 @@ class NursingPrescriptionItemViewSet(AuditReadMixin, _SaePermissionMixin, viewse
 
     serializer_class = NursingPrescriptionItemSerializer
     audit_resource_type = "NursingPrescriptionItem"
+    # Correção pós-019 (revisão do SALTOS_MAXIMOS): view sensível — list() sem
+    # filtro precisa gravar sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS).
+    AUDIT_LIST_ALWAYS = True
 
     def get_queryset(self):
         from .models import NursingPrescriptionItem
@@ -156,6 +168,9 @@ class NursingEvolutionViewSet(AuditReadMixin, _SaePermissionMixin, viewsets.Mode
 
     serializer_class = NursingEvolutionSerializer
     audit_resource_type = "NursingEvolution"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     def get_queryset(self):
         from .models import NursingEvolution

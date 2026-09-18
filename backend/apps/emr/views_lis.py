@@ -92,6 +92,9 @@ class LISInboundView(APIView):
 class LabIntegrationMessageViewSet(AuditReadMixin, viewsets.ReadOnlyModelViewSet):
     serializer_class = LabIntegrationMessageSerializer
     audit_resource_type = "LabIntegrationMessage"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
     permission_classes = [IsAuthenticated, HasPermission("emr.read")]  # type: ignore[list-item]
 
     def get_queryset(self):

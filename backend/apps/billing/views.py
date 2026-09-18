@@ -275,6 +275,9 @@ class ProfessionalSettlementViewSet(viewsets.ModelViewSet):
 
 class AccountsReceivableViewSet(AuditReadMixin, viewsets.ModelViewSet):
     audit_resource_type = "AccountsReceivable"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
     serializer_class = AccountsReceivableSerializer
     permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -322,6 +325,9 @@ class AccountingCategoryViewSet(viewsets.ModelViewSet):
 
 class AccountingEntryViewSet(AuditReadMixin, viewsets.ModelViewSet):
     audit_resource_type = "AccountingEntry"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
     serializer_class = AccountingEntrySerializer
     permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
@@ -400,6 +406,9 @@ class AccountingEntryViewSet(AuditReadMixin, viewsets.ModelViewSet):
 
 class BankTransactionViewSet(AuditReadMixin, viewsets.ModelViewSet):
     audit_resource_type = "BankTransaction"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
     serializer_class = BankTransactionSerializer
     permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
@@ -888,6 +897,9 @@ class InpatientFeeViewSet(
     """
 
     audit_resource_type = "InpatientFee"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     serializer_class = InpatientFeeSerializer
     permission_classes = [IsAuthenticated, _BILLING_MODULE, CanRecordInpatientFee]  # type: ignore[list-item]
@@ -938,6 +950,9 @@ class InpatientFeeViewSet(
 
 class TISSGuideViewSet(AuditReadMixin, viewsets.ModelViewSet):
     audit_resource_type = "TISSGuide"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
     permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["guide_number", "patient__full_name", "provider__name"]
@@ -1362,6 +1377,13 @@ class TISSGuideViewSet(AuditReadMixin, viewsets.ModelViewSet):
 
 class TISSBatchViewSet(AuditReadMixin, viewsets.ModelViewSet):
     audit_resource_type = "TISSBatch"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
+    # Ordem 019 item 2: `download` (GET) tira o XML do lote do sistema —
+    # com as guias dos pacientes dentro — e não é `retrieve`/`list`. É a
+    # leitura mais forte que existe e era a que menos deixava rastro.
+    AUDIT_READ_ACTIONS = frozenset({"download"})
     serializer_class = TISSBatchSerializer
     permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
     filter_backends = [filters.OrderingFilter]
@@ -1612,6 +1634,9 @@ class GlosaViewSet(AuditReadMixin, viewsets.ReadOnlyModelViewSet):
 
     serializer_class = GlosaSerializer
     audit_resource_type = "Glosa"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
     permission_classes = [IsAuthenticated, _BILLING_MODULE, IsFaturistaOrAdmin]  # type: ignore[list-item]
     filter_backends = [filters.OrderingFilter]
     ordering = ["-created_at"]

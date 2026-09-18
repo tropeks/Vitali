@@ -111,6 +111,22 @@ class TestEncounterProcedureAPI(TenantTestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(resp.data), 1)
 
+    def test_list_writes_view_record_audit(self):
+        """Ordem 019 item 2 — `procedures` (GET) não é `retrieve`/`list`, mas
+        passa a gravar leitura via `AUDIT_READ_ACTIONS` (apps/emr/views.py).
+
+        `AuditLog` é append-only (ordem 020) — não dá para limpar a tabela, então
+        a linha nova é a que ficou acima da marca do maior `id` visto antes."""
+        from apps.core.models import AuditLog
+
+        EncounterProcedure.objects.create(encounter=self.encounter, tuss_code=self.tuss)
+        marca = AuditLog.objects.order_by("-id").values_list("id", flat=True).first() or 0
+        resp = self._client(self.medico_user).get(self._url())
+        self.assertEqual(resp.status_code, 200)
+        log = AuditLog.objects.get(action="view_record", resource_type="Encounter", id__gt=marca)
+        self.assertEqual(log.resource_id, str(self.encounter.id))
+        self.assertEqual(log.new_data, {"action": "procedures"})
+
     def test_create_on_signed_encounter_rejected(self):
         self.encounter.status = "signed"
         self.encounter.save(update_fields=["status"])

@@ -200,6 +200,9 @@ class BpaIndividualizadoViewSet(AuditReadMixin, _SusPermissionMixin, viewsets.Re
     """BPA-I (individualizado, com paciente). Read-only — gerado pelo bridge. Read=sus.read."""
 
     audit_resource_type = "BpaIndividualizado"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     serializer_class = BpaIndividualizadoSerializer
 
@@ -221,6 +224,9 @@ class ApacAutorizacaoViewSet(AuditReadMixin, _SusPermissionMixin, viewsets.Model
     """APAC (autorização de alta complexidade, S3). Read=sus.read / write=sus.write."""
 
     audit_resource_type = "ApacAutorizacao"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     serializer_class = ApacAutorizacaoSerializer
 
@@ -292,6 +298,9 @@ class ApacProcedimentoSecundarioViewSet(AuditReadMixin, _SusPermissionMixin, vie
     """Procedimentos secundários de uma APAC (S3). Read=sus.read / write=sus.write."""
 
     audit_resource_type = "ApacProcedimentoSecundario"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     serializer_class = ApacProcedimentoSecundarioSerializer
 
@@ -313,6 +322,9 @@ class AihAutorizacaoViewSet(AuditReadMixin, _SusPermissionMixin, viewsets.ModelV
     """AIH (autorização de internação hospitalar, AI1). Read=sus.read / write=sus.write."""
 
     audit_resource_type = "AihAutorizacao"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     serializer_class = AihAutorizacaoSerializer
 
@@ -441,6 +453,9 @@ class AihProcedimentoSecundarioViewSet(AuditReadMixin, _SusPermissionMixin, view
     """Procedimentos secundários de uma AIH (AI1). Read=sus.read / write=sus.write."""
 
     audit_resource_type = "AihProcedimentoSecundario"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     serializer_class = AihProcedimentoSecundarioSerializer
 

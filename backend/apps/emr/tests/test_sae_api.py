@@ -173,6 +173,39 @@ class TestSAEChainAPI(SAEAPITestBase):
         assert rx_resp.data["frequency_hours"] == 6
         assert str(rx_resp.data["created_by"]) == str(self.enf.id)
 
+    def test_prescription_item_list_writes_view_record_list_audit(self):
+        """Revisão pós-019 (SALTOS_MAXIMOS): `NursingPrescriptionItemViewSet`
+        alcança Patient em 4 saltos (item→intervention→careplan→diagnosis→
+        patient) — fora do crivo com SALTOS_MAXIMOS=2, dentro com o valor
+        corrigido. `AUDIT_LIST_ALWAYS` grava a `list` sem filtro.
+
+        `AuditLog` é append-only (ordem 020) — a linha nova é a que ficou
+        acima da marca do maior `id` visto antes da chamada.
+        """
+        from apps.core.models import AuditLog
+
+        dx = NursingDiagnosis.objects.create(
+            patient=self.patient, encounter=self.encounter, created_by=self.enf
+        )
+        plan = NursingCareplan.objects.create(diagnosis=dx, noc=self.noc, created_by=self.enf)
+        interv = NursingCareplanIntervention.objects.create(careplan=plan, nic=self.nic)
+        from apps.emr.models import NursingPrescriptionItem
+
+        NursingPrescriptionItem.objects.create(
+            intervention=interv,
+            frequency_hours=6,
+            start_at="2026-07-24T08:00:00Z",
+            created_by=self.enf,
+        )
+
+        marca = AuditLog.objects.order_by("-id").values_list("id", flat=True).first() or 0
+        resp = self._client(self.enf).get(f"{BASE}/nursing-prescription-items/")
+        assert resp.status_code == 200, resp.content
+        log = AuditLog.objects.get(
+            action="view_record_list", resource_type="NursingPrescriptionItem", id__gt=marca
+        )
+        assert log.new_data == {}
+
     def test_medico_cannot_write_prescription_item(self):
         dx = NursingDiagnosis.objects.create(
             patient=self.patient, encounter=self.encounter, created_by=self.enf

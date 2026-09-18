@@ -107,6 +107,14 @@ class SurgicalCaseViewSet(AuditReadMixin, _SurgeryPermissionMixin, viewsets.Mode
 
     serializer_class = SurgicalCaseSerializer
     audit_resource_type = "SurgicalCase"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
+    # Ordem 019 item 2: `timeline` (GET) lê tempos + checklists + equipe do
+    # caso e não é `retrieve`/`list` — ficava fora da trilha. `board` NÃO
+    # entra aqui — está isenta em `apps/core/audit_coverage_routes.ACTIONS_ISENTAS`
+    # (painel que repinta sozinho, não leitura dirigida de um caso).
+    AUDIT_READ_ACTIONS = frozenset({"timeline"})
 
     def get_permissions(self):
         read_actions = {"list", "retrieve", "board", "timeline"}
@@ -387,6 +395,9 @@ class SurgicalTeamMemberViewSet(AuditReadMixin, _SurgeryPermissionMixin, viewset
 
     serializer_class = SurgicalTeamMemberSerializer
     audit_resource_type = "SurgicalTeamMember"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     def get_queryset(self):
         from .models import SurgicalTeamMember
@@ -417,6 +428,9 @@ class SurgicalTimeViewSet(AuditReadMixin, viewsets.ReadOnlyModelViewSet):
 
     serializer_class = SurgicalTimeSerializer
     audit_resource_type = "SurgicalTime"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     def get_permissions(self):
         return [IsAuthenticated(), HasPermission("surgery.read")]
@@ -440,6 +454,9 @@ class SurgicalChecklistViewSet(AuditReadMixin, viewsets.ReadOnlyModelViewSet):
 
     serializer_class = SurgicalChecklistSerializer
     audit_resource_type = "SurgicalChecklist"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     def get_permissions(self):
         return [IsAuthenticated(), HasPermission("surgery.read")]
@@ -462,6 +479,9 @@ class SurgicalProcedureViewSet(AuditReadMixin, _SurgeryPermissionMixin, viewsets
 
     serializer_class = SurgicalProcedureSerializer
     audit_resource_type = "SurgicalProcedure"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     def get_queryset(self):
         from .models import SurgicalProcedure
@@ -490,6 +510,9 @@ class SurgicalMaterialViewSet(AuditReadMixin, _SurgeryPermissionMixin, viewsets.
 
     serializer_class = SurgicalMaterialSerializer
     audit_resource_type = "SurgicalMaterial"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     def get_queryset(self):
         from .models import SurgicalMaterial
@@ -547,6 +570,9 @@ class AnestheticRecordViewSet(AuditReadMixin, _SurgeryPermissionMixin, viewsets.
 
     serializer_class = AnestheticRecordSerializer
     audit_resource_type = "AnestheticRecord"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     def get_queryset(self):
         from .models import AnestheticRecord
@@ -579,6 +605,9 @@ class AnestheticEventViewSet(AuditReadMixin, _SurgeryPermissionMixin, viewsets.M
 
     serializer_class = AnestheticEventSerializer
     audit_resource_type = "AnestheticEvent"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     def get_queryset(self):
         from .models import AnestheticEvent
@@ -609,6 +638,9 @@ class PacuRecordViewSet(AuditReadMixin, _SurgeryPermissionMixin, viewsets.ModelV
 
     serializer_class = PacuRecordSerializer
     audit_resource_type = "PacuRecord"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     def get_queryset(self):
         from .models import PacuRecord
@@ -641,6 +673,9 @@ class PacuAssessmentViewSet(AuditReadMixin, _SurgeryPermissionMixin, viewsets.Mo
 
     serializer_class = PacuAssessmentSerializer
     audit_resource_type = "PacuAssessment"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     def get_queryset(self):
         from .models import PacuAssessment
@@ -671,6 +706,9 @@ class RoomTurnoverViewSet(AuditReadMixin, _SurgeryPermissionMixin, viewsets.Mode
 
     serializer_class = RoomTurnoverSerializer
     audit_resource_type = "RoomTurnover"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     def get_queryset(self):
         from .models import RoomTurnover

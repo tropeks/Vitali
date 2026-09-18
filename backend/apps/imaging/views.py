@@ -69,6 +69,9 @@ class ModalityWorklistViewSet(
     queryset = ModalityWorklistItem.objects.select_related("patient", "modality", "encounter")
     serializer_class = ModalityWorklistItemSerializer
     audit_resource_type = "ModalityWorklistItem"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)

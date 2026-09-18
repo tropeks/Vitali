@@ -14,7 +14,12 @@ Cada classe abaixo, com dois funcionários e um registro de cada:
   * `GET ...?employee=<A>` devolve SÓ o registro de A;
   * a mesma chamada grava EXATAMENTE UMA linha de AuditLog
     `view_record_list` com o critério em `new_data`;
-  * `GET` sem parâmetro não grava linha de lista nenhuma (fixado pela 017).
+  * `GET` sem parâmetro grava EXATAMENTE UMA linha, com `new_data={}`
+    (correção pós-019, `AUDIT_LIST_ALWAYS` — ver
+    `test_unfiltered_list_now_logs_the_whole_roster`; a 017 tinha fixado o
+    oposto, "não grava", porque `?employee=` era inerte então e registrar o
+    critério seria mentira — a 018 ligou o filtro, e ler o quadro inteiro
+    sem filtro passou a ser MAIS exposição, não menos).
 
 Rodada de correção pós-revisão: `?employee=` malformado virava 500 (o
 exception handler padrão do DRF não traduz `django.core.exceptions.
@@ -103,13 +108,32 @@ class _EmployeeFilterAuditMixin:
         assert logs.count() == 1
         assert logs.get().new_data == {"employee": str(self.employee_a.id)}
 
-    def test_unfiltered_list_does_not_log(self):
+    def test_unfiltered_list_now_logs_the_whole_roster(self):
+        """Decisão mudou (correção pós-ordem 019, `AUDIT_LIST_ALWAYS`).
+
+        Esta asserção era "lista sem filtro não grava" — certa NO MOMENTO em
+        que `?employee=` era inerte nestas quatro views (017) e registrar o
+        critério seria mentira. A 018 ligou o filtro de verdade; a correção
+        pós-019 reconheceu que a decisão original não fazia mais sentido: ler
+        o quadro INTEIRO de afastamentos/exames/dependentes/pontos de uma
+        clínica é MAIS exposição que ler o de uma pessoa, não menos — e o
+        caso concreto que motivou a mudança é exatamente este:
+        `frontend/app/(dashboard)/rh/afastamentos/page.tsx` chama
+        `/api/v1/hr/leave-requests/` sem `?employee=`, e cada abertura de tela
+        lia o afastamento médico do quadro inteiro sem deixar rastro nenhum.
+        `AUDIT_LIST_ALWAYS = True` nestas quatro views (`apps/hr/views.py`)
+        fecha esse buraco: `list` sem filtro grava `view_record_list` com
+        `new_data={}` — sem critério porque não houve busca dirigida, mas COM
+        rastro porque o rol inteiro foi lido.
+        """
         response = self._list()
         assert response.status_code == 200, response.content
         assert self._ids(response) == {str(self.record_a.id), str(self.record_b.id)}
-        assert not AuditLog.objects.filter(
+        logs = AuditLog.objects.filter(
             action="view_record_list", resource_type=self.audit_resource_type
-        ).exists()
+        )
+        assert logs.count() == 1
+        assert logs.get().new_data == {}
 
     def test_malformed_employee_param_returns_400_and_does_not_log(self):
         response = self._list(employee="not-a-uuid")

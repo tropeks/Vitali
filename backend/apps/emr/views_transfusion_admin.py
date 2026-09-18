@@ -179,6 +179,9 @@ class TransfusionAdministrationViewSet(AuditReadMixin, viewsets.ReadOnlyModelVie
 
     serializer_class = TransfusionAdministrationSerializer
     audit_resource_type = "TransfusionAdministration"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     def get_permissions(self):
         if self.action == "reacao":
@@ -244,6 +247,9 @@ class TransfusionReactionViewSet(AuditReadMixin, viewsets.ReadOnlyModelViewSet):
 
     serializer_class = TransfusionReactionSerializer
     audit_resource_type = "TransfusionReaction"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     def get_permissions(self):
         return [IsAuthenticated(), HasPermission("hemoterapia.read")]

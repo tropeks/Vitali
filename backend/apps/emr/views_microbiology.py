@@ -25,6 +25,9 @@ class MicrobiologyResultViewSet(
 ):
     serializer_class = MicrobiologyResultSerializer
     audit_resource_type = "MicrobiologyResult"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     def get_queryset(self):
         qs = MicrobiologyResult.objects.select_related("order_item", "created_by").prefetch_related(
@@ -50,6 +53,9 @@ class MicrobiologyResultViewSet(
 class IsolatedOrganismViewSet(AuditReadMixin, MicrobiologyPermissionsMixin, viewsets.ModelViewSet):
     serializer_class = IsolatedOrganismSerializer
     audit_resource_type = "IsolatedOrganism"
+    # Correção pós-019 (revisão do SALTOS_MAXIMOS): view sensível — list() sem
+    # filtro precisa gravar sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS).
+    AUDIT_LIST_ALWAYS = True
 
     def get_queryset(self):
         qs = IsolatedOrganism.objects.select_related("result").prefetch_related("antibiogram")
@@ -62,6 +68,9 @@ class IsolatedOrganismViewSet(AuditReadMixin, MicrobiologyPermissionsMixin, view
 class AntibiogramEntryViewSet(AuditReadMixin, MicrobiologyPermissionsMixin, viewsets.ModelViewSet):
     serializer_class = AntibiogramEntrySerializer
     audit_resource_type = "AntibiogramEntry"
+    # Correção pós-019 (revisão do SALTOS_MAXIMOS): view sensível — list() sem
+    # filtro precisa gravar sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS).
+    AUDIT_LIST_ALWAYS = True
 
     def get_queryset(self):
         qs = AntibiogramEntry.objects.select_related("organism")

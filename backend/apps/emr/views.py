@@ -79,6 +79,9 @@ from .serializers import (
 class MedicationAdministrationViewSet(AuditReadMixin, viewsets.ModelViewSet):
     serializer_class = MedicationAdministrationSerializer
     audit_resource_type = "MedicationAdministration"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
     http_method_names = ("get", "post", "head", "options")
 
     def get_queryset(self):
@@ -205,6 +208,9 @@ class MedicationAdministrationViewSet(AuditReadMixin, viewsets.ModelViewSet):
 class NursingAssessmentViewSet(AuditReadMixin, viewsets.ModelViewSet):
     serializer_class = NursingAssessmentSerializer
     audit_resource_type = "NursingAssessment"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     def get_queryset(self):
         from .models import NursingAssessment
@@ -247,6 +253,9 @@ class PatientIdentifierViewSet(AuditReadMixin, viewsets.ModelViewSet):
     queryset = PatientIdentifier.objects.select_related("patient").all()
     serializer_class = PatientIdentifierSerializer
     audit_resource_type = "PatientIdentifier"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     def get_permissions(self):
         permission = "mpi.read" if self.action in {"list", "retrieve"} else "mpi.write"
@@ -259,6 +268,9 @@ class DuplicatePatientCandidateViewSet(AuditReadMixin, viewsets.ReadOnlyModelVie
     ).all()
     serializer_class = DuplicatePatientCandidateSerializer
     audit_resource_type = "DuplicatePatientCandidate"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     def get_permissions(self):
         permission = "mpi.read" if self.action in {"list", "retrieve"} else "mpi.review"
@@ -321,6 +333,13 @@ def log_audit(request, action, resource_type, resource_id, old_data=None, new_da
 
 class PatientViewSet(AuditReadMixin, viewsets.ModelViewSet):
     audit_resource_type = "Patient"
+    # Ordem 019 item 1: listar o rol de pacientes JÁ é o acesso sensível —
+    # não há critério a esperar, o resultado inteiro é o dado.
+    AUDIT_LIST_ALWAYS = True
+    # Ordem 019 item 2: as quatro `@action` de detalhe abaixo leem o
+    # prontuário (histórico, alergias, linha do tempo, convênio) e não são
+    # `retrieve`/`list` — sem isto elas ficavam de fora da trilha.
+    AUDIT_READ_ACTIONS = frozenset({"timeline", "allergies", "medical_history", "insurance"})
     permission_classes = [IsAuthenticated, HasPermission("emr.read")]  # type: ignore[list-item]
     # full_name / social_name are encrypted at rest (LGPD): they cannot be
     # searched or ordered in SQL. Name search is handled in Python by
@@ -509,6 +528,9 @@ class AppointmentViewSet(AuditReadMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasPermission("schedule.read")]  # type: ignore[list-item]
     serializer_class = AppointmentSerializer
     audit_resource_type = "Appointment"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     ordering = ["start_time"]
 
@@ -773,6 +795,12 @@ class EncounterViewSet(AuditReadMixin, viewsets.ModelViewSet):
     """Consultas clínicas — ponto central do EMR"""
 
     audit_resource_type = "Encounter"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
+    # Ordem 019 item 2: `procedures` (GET) lê os procedimentos do atendimento
+    # e não é `retrieve`/`list` — ficava fora da trilha.
+    AUDIT_READ_ACTIONS = frozenset({"procedures"})
     permission_classes = [IsAuthenticated, HasPermission("emr.read")]  # type: ignore[list-item]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     ordering = ["-encounter_date"]
@@ -961,6 +989,9 @@ class SOAPNoteViewSet(AuditReadMixin, viewsets.ModelViewSet):
     queryset = SOAPNote.objects.select_related("encounter").all()
     serializer_class = SOAPNoteSerializer
     audit_resource_type = "SOAPNote"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
     permission_classes = [IsAuthenticated, HasPermission("emr.write")]  # type: ignore[list-item]
     http_method_names = ["get", "patch", "head", "options"]
 
@@ -984,6 +1015,9 @@ class VitalSignsViewSet(AuditReadMixin, viewsets.ModelViewSet):
     queryset = VitalSigns.objects.select_related("encounter").all()
     serializer_class = VitalSignsSerializer
     audit_resource_type = "VitalSigns"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
     permission_classes = [IsAuthenticated, HasPermission("emr.write")]  # type: ignore[list-item]
     http_method_names = ["get", "patch", "head", "options"]
 
@@ -1004,6 +1038,9 @@ class ClinicalDocumentViewSet(AuditReadMixin, viewsets.ModelViewSet):
     queryset = ClinicalDocument.objects.select_related("encounter", "signed_by").all()
     serializer_class = ClinicalDocumentSerializer
     audit_resource_type = "ClinicalDocument"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
     permission_classes = [IsAuthenticated, HasPermission("emr.write")]  # type: ignore[list-item]
     filter_backends = [DjangoFilterBackend]
 
@@ -1113,6 +1150,9 @@ class ClinicalFormResponseViewSet(AuditReadMixin, viewsets.ModelViewSet):
 
     serializer_class = ClinicalFormResponseSerializer
     audit_resource_type = "ClinicalFormResponse"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["template", "encounter", "patient"]
     http_method_names = ("get", "post", "head", "options")
@@ -1215,6 +1255,9 @@ class LabOrderViewSet(AuditReadMixin, viewsets.ModelViewSet):
 
     serializer_class = LabOrderSerializer
     audit_resource_type = "LabOrder"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
     permission_classes = [IsAuthenticated, HasPermission("emr.read")]  # type: ignore[list-item]
     http_method_names = ["get", "post", "patch", "head", "options"]
 
@@ -1406,6 +1449,9 @@ class LabDeltaAlertViewSet(AuditReadMixin, viewsets.ReadOnlyModelViewSet):
 
     serializer_class = LabDeltaAlertSerializer
     audit_resource_type = "LabDeltaAlert"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
     permission_classes = [IsAuthenticated, HasPermission("emr.read")]  # type: ignore[list-item]
 
     def get_queryset(self):
@@ -1429,6 +1475,9 @@ class PrescriptionViewSet(AuditReadMixin, viewsets.ModelViewSet):
 
     serializer_class = PrescriptionSerializer
     audit_resource_type = "Prescription"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     def get_queryset(self):
         qs = Prescription.objects.select_related(
@@ -1555,6 +1604,9 @@ class PrescriptionItemViewSet(AuditReadMixin, viewsets.ModelViewSet):
 
     serializer_class = PrescriptionItemSerializer
     audit_resource_type = "PrescriptionItem"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     def get_permissions(self):
         return [IsAuthenticated(), HasPermission("emr.write")]
