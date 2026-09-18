@@ -520,6 +520,9 @@ class PharmacistValidationViewSet(AuditReadMixin, viewsets.ModelViewSet):
     queryset = PharmacistValidation.objects.select_related("prescription", "pharmacist")
     serializer_class = PharmacistValidationSerializer
     audit_resource_type = "PharmacistValidation"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
     http_method_names = ("get", "post", "head", "options")
 
     def get_permissions(self):
@@ -842,6 +845,9 @@ class StockItemViewSet(viewsets.ModelViewSet):
 
 class StockMovementViewSet(AuditReadMixin, viewsets.ModelViewSet):
     audit_resource_type = "StockMovement"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
     serializer_class = StockMovementSerializer
     http_method_names = ["get", "post", "head", "options"]  # no PUT/PATCH/DELETE (append-only)
 
@@ -1061,6 +1067,9 @@ class AcknowledgeStockAlertView(APIView):
 class DispensationViewSet(AuditReadMixin, viewsets.ReadOnlyModelViewSet):
     serializer_class = DispensationSerializer
     audit_resource_type = "Dispensation"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     def get_permissions(self):
         return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission("pharmacy.dispense")]

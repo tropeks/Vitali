@@ -433,6 +433,9 @@ class OccupationalHealthExamViewSet(  # type: ignore[misc]
     queryset = OccupationalHealthExam.objects.select_related("employee__user").all()
     serializer_class = OccupationalHealthExamSerializer
     audit_resource_type = "occupational_health_exam"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
     # Ordem 018: `EmployeeFilteredQuerysetMixin.get_queryset` aplica de fato
     # `.filter(employee_id=...)` quando `?employee=` vem na querystring, com
     # validação de formato (ver o mixin). Com o filtro real, `{"employee": X}`
@@ -471,6 +474,9 @@ class TimeEntryViewSet(
     serializer_class = TimeEntrySerializer
     permission_classes = [IsAuthenticated]
     audit_resource_type = "time_entry"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
     # Só "employee" — sem "search" (sem `search_fields`, seria inerte, ver as
     # outras três viewsets de RH). O mixin registra o CRITÉRIO PEDIDO, não o
     # conjunto devolvido (contrato dele, ver AuditReadMixin docstring): para
@@ -567,6 +573,9 @@ class DependentViewSet(  # type: ignore[misc]
     serializer_class = DependentSerializer
     audit_action = "dependent_created"
     audit_resource_type = "dependent"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
     # Ordem 018: `EmployeeFilteredQuerysetMixin.get_queryset` aplica de fato
     # `.filter(employee_id=...)` quando `?employee=` vem na querystring, com
     # validação de formato (ver o mixin). Com o filtro real, `{"employee": X}`
@@ -653,6 +662,9 @@ class LeaveRequestViewSet(  # type: ignore[misc]
     serializer_class = LeaveRequestSerializer
     http_method_names = ["get", "post", "head", "options"]
     audit_resource_type = "leave_request"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
     # Ordem 018: `EmployeeFilteredQuerysetMixin.get_queryset` aplica de fato
     # `.filter(employee_id=...)` quando `?employee=` vem na querystring, com
     # validação de formato (ver o mixin). Com o filtro real, `{"employee": X}`

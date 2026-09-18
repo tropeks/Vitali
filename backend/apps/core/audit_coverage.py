@@ -29,6 +29,12 @@ de `Patient`. Por isso `exigem_trilha()` é a união de DOIS critérios — alca
 testado que a 016 já exige de `ISENTAS`. **A lista é explícita, nunca heurística
 de nome de campo**: o crivo por palavra-chave já foi tentado e marcou
 `CostCenter.name` e `Room.name` como dado pessoal.
+
+**Ordem 019 — o guarda muda de granularidade.** `tem_trilha` responde "esta
+CLASSE herda `AuditReadMixin`?", mas o mixin só intercepta `retrieve`/`list`
+condicionalmente. A pergunta certa, por ROTA, vive em
+`apps.core.audit_coverage_routes` — `rotas_get_registradas()`/
+`rotas_sem_cobertura()`, com `ACTIONS_ISENTAS`/`LIST_ALWAYS_ISENTAS`.
 """
 
 from __future__ import annotations
@@ -39,8 +45,25 @@ MODELS_CLINICOS: frozenset[str] = frozenset({"emr.Patient"})
 #: Arestas que NÃO carregam significado clínico (ver docstring).
 ARESTAS_PROIBIDAS: frozenset[str] = frozenset({"core.User", "core.Tenant", "core.Role"})
 
-#: Saltos máximos: o model, e no máximo um intermediário clínico deliberado.
-SALTOS_MAXIMOS = 2
+#: Saltos máximos até `Patient`. Medido variando o limite (revisão pós-019):
+#:
+#:   saltos=2:  71 views exigem trilha  (valor antigo, truncava cadeia real)
+#:   saltos=3:  73  (+ IsolatedOrganismViewSet, + NursingPrescriptionItemViewSet)
+#:   saltos=4:  74  (+ AntibiogramEntryViewSet)
+#:   saltos=5:  74  (+0)
+#:   saltos=6:  74  (+0)
+#:
+#: Satura em 4 — as três views novas eram prontuário de verdade (organismo
+#: isolado em cultura, antibiograma, item de prescrição de enfermagem) fora
+#: do crivo não por serem inofensivas, mas porque o orçamento de saltos
+#: acabava antes de chegar em `Patient`. Quem barra os 46 falsos positivos da
+#: 016 é `ARESTAS_PROIBIDAS` (`core.User`/`Tenant`/`Role`), não a
+#: profundidade — subir até 8 não introduziu UM falso positivo (ver
+#: `test_saltos_maximos_esta_saturado` em test_auditoria_leitura_cobertura.py,
+#: que trava isso: subir +2 não pode acrescentar view nenhuma). 6 = saturação
+#: (4) + margem de 2, mesma folga proporcional que os pisos de enumeração já
+#: usam.
+SALTOS_MAXIMOS = 6
 
 #: Views que alcançam `Patient` no grafo mas NÃO leem prontuário — cada uma com o
 #: motivo, porque isenção sem motivo escrito vira isenção por hábito.
@@ -50,6 +73,14 @@ ISENTAS: dict[str, str] = {
         "core.User tem `patient_portal_access` — é a mesma aresta espúria de "
         "ARESTAS_PROIBIDAS, vista do outro lado (o model É User). Ler o próprio "
         "perfil não é ler prontuário."
+    ),
+    "UserListCreateView": (
+        "Lista/cria usuários (staff) do tenant. Alcança Patient pela MESMA "
+        "aresta espúria de UserDetailView (core.User → patient_portal_access) "
+        "— o model É User, não um paciente. Revisão pós-019: só ficou visível "
+        "depois que VIEW_MODEL_OVERRIDES passou a resolver o model desta view; "
+        "antes disso o guarda simplesmente não via a rota, e a isenção nunca "
+        "tinha sido decidida."
     ),
 }
 
@@ -150,7 +181,55 @@ def caminho_ate_paciente(model, visto: set[str] | None = None, prof: int = 0) ->
     return ""
 
 
+#: Correção pós-019: views cujo `queryset`/`serializer_class` são só métodos
+#: dinâmicos (`get_queryset`/`get_serializer_class`), sem atributo estático de
+#: fallback — `_model_da_view` não enxerga essas e a view fica INVISÍVEL a
+#: `exigem_trilha()`. Sem isto, `PatientViewSet` e `EncounterViewSet` — os
+#: dois models mais centrais do prontuário — só tinham `AuditReadMixin` por
+#: decisão de quem escreveu a view, não porque o guarda exigisse; se o mixin
+#: fosse removido amanhã, nada acusaria. `PriceTableViewSet` e
+#: `UserListCreateView` têm o MESMO padrão (achadas na revisão seguinte) —
+#: `UserListCreateView` importa de verdade: uma vez visível, o model dela É
+#: `core.User`, que alcança Patient pela aresta espúria de
+#: `ISENTAS["UserDetailView"]`, e por isso ganhou entrada própria em
+#: `ISENTAS` (não vale supor "provavelmente inofensiva" — o motivo tem que
+#: estar escrito). Escrito à mão, mesmo espírito de `MODELS_SENSIVEIS`:
+#: explícito, nunca inferido chamando o método às cegas.
+#:
+#: Isto tapa sintomas, não a causa — por isso
+#: `test_toda_view_resolve_model_ou_esta_declarada_sem_model` (ver
+#: `VIEWS_SEM_MODEL` abaixo) é o guarda permanente: toda view enumerada
+#: RESOLVE um model (aqui ou nos atributos estáticos) OU está declarada como
+#: "sem model" com motivo. Uma sétima view deste padrão não desaparece mais
+#: em silêncio — reprova até alguém decidir.
+VIEW_MODEL_OVERRIDES: dict[str, str] = {
+    "PatientViewSet": "emr.Patient",
+    "EncounterViewSet": "emr.Encounter",
+    "TISSGuideViewSet": "billing.TISSGuide",
+    "PriceTableViewSet": "billing.PriceTable",
+    "UserListCreateView": "core.User",
+}
+
+#: Views que passam no filtro `get_queryset`/`queryset` de `views_registradas()`
+#: mas GENUINAMENTE não têm model — não é um buraco do classificador, é a view
+#: não ser um recurso de banco. Cada uma com motivo, mesmo contrato de
+#: `ISENTAS`: sem isto, `test_toda_view_resolve_model_ou_esta_declarada_sem_model`
+#: falharia para qualquer view deste tipo, inclusive as legítimas.
+VIEWS_SEM_MODEL: dict[str, str] = {
+    "TokenRefreshView": (
+        "POST /auth/refresh — wrapper do SimpleJWT. `queryset = None` é o "
+        "default herdado de `GenericAPIView`, não um recurso real; a view não "
+        "lê nem lista nada, só troca um token por outro."
+    ),
+}
+
+
 def _model_da_view(cls):
+    rotulo_override = VIEW_MODEL_OVERRIDES.get(cls.__name__)
+    if rotulo_override:
+        from django.apps import apps as django_apps
+
+        return django_apps.get_model(rotulo_override)
     qs = getattr(cls, "queryset", None)
     if qs is not None and getattr(qs, "model", None) is not None:
         return qs.model
@@ -220,6 +299,23 @@ def exigem_trilha() -> list[dict]:
     `ISENTAS`.
     """
     return [v for v in views_registradas() if v["motivo"] and v["view"] not in ISENTAS]
+
+
+def views_sem_model_nao_declaradas() -> list[dict]:
+    """Views que `_model_da_view` não resolve e que NÃO estão em `VIEWS_SEM_MODEL`.
+
+    Fecha a classe do defeito, não a instância: `PatientViewSet`,
+    `EncounterViewSet`, `TISSGuideViewSet`, `PriceTableViewSet` e
+    `UserListCreateView` tinham o MESMO padrão (só `get_queryset`/
+    `get_serializer_class` dinâmicos) e cada uma só apareceu depois de alguém
+    ir procurar à mão. Sem este guarda, uma sexta view assim nasce invisível a
+    `exigem_trilha()` de novo — não é isenta, é INVISÍVEL, e ninguém decidiu.
+    """
+    achados: list[dict] = []
+    for v in views_registradas():
+        if v["model"] is None and v["view"] not in VIEWS_SEM_MODEL:
+            achados.append(v)
+    return achados
 
 
 def mixin_fora_de_ordem() -> list[str]:

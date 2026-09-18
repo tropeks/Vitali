@@ -348,6 +348,9 @@ class MessageLogPagination(PageNumberPagination):
 
 class WhatsAppContactViewSet(AuditReadMixin, viewsets.ReadOnlyModelViewSet):
     audit_resource_type = "WhatsAppContact"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
     serializer_class = WhatsAppContactSerializer
     permission_classes = [IsAuthenticated, _WHATSAPP_MODULE, _TRIAGE_READ]  # type: ignore[list-item]
     pagination_class = MessageLogPagination
@@ -361,6 +364,9 @@ class WhatsAppContactViewSet(AuditReadMixin, viewsets.ReadOnlyModelViewSet):
 
 class MessageLogViewSet(AuditReadMixin, viewsets.ReadOnlyModelViewSet):
     audit_resource_type = "MessageLog"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
     serializer_class = MessageLogSerializer
     permission_classes = [IsAuthenticated, _WHATSAPP_MODULE, _TRIAGE_READ]  # type: ignore[list-item]
     pagination_class = MessageLogPagination

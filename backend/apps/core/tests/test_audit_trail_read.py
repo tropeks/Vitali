@@ -65,11 +65,23 @@ class TestReadAccessIsAudited(AuditTrailReadTestBase):
         assert log.user_id == self.clinician.id
         assert log.resource_id == str(self.prescription.id)
 
-    def test_list_without_targeted_filter_is_not_audited(self):
+    def test_unfiltered_list_now_logs_the_whole_prescription_roster(self):
+        """Decisão mudou (correção pós-ordem 019, `PrescriptionViewSet.
+        AUDIT_LIST_ALWAYS`). Esta asserção era "lista sem filtro NÃO audita" —
+        certa quando o desenho original só valorizava a busca DIRIGIDA
+        (critério, não resultado). A correção reconheceu que ler a lista
+        INTEIRA de prescrições sem filtro é MAIS exposição que uma busca
+        dirigida, não menos, e passou a exigir `AUDIT_LIST_ALWAYS = True` em
+        toda view que `exigem_trilha()` — `PrescriptionViewSet` incluída.
+        `new_data={}` porque não houve critério, mas a linha existe porque o
+        rol inteiro foi lido.
+        """
         AuditLog.objects.all().delete()
         resp = self._client(self.clinician).get(f"{BASE}/prescriptions/")
         assert resp.status_code == 200, resp.content
-        assert not AuditLog.objects.filter(action="view_record_list").exists()
+        log = AuditLog.objects.get(action="view_record_list", resource_type="Prescription")
+        assert log.user_id == self.clinician.id
+        assert log.new_data == {}
 
     def test_list_filtered_by_patient_is_audited_with_criterion_not_result(self):
         AuditLog.objects.all().delete()

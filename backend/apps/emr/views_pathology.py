@@ -22,6 +22,9 @@ class PathologyPermissionsMixin:
 class PathologyReportViewSet(AuditReadMixin, PathologyPermissionsMixin, viewsets.ModelViewSet):
     serializer_class = PathologyReportSerializer
     audit_resource_type = "PathologyReport"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     def get_queryset(self):
         qs = PathologyReport.objects.select_related(
@@ -47,6 +50,9 @@ class PathologyReportViewSet(AuditReadMixin, PathologyPermissionsMixin, viewsets
 class PathologySpecimenViewSet(AuditReadMixin, PathologyPermissionsMixin, viewsets.ModelViewSet):
     serializer_class = PathologySpecimenSerializer
     audit_resource_type = "PathologySpecimen"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     def get_queryset(self):
         qs = PathologySpecimen.objects.select_related("report")

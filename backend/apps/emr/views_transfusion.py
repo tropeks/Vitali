@@ -74,6 +74,9 @@ class TransfusionRequestViewSet(
 
     serializer_class = TransfusionRequestSerializer
     audit_resource_type = "TransfusionRequest"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
     http_method_names = ["get", "post", "head", "options"]
 
     def get_queryset(self):
@@ -176,6 +179,9 @@ class CrossMatchViewSet(AuditReadMixin, viewsets.ReadOnlyModelViewSet):
 
     serializer_class = CrossMatchSerializer
     audit_resource_type = "CrossMatch"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     def get_permissions(self):
         return [IsAuthenticated(), HasPermission("hemoterapia.read")]

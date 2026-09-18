@@ -40,6 +40,9 @@ class MedicationReconciliationViewSet(AuditReadMixin, viewsets.ModelViewSet):
 
     serializer_class = MedicationReconciliationSerializer
     audit_resource_type = "MedicationReconciliation"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
     http_method_names = ("get", "post", "head", "options")
 
     def get_queryset(self):

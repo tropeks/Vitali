@@ -208,6 +208,43 @@ class MicrobiologyTestCase(TenantTestCase):
         self.assertEqual(len(resp.data["results"]), 1)
         self.assertEqual(resp.data["results"][0]["antibiotic"], "Ampicilina")
 
+    def test_isolated_organism_and_antibiogram_list_write_view_record_list_audit(self):
+        """Revisão pós-019 (SALTOS_MAXIMOS): `IsolatedOrganismViewSet` e
+        `AntibiogramEntryViewSet` alcançam Patient em 4 saltos
+        (organism→result→order_item→order→patient) — fora do crivo com
+        SALTOS_MAXIMOS=2, dentro com o valor corrigido. `AUDIT_LIST_ALWAYS`
+        grava a `list` sem filtro de cada uma, como as demais views sensíveis.
+
+        `AuditLog` é append-only (ordem 020) — a linha nova é a que ficou
+        acima da marca do maior `id` visto antes de cada chamada.
+        """
+        from apps.core.models import AuditLog
+
+        result = MicrobiologyResult.objects.create(order_item=self.item)
+        organism = IsolatedOrganism.objects.create(result=result, organism_name="E. coli")
+        AntibiogramEntry.objects.create(
+            organism=organism,
+            antibiotic="Ampicilina",
+            interpretation=AntibiogramEntry.Interpretation.RESISTENTE,
+        )
+        client = self.client_for(self.reader)
+
+        marca = AuditLog.objects.order_by("-id").values_list("id", flat=True).first() or 0
+        resp = client.get("/api/v1/isolated-organisms/")
+        self.assertEqual(resp.status_code, 200)
+        log = AuditLog.objects.get(
+            action="view_record_list", resource_type="IsolatedOrganism", id__gt=marca
+        )
+        self.assertEqual(log.new_data, {})
+
+        marca = AuditLog.objects.order_by("-id").values_list("id", flat=True).first() or 0
+        resp = client.get("/api/v1/antibiogram-entries/")
+        self.assertEqual(resp.status_code, 200)
+        log = AuditLog.objects.get(
+            action="view_record_list", resource_type="AntibiogramEntry", id__gt=marca
+        )
+        self.assertEqual(log.new_data, {})
+
     def test_reader_cannot_write(self):
         resp = self.client_for(self.reader).post(
             "/api/v1/microbiology-results/",

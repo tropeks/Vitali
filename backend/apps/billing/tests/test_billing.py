@@ -476,6 +476,31 @@ class BillingTestCase(TenantTestCase):
         export_resp = client.post(f"/api/v1/billing/batches/{batch_id}/export/")
         self.assertEqual(export_resp.status_code, 400)
 
+    def test_batch_download_writes_view_record_audit(self):
+        """Ordem 019 item 2 — `download` tira o XML do lote (com as guias dos
+        pacientes) do sistema. Não é `retrieve`/`list`, mas passa a gravar
+        leitura via `AUDIT_READ_ACTIONS` (apps/billing/views.py) — era a
+        leitura mais forte e a que menos deixava rastro."""
+        from django.core.files.base import ContentFile
+        from django.core.files.storage import default_storage
+
+        from apps.core.models import AuditLog
+
+        client = self._auth(self.fat_token)
+        batch = TISSBatch.objects.create(provider=self.provider, status="closed")
+        file_path = f"billing/batches/{batch.batch_number}.xml"
+        batch.xml_file = default_storage.save(file_path, ContentFile(b"<xml/>"))
+        batch.save(update_fields=["xml_file"])
+
+        # AuditLog é append-only (ordem 020) — não dá para limpar a tabela; a
+        # linha nova é a que ficou acima da marca do maior `id` visto antes.
+        marca = AuditLog.objects.order_by("-id").values_list("id", flat=True).first() or 0
+        resp = client.get(f"/api/v1/billing/batches/{batch.id}/download/")
+        self.assertEqual(resp.status_code, 200)
+        log = AuditLog.objects.get(action="view_record", resource_type="TISSBatch", id__gt=marca)
+        self.assertEqual(log.resource_id, str(batch.id))
+        self.assertEqual(log.new_data, {"action": "download"})
+
     # ── Double Submit Protection ──────────────────────────────────────────────
 
     def test_guide_cannot_be_in_two_submitted_batches(self):

@@ -261,6 +261,9 @@ class AdmissionViewSet(
 
     serializer_class = AdmissionSerializer
     audit_resource_type = "Admission"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     def get_permissions(self):
         permission_by_action = {
@@ -463,6 +466,9 @@ class AdmissionEventViewSet(AuditReadMixin, viewsets.ReadOnlyModelViewSet):
 
     serializer_class = AdmissionEventSerializer
     audit_resource_type = "AdmissionEvent"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     def get_permissions(self):
         return [IsAuthenticated(), HasPermission("beds.read")]

@@ -36,6 +36,9 @@ class LabSpecimenViewSet(AuditReadMixin, DiagnosticsPermissionsMixin, viewsets.M
     )
     serializer_class = LabSpecimenSerializer
     audit_resource_type = "LabSpecimen"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     @action(detail=True, methods=["post"])
     def transition(self, request, pk=None):
@@ -65,6 +68,9 @@ class CriticalLabResultViewSet(
     )
     serializer_class = CriticalLabResultSerializer
     audit_resource_type = "CriticalLabResult"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
 
     @action(detail=False, methods=["post"])
     def detect(self, request):

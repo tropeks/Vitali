@@ -68,6 +68,9 @@ class ProblemListItemViewSet(_PatientScopedEMRViewSet):
     queryset = ProblemListItem.objects.select_related("patient", "encounter", "cid10").all()
     serializer_class = ProblemListItemSerializer
     audit_resource_type = "ProblemListItem"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
     audit_create_action = "problem_create"
 
 
@@ -77,6 +80,9 @@ class AllergyViewSet(_PatientScopedEMRViewSet):
     queryset = Allergy.objects.select_related("patient", "allergen_class").all()
     serializer_class = AllergyRecordSerializer
     audit_resource_type = "Allergy"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
     audit_create_action = "allergy_create"
 
 
@@ -86,4 +92,7 @@ class ImmunizationViewSet(_PatientScopedEMRViewSet):
     queryset = Immunization.objects.select_related("patient").all()
     serializer_class = ImmunizationSerializer
     audit_resource_type = "Immunization"
+    # Correção pós-019: view sensível — list() sem filtro precisa gravar
+    # sempre (ver AuditReadMixin.AUDIT_LIST_ALWAYS em apps/core/mixins.py).
+    AUDIT_LIST_ALWAYS = True
     audit_create_action = "immunization_create"
