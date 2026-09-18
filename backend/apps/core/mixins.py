@@ -31,7 +31,7 @@ class AuditReadMixin:
     audit_resource_type: str | None = None
 
     #: Query params whose presence turns a ``list`` into a targeted lookup.
-    AUDIT_LIST_PARAMS = ("patient", "search")
+    AUDIT_LIST_PARAMS: tuple[str, ...] = ("patient", "search")
 
     def retrieve(self, request, *args, **kwargs):
         response = super().retrieve(request, *args, **kwargs)
