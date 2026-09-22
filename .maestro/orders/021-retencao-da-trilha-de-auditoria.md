@@ -147,3 +147,7 @@ relatório, para ele carimbar.
 - Direção vigente na criação: INTENT v5 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 021` (você não fecha a própria ordem).
+accepted_at: 2026-09-22T09:14:17-03:00
+accepted_session: desconhecido
+accepted_tree: 74d38b41da5744ac32f0a07a5cf8481dae953a7e
+accepted_intent: 5
