@@ -38,6 +38,11 @@ GHCR_REPO=tropeks IMAGE_TAG=latest \
 docker compose -f docker-compose.staging.yml exec django \
   python manage.py migrate_schemas --shared --noinput
 
+# 6b. Ensure core_auditlog has a partition ready for every tenant (ordem 021,
+#     Emenda do Imediato) — idempotent, safe to re-run on every deploy.
+docker compose -f docker-compose.staging.yml exec django \
+  python manage.py ensure_audit_partitions
+
 # 7. Collect static files
 docker compose -f docker-compose.staging.yml exec django \
   python manage.py collectstatic --noinput
@@ -237,6 +242,11 @@ IMAGE_TAG=sha-<commit> GHCR_REPO=tropeks docker compose -p vitali-staging --env-
 IMAGE_TAG=sha-<commit> GHCR_REPO=tropeks docker compose -p vitali-staging --env-file .env.staging -f docker-compose.staging.yml up -d
 docker compose -p vitali-staging --env-file .env.staging -f docker-compose.staging.yml exec -T django python manage.py migrate_schemas --shared --noinput
 docker compose -p vitali-staging --env-file .env.staging -f docker-compose.staging.yml exec -T django python manage.py migrate_schemas --tenant --noinput
+# Ordem 021, Emenda do Imediato: pré-cria a partição de core_auditlog do mês
+# corrente/seguinte para cada tenant — sem isto toda escrita cai na DEFAULT e
+# o expurgo por tenant nunca tem o que derrubar. Idempotente; o Celery Beat
+# diário (core.ensure_audit_partitions) cobre o mês virando sem deploy no meio.
+docker compose -p vitali-staging --env-file .env.staging -f docker-compose.staging.yml exec -T django python manage.py ensure_audit_partitions
 COMPOSE_PROJECT_NAME=vitali-staging COMPOSE_FILE=docker-compose.staging.yml COMPOSE_ENV_FILE=.env.staging BASE_URL=https://vitali.qtec.me bash scripts/smoke_test.sh
 ```
 

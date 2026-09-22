@@ -372,21 +372,25 @@ FEATURE_AI_GLOSA = env.bool("FEATURE_AI_GLOSA", default=False)
 FEATURE_WHISPER_FALLBACK = env.bool("FEATURE_WHISPER_FALLBACK", default=True)
 SCRIBE_SESSION_RETENTION_DAYS = env.int("SCRIBE_SESSION_RETENTION_DAYS", default=90)
 
-# ─── Audit log retention (order 020) ─────────────────────────────────────────
+# ─── Audit log retention (order 020; per-tenant since order 021) ────────────
 # core_auditlog is the LGPD art. 37 audit trail — append-only, DB-immutable
 # (migration 0019) and RANGE(created_at)/LIST(schema_name)-partitioned
-# (migration 0043). It has NO expiry by default in ANY environment: both the
-# window and the switch below are unset/off until a human sets them
-# deliberately. See apps/core/management/commands/purge_audit_logs.py — the
-# command itself refuses to run unless BOTH are explicitly configured, naming
-# whichever is missing, and even then defaults to --dry-run.
+# (migration 0043). It has NO expiry by default in ANY environment.
+#
+# Order 020 gated the purge command on two GLOBAL settings
+# (AUDIT_LOG_RETENTION_DAYS in days, AUDIT_LOG_PURGE_ENABLED). Order 021
+# retired both: retention (20 years = 240 months, Capitão's decision —
+# docs/adr/ADR-0001-retencao-auditoria-20-anos.md) and the purge switch are
+# now resolved PER TENANT from apps.core.models.TenantAuditRetention, not
+# from a Django setting. A tenant with no row there gets that model's own
+# defaults (240 months, purge disabled) — see
+# apps/core/management/commands/purge_audit_logs.py, which never reads a
+# global on/off switch and defaults to --dry-run regardless.
 #
 # Purge is never DELETE. It exports the expiring partition to an encrypted,
 # LOCALLY-verified cold copy first (apps.core.cold_storage) and only then
 # DROPs the (now cold-archived) partition (apps.core.partitioning) — see the
 # Capitão's amendment to order 020. Fábrica = reter, nunca apagar.
-AUDIT_LOG_RETENTION_DAYS = env.int("AUDIT_LOG_RETENTION_DAYS", default=None)
-AUDIT_LOG_PURGE_ENABLED = env.bool("AUDIT_LOG_PURGE_ENABLED", default=False)
 
 # Local target for the cold-export step above (apps.core.cold_storage_backends
 # .LocalDiskColdStorageBackend) — "alvo local para teste" while no S3/Glacier

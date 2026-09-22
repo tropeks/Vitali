@@ -25,6 +25,7 @@ partition-bound catalog entries):
 
 from __future__ import annotations
 
+import calendar
 import re
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -74,6 +75,25 @@ class MonthPartition:
         """
         cutoff_naive = cutoff.replace(tzinfo=None) if cutoff.tzinfo else cutoff
         return datetime.combine(self.end, datetime.min.time()) <= cutoff_naive
+
+
+def retention_cutoff(now: datetime, retention_months: int) -> datetime:
+    """*now* minus *retention_months* whole calendar months.
+
+    Order 021: retention is counted in MONTHS, matching the unit of the
+    thing actually being expurgated (a month RANGE partition — see
+    ``MonthPartition``), not days. A day count drifts against month
+    boundaries by a day across leap years (20 years is 7305 or 7306 days
+    depending which Februaries fall inside the window); subtracting whole
+    months has no such wobble. Deliberately no ``dateutil`` dependency for a
+    one-off month subtraction the stdlib already covers via
+    ``calendar.monthrange``.
+    """
+    total_months = now.year * 12 + (now.month - 1) - retention_months
+    year, month0 = divmod(total_months, 12)
+    month = month0 + 1
+    day = min(now.day, calendar.monthrange(year, month)[1])
+    return now.replace(year=year, month=month, day=day)
 
 
 def _month_bounds(for_date: date) -> tuple[date, date]:
@@ -266,6 +286,39 @@ def partition_row_count(name: str, cur=None) -> int:
     try:
         cur.execute(sql.SQL("SELECT count(*) FROM {}").format(sql.Identifier("public", name)))
         return cur.fetchone()[0]
+    finally:
+        if own_cur:
+            cur.close()
+
+
+def default_leaf_row_counts(cur=None) -> dict[str, int]:
+    """Row counts of every DEFAULT leaf that currently holds at least one row.
+
+    Order 021, Emenda do Imediato: before ``ensure_audit_partitions`` existed
+    and ran on the real write path, a row landing in DEFAULT was the norm
+    (nothing else ever pre-created the right partition). Now that something
+    does, on the real path (boot + daily beat — see
+    ``apps.core.management.commands.ensure_audit_partitions``), a non-zero
+    count here means a partition is MISSING for some tenant/month, not
+    business as usual — the caller is expected to log/alert on it.
+
+    Checks the top-level catch-all (``core_auditlog_default_default``) and
+    every month's own DEFAULT leaf; never the dedicated tenant leaves
+    (those are supposed to hold rows).
+    """
+    own_cur = cur is None
+    cur = cur or connection.cursor()
+    try:
+        leaves = [f"{TABLE}_default_default"]
+        leaves.extend(month.default_leaf for month in list_month_partitions(cur=cur))
+        counts: dict[str, int] = {}
+        for leaf in leaves:
+            if not _table_exists(cur, leaf):
+                continue
+            n = partition_row_count(leaf, cur=cur)
+            if n:
+                counts[leaf] = n
+        return counts
     finally:
         if own_cur:
             cur.close()
