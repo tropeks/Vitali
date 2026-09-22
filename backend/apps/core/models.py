@@ -390,6 +390,70 @@ class TenantAIConfig(models.Model):
         return f"TenantAIConfig({self.tenant.schema_name})"
 
 
+class TenantAuditRetention(models.Model):
+    """
+    Per-tenant retention window and purge switch for ``core_auditlog``
+    (order 021, following the Capitão's decision of 22/09/2026 — see
+    docs/adr/ADR-0001-retencao-auditoria-20-anos.md).
+
+    Same pattern as :class:`TenantAIConfig`: OneToOne to ``Tenant``, lives in
+    the PUBLIC schema (SHARED_APPS) alongside ``AuditLog`` itself, so
+    ``apps.core.management.commands.purge_audit_logs`` can resolve, for any
+    given tenant, both *when* it may purge (``retention_months``) and *if*
+    it may at all (``purge_enabled``) without touching a global setting.
+
+    Unit is MONTHS, not days: ``core_auditlog`` is purged one RANGE partition
+    (one calendar month) at a time (see ``apps.core.partitioning``), and a
+    day count drifts against month boundaries by a day across leap years —
+    240 months is exact where "7305 or 7306 days" is a bug waiting to be
+    filed. 240 months = 20 years, the CFM/LGPD prontuário floor.
+
+    A tenant with NO row here — the factory default, and every tenant until
+    someone deliberately opts in — gets ``retention_months=240`` and
+    ``purge_enabled=False`` from the field defaults below, resolved by the
+    purge command exactly as if the row existed (see
+    ``purge_audit_logs._resolve_retention``). Reter é o padrão; expurgar é
+    opt-in, por tenant, e nunca por omissão.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.OneToOneField(
+        Tenant,
+        on_delete=models.CASCADE,
+        related_name="audit_retention",
+    )
+    retention_months = models.PositiveIntegerField(
+        "Retenção (meses)",
+        default=240,
+        help_text=(
+            "240 meses (20 anos) é o piso legal (Res. CFM 1.821/2007 art. 8; "
+            "Lei 13.787/2018 art. 6). Reduzir exige justificativa fora desta "
+            "configuração — este campo não valida contra a lei."
+        ),
+        validators=[MinValueValidator(1)],
+    )
+    purge_enabled = models.BooleanField(
+        "Expurgo ativado",
+        default=False,
+        help_text=(
+            "Desligado de fábrica. Ligar é ato deliberado por tenant — o "
+            "expurgo real ainda exige recibo de exportação fria verificado "
+            "(apps.core.cold_storage) por partição; esta chave só autoriza a "
+            "tentativa."
+        ),
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = "core"
+        verbose_name = "Retenção de Auditoria por Tenant"
+        verbose_name_plural = "Retenções de Auditoria por Tenant"
+
+    def __str__(self):
+        return f"TenantAuditRetention({self.tenant.schema_name})"
+
+
 # ─── S-064: CID-10 Code Table (Public Schema) ────────────────────────────────
 
 
@@ -878,8 +942,10 @@ class AuditLog(models.Model):
     so a row is NEVER rejected for lack of a matching partition — see
     apps.core.partitioning. Retention purge (apps.core.management.commands.
     purge_audit_logs) cold-exports the expiring partition (apps.core.
-    cold_storage) and only then DROPs it; it never DELETEs, and it is OFF and
-    unconfigured by default (AUDIT_LOG_PURGE_ENABLED / AUDIT_LOG_RETENTION_DAYS).
+    cold_storage) and only then DROPs it; it never DELETEs. Order 021 moved
+    the window and the on/off switch to per-tenant config — see
+    :class:`TenantAuditRetention` — off and at the 240-month (20y) factory
+    default for any tenant without a row there.
 
     Postgres requires the partition key in the primary key, so the PK is the
     composite ``(id, created_at, schema_name)`` rather than bare ``id`` — a

@@ -11,9 +11,10 @@ import datetime
 
 from django.db import connection
 from django.test import TestCase
+from django_tenants.utils import schema_context
 
 from apps.core import partitioning
-from apps.core.models import AuditLog
+from apps.core.models import AuditLog, Tenant
 
 
 class MonthPartitionNamingTests(TestCase):
@@ -87,6 +88,70 @@ class EnsurePartitionIdempotencyTests(TestCase):
 
         self.assertEqual(acme_table, leaf)
         self.assertNotEqual(other_table, leaf)
+
+
+class RealOrmWriteLandsInDedicatedLeafTests(TestCase):
+    """Order 021, Emenda do Imediato: the proof that matters. Every other test
+    in this module seeds rows with a hand-crafted ``cursor.execute(INSERT
+    ...)`` — legitimate for testing the partitioning primitives themselves,
+    but exactly the kind of fixture that "mede a si mesma" if used to prove
+    the END-TO-END mechanism works, because it can never fail the way a
+    forgotten ``ensure_tenant_partition`` call fails. This test writes
+    through the ORM (``AuditLog.objects.create`` — no explicit
+    ``schema_name=`` kwarg, so the model's own ``save()`` stamps it from
+    ``connection.schema_name``, the exact mechanism every real call site
+    uses) and asserts via ``tableoid::regclass`` where it actually landed.
+    """
+
+    def test_orm_create_lands_in_the_tenant_dedicated_leaf_not_default(self):
+        tenant = Tenant(name="Leaf Proof Clinic", slug="leaf-proof-clinic")
+        tenant.auto_create_schema = False
+        tenant.save()
+
+        today = datetime.date.today()
+        partitioning.ensure_tenant_partition(today, tenant.schema_name)
+        expected_leaf = partitioning.tenant_partition_name(
+            partitioning.month_partition_name(today), tenant.schema_name
+        )
+
+        with schema_context(tenant.schema_name):
+            log = AuditLog.objects.create(
+                action="login", resource_type="user", resource_id="orm-proof-1"
+            )
+            self.assertEqual(log.schema_name, tenant.schema_name)
+
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT tableoid::regclass::text FROM core_auditlog WHERE id = %s",
+                [log.id],
+            )
+            actual_leaf = cur.fetchone()[0]
+
+        self.assertEqual(actual_leaf, expected_leaf)
+        self.assertNotEqual(actual_leaf, "core_auditlog_default_default")
+        self.assertNotEqual(actual_leaf, f"{partitioning.month_partition_name(today)}_default")
+
+    def test_orm_create_without_a_dedicated_partition_still_falls_through_to_default(self):
+        # The inverse control: same ORM write path, no ensure_tenant_partition
+        # call this time — must land in DEFAULT, never be rejected (the
+        # order-020 invariant this whole mechanism must never violate).
+        tenant = Tenant(name="No Partition Clinic", slug="no-partition-clinic")
+        tenant.auto_create_schema = False
+        tenant.save()
+
+        with schema_context(tenant.schema_name):
+            log = AuditLog.objects.create(
+                action="login", resource_type="user", resource_id="orm-proof-2"
+            )
+
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT tableoid::regclass::text FROM core_auditlog WHERE id = %s",
+                [log.id],
+            )
+            actual_leaf = cur.fetchone()[0]
+
+        self.assertIn("default", actual_leaf)
 
 
 class ListMonthPartitionsTests(TestCase):

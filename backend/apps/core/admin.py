@@ -11,6 +11,7 @@ from .models import (
     Subscription,
     Tenant,
     TenantAIConfig,
+    TenantAuditRetention,
     TUSSCode,
     TUSSSyncLog,
     User,
@@ -143,6 +144,20 @@ class TenantAIConfigAdmin(admin.ModelAdmin):
         "updated_at",
     ]
     list_filter = ["ai_tuss_enabled", "ai_glosa_prediction_enabled"]
+    search_fields = ["tenant__name", "tenant__schema_name"]
+    readonly_fields = ["id", "created_at", "updated_at"]
+    raw_id_fields = ["tenant"]
+
+
+@admin.register(TenantAuditRetention)
+class TenantAuditRetentionAdmin(admin.ModelAdmin):
+    list_display = [
+        "tenant",
+        "retention_months",
+        "purge_enabled",
+        "updated_at",
+    ]
+    list_filter = ["purge_enabled"]
     search_fields = ["tenant__name", "tenant__schema_name"]
     readonly_fields = ["id", "created_at", "updated_at"]
     raw_id_fields = ["tenant"]

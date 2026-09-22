@@ -18,3 +18,12 @@ echo "Migrating all tenant schemas..."
 "${compose_cmd[@]}" exec -T django python manage.py migrate_schemas --executor=multiprocessing
 
 echo "All schemas migrated successfully."
+
+# Ordem 021, Emenda do Imediato: "não carimbo 20 anos em cima de expurgo
+# inerte". A 020 entregou ensure_month_partition/ensure_tenant_partition sem
+# ninguém os chamar no caminho real — toda escrita caía na DEFAULT, e o
+# expurgo por tenant nunca tinha o que derrubar. Isto é O ENTRYPOINT depois
+# do migrate (o Celery Beat diário cobre o mês virando sem deploy no meio —
+# ver apps.core.tasks.ensure_audit_partitions).
+echo "Ensuring core_auditlog partitions for the current and next month..."
+"${compose_cmd[@]}" exec -T django python manage.py ensure_audit_partitions

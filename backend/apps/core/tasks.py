@@ -36,6 +36,21 @@ def smoke_ping() -> str:
     return "pong"
 
 
+@shared_task(name="core.ensure_audit_partitions")
+def ensure_audit_partitions() -> None:
+    """Daily safety net for the boot-time call (see scripts/migrate_schemas.sh)
+    — order 021, Emenda do Imediato: a tenant provisioned mid-month, or a
+    deploy that simply doesn't happen for a while, must not silently let
+    writes fall back into core_auditlog's DEFAULT leaf. Thin wrapper around
+    ``ensure_audit_partitions`` (idempotent — see that command's docstring
+    for why this isn't in CoreConfig.ready()). Registered via
+    apps.core migration 0045 (django_celery_beat PeriodicTask).
+    """
+    from django.core.management import call_command
+
+    call_command("ensure_audit_partitions")
+
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def send_dpa_signed_admin_email(
     self, user_id: str, flags_enabled: list, correlation_id: str | None = None
