@@ -214,3 +214,50 @@ class TestScribeTranscribeView(TenantTestCase):
 
         res = self.client.post(self.url, data={"audio": uploaded}, format="multipart")
         self.assertEqual(res.status_code, 503)
+
+    # ── Ordem 024: consent refusal is 403, not 503 ────────────────────────────
+
+    def _post_webm(self):
+        from django.core.files.uploadedfile import InMemoryUploadedFile
+
+        uploaded = InMemoryUploadedFile(
+            file=io.BytesIO(b"audio"),
+            field_name="audio",
+            name="audio.webm",
+            content_type="audio/webm",
+            size=5,
+            charset=None,
+        )
+        return self.client.post(self.url, data={"audio": uploaded}, format="multipart")
+
+    @override_settings(FEATURE_WHISPER_FALLBACK=True, FEATURE_AI_SCRIBE=True)
+    @patch("apps.emr.views_scribe._check_dpa_signed", return_value=True)
+    @patch("apps.emr.views_scribe.WhisperGateway")
+    def test_consent_refusal_returns_403_with_reason(self, MockWhisperGateway, _mock_dpa):
+        from apps.emr.services.whisper import WhisperConsentError
+
+        MockWhisperGateway.return_value.transcribe.side_effect = WhisperConsentError(
+            "provider_not_in_dpa"
+        )
+        res = self._post_webm()
+        self.assertEqual(res.status_code, 403)
+        self.assertEqual(res.json()["reason"], "provider_not_in_dpa")
+
+    @override_settings(FEATURE_WHISPER_FALLBACK=True, FEATURE_AI_SCRIBE=True, OPENAI_API_KEY="k")
+    @patch("apps.emr.views_scribe._check_dpa_signed", return_value=True)
+    def test_signed_dpa_still_refuses_openai_end_to_end(self, _mock_dpa):
+        """Real gateway, real consent gate: the audio never reaches OpenAI."""
+        import datetime
+
+        from apps.core.models import AIDPAStatus
+
+        AIDPAStatus.objects.using("default").update_or_create(
+            tenant=self.__class__.tenant, defaults={"dpa_signed_date": datetime.date.today()}
+        )
+        with patch("openai.OpenAI") as openai_client:
+            # If the gate lets the call through, a transcription comes back and
+            # the test fails on the assertion below, not on a MagicMock.
+            openai_client.return_value.audio.transcriptions.create.return_value.text = "x"
+            res = self._post_webm()
+        self.assertEqual(res.status_code, 403)
+        openai_client.assert_not_called()

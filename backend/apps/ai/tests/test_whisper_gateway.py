@@ -56,10 +56,19 @@ class WhisperGatewayConsentTest(TenantTestCase):
 
 @override_settings(FEATURE_WHISPER_FALLBACK=True, OPENAI_API_KEY="test-key")
 class WhisperGatewayUsageLogTest(TenantTestCase):
-    """Onda 3 / 3.1 audit finding: Whisper made zero AIUsageLog entries before this ticket."""
+    """Onda 3 / 3.1 audit finding: Whisper made zero AIUsageLog entries before this ticket.
+
+    These tests are about what the gateway LOGS once consent has passed. Since
+    ordem 024 the real gate refuses OpenAI (``provider_not_in_dpa``), so consent
+    is granted here explicitly; the refusal itself is covered in
+    ``test_whisper_dpa_provider.py``.
+    """
 
     def setUp(self):
         self.schema = self.tenant.schema_name
+        consent = patch("apps.ai.consent.requires_ai_consent", return_value=ConsentResult(True))
+        consent.start()
+        self.addCleanup(consent.stop)
         AIDPAStatus.objects.using("default").update_or_create(
             tenant=self.tenant, defaults={"dpa_signed_date": datetime.date.today()}
         )
