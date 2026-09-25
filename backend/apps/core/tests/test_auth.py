@@ -310,6 +310,9 @@ def _platform_operator(email="operador.023@vitali.com"):
     return User(email=email, full_name="Operador de Plataforma", is_superuser=True, is_staff=True)
 
 
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+)
 class TenantRegistrationTestCase(TestCase):
     """Tests for S-005 — Tenant Registration API.
 
@@ -411,6 +414,9 @@ class TenantRegistrationTestCase(TestCase):
         self.assertFalse(Tenant.objects.filter(slug="nova-clinica").exists())
 
 
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+)
 class TenantRegistrationAccessTests(TestCase):
     """Ordem 023 — POST /api/v1/platform/tenants deixa de aceitar anônimo.
 
@@ -470,3 +476,26 @@ class TenantRegistrationAccessTests(TestCase):
         resp = self.client.post(self.URL, self._payload("throttle-023"), format="json")
         self.assertEqual(resp.status_code, 429)
         self._assert_nothing_created("throttle-023")
+
+    def test_throttle_bucket_is_per_operator(self):
+        """Operator A exhausting the cap must not throttle operator B.
+
+        Saved, distinct users (so each has its own pk): no call here reaches
+        schema creation (400 or 429), so the pending-trigger problem that
+        _platform_operator works around does not apply.
+        """
+        op_a = User.objects.create_superuser(
+            email="operador.a.023@vitali.com", password="Operador!A#023x", full_name="A"
+        )
+        op_b = User.objects.create_superuser(
+            email="operador.b.023@vitali.com", password="Operador!B#023x", full_name="B"
+        )
+        invalid = {"name": "", "slug": ""}
+
+        self.client.force_authenticate(user=op_a)
+        for _ in range(5):
+            self.assertEqual(self.client.post(self.URL, invalid, format="json").status_code, 400)
+        self.assertEqual(self.client.post(self.URL, invalid, format="json").status_code, 429)
+
+        self.client.force_authenticate(user=op_b)
+        self.assertEqual(self.client.post(self.URL, invalid, format="json").status_code, 400)
