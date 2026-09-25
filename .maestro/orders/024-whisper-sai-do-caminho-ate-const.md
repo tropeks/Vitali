@@ -122,3 +122,7 @@ da clínica `demo` para um suboperador que ela não autorizou. Produção não e
 - Direção vigente na criação: INTENT v6 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 024` (você não fecha a própria ordem).
+accepted_at: 2026-09-25T19:43:05-03:00
+accepted_session: desconhecido
+accepted_tree: 82626c7609155adf1bb5a27d3ee924608ea1c069
+accepted_intent: 6
