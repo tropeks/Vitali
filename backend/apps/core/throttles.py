@@ -36,3 +36,17 @@ class TenantUserRateThrottle(UserRateThrottle):
             schema = "public"
 
         return f"throttle:{schema}:{base_key}"
+
+
+class TenantRegistrationRateThrottle(TenantUserRateThrottle):
+    """POST /api/v1/platform/tenants — ordem 023.
+
+    Every call builds a PostgreSQL schema and runs every migration on it, the
+    same cost that keeps the anonymous self-serve signup at 5/hour
+    (``apps.core.views_signup.SignupRateThrottle``). The route is now
+    platform-operator only, so the bucket is keyed on the operator, not the IP.
+    Changing this ceiling is an Ask-First of the order.
+    """
+
+    scope = "tenant_register"
+    rate = "5/hour"

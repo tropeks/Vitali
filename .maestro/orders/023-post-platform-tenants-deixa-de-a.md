@@ -122,3 +122,7 @@ código.
 - Direção vigente na criação: INTENT v5 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 023` (você não fecha a própria ordem).
+accepted_at: 2026-09-25T17:14:13-03:00
+accepted_session: desconhecido
+accepted_tree: 9bbac31ac29308bb38469bf06beb4fa08b4b5fac
+accepted_intent: 6
