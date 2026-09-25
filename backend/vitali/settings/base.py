@@ -369,7 +369,11 @@ FEATURE_AI_SCRIBE = env.bool("FEATURE_AI_SCRIBE", default=False)
 # the only LLM path that opened itself while every other one defaulted OFF.
 # Aligned with FEATURE_AI_TUSS/FEATURE_AI_SCRIBE.
 FEATURE_AI_GLOSA = env.bool("FEATURE_AI_GLOSA", default=False)
-FEATURE_WHISPER_FALLBACK = env.bool("FEATURE_WHISPER_FALLBACK", default=True)
+# Ordem 024: was default=True (Sprint 17 taste call, before the INTENT). The
+# audio goes to OpenAI, and the DPA clinics sign names only Anthropic — so it
+# now ships OFF like every other AI flag, and apps.ai.consent refuses the
+# provider anyway until the DPA names it (DPA_SUBPROCESSORS).
+FEATURE_WHISPER_FALLBACK = env.bool("FEATURE_WHISPER_FALLBACK", default=False)
 SCRIBE_SESSION_RETENTION_DAYS = env.int("SCRIBE_SESSION_RETENTION_DAYS", default=90)
 
 # ─── Audit log retention (order 020; per-tenant since order 021) ────────────

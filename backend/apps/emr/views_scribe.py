@@ -18,7 +18,7 @@ from rest_framework.views import APIView
 from apps.core.permissions import HasPermission
 
 from .models import Encounter
-from .services.whisper import WhisperError, WhisperGateway
+from .services.whisper import WhisperConsentError, WhisperError, WhisperGateway
 
 MAX_AUDIO_SIZE = 25 * 1024 * 1024  # 25 MB
 
@@ -200,6 +200,21 @@ class ScribeTranscribeView(APIView):
 
         try:
             transcription = WhisperGateway().transcribe(audio_bytes, content_type)
+        except WhisperConsentError as exc:
+            # Ordem 024: a consent refusal is a compliance decision, not an
+            # outage — 403 with the reason, never 503 "try again later".
+            logger.warning(
+                "views_scribe: Whisper consent refused for encounter %s: %s",
+                encounter_id,
+                exc.reason,
+            )
+            return Response(
+                {
+                    "detail": "Transcrição por áudio indisponível para esta clínica.",
+                    "reason": exc.reason,
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
         except WhisperError as exc:
             logger.error("views_scribe: WhisperError for encounter %s: %s", encounter_id, exc)
             return Response(

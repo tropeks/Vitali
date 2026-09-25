@@ -28,7 +28,16 @@ class WhisperError(Exception):
 
 
 class WhisperConsentError(WhisperError):
-    """Raised when the consent gate (apps.ai.consent) denies the call."""
+    """Raised when the consent gate (apps.ai.consent) denies the call.
+
+    ``reason`` is the gate's machine-readable reason (e.g.
+    ``provider_not_in_dpa``). A refusal is not a transient failure: callers
+    must not present it as "try again" (ordem 024).
+    """
+
+    def __init__(self, reason: str):
+        self.reason = reason
+        super().__init__(f"AI consent denied: {reason}")
 
 
 class WhisperGateway:
@@ -70,7 +79,7 @@ class WhisperGateway:
             logger.warning(
                 "WhisperGateway: consent denied (%s) for tenant=%s", consent.reason, schema_name
             )
-            raise WhisperConsentError(f"AI consent denied: {consent.reason}")
+            raise WhisperConsentError(consent.reason)
 
         try:
             import openai

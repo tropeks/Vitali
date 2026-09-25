@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Mic, MicOff, Loader2 } from 'lucide-react';
 
+import { describeTranscribeFailure } from '@/lib/transcribe';
+
 interface AudioRecorderProps {
   onTranscription: (text: string) => void;
   encounterId: string;
@@ -15,6 +17,8 @@ export function AudioRecorder({ onTranscription, encounterId }: AudioRecorderPro
   const [elapsed, setElapsed] = useState(0);
   const [transcribing, setTranscribing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Ordem 024: set on a 403 (DPA does not cover the provider) — no retry.
+  const [unavailable, setUnavailable] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -111,11 +115,9 @@ export function AudioRecorder({ onTranscription, encounterId }: AudioRecorderPro
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        if (res.status === 400 && (data.detail ?? '').toLowerCase().includes('grande')) {
-          setError('Áudio muito grande. Grave um áudio mais curto (máx. 25 MB).');
-        } else {
-          setError(data.detail ?? `Erro ao transcrever áudio (${res.status}).`);
-        }
+        const failure = describeTranscribeFailure(res.status, data);
+        setError(failure.message);
+        if (failure.unavailable) setUnavailable(true);
         return;
       }
 
@@ -149,6 +151,7 @@ export function AudioRecorder({ onTranscription, encounterId }: AudioRecorderPro
         <p className="text-xs text-red-600">{error}</p>
       )}
 
+      {!unavailable && (
       <div className="flex items-center gap-3">
         {!recording ? (
           <button
@@ -173,6 +176,7 @@ export function AudioRecorder({ onTranscription, encounterId }: AudioRecorderPro
           </>
         )}
       </div>
+      )}
 
       {recording && (
         <p className="text-xs text-purple-500">

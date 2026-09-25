@@ -12,6 +12,10 @@ exactly how GlosaPredictor shipped with zero DPA enforcement.
 
 ``requires_ai_consent(feature, tenant_schema)`` is now the one place that
 checks, in order:
+  0. The feature's PROVIDER is a suboperator the signed DPA names (ordem 024,
+     see ``DPA_SUBPROCESSORS``). Checked first, with no setting or row read:
+     a provider the clinic never authorized is refused no matter what else is
+     configured.
   1. Global kill switch (Django setting, e.g. FEATURE_AI_TUSS).
   2. Signed DPA (LGPD Art. 11 — health data is "dado sensível").
   3. Per-tenant feature toggle (TenantAIConfig), where one is modeled.
@@ -48,6 +52,23 @@ from dataclasses import dataclass
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
+
+# Ordem 024 — suboperators the DPA a clinic signs actually names. The text is
+# frontend/components/settings/DPASignModal.tsx §2 "Suboperador" (Anthropic,
+# PBC only). Consent used to be per FEATURE, so the same signed AIDPAStatus
+# that authorizes Anthropic also sent consultation audio to OpenAI (Whisper).
+# Adding a provider here requires changing the DPA text, versioning
+# AIDPAStatus and having clinics sign again — decision D2 of the Capitão
+# (~/dev/spock/docs/PLANO-JEV-VITALI.md). Never add one to make a test pass.
+DPA_SUBPROCESSORS: frozenset[str] = frozenset({"anthropic"})
+
+# feature -> provider that receives the data
+_FEATURE_PROVIDERS: dict[str, str] = {
+    "tuss": "anthropic",
+    "glosa": "anthropic",
+    "scribe": "anthropic",
+    "whisper": "openai",
+}
 
 # feature -> (global setting name, TenantAIConfig attribute or None)
 _FEATURE_FLAGS: dict[str, tuple[str, str | None]] = {
@@ -92,6 +113,9 @@ def requires_ai_consent(feature: str, tenant_schema: str) -> ConsentResult:
     """
     if feature not in _FEATURE_FLAGS:
         raise ValueError(f"requires_ai_consent: unknown AI feature {feature!r}")
+
+    if _FEATURE_PROVIDERS[feature] not in DPA_SUBPROCESSORS:
+        return ConsentResult(False, "provider_not_in_dpa")
 
     global_setting, tenant_attr = _FEATURE_FLAGS[feature]
 

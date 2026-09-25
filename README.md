@@ -145,10 +145,11 @@ Os módulos de IA vêm **desligados por padrão**. Cada um é controlado por um 
 | Variável | Padrão | Descrição |
 |----------|--------|-----------|
 | `ANTHROPIC_API_KEY` | `""` | Chave da API Anthropic (obrigatória para TUSS, Safety Net, CID-10) |
-| `OPENAI_API_KEY` | `""` | Chave OpenAI — necessária para o escriba (Whisper) quando `FEATURE_AI_SCRIBE=True` |
+| `OPENAI_API_KEY` | `""` | Chave OpenAI do Whisper. **Sem efeito hoje:** o gate recusa a OpenAI (`provider_not_in_dpa`) até o DPA nomeá-la como suboperador (ordem 024) |
 | `FEATURE_AI_TUSS` | `False` | Habilita codificação TUSS assistida |
 | `FEATURE_AI_GLOSA` | `True` | Kill-switch global da previsão de risco de glosa |
 | `FEATURE_AI_SCRIBE` | `False` | Habilita o escriba clínico (transcrição → SOAP) |
+| `FEATURE_WHISPER_FALLBACK` | `False` | Transcrição de áudio no servidor (Whisper/OpenAI) para navegador sem Web Speech API. Era `True` até a ordem 024; ligar não libera nada enquanto o DPA não nomear a OpenAI |
 | `AI_RATE_LIMIT_PER_HOUR` | `100` | Limite de chamadas LLM por tenant por hora |
 | `AI_SUGGEST_TIMEOUT_S` | `5` | Timeout em segundos para chamadas ao Claude |
 

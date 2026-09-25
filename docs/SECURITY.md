@@ -53,6 +53,7 @@
 | AI prompts | Prompt injection via patient data | Sanitize all user input before including in LLM prompts, structured output format |
 | AI responses | Hallucinated TUSS codes | AI suggestions always require human confirmation, validate codes against TUSS DB |
 | WhatsApp opt-in | LGPD violation (sending without consent) | Explicit opt-in stored with timestamp, opt-out at any time |
+| Consultation audio (Whisper) | Voice (biometric, LGPD art. 5 II) sent to a suboperator the clinic never authorized — the signed DPA names only Anthropic | Order 024: `FEATURE_WHISPER_FALLBACK` ships OFF, and `apps.ai.consent` checks the **provider** first against `DPA_SUBPROCESSORS` (`{"anthropic"}`), refusing OpenAI with `provider_not_in_dpa` (HTTP 403, never 503). Adding OpenAI requires changing the DPA text and re-signing (decision D2) |
 
 ---
 
