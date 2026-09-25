@@ -1,6 +1,6 @@
 """
 AI Celery tasks — S-030, S-034, S-038, S-069
-run_llm_task: async LLM call wrapper for non-realtime AI features (future use).
+(run_llm_task was removed in ordem 025: a generic LLM task with no consent gate and no caller.)
 TUSS suggest uses synchronous calls directly (haiku P50 ~300ms, acceptable for form UX).
 cleanup_orphaned_glosa_predictions: removes GlosaPrediction rows not linked to a guide after 7 days.
 check_tuss_staleness: daily check that TUSSSyncLog has a recent successful sync (S-038).
@@ -13,44 +13,6 @@ from celery import shared_task
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
-
-
-@shared_task(bind=True, max_retries=2, default_retry_delay=10)
-def run_llm_task(self, prompt_template_id: int, context_json: dict) -> str | None:
-    """
-    Async LLM call wrapper for non-realtime use cases.
-    Returns AIUsageLog.id (str) on success, None on failure.
-    """
-    from .gateway import ClaudeGateway, LLMGatewayError
-    from .models import AIPromptTemplate, AIUsageLog
-
-    try:
-        template = AIPromptTemplate.objects.get(id=prompt_template_id, is_active=True)
-    except AIPromptTemplate.DoesNotExist:
-        logger.error("AIPromptTemplate %s not found", prompt_template_id)
-        return None
-
-    user_prompt = template.user_prompt_template.format(**context_json)
-
-    gateway = ClaudeGateway()
-    try:
-        text, tokens_in, tokens_out = gateway.complete(
-            system=template.system_prompt,
-            user=user_prompt,
-        )
-        log = AIUsageLog.objects.create(
-            prompt_template=template,
-            event_type="llm_call",
-            tokens_in=tokens_in,
-            tokens_out=tokens_out,
-        )
-        return str(log.id)
-    except LLMGatewayError as exc:
-        logger.warning("run_llm_task failed: %s", exc)
-        try:
-            raise self.retry(exc=exc)
-        except self.MaxRetriesExceededError:
-            return None
 
 
 @shared_task(bind=True, max_retries=1, default_retry_delay=5)

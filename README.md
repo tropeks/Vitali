@@ -137,20 +137,22 @@ vitali/
 
 ## Variáveis de Ambiente — AI
 
-Os módulos de IA vêm **desligados por padrão**. Cada um é controlado por um *feature flag* global `FEATURE_AI_*` (e o flag equivalente por-tenant) e, para processar dados de saúde, exige um **DPA assinado** (`AIDPAStatus`) — verificado em runtime (`_check_dpa_signed`).
+Os módulos de IA vêm **desligados por padrão**. Cada um é controlado por um *feature flag* global `FEATURE_AI_*` (e o flag equivalente por-tenant) e, para processar dados de saúde, exige um **DPA assinado** (`AIDPAStatus`) — verificado em runtime por um gate único, `apps.ai.consent.requires_ai_consent`, que também confere se o provedor consta do DPA.
 
 | Variável | Padrão | Descrição |
 |----------|--------|-----------|
 | `ANTHROPIC_API_KEY` | `""` | Chave da API Anthropic (obrigatória para TUSS, Safety Net, CID-10) |
 | `OPENAI_API_KEY` | `""` | Chave OpenAI do Whisper. **Sem efeito hoje:** o gate recusa a OpenAI (`provider_not_in_dpa`) até o DPA nomeá-la como suboperador (ordem 024) |
 | `FEATURE_AI_TUSS` | `False` | Habilita codificação TUSS assistida |
-| `FEATURE_AI_GLOSA` | `True` | Kill-switch global da previsão de risco de glosa |
+| `FEATURE_AI_GLOSA` | `False` | Kill-switch global da previsão de risco de glosa |
 | `FEATURE_AI_SCRIBE` | `False` | Habilita o escriba clínico (transcrição → SOAP) |
+| `FEATURE_AI_CID10` | `False` | Sugestão de CID-10 por LLM, com scrub de PHI e `AIUsageLog` (ordem 025) |
+| `FEATURE_AI_PRESCRIPTION_SAFETY` | `False` | Checagem de segurança de prescrição por LLM (ordem 025). Ligar só depois da ordem 026, que impede o alerta do LLM de sobrescrever o do motor |
 | `FEATURE_WHISPER_FALLBACK` | `False` | Transcrição de áudio no servidor (Whisper/OpenAI) para navegador sem Web Speech API. Era `True` até a ordem 024; ligar não libera nada enquanto o DPA não nomear a OpenAI |
 | `AI_RATE_LIMIT_PER_HOUR` | `100` | Limite de chamadas LLM por tenant por hora |
 | `AI_SUGGEST_TIMEOUT_S` | `5` | Timeout em segundos para chamadas ao Claude |
 
-Os módulos `ai_prescription_safety` e `ai_cid10_suggest` são habilitados por-tenant (via `FeatureFlag` / `TenantAIConfig`) e ativados em cascata quando o DPA é assinado. Veja `docs/USER_GUIDE.md` §10.
+Os módulos `ai_prescription_safety` e `ai_cid10` são habilitados por tenant pelo `FeatureFlag`, ligado em cascata quando o DPA é assinado. Assinar o DPA **não basta**: a chave global correspondente também precisa estar ligada. Veja `docs/USER_GUIDE.md` §10.
 
 ---
 

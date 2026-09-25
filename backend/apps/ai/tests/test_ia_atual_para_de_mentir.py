@@ -11,7 +11,9 @@ Defects covered:
     exist, so it could never run; and it had no consent gate, no PHI scrub and
     no AIUsageLog, so fixing the flag first would have opened a leak.
   * ``PrescriptionSafetyChecker`` read the equally nonexistent
-    ``TenantAIConfig.ai_prescription_safety``.
+    ``TenantAIConfig.ai_prescription_safety`` — tested in
+    ``apps/emr/tests/test_prescription_safety_ordem025.py`` (it needs
+    ``apps.pharmacy``, which ``apps.ai`` may not import).
   * The seeded ``tuss_suggest`` prompt asks for ``[{"tuss_code", "rank"}]``
     while the parser expected ``{"suggestions": [{"code"}]}``: every real
     answer fell into the degraded branch.
@@ -122,90 +124,6 @@ class CID10GateBeforeFlagTest(_SignedTenantMixin, TenantTestCase):
         self._sign_dpa_for_real()
         with patch("apps.ai.gateway.ClaudeGateway.complete") as complete:
             self._suggest(complete)
-        complete.assert_not_called()
-
-
-class PrescriptionSafetyFlagTest(_SignedTenantMixin, TenantTestCase):
-    def setUp(self):
-        import datetime
-
-        from django.contrib.auth import get_user_model
-        from django.utils import timezone
-
-        from apps.emr.models import (
-            Encounter,
-            Patient,
-            Prescription,
-            PrescriptionItem,
-            Professional,
-        )
-        from apps.pharmacy.models import Drug
-
-        cache.clear()
-        user = get_user_model().objects.create_user(
-            email="prescritor.025@clinica.test", password="Prescr!025#x", full_name="Prescritor"
-        )
-        professional = Professional.objects.create(
-            user=user, council_type="CRM", council_number="250250", council_state="SP"
-        )
-        patient = Patient.objects.create(
-            full_name="Paciente 025",
-            cpf="111.444.777-35",
-            birth_date=datetime.date(1970, 1, 1),
-            gender="M",
-        )
-        encounter = Encounter.objects.create(
-            patient=patient, professional=professional, encounter_date=timezone.now()
-        )
-        self.prescription = Prescription.objects.create(
-            encounter=encounter, patient=patient, prescriber=professional
-        )
-        drug = Drug.objects.create(
-            name="Amoxicilina 500mg", generic_name="amoxicilina", controlled_class="none"
-        )
-        self.item = PrescriptionItem(
-            prescription=self.prescription,
-            drug=drug,
-            generic_name="amoxicilina",
-            quantity=1,
-            unit_of_measure="cx",
-            dosage_instructions="1 comp 8/8h",
-        )
-        self.item.save()
-
-    def _check(self):
-        from apps.emr.services.prescription_safety import PrescriptionSafetyChecker
-
-        with patch(
-            "apps.ai.gateway.ClaudeGateway.complete",
-            return_value=(json.dumps({"alerts": []}), 40, 10),
-        ) as complete:
-            result = PrescriptionSafetyChecker().check(self.item, self.prescription)
-        return result, complete
-
-    @override_settings(FEATURE_AI_PRESCRIPTION_SAFETY=True)
-    def test_flag_written_by_the_dpa_service_is_the_one_read(self):
-        self._sign_dpa_for_real()
-        result, complete = self._check()
-        complete.assert_called_once()
-        self.assertFalse(result.degraded)
-
-    @override_settings(FEATURE_AI_PRESCRIPTION_SAFETY=True)
-    def test_without_dpa_the_llm_is_never_called(self):
-        from apps.core.models import FeatureFlag
-
-        FeatureFlag.objects.update_or_create(
-            tenant=self.__class__.tenant,
-            module_key="ai_prescription_safety",
-            defaults={"is_enabled": True},
-        )
-        result, complete = self._check()
-        complete.assert_not_called()
-        self.assertTrue(result.is_safe)
-
-    def test_signing_the_dpa_alone_does_not_turn_it_on(self):
-        self._sign_dpa_for_real()
-        _, complete = self._check()
         complete.assert_not_called()
 
 

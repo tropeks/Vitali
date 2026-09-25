@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, patch
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 
+from apps.ai.consent import ConsentResult
 from apps.test_utils import TenantTestCase
 
 User = get_user_model()
@@ -133,7 +134,10 @@ class TestPrescriptionSafety(TenantTestCase):
 
         with (
             patch("apps.emr.services.prescription_safety.get_tenant_ai_config") as mock_cfg,
-            patch("apps.emr.services.prescription_safety._check_dpa_signed", return_value=True),
+            patch(
+                "apps.emr.services.prescription_safety.requires_ai_consent",
+                return_value=ConsentResult(True),
+            ),
             patch("apps.emr.services.prescription_safety.is_rate_limited", return_value=False),
             patch("apps.emr.services.prescription_safety.is_open", return_value=False),
             patch(
@@ -141,7 +145,6 @@ class TestPrescriptionSafety(TenantTestCase):
             ),
         ):
             mock_cfg.return_value = MagicMock(
-                ai_prescription_safety=True,
                 rate_limit_per_hour=500,
             )
 
@@ -187,13 +190,15 @@ class TestPrescriptionSafety(TenantTestCase):
 
         with (
             patch("apps.emr.services.prescription_safety.get_tenant_ai_config") as mock_cfg,
-            patch("apps.emr.services.prescription_safety._check_dpa_signed", return_value=True),
+            patch(
+                "apps.emr.services.prescription_safety.requires_ai_consent",
+                return_value=ConsentResult(True),
+            ),
             patch("apps.emr.services.prescription_safety.is_rate_limited", return_value=False),
             patch("apps.emr.services.prescription_safety.is_open", return_value=False),
             patch("apps.ai.gateway.ClaudeGateway.complete", return_value=(mock_response, 200, 80)),
         ):
             mock_cfg.return_value = MagicMock(
-                ai_prescription_safety=True,
                 rate_limit_per_hour=500,
             )
             cache.clear()
@@ -217,13 +222,15 @@ class TestPrescriptionSafety(TenantTestCase):
 
         with (
             patch("apps.emr.services.prescription_safety.get_tenant_ai_config") as mock_cfg,
-            patch("apps.emr.services.prescription_safety._check_dpa_signed", return_value=True),
+            patch(
+                "apps.emr.services.prescription_safety.requires_ai_consent",
+                return_value=ConsentResult(True),
+            ),
             patch("apps.emr.services.prescription_safety.is_rate_limited", return_value=False),
             patch("apps.emr.services.prescription_safety.is_open", return_value=False),
             patch("apps.ai.gateway.ClaudeGateway.complete", return_value=(mock_response, 100, 30)),
         ):
             mock_cfg.return_value = MagicMock(
-                ai_prescription_safety=True,
                 rate_limit_per_hour=500,
             )
             cache.clear()
@@ -420,8 +427,13 @@ class TestPrescriptionSafety(TenantTestCase):
 
         item = self._create_item()
 
-        with patch("apps.emr.services.prescription_safety.get_tenant_ai_config") as mock_cfg:
-            mock_cfg.return_value = MagicMock(ai_prescription_safety=False)
+        # Ordem 025: the flag is the ai_prescription_safety FeatureFlag, read by
+        # the consent gate; the real path is covered in
+        # apps/ai/tests/test_ia_atual_para_de_mentir.py.
+        with patch(
+            "apps.emr.services.prescription_safety.requires_ai_consent",
+            return_value=ConsentResult(False, "feature_disabled_tenant"),
+        ):
             checker = PrescriptionSafetyChecker()
             result = checker.check(item, self.prescription)
 

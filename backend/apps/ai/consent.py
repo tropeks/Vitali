@@ -18,7 +18,9 @@ checks, in order:
      configured.
   1. Global kill switch (Django setting, e.g. FEATURE_AI_TUSS).
   2. Signed DPA (LGPD Art. 11 — health data is "dado sensível").
-  3. Per-tenant feature toggle (TenantAIConfig), where one is modeled.
+  3. Per-tenant feature toggle: TenantAIConfig where one is modeled (tuss,
+     glosa), or the FeatureFlag row DPASigningService writes (cid10,
+     prescription_safety — ordem 025).
   4. Monthly token ceiling.
 
 FAIL-MODE IS DELIBERATELY NOT UNIFORM:
@@ -68,6 +70,8 @@ _FEATURE_PROVIDERS: dict[str, str] = {
     "glosa": "anthropic",
     "scribe": "anthropic",
     "whisper": "openai",
+    "cid10": "anthropic",
+    "prescription_safety": "anthropic",
 }
 
 # feature -> (global setting name, TenantAIConfig attribute or None)
@@ -76,7 +80,33 @@ _FEATURE_FLAGS: dict[str, tuple[str, str | None]] = {
     "glosa": ("FEATURE_AI_GLOSA", "ai_glosa_prediction_enabled"),
     "scribe": ("FEATURE_AI_SCRIBE", None),
     "whisper": ("FEATURE_WHISPER_FALLBACK", None),
+    "cid10": ("FEATURE_AI_CID10", None),
+    "prescription_safety": ("FEATURE_AI_PRESCRIPTION_SAFETY", None),
 }
+
+# feature -> per-tenant FeatureFlag.module_key (ordem 025). These are the rows
+# DPASigningService.AI_MODULE_KEYS enables on signing; before this, the two
+# callers read TenantAIConfig attributes that do not exist and never ran.
+_FEATURE_MODULE_KEYS: dict[str, str] = {
+    "cid10": "ai_cid10",
+    "prescription_safety": "ai_prescription_safety",
+}
+
+
+def _tenant_module_enabled(tenant_schema: str, module_key: str) -> bool:
+    """FAIL-CLOSED like the DPA lookup: any error reads as disabled."""
+    try:
+        from apps.core.models import Tenant
+        from apps.core.utils import tenant_has_feature
+
+        return tenant_has_feature(Tenant.objects.get(schema_name=tenant_schema), module_key)
+    except Exception:
+        logger.warning(
+            "consent: could not resolve FeatureFlag %s for schema=%s — failing closed",
+            module_key,
+            tenant_schema,
+        )
+        return False
 
 
 @dataclass
@@ -124,6 +154,10 @@ def requires_ai_consent(feature: str, tenant_schema: str) -> ConsentResult:
 
     if not _dpa_signed(tenant_schema):
         return ConsentResult(False, "dpa_not_signed")
+
+    module_key = _FEATURE_MODULE_KEYS.get(feature)
+    if module_key is not None and not _tenant_module_enabled(tenant_schema, module_key):
+        return ConsentResult(False, "feature_disabled_tenant")
 
     if tenant_attr is not None:
         # Local import: apps.ai.services imports this module too (opposite

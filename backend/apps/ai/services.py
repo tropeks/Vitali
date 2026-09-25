@@ -243,15 +243,26 @@ def _call_llm(
         raw = raw[raw.index("\n") + 1 :] if "\n" in raw else raw[3:]
         if raw.rstrip().endswith("```"):
             raw = raw.rstrip()[:-3]
+    # Ordem 025: the seeded ``tuss_suggest`` prompt asks for a JSON ARRAY of
+    # {"tuss_code", "rank"} (seed_prompt_templates). The parser used to expect
+    # {"suggestions": [{"code"}]}, so every real answer raised here and fell
+    # into the degraded branch. The template is what production holds, so the
+    # parser follows it.
     data = json.loads(raw.strip())
-    suggestions_raw = data.get("suggestions", [])
+    if not isinstance(data, list):
+        raise ValueError("tuss_suggest: expected a JSON array of {tuss_code, rank}")
+    suggestions_raw = sorted(
+        (item for item in data if isinstance(item, dict)),
+        # Unranked items go last; the model is asked for a rank on each.
+        key=lambda item: item["rank"] if isinstance(item.get("rank"), int) else 99,
+    )
 
     # Build valid code set from candidates for validation gate
     valid_codes = {c.code: {"description": c.description, "id": c.id} for c in candidates}
 
     suggestions: list[SuggestionResult] = []
     for item in suggestions_raw[:3]:
-        code = str(item.get("code", "")).strip()
+        code = str(item.get("tuss_code", "")).strip()
         if code in valid_codes:
             suggestions.append(
                 SuggestionResult(

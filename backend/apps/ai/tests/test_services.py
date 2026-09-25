@@ -64,8 +64,9 @@ class TUSSCoderTest(TenantTestCase):
 
     def _claude_response(self, codes):
         """Return mock ClaudeGateway.complete result for given codes."""
-        suggestions = [{"code": c} for c in codes]
-        return json.dumps({"suggestions": suggestions}), 50, 20
+        # The format the seeded tuss_suggest prompt asks for (ordem 025).
+        suggestions = [{"tuss_code": c, "rank": i} for i, c in enumerate(codes, start=1)]
+        return json.dumps(suggestions), 50, 20
 
     def test_drops_hallucinated_code(self):
         """Codes not in retrieval candidates must be dropped."""

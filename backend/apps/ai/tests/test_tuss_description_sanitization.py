@@ -100,7 +100,7 @@ class TussDescriptionInjectionIntegrationTest(TenantTestCase):
 
         def fake_complete(system, user, max_tokens):
             captured["user"] = user
-            return json.dumps({"suggestions": [{"code": "10101012"}]}), 10, 5
+            return json.dumps([{"tuss_code": "10101012", "rank": 1}]), 10, 5
 
         with (
             patch("apps.ai.services._retrieve_candidates", return_value=candidates),

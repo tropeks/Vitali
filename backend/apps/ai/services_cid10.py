@@ -9,7 +9,13 @@ Key design decisions:
 - Cache key includes schema_name for LGPD tenant isolation.
 - Anti-hallucination gate: validate all LLM suggestions against CID10Code DB.
 - Fail-open: any error → CID10SuggesterResponse(suggestions=[], degraded=True).
-- Feature flag ai_cid10_suggest (defaults False).
+- Ordem 025: the gate comes FIRST — ``requires_ai_consent("cid10")`` (global
+  FEATURE_AI_CID10, signed DPA, the ``ai_cid10`` FeatureFlag the DPA signing
+  writes, monthly ceiling). It used to read ``TenantAIConfig.ai_cid10_suggest``,
+  a field that does not exist, so it never ran — and it had no gate, no PHI
+  scrub and no AIUsageLog, so fixing only the flag would have opened a leak.
+  The diagnosis text now goes through ``scrub_for_llm`` and every call that
+  reaches Anthropic writes an AIUsageLog.
 """
 
 import hashlib
@@ -23,9 +29,11 @@ from django.core.cache import cache
 from django.db import connections
 
 from apps.ai.circuit_breaker import is_open, record_failure, record_success
+from apps.ai.consent import requires_ai_consent
 from apps.ai.gateway import ClaudeGateway, LLMGatewayError
+from apps.ai.phi_scrubber import scrub_for_llm
 from apps.ai.rate_limiter import is_rate_limited
-from apps.ai.services import get_tenant_ai_config
+from apps.ai.services import _log_usage, get_tenant_ai_config
 
 logger = logging.getLogger(__name__)
 
@@ -159,9 +167,15 @@ class CID10Suggester:
     Never raises — always returns CID10SuggesterResponse.
     """
 
-    def suggest(self, text: str, schema_name: str) -> CID10SuggesterResponse:
+    def suggest(
+        self, text: str, schema_name: str, patient: object | None = None
+    ) -> CID10SuggesterResponse:
         """
-        1. Check feature flag ai_cid10_suggest
+        ``patient``: the encounter's Patient, when the caller has it, so the
+        directed scrub can remove the name; without it only the generic
+        regex sweep (CPF/CNS/phone/e-mail/date) runs.
+
+        1. Consent gate (ordem 025) — nothing below runs without it
         2. Check rate limit / circuit breaker
         3. Normalize text
         4. Cache hit → return cached
@@ -171,11 +185,13 @@ class CID10Suggester:
         8. Cache result (24h TTL)
         9. Return top 3 suggestions
         """
-        # 1. Feature flag
-        config = get_tenant_ai_config(schema_name)
-        if not getattr(config, "ai_cid10_suggest", False):
-            logger.debug("ai_cid10_suggest flag OFF for %s", schema_name)
+        # 1. Consent gate: global switch, signed DPA, tenant FeatureFlag, ceiling.
+        consent = requires_ai_consent("cid10", schema_name)
+        if not consent.allowed:
+            logger.debug("cid10 consent denied (%s) for %s", consent.reason, schema_name)
             return CID10SuggesterResponse(suggestions=[], degraded=False)
+
+        config = get_tenant_ai_config(schema_name)
 
         # 2. Rate limit (fail-open)
         try:
@@ -218,6 +234,7 @@ class CID10Suggester:
             return CID10SuggesterResponse(suggestions=[], degraded=False)
 
         # 6. Stage 2: LLM re-ranking
+        safe_text = scrub_for_llm(text, patient)
         try:
             gateway = ClaudeGateway()
             candidates_text = "\n".join(f"{c['code']}: {c['description']}" for c in candidates)
@@ -232,7 +249,7 @@ class CID10Suggester:
                 "Use APENAS códigos da lista de candidatos fornecida."
             )
             user_prompt = (
-                f"Texto do diagnóstico: {text}\n\n"
+                f"Texto do diagnóstico: {safe_text}\n\n"
                 f"Candidatos disponíveis:\n{candidates_text}\n\n"
                 "Retorne um array JSON com os códigos mais adequados."
             )
@@ -243,8 +260,15 @@ class CID10Suggester:
                 max_tokens=256,
             )
             record_success(schema_name, "cid10_suggest")
+            _log_usage(
+                event_type="llm_call",
+                input_text=safe_text,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+            )
         except LLMGatewayError:
             record_failure(schema_name, "cid10_suggest")
+            _log_usage(event_type="degraded", input_text=safe_text)
             logger.warning("LLM error during CID10 suggestion", exc_info=True)
             return CID10SuggesterResponse(suggestions=[], degraded=True)
         except Exception:

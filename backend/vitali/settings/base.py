@@ -374,6 +374,13 @@ FEATURE_AI_GLOSA = env.bool("FEATURE_AI_GLOSA", default=False)
 # now ships OFF like every other AI flag, and apps.ai.consent refuses the
 # provider anyway until the DPA names it (DPA_SUBPROCESSORS).
 FEATURE_WHISPER_FALLBACK = env.bool("FEATURE_WHISPER_FALLBACK", default=False)
+# Ordem 025: CID-10 and prescription safety read the per-tenant FeatureFlag
+# that DPASigningService writes — and signing the DPA enables it. These global
+# switches ship OFF so that fixing the flag does not, by itself, send PHI to
+# Anthropic for every clinic that ever signed (prescription safety also waits
+# for ordem 026, which stops an LLM alert from overwriting the engine's row).
+FEATURE_AI_CID10 = env.bool("FEATURE_AI_CID10", default=False)
+FEATURE_AI_PRESCRIPTION_SAFETY = env.bool("FEATURE_AI_PRESCRIPTION_SAFETY", default=False)
 SCRIBE_SESSION_RETENTION_DAYS = env.int("SCRIBE_SESSION_RETENTION_DAYS", default=90)
 
 # ─── Audit log retention (order 020; per-tenant since order 021) ────────────

@@ -59,7 +59,7 @@ class CID10SuggestView(APIView):
 
         schema_name = connection.schema_name
         suggester = CID10Suggester()
-        result = suggester.suggest(text=text, schema_name=schema_name)
+        result = suggester.suggest(text=text, schema_name=schema_name, patient=encounter.patient)
 
         suggestions_data = [
             {

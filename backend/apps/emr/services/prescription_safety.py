@@ -5,10 +5,13 @@ Checks a new PrescriptionItem for drug interactions, allergy crossings,
 dose issues, and contraindications using Claude Haiku.
 
 Key design decisions:
-- Feature flag ai_prescription_safety defaults OFF (LGPD DPA required).
+- Ordem 025: gated by ``requires_ai_consent("prescription_safety")`` — global
+  FEATURE_AI_PRESCRIPTION_SAFETY (OFF), signed DPA, and the
+  ``ai_prescription_safety`` FeatureFlag the DPA signing writes. It used to
+  read ``TenantAIConfig.ai_prescription_safety``, which does not exist.
 - Cache key includes schema_name for LGPD tenant isolation.
 - Fail-open: any LLM error → SafetyResult(is_safe=True, degraded=True).
-- AIDPAStatus must be signed before LLM is called.
+- AIDPAStatus must be signed before LLM is called (via the consent gate).
 """
 
 import hashlib
@@ -20,6 +23,7 @@ from django.core.cache import cache
 from django.db import connection
 
 from apps.ai.circuit_breaker import is_open, record_failure, record_success
+from apps.ai.consent import requires_ai_consent
 from apps.ai.gateway import ClaudeGateway, LLMGatewayError
 from apps.ai.rate_limiter import is_rate_limited
 from apps.ai.services import get_tenant_ai_config
@@ -67,25 +71,6 @@ def _build_cache_key(
     return f"ai:safety:{schema_name}:{digest}"
 
 
-def _check_dpa_signed(schema_name: str) -> bool:
-    """
-    Check if the tenant has a signed DPA (required for health data AI processing).
-    Fail-open: if DPA status cannot be determined, return False (block AI).
-    """
-    try:
-        from apps.core.models import AIDPAStatus, Tenant
-
-        tenant = Tenant.objects.get(schema_name=schema_name)
-        try:
-            dpa = tenant.ai_dpa_status
-            return dpa.is_signed
-        except AIDPAStatus.DoesNotExist:
-            return False
-    except Exception:
-        logger.warning("Could not check DPA status for schema %s", schema_name, exc_info=True)
-        return False
-
-
 class PrescriptionSafetyChecker:
     """
     Checks a PrescriptionItem for safety issues using AI.
@@ -112,17 +97,16 @@ class PrescriptionSafetyChecker:
         # mypy's Django stubs don't know about the subclass.
         schema_name = connection.schema_name  # type: ignore[attr-defined]
 
-        # 1. Feature flag check
-        config = get_tenant_ai_config(schema_name)
-        # TenantAIConfig may not have ai_prescription_safety; default to False
-        if not getattr(config, "ai_prescription_safety", False):
-            logger.debug("ai_prescription_safety flag is OFF for %s", schema_name)
+        # 1-2. Consent gate (ordem 025): global switch, signed DPA (LGPD),
+        # tenant FeatureFlag, monthly ceiling.
+        consent = requires_ai_consent("prescription_safety", schema_name)
+        if not consent.allowed:
+            logger.debug(
+                "prescription_safety consent denied (%s) for %s", consent.reason, schema_name
+            )
             return SafetyResult(is_safe=True, alerts=[], degraded=False)
 
-        # 2. DPA signed check (LGPD)
-        if not _check_dpa_signed(schema_name):
-            logger.info("DPA not signed for %s — skipping safety check", schema_name)
-            return SafetyResult(is_safe=True, alerts=[], degraded=False)
+        config = get_tenant_ai_config(schema_name)
 
         # 3. Rate limit check (fail-open)
         try:

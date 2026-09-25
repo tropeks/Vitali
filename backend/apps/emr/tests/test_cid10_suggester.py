@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, patch
 
 from django.core.cache import cache
 
+from apps.ai.consent import ConsentResult
 from apps.test_utils import TenantTestCase
 
 
@@ -136,8 +137,13 @@ class TestCID10Suggester(TenantTestCase):
         """When ai_cid10_suggest feature flag is OFF, returns empty suggestions."""
         from apps.ai.services_cid10 import CID10Suggester
 
-        with patch("apps.ai.services_cid10.get_tenant_ai_config") as mock_cfg:
-            mock_cfg.return_value = MagicMock(ai_cid10_suggest=False)
+        # Ordem 025: the flag is the ai_cid10 FeatureFlag, read by the consent
+        # gate; the real path is covered in
+        # apps/ai/tests/test_ia_atual_para_de_mentir.py.
+        with patch(
+            "apps.ai.services_cid10.requires_ai_consent",
+            return_value=ConsentResult(False, "feature_disabled_tenant"),
+        ):
             suggester = CID10Suggester()
             result = suggester.suggest("pneumonia bacteriana grave", "test_schema")
 
@@ -153,16 +159,14 @@ class TestCID10Suggester(TenantTestCase):
         )
 
         with (
+            patch("apps.ai.services_cid10.requires_ai_consent", return_value=ConsentResult(True)),
             patch("apps.ai.services_cid10.get_tenant_ai_config") as mock_cfg,
             patch("apps.ai.services_cid10.is_rate_limited", return_value=False),
             patch("apps.ai.services_cid10.is_open", return_value=False),
             patch("apps.ai.services_cid10._retrieve_candidates") as mock_cands,
             patch("apps.ai.gateway.ClaudeGateway.complete", return_value=(mock_response, 100, 50)),
         ):
-            mock_cfg.return_value = MagicMock(
-                ai_cid10_suggest=True,
-                rate_limit_per_hour=500,
-            )
+            mock_cfg.return_value = MagicMock(rate_limit_per_hour=500)
             mock_cands.return_value = [
                 {"code": "J18.9", "description": "Pneumonia não especificada"}
             ]
