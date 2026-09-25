@@ -3,7 +3,7 @@
 > Plataforma Hospitalar SaaS — ERP + EMR + AI · **v1.0.0** + trabalho não versionado em `onda0`
 > Django 5.2 · Next.js 15 · PostgreSQL 16 (schema-per-tenant) · Celery · Redis
 
-A direção do projeto está em [`.maestro/INTENT.md`](.maestro/INTENT.md) (INTENT v5). O trabalho
+A direção do projeto está em [`.maestro/INTENT.md`](.maestro/INTENT.md) (INTENT v6, 25/09). O trabalho
 anda por **ordens** numeradas em [`.maestro/orders/`](.maestro/orders/), cada uma com prova
 gravada. A integração é o branch `onda0-perimetro-multitenant`. `master` está atrás por
 decisão, e a sincronia `onda0 → master` é ordem própria.

@@ -82,8 +82,9 @@ até decisão do Capitão (ordem 013, "O que NÃO entra").
 
 ### O que continua aberto
 
-- **INTENT v5 §Prioridades 2** ainda diz "CBHPM está em zero" e "LOINC tem 6 linhas",
-  citando este arquivo. O texto do INTENT é do Capitão; a correção fica proposta, não feita.
+- ~~INTENT v5 §Prioridades 2 ainda diz "CBHPM está em zero" e "LOINC tem 6 linhas"~~ —
+  **corrigido no INTENT v6** (25/09, aprovado pelo Capitão): a receita saiu das prioridades
+  e virou guarda permanente em §Limites, com o estado dos catálogos atualizado.
 - **`scripts/catalogs/manifest.toml`** ainda marca `loinc` e `cbhpm` como `blocked`, com
   `version = ""` e `expected_rows = 0`. Um ambiente novo semeado pelo `seed_catalogs` não
   reproduz o estado de staging para esses dois catálogos até o manifesto receber rótulo e

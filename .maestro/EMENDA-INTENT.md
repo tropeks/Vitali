@@ -1,10 +1,22 @@
-# Emenda ao INTENT v5: rascunho para o Capitão
+# Emenda ao INTENT v5 → v6: registro
 
-> **Status: RASCUNHO. Não carimbado.** Este arquivo **não** é a direção vigente. A direção
-> continua sendo o INTENT v5 (`.maestro/INTENT.md`, hash `a6120b3c`) até o Capitão carimbar.
-> Ninguém rodou `maestro intent --bump`: esse ato é do Capitão, não do executor.
+> **Status: APROVADA pelo Capitão em 25/09/2026 e APLICADA.** A direção vigente é o
+> **INTENT v6** (`.maestro/INTENT.md`). Este arquivo não é direção: é o registro de **por que**
+> a v6 mudou o que mudou, com a fonte de cada mudança. Se ele divergir do INTENT, vale o
+> INTENT.
 >
-> Redigido em 25/09/2026, na retomada depois da PARADA de 18/09, contra o estado de `onda0`
+> **O aval:** o Capitão aprovou a emenda em 25/09/2026 com a recomendação do Imediato: **a
+> receita sai do posto 2 e vira guarda permanente, "a receita não regride", e o isolamento
+> entre tenants continua em 1.** O `maestro intent --bump` para a v6 rodou por ordem do
+> Imediato, transmitindo esse aval, no branch do PR #228.
+>
+> **O que o aval mudou em relação ao rascunho:** o rascunho propunha manter a receita no
+> posto 2, reescrita como guarda. Na versão aprovada, a receita **sai das prioridades** e vai
+> para §Limites como guarda permanente. As prioridades seguintes sobem uma posição:
+> Recuperação passa de 3 para 2, Interceptação de 4 para 3 e Compliance de 5 para 4. Ordens
+> carimbadas até a v5 continuam citando a numeração antiga.
+>
+> Rascunho redigido em 25/09/2026, na retomada depois da PARADA de 18/09, contra o estado de `onda0`
 > em `1670a07` (ordens 005 a 021 aceitas).
 
 ## Por que emendar agora
@@ -30,7 +42,7 @@ já medido, e cita a fonte.
 
 ---
 
-## Mudança 1: a Prioridade 2 passa de pendência a guarda
+## Mudança 1: a receita sai das prioridades e vira guarda permanente em §Limites
 
 **Fonte:** ordens 006, 007, 008, 009 e 010 (cadeia de receita); ordem 013 (CBHPM); recibo
 `loinc-2-83` no ledger (LOINC); `docs/research/VITALI_CATALOGOS_ESTADO_REAL.md`.
@@ -54,7 +66,7 @@ já medido, e cita a fonte.
 > **estão carregados** em staging desde 04/08 [...] Dois bloqueadores sobram [...]:
 > **CBHPM está em zero e é catálogo licenciado** [...] e **LOINC tem 6 linhas** [...]
 
-**Texto proposto (v6, §Prioridades, item 2):**
+**Texto do rascunho (v6, §Prioridades, item 2; substituído pelo aval, ver abaixo):**
 
 > 2. **A receita não regride.** A cadeia guia TISS válida → guia declarada pronta → lote →
 >    fechamento está provada pelo caminho real desde 13/09 (ordens 006 a 010). Daqui em
@@ -67,9 +79,10 @@ já medido, e cita a fonte.
 >    valor só vem de tabela contratada. Quem encontrar `valor() = 0` pergunta qual contrato
 >    vale, e não "conserta" o número.
 
-**Decisão que fica com o Capitão:** manter a receita no posto 2 como guarda (a proposta) ou
-promover outro item para o posto 2 e rebaixar a receita. O rascunho não escolhe item novo:
-isso seria inventar direção.
+**Decisão do Capitão (25/09):** a receita **sai do posto 2**. Nenhum item novo entra no lugar:
+as prioridades seguintes sobem. O texto acima foi para §Limites como o primeiro item, com o
+rótulo **"Guarda permanente: a receita não regride"**, e absorveu a regra de licença abaixo.
+O texto exato está no INTENT v6.
 
 **Pendência de licença, que continua do Capitão:** a CBHPM é © Editora Manole / AMB. O
 Imediato autorizou importar em staging, mas não cobrar pelo uso. A emenda só registra o
@@ -80,7 +93,7 @@ limite, que já existe:
 
 ---
 
-## Mudança 2: a série de auditoria entra na Prioridade 5, com a retenção de 20 anos
+## Mudança 2: a série de auditoria entra na prioridade de compliance (5 na v5, 4 na v6), com a retenção de 20 anos
 
 **Fonte:** ordens 016, 017, 018, 019, 020 e 021; `docs/adr/ADR-0001-retencao-auditoria-20-anos.md`;
 decisão do Capitão na Ponte (`01M325GP8W497HQWJ3GY55JPP9`, escolha `vinte_anos`, 22/09).
@@ -152,9 +165,9 @@ do NetForge, o e-CPF A1 do Capitão e a credencial do túnel Cloudflare.
 
 ---
 
-## Cabeçalho proposto (v6)
+## Cabeçalho (v6)
 
-Trocar a linha de histórico do cabeçalho por:
+Texto do rascunho, que o INTENT v6 aplicou já ajustado ao aval (receita em §Limites e renumeração):
 
 > Histórico: v1 redigida em 11/09; v2 carimbada no mesmo dia; v3 corrigiu a Prioridade 2, que
 > afirmava um fato falso sobre os catálogos; v4 corrigiu a nota de status da própria direção;
@@ -166,14 +179,14 @@ Trocar a linha de histórico do cabeçalho por:
 
 ## O que não muda
 
-Problema, Público, Resultado, Prioridades 1, 3 e 4, e §Fora de escopo continuam com o texto
-da v5. A ordem 004 (offsite) continua adiada por decisão do Capitão em 12/09, e o texto da v5
-sobre ela segue correto.
+Problema, Público, Resultado, a Prioridade 1 (isolamento entre tenants) e §Fora de escopo
+continuam com o texto da v5. Recuperação e Interceptação mantêm o texto e só mudam de número.
+A ordem 004 (offsite) continua adiada por decisão do Capitão em 12/09, e o texto da v5 sobre
+ela segue correto.
 
-## Como carimbar
+## Como foi carimbado
 
-Se o Capitão aprovar, com ou sem ajustes:
-
-1. aplicar os textos propostos em `.maestro/INTENT.md`;
-2. `maestro intent --bump` (ato do Capitão);
-3. apagar este arquivo no mesmo commit, para não haver duas direções no repositório.
+1. Os textos, já ajustados ao aval, foram aplicados em `.maestro/INTENT.md`.
+2. `maestro intent --bump`: v5 → v6.
+3. Este arquivo **fica** no repositório como registro da emenda, com status de aprovada.
+   Ele não concorre com o INTENT, porque declara na primeira linha que a direção é a v6.

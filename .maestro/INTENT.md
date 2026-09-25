@@ -1,9 +1,9 @@
 <!-- maestro-intent v1
-version: 5
-ts: 2026-09-12T10:25:25-03:00
-head: 5b7ff005cfa84e7b1506e71d336b1dce59e44a07
-author_session: desconhecido
-hash: a6120b3c
+version: 6
+ts: 2026-09-25T09:53:19-03:00
+head: 1b9c9869eea1b44fd33de7a1885006600e0fe788
+author_session: bd20e049-4c42-4961-8de6-960c81b59673
+hash: f6a0c0bc
 -->
 # Direção — vitali
 
@@ -11,7 +11,13 @@ hash: a6120b3c
 > `docs/AI-NATIVE-WEDGES.md` e `CLAUDE.md`, e corrigida contra o que foi medido no banco.
 > Reduzida ao que decide uma ordem. **Carimbada pelo Capitão** — `maestro intent --bump` é
 > dele, não do executor. Histórico: v1 redigida em 11/09; v2 carimbada no mesmo dia; v3
-> corrigiu a Prioridade 2, que afirmava um fato falso sobre os catálogos.
+> corrigiu a Prioridade 2, que afirmava um fato falso sobre os catálogos; v4 corrigiu a nota
+> de status da própria direção; v5 (12/09) pôs o offsite fora de escopo até a produção
+> (ordem 004); **v6 (25/09), aprovada pelo Capitão, tirou a receita das prioridades, porque
+> as ordens 006 a 010 a cumpriram, e a pôs em §Limites como guarda permanente. Também levou
+> a série de auditoria e a retenção de 20 anos para a prioridade de compliance (ordens 016 a
+> 021, ADR-0001) e pôs a regra da forge em §Limites.** Numeração: as Prioridades 3, 4 e 5 da
+> v5 são as 2, 3 e 4 da v6. Ordens carimbadas até a v5 citam a numeração antiga.
 
 ## Problema
 
@@ -62,26 +68,47 @@ desfecho).
    não a infra: um vazamento entre clínicas encerra o negócio. Mudança em auth, tenant,
    permissão ou migration passa por especialista e teste — é o que o `.maestro.yaml` já
    declara.
-2. **Receita destravada antes de escopo novo.** O caminho guia TISS válida → lote →
-   faturamento tem precedência sobre qualquer módulo adicional. Os catálogos públicos
-   **estão carregados** em staging desde 04/08 — CID-10, TUSS, CNES, ANVISA, SIGTAP, CBO,
-   CID-O e UCUM, com fonte e versão gravadas em `TerminologyImportLog` — mas **por mão
-   humana, nunca por pipeline**: todo ambiente novo nasce vazio e a carga não é reproduzível
-   a partir do repositório. Dois bloqueadores sobram, e são de natureza diferente:
-   **CBHPM está em zero e é catálogo licenciado** (decisão de compra, não de engenharia), e
-   **LOINC tem 6 linhas**, travado por cadastro gratuito
-   (`docs/research/VITALI_CATALOGOS_ESTADO_REAL.md`).
-3. **Recuperação provada, não documentada.** Backup que nunca foi restaurado não é backup.
+2. **Recuperação provada, não documentada.** Backup que nunca foi restaurado não é backup.
    O drill (`scripts/restore_test.sh`) vale mais que mais um alerta.
-4. **Interceptação sobre registro.** Entre melhorar um CRUD e fechar uma cunha de
+3. **Interceptação sobre registro.** Entre melhorar um CRUD e fechar uma cunha de
    interceptação (dose, glosa, ruptura), a cunha ganha — é a tese do produto.
-5. **Compliance como gate, não como sprint futura.** LGPD, TISS/TUSS (RN 501/2022 ANS), CFM
-   1.821/2007 e ANVISA são critério de aceite, não item de backlog.
+4. **Compliance como gate, não como sprint futura.** LGPD, TISS/TUSS (RN 501/2022 ANS), CFM
+   1.821/2007 e ANVISA são critério de aceite, não item de backlog. Isso vale em concreto
+   para a trilha de auditoria:
+   * **Leitura de dado de paciente ou de dado pessoal sensível deixa trilha, por rota.**
+     View nova que lê esse dado entra coberta ou isenta com motivo escrito. A guarda
+     (`apps/core/audit_coverage.py`) reprova o resto. A cobertura se mede pelo roteador do
+     Django, nunca por contagem de texto (ordens 016 a 019).
+   * **A trilha é guardada por 20 anos** (240 meses), igual ao prontuário: Res. CFM
+     1.821/2007, art. 8, e Lei 13.787/2018, art. 6. Decisão do Capitão em 22/09/2026,
+     registrada em `docs/adr/ADR-0001-retencao-auditoria-20-anos.md`. O prazo é
+     configurável por tenant, e o **expurgo nasce desligado**: ligar é ato deliberado por
+     clínica, visível no banco (ordens 020 e 021).
+   * **Nada da trilha se apaga sem exportação fria provada.** O `DROP` de partição exige
+     recibo verificado, e o formato exportado é estável (texto delimitado ou JSONL, nunca
+     dump binário), porque precisa abrir daqui a vinte anos.
+   * **Aceite de mecanismo exige prova no caminho real, não na fixture.** Teste que constrói
+     à mão a condição que o sistema nunca produz mede a si mesmo (lição da ordem 021).
 
 ## Limites
 
+- **Guarda permanente: a receita não regride.** A cadeia guia TISS válida → guia declarada
+  pronta → lote → fechamento está provada pelo caminho real desde 13/09 (ordens 006 a 010).
+  Ela deixou de ser prioridade porque foi cumprida, e virou restrição. Mudança que toque
+  guia, lote, glosa ou catálogo de faturamento prova que a cadeia continua fechando
+  (`verify_revenue_chain`). Guia derivada de evento clínico continua nascendo rascunho.
+  LOINC 2.83 e CBHPM 2022 estão em staging, carregados **por mão humana e com recibo**; todo
+  ambiente novo ainda nasce vazio, e a carga ainda não é reproduzível a partir do
+  repositório. **A CBHPM classifica, não precifica**: `porte` é classe publicada, e o valor
+  só vem de tabela contratada. Quem encontrar `valor() = 0` pergunta qual contrato vale, e
+  não "conserta" o número. **CBHPM importada, não comercializada:** é © Editora Manole /
+  AMB, e cobrar por ela depende de decisão de licença do Capitão.
 - **Solo dev + IA.** Alavancagem máxima de open-source e framework opinado; o que não é
   automatizável não escala.
+- **A forge não roda compose do Vitali.** Nem para rodar a suíte, nem "só um minuto".
+  Teste roda no CI ou na lab. Ordem que precisa de banco usa contêiner efêmero sem porta
+  publicada, ou prova pelo CI. A forge guarda segredo que não é do Vitali, e porta publicada
+  por Docker passa por fora do firewall dela. Regra do Imediato, 17/09/2026.
 - **Orçamento de infra ~R$150–500/mês.** VPS e serviço self-hosted. Container desde o dia 1
   porque a portabilidade (VPS → nuvem) é obrigatória — nada pode depender do host.
 - **Schema-per-tenant no PostgreSQL.** Não é escolha de performance, é exigência de LGPD.
