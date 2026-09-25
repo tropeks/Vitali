@@ -111,3 +111,13 @@ class RequiresAIConsentTest(TenantTestCase):
                 settings.FEATURE_AI_GLOSA = original
         self.assertFalse(result.allowed)
         self.assertEqual(result.reason, "feature_disabled_global")
+
+    @override_settings(FEATURE_AI_CID10=True)
+    def test_tenant_feature_flag_lookup_error_fails_closed(self):
+        """Ordem 025: cid10/prescription_safety read the FeatureFlag the DPA
+        signing writes; if it cannot be read, the call is blocked."""
+        self._sign_dpa()
+        with patch("apps.core.utils.tenant_has_feature", side_effect=Exception("DB unavailable")):
+            result = requires_ai_consent("cid10", self.schema)
+        self.assertFalse(result.allowed)
+        self.assertEqual(result.reason, "feature_disabled_tenant")

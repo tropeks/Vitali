@@ -30,6 +30,13 @@ from django.test import override_settings
 from apps.test_utils import TenantTestCase
 
 
+def _month_key(schema_name):
+    """The Redis key check_monthly_ceiling/increment_monthly_tokens share."""
+    from datetime import date
+
+    return f"ai:tokens:{schema_name}:{date.today().strftime('%Y-%m')}"
+
+
 class _SignedTenantMixin:
     def _sign_dpa_for_real(self):
         from django.contrib.auth import get_user_model
@@ -93,6 +100,8 @@ class CID10GateBeforeFlagTest(_SignedTenantMixin, TenantTestCase):
         self.assertNotIn("529.982.247-25", complete.call_args.kwargs["user"])
         self.assertEqual([s.code for s in result.suggestions], ["J18.9"])
         self.assertEqual(AIUsageLog.objects.count(), before + 1)
+        # The monthly ceiling saw the call (50 in + 20 out).
+        self.assertEqual(cache.get(_month_key(self.__class__.tenant.schema_name)), 70)
 
     @override_settings(FEATURE_AI_CID10=True)
     def test_the_patient_name_is_scrubbed_when_the_encounter_patient_is_known(self):

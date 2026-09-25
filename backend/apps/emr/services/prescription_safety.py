@@ -25,8 +25,9 @@ from django.db import connection
 from apps.ai.circuit_breaker import is_open, record_failure, record_success
 from apps.ai.consent import requires_ai_consent
 from apps.ai.gateway import ClaudeGateway, LLMGatewayError
+from apps.ai.phi_scrubber import scrub_generic
 from apps.ai.rate_limiter import is_rate_limited
-from apps.ai.services import get_tenant_ai_config
+from apps.ai.services import _log_usage, get_tenant_ai_config, increment_monthly_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -193,8 +194,20 @@ class PrescriptionSafetyChecker:
                 max_tokens=512,
             )
             record_success(schema_name, "prescription_safety")
+            # Ordem 025 (review): every call that reaches Anthropic leaves an
+            # AIUsageLog and counts toward the monthly ceiling, like TUSS,
+            # glosa and CID-10. The prompt carries drug and allergy names, not
+            # identifiers; the generic sweep still runs before it is stored.
+            increment_monthly_tokens(schema_name, tokens_in + tokens_out)
+            _log_usage(
+                event_type="llm_call",
+                input_text=scrub_generic(user_prompt),
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+            )
         except LLMGatewayError:
             record_failure(schema_name, "prescription_safety")
+            _log_usage(event_type="degraded", input_text=scrub_generic(user_prompt))
             logger.warning("LLM error during safety check", exc_info=True)
             return SafetyResult(is_safe=True, alerts=[], degraded=True)
         except Exception:

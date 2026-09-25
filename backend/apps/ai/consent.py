@@ -6,8 +6,9 @@ Before this module, each LLM-adjacent feature re-implemented its own subset
 of checks: TUSSCoder checked the global flag + tenant flag + ceiling but
 never the DPA; GlosaPredictor checked flags/ceiling but never the DPA either;
 Scribe left the DPA check to the view (nothing enforced it in the async
-Celery task); PrescriptionSafetyChecker (apps/emr/services/prescription_safety.py,
-out of this ticket's scope) was the only one that got it right. That drift is
+Celery task); PrescriptionSafetyChecker (apps/emr/services/prescription_safety.py)
+was the only one that got it right — and since ordem 025 it goes through this
+gate too, as does the CID-10 suggester. That drift is
 exactly how GlosaPredictor shipped with zero DPA enforcement.
 
 ``requires_ai_consent(feature, tenant_schema)`` is now the one place that

@@ -33,7 +33,7 @@ from apps.ai.consent import requires_ai_consent
 from apps.ai.gateway import ClaudeGateway, LLMGatewayError
 from apps.ai.phi_scrubber import scrub_for_llm
 from apps.ai.rate_limiter import is_rate_limited
-from apps.ai.services import _log_usage, get_tenant_ai_config
+from apps.ai.services import _log_usage, get_tenant_ai_config, increment_monthly_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -260,6 +260,8 @@ class CID10Suggester:
                 max_tokens=256,
             )
             record_success(schema_name, "cid10_suggest")
+            # The monthly ceiling (consent step 4) counts every call, like TUSS/glosa.
+            increment_monthly_tokens(schema_name, tokens_in + tokens_out)
             _log_usage(
                 event_type="llm_call",
                 input_text=safe_text,

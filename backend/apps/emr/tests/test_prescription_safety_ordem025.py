@@ -90,10 +90,20 @@ class PrescriptionSafetyFlagTest(_SignedTenantMixin, TenantTestCase):
 
     @override_settings(FEATURE_AI_PRESCRIPTION_SAFETY=True)
     def test_flag_written_by_the_dpa_service_is_the_one_read(self):
+        from datetime import date
+
+        from apps.ai.models import AIUsageLog
+
         self._sign_dpa_for_real()
+        before = AIUsageLog.objects.count()
         result, complete = self._check()
         complete.assert_called_once()
         self.assertFalse(result.degraded)
+        # Review of ordem 025: the call leaves a trail and counts toward the
+        # monthly ceiling (40 in + 10 out), like every other Anthropic call.
+        self.assertEqual(AIUsageLog.objects.count(), before + 1)
+        month_key = f"ai:tokens:{self.__class__.tenant.schema_name}:{date.today():%Y-%m}"
+        self.assertEqual(cache.get(month_key), 50)
 
     @override_settings(FEATURE_AI_PRESCRIPTION_SAFETY=True)
     def test_without_dpa_the_llm_is_never_called(self):
