@@ -34,7 +34,7 @@ from .models import (
     UserInvitation,
     UserTenantMembership,
 )
-from .permissions import IsTenantAdmin, is_tenant_admin
+from .permissions import IsPlatformAdmin, IsTenantAdmin, is_tenant_admin
 from .serializers import (
     ChangePasswordSerializer,
     LoginSerializer,
@@ -46,6 +46,7 @@ from .serializers import (
     _validate_strong_password,
 )
 from .tenant_auth import enforce_refresh_membership, login_allowed, tokens_for_user
+from .throttles import TenantRegistrationRateThrottle
 
 logger = logging.getLogger(__name__)
 
@@ -556,9 +557,15 @@ class TenantRegistrationView(APIView):
     """
     POST /api/v1/platform/tenants
     Creates a new tenant + schema + domain + admin role + admin user.
+
+    Platform-operator only (ordem 023). It used to be ``AllowAny`` behind the
+    default anon throttle (100/hour per IP): any anonymous caller could build a
+    schema and mint an admin with a password of their choosing. Clinics that
+    sign themselves up go through ``views_signup.SelfServeSignupView``.
     """
 
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [IsAuthenticated, IsPlatformAdmin]
+    throttle_classes = [TenantRegistrationRateThrottle]
 
     def post(self, request):
         serializer = TenantRegistrationSerializer(data=request.data)

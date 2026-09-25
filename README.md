@@ -32,11 +32,8 @@ As ordens 005 a 021 estão aceitas. O que elas deixaram de pé:
   `scripts/provision_tenant.sh` e `make create-tenant` o contornam: não criam admin, papéis,
   membership nem assinatura, e o script interpola variável de shell dentro do código Python
   que executa. A **ordem 022** fecha essas duas portas.
-* **`POST /api/v1/platform/tenants` aceita anônimo** (`AllowAny`, só com o throttle padrão
-  de 100/h por IP): cria tenant e admin com senha escolhida por quem chama. Em 25/09 a rota
-  não era alcançável pelos hostnames públicos de staging, que caem em schema de tenant, mas
-  isso é roteamento, não código. A **ordem 023**, que vai antes da 022, exige operador de
-  plataforma e um throttle dedicado.
+* **`POST /api/v1/platform/tenants` exige operador de plataforma** (`IsPlatformAdmin`), com
+  throttle dedicado de 5/h por operador (ordem 023). Até então aceitava anônimo.
 * Sorologia de doador de sangue fora do grafo de `Patient`, e por isso invisível à guarda
   da trilha.
 * O destino frio S3 Glacier da trilha foi decidido, mas não está construído.
