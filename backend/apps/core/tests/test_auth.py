@@ -297,12 +297,34 @@ class AuthTestCase(TenantTestCase):
         self.assertTrue(AuditLog.objects.filter(action="password_changed").exists())
 
 
+def _platform_operator(email="operador.023@vitali.com"):
+    """An authenticated platform operator (superuser) that is NOT saved.
+
+    Saving a User inside the test transaction and then letting the view build a
+    real tenant schema fails with ``cannot ALTER TABLE "core_user" because it
+    has pending trigger events``: the schema migrations ALTER a table that
+    still carries the deferred constraint triggers of that INSERT. The view
+    never reads ``request.user`` beyond the permission and throttle checks, so
+    an in-memory instance authenticates exactly as a saved one would.
+    """
+    return User(email=email, full_name="Operador de Plataforma", is_superuser=True, is_staff=True)
+
+
 class TenantRegistrationTestCase(TestCase):
-    """Tests for S-005 — Tenant Registration API."""
+    """Tests for S-005 — Tenant Registration API.
+
+    Ordem 023: the route used to be ``AllowAny`` with only the default anon
+    throttle, so any anonymous caller could create a tenant, run every
+    migration on a fresh schema and mint an admin with a password of their
+    choosing. It is a platform-operator flow; the success-path tests below
+    authenticate as one (see ``_platform_operator`` for why it is unsaved).
+    """
 
     def setUp(self):
+        cache.clear()
         self.client = APIClient()
         self.url = "/api/v1/platform/tenants"
+        self.client.force_authenticate(user=_platform_operator())
 
     def test_tenant_registration_creates_schema(self):
         """Tenant registration returns 201 and creates tenant + domain + admin."""
@@ -387,3 +409,64 @@ class TenantRegistrationTestCase(TestCase):
         # No tenant/schema was created for the rejected request.
         self.assertEqual(Tenant.objects.count(), before)
         self.assertFalse(Tenant.objects.filter(slug="nova-clinica").exists())
+
+
+class TenantRegistrationAccessTests(TestCase):
+    """Ordem 023 — POST /api/v1/platform/tenants deixa de aceitar anônimo.
+
+    Nothing may be created on a refused call: no Tenant, no Domain, no User and
+    no new PostgreSQL schema.
+    """
+
+    URL = "/api/v1/platform/tenants"
+
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient()
+
+    def _payload(self, slug):
+        return {
+            "name": f"Clínica {slug}",
+            "slug": slug,
+            "admin_email": f"admin@{slug}.com",
+            "admin_full_name": "Admin",
+            "admin_password": "Str0ng!Admin#2024",
+        }
+
+    def _assert_nothing_created(self, slug):
+        from django.db import connection
+
+        from apps.core.models import Domain, Tenant
+
+        self.assertFalse(Tenant.objects.filter(slug=slug).exists())
+        self.assertFalse(Domain.objects.filter(domain__startswith=f"{slug}.").exists())
+        self.assertFalse(User.objects.filter(email=f"admin@{slug}.com").exists())
+        with connection.cursor() as cur:
+            cur.execute("SELECT 1 FROM pg_namespace WHERE nspname = %s", [slug])
+            self.assertIsNone(cur.fetchone(), f"schema {slug!r} foi criado")
+
+    def test_anonymous_post_is_refused_and_creates_nothing(self):
+        resp = self.client.post(self.URL, self._payload("anon-023"), format="json")
+        self.assertEqual(resp.status_code, 401)
+        self._assert_nothing_created("anon-023")
+
+    def test_clinic_user_post_is_forbidden_and_creates_nothing(self):
+        # A clinic owner: authenticated and staff, but never a superuser
+        # (see apps.core.permissions.is_platform_admin). Unsaved for the same
+        # reason as _platform_operator.
+        clinic_admin = User(email="dono.023@clinica.com", full_name="Dono", is_staff=True)
+        self.client.force_authenticate(user=clinic_admin)
+        resp = self.client.post(self.URL, self._payload("staff-023"), format="json")
+        self.assertEqual(resp.status_code, 403)
+        self._assert_nothing_created("staff-023")
+
+    def test_platform_admin_is_throttled_at_five_per_hour(self):
+        """The cap is per operator and counts every call, so it is proven with
+        invalid payloads (400): no schema is built on the way to the cap."""
+        self.client.force_authenticate(user=_platform_operator("operador.throttle@vitali.com"))
+        invalid = {"name": "", "slug": ""}
+        for _ in range(5):
+            self.assertEqual(self.client.post(self.URL, invalid, format="json").status_code, 400)
+        resp = self.client.post(self.URL, self._payload("throttle-023"), format="json")
+        self.assertEqual(resp.status_code, 429)
+        self._assert_nothing_created("throttle-023")
