@@ -14,6 +14,10 @@ author_session: desconhecido
 > feature. [...] Mudança em auth, tenant, permissão ou migration passa por especialista e
 > teste". Criar clínica é o ato fundador do tenant, e hoje ele tem quatro portas.
 >
+> **Depende da ordem 023, que vem antes.** A 023 fecha o `POST` anônimo em
+> `/api/v1/platform/tenants` (autenticação de plataforma + throttle). Esta ordem parte do
+> tip de `onda0` **com a 023 mesclada**. Se a 023 não estiver mesclada, pare.
+>
 > **Execução headless, prova pelo CI.** A forge **não roda** compose do Vitali (regra do
 > Imediato, 17/09): nem para testar, nem "só um minuto". Esta ordem não sobe stack em lugar
 > nenhum, não toca staging nem produção e não provisiona clínica real. Tudo se prova em
@@ -45,19 +49,10 @@ Python** que o `shell -c` executa. Um nome com apóstrofo (`Clínica D'Ávila`) 
 script. Um nome escolhido para isso executa código arbitrário **dentro do contêiner
 Django, com as credenciais do banco de todas as clínicas**.
 
-### O achado que não estava na fila: tenant criado por anônimo
+### O `POST` anônimo em `platform/tenants` saiu desta ordem
 
-`TenantRegistrationView` tem **`permission_classes = [permissions.AllowAny]`** e **nenhum
-throttle**. O comentário da rota em `urls_public.py` diz "engineer/platform-admin flow", e
-o `apps/core/tests/test_auth.py:299` (`TenantRegistrationTestCase`) afirma que um
-`APIClient` **sem autenticação** recebe `201`. Ou seja: qualquer pessoa que alcance o
-domínio público cria um tenant com schema próprio, `migrate_schemas` inteiro e um admin
-**com a senha que escolheu**. Cada chamada custa um schema e todas as migrations. O signup
-self-serve, que é público de propósito, tem throttle justamente por isso, e o admin dele
-nasce sem senha: ativa pelo link do e-mail.
-
-Isto foi **lido no código, não medido em staging**. Esta ordem não sonda staging. Se a rota
-responde por lá, é a primeira coisa que o relatório da ordem deve dizer ao Imediato.
+Ele virou a **ordem 023**, que vai na frente desta. Aqui essa view só entra para parar de
+duplicar o serviço (passo 1).
 
 ### O buraco que nenhum dos quatro caminhos fecha: a partição de auditoria
 
@@ -79,7 +74,6 @@ reproduzida**. O passo 1 abaixo a prova ou a derruba.
 
 **0. Teste vermelho antes de tudo** (commit `test(...)` que **falha** no tip atual, como nas
 ordens 008 a 011):
-   * `POST /api/v1/platform/tenants` anônimo **não** pode criar tenant;
    * uma escrita real de `AuditLog` pelo ORM, feita logo depois de provisionar uma clínica,
      cai em **folha dedicada**. A asserção é sobre `tableoid::regclass`, sem SQL preparado
      pela fixture: a lição da 021 é que teste que constrói à mão a condição medida mede a
@@ -87,15 +81,14 @@ ordens 008 a 011):
    * `ensure_audit_partitions` com uma clínica cuja DEFAULT do mês tem linha **não aborta**
      as demais.
 
-   Se algum desses três **não** ficar vermelho no tip atual, registre o resultado no relatório
+   Se algum desses dois **não** ficar vermelho no tip atual, registre o resultado no relatório
    e tire o item correspondente do escopo. Não invente defeito para caber na ordem.
 
 **1. Um caminho só: o serviço.** `services.provisioning.provision_tenant` é a fonte única.
-   * `TenantRegistrationView` passa a exigir as permissões de plataforma que as vizinhas já
-     usam (`_PLATFORM_PERMS`, em `views_platform.py`) e **delega ao serviço** em vez de
-     duplicar papéis/admin/membership. O contrato de resposta (`tenant`, `domain`,
-     `admin_user`, `trial_ends_at`) se mantém para quem autentica.
-   * O teste que afirmava `201` anônimo **inverte**: anônimo → `401`/`403`, nada criado.
+   * `TenantRegistrationView`, já fechada a operador de plataforma pela 023, **delega ao
+     serviço** em vez de duplicar papéis/admin/membership. O contrato de resposta
+     (`tenant`, `domain`, `admin_user`, `trial_ends_at`), a permissão e o throttle que a
+     023 pôs não mudam, e os testes da 023 continuam verdes sem editar asserção.
 
 **2. `manage.py provision_tenant`**, casca fina sobre o serviço, sem lógica própria de
    criação:
@@ -135,7 +128,7 @@ ordens 008 a 011):
 
 Tudo em pytest, rodando **no CI**. Nenhuma prova depende de stack de pé.
 
-* os três vermelhos do passo 0 ficam verdes, e o histórico do branch mostra o commit
+* os dois vermelhos do passo 0 ficam verdes, e o histórico do branch mostra o commit
   vermelho **antes** do conserto;
 * provisionar pelo comando entrega a mesma clínica que o signup entrega: tenant, domínio,
   papéis padrão, admin, membership, assinatura, flags dos módulos e folhas de auditoria.
