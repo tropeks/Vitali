@@ -89,8 +89,35 @@ and injected via `validate(check_revocation=True, crls=[…])` with
 is required for *every* path cert, so tests inject both an intermediate CRL
 signed by the root and a leaf CRL signed by the intermediate.)
 
+**Current state and production prerequisite.** Nothing in the repository sets
+`ICP_BRASIL_CHECK_REVOCATION`: staging runs `vitali.settings.production` with the
+default `False`, and so would production today. A revoked certificate therefore
+still signs as ICP-Brasil. **Turning revocation on is a prerequisite for
+production**, in this order:
+
+1. confirm the ITI CRL/OCSP endpoints are reachable from the signing host
+   (egress/firewall);
+2. sign with real doctors' `.pfx` files in staging with the flag on — `require`
+   mode needs revocation info for every certificate in the path, so a bundle that
+   passed under `soft-fail` (for example a `.pfx` exported without its
+   intermediate chain) may start being refused. Treat that as a finding to
+   resolve with the doctor, not a reason to switch back to `soft-fail`;
+3. only then set `ICP_BRASIL_CHECK_REVOCATION=True` in the production environment.
+
 A3 hardware tokens (PKCS#11) remain out of scope; the flow expects an A1 PKCS#12
 bundle.
+
+---
+
+## Private key handling (model A)
+
+The doctor's private key does **not** live on the server. `POST
+/api/v1/signatures/sign/` receives the PKCS#12 in the request body —
+`pkcs12_b64` and `pkcs12_password` are `write_only` serializer fields
+(`apps/signatures/serializers.py`) — uses it for that one signature, and discards
+it. `DigitalSignature` stores the signature, the document hash and certificate
+metadata (subject, issuer, serial, validity, `is_icp_brasil`), never the key or
+the password.
 
 ---
 
@@ -131,9 +158,34 @@ git-ignored — anchors are operational data, not source. After refreshing,
 restart the workers so the in-process anchor cache is rebuilt
 (`ICPBrasilChainValidator.clear_cache()` is called by the command in-process).
 
+### Persistence across deploys (order 014)
+
+The trust store used to live only in the image: anchors copied into the staging
+container at 15:27 on 16/09 were gone after the 15:39 deploy. Since order 014 the
+`django` service in **staging and production** mounts the named volume
+`icp_truststore` at `/app/apps/signatures/truststore`
+(`docker-compose.staging.yml`, `docker-compose.prod.yml`). Run
+`refresh_icp_truststore` once **inside the container**; the anchors survive
+`up -d` and image upgrades.
+
+### Fetching the bundle: use `--file`
+
+The online refresh fails today: `acraiz.icpbrasil.gov.br` serves TLS **without
+the intermediate** and chained to `ISRG Root YE`, which is absent from current
+trust stores (measured on 16/09, order 014). Do **not** work around it with
+`verify=False`. Download `ACcompactado.p7b` with a browser, check it, copy it into
+the container and run:
+
+```sh
+python manage.py refresh_icp_truststore --file /path/to/ACcompactado.p7b
+```
+
+Afterwards list the trust store directory and confirm it holds the anchor files,
+not only `README.md`/`.gitignore`.
+
 ---
 
-## Enforcement & the empty-store fallback
+## Enforcement & the empty trust store
 
 Setting (`vitali/settings/base.py`, overridable via env):
 
@@ -152,15 +204,25 @@ Behaviour during a sign request:
 
 | Trust store | `ICP_BRASIL_ENFORCE_CHAIN` | Chain result | Outcome |
 |-------------|----------------------------|--------------|---------|
-| **Empty**   | (any)                      | not validated | Sign **proceeds**; a WARNING is logged; `is_icp_brasil=False`. Never blocks. |
+| **Empty**   | `True` (default; staging, production) | not validated | **Refused** (order 015): `ICPBrasilSignerError("trust store not populated")` → **HTTP 400**, ERROR logged, **no `DigitalSignature` row written**. |
+| **Empty**   | `False` (`development.py`: dev, CI) | not validated | Sign proceeds; WARNING logged; `is_icp_brasil=False`. |
 | Populated   | `True` (default)           | untrusted    | `ICPBrasilSignerError` → **HTTP 400**. |
 | Populated   | `True`                     | trusted      | Sign proceeds; `is_icp_brasil=True`; policy OIDs logged. |
 | Populated   | `False`                    | untrusted    | Sign proceeds (audit-only); `is_icp_brasil=False`. |
 
-The **empty-store fallback** exists so that a fresh deployment whose trust store
-has not yet been populated does not break signing — instead it degrades to
-recording signatures as non-ICP-Brasil and logs a loud WARNING until an operator
-runs `refresh_icp_truststore`.
+**Why an empty store refuses (order 015).** The old fallback let an unpopulated
+store degrade silently: the doctor signed, the API answered `201`, and the row was
+stored with `is_icp_brasil=False` — a signature without legal value and no visible
+error. That happened in staging on 16/09 after a deploy wiped the anchors. Now
+`ICP_BRASIL_ENFORCE_CHAIN` also covers the empty store; there is no new flag.
+`vitali/settings/development.py` pins `ICP_BRASIL_ENFORCE_CHAIN=False` explicitly
+so dev and CI, which do not carry the ITI bundle, keep the old behaviour by choice.
+
+**Operational consequence:** with an empty store in staging or production, **nobody
+can sign** until the store is populated. Order of operations for a new
+environment (order 015): deploy the `icp_truststore` volume → run
+`refresh_icp_truststore --file <ACcompactado.p7b>` inside the container → only then
+expect signing to work.
 
 ---
 
@@ -173,3 +235,6 @@ runs `refresh_icp_truststore`.
 | `apps/signatures/management/commands/refresh_icp_truststore.py` | populate the trust store from ITI |
 | `apps/signatures/truststore/` | trust anchors (operational data; git-ignored) |
 | `vitali/settings/base.py` | `ICP_BRASIL_TRUSTSTORE_DIR`, `ICP_BRASIL_ENFORCE_CHAIN`, `ICP_BRASIL_CHECK_REVOCATION`, `ICP_BRASIL_REVOCATION_TIMEOUT` |
+| `vitali/settings/development.py` | pins `ICP_BRASIL_ENFORCE_CHAIN=False` for dev/CI (order 015) |
+| `docker-compose.staging.yml`, `docker-compose.prod.yml` | `icp_truststore` volume on `/app/apps/signatures/truststore` (order 014) |
+| `apps/signatures/tests/test_truststore_vazio_recusa.py` | proves the empty-store refusal: 400 with reason **and** no row written |

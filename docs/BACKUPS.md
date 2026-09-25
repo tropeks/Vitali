@@ -43,11 +43,18 @@ Add `BACKUP_KEEP_LAST=14` to `.env.staging` to keep two weeks of backups.
 ### Where backups land
 
 Dumps are written to the `backups` Docker named volume, mounted at `/backups`
-inside the container. File names follow the pattern:
+inside the container. With encryption on (the default — see below) each night
+leaves:
 
 ```
-vitali_20260115T020001Z.dump
+vitali_20260115T020001Z.dump.gpg            # the artifact (the plaintext .dump is deleted after gpg)
+vitali_20260115T020001Z.inventario.txt      # table-by-table inventory taken right after pg_dump (order 012)
+metrics/vitali_backup.prom                  # success metric, read by the healthcheck and the smoke test
+metrics/vitali_restore_drill.prom           # written by the nightly drill (order 011), not by backup.sh
 ```
+
+A bare `vitali_*.dump` only exists under `BACKUP_ALLOW_PLAINTEXT=1`. The volume
+name carries the Compose project prefix (`vitali-lab_backups` on the lab).
 
 Inspect the volume on the host:
 
@@ -213,15 +220,15 @@ The `db-backup` service in `docker-compose.prod.yml` installs `gpg` + `aws-cli`
 at startup and snapshots these envs into `/etc/backup.env` for the cron job. Upload
 failures exit non-zero and log `[backup] ERROR …` — they are never silent.
 
-> **`docker-compose.staging.yml` gaps (two, stacked):** unlike
-> `docker-compose.prod.yml`, the staging `db-backup` service (1) does not
-> forward `BACKUP_ENCRYPTION_KEY` / `BACKUP_ALLOW_PLAINTEXT` into its container
-> — its `environment:` block and `printenv` snapshot pattern only list
-> `POSTGRES_*`, `BACKUP_DIR`, `KEEP_LAST` — and (2) never installs `gpg` at
-> startup (prod's `command:` runs `apk add --no-cache gnupg aws-cli`; staging's
-> does not). Fixing only the first still leaves backups failing with `'gpg' is
-> not installed`. Both must be fixed in the compose file before this change
-> ships to staging, or the nightly backup breaks every night.
+> **`docker-compose.staging.yml` — both former gaps are closed.** The staging
+> `db-backup` service now forwards `BACKUP_ENCRYPTION_KEY`,
+> `BACKUP_ALLOW_PLAINTEXT` and every `BACKUP_S3_*` through `environment:` **and**
+> the `printenv` filter, and installs `gnupg aws-cli` at startup; it has
+> produced encrypted `.dump.gpg` artifacts nightly since 12/09. The prod
+> service lags behind staging in three places: its `printenv` filter omits
+> `BACKUP_ALLOW_PLAINTEXT` and `BACKUP_S3_COMPAT`, it does not mount
+> `scripts/inventario.sql` (so no inventory snapshot), and its healthcheck only
+> checks that `crond` is alive, not that the last backup is fresh.
 
 **Generate the encryption key** with `scripts/gen_secrets.sh` and store it in an
 offline vault. Losing `BACKUP_ENCRYPTION_KEY` makes every encrypted dump
@@ -262,8 +269,95 @@ BACKUP_S3_BUCKET=my-bucket BACKUP_S3_ACCESS_KEY=… BACKUP_S3_SECRET_KEY=… \
   BACKUP_ENCRYPTION_KEY=… bash scripts/restore_test.sh
 ```
 
-Schedule it **weekly** on the host (cron or a systemd timer). A backup you have
-never restored is not a backup.
+`restore_test.sh` is the canonical drill and stays unmodified. On the lab it
+runs **every night**, wrapped by `scripts/run_restore_drill.sh` — see next
+section. A backup you have never restored is not a backup.
+
+## Drill noturno — recuperação como sinal diário (ordens 011 e 012)
+
+Desde 13/09 o drill não é mais prova de um dia: roda toda noite na lab, **03:00**,
+uma hora depois do backup das 02:00, e deixa métrica que o healthcheck e o smoke
+leem. Drill parado ou vermelho fica vermelho.
+
+### Como está armado
+
+`scripts/install_drill_cron.sh` instala a linha no **crontab do host** — não é
+serviço no compose, porque o drill sobe contêineres descartáveis e isso exigiria o
+socket do Docker dentro de um contêiner (root no host). O instalador é idempotente,
+marca a própria linha e imprime o que instalou:
+
+```bash
+bash scripts/install_drill_cron.sh --app-dir <app-dir> --volume vitali-lab_backups [--hora 3]
+bash scripts/install_drill_cron.sh --remover
+```
+
+A linha gerada roda `run_restore_drill.sh` com `--env-file <app-dir>/.env.staging`,
+`--metrics-dir <app-dir>/drill/metrics` e `--inventory-sql scripts/inventario.sql`,
+e loga em `<app-dir>/drill/cron.log`. **Retry único:** se a primeira execução
+falhar, a mesma linha espera 10 min e repete o comando uma vez. O retry fica na
+linha do crontab, e não dentro do drill, de propósito: retry dentro da coisa medida
+contaminaria "o drill passou". Quem roda `crontab -l` vê a política inteira.
+
+### O que o drill faz, em fases
+
+0. Copia o **cifrado** mais recente do volume (escolha por **nome**, nunca por mtime)
+   para um `WORKDIR` efêmero. A chave entra por substituição de comando lendo o
+   `.env` — nunca em argv, nunca no log.
+1. **Fase 1** — roda `restore_test.sh` intocado contra essa cópia.
+2. **Fase 2** — segundo restore, independente, em outro postgres descartável, e
+   roda `scripts/inventario.sql` (contagem exata por `count(*)`, tabela a tabela).
+   Compara contra a **foto do instante do dump**, `vitali_<carimbo>.inventario.txt`,
+   que o `backup.sh` grava logo após o `pg_dump` com o mesmo SQL (ordem 012). Foto
+   e dump descrevem o mesmo estado, então **divergência reprova** o drill, com o diff
+   completo no log. Artefato antigo, sem foto, cai no `--reference` estático, se
+   dado: aí a comparação relata e **não** reprova, e o log diz por quê.
+3. **Fase 3** — limpeza verificada por `find`: nenhum contêiner de drill restante,
+   nenhum `.dump` em claro em `/tmp` nem no `WORKDIR`. A cópia cifrada é apagada
+   depois de o sha256 ser registrado.
+
+Um guard aborta (saída 2) se `POSTGRES_HOST`/`PGHOST` estiver no ambiente: o drill
+só restaura em postgres efêmero próprio, nunca no banco de staging.
+
+### O sinal
+
+- **Métrica.** `scripts/drill_metric.sh` escreve
+  `vitali_restore_drill_last_success_timestamp_seconds` e
+  `vitali_restore_drill_duration_seconds` **só** com a fase 1 ok e os três
+  contadores de limpeza em zero — contador ausente é erro, nunca zero. O drill
+  publica a cópia em `metrics/` dentro do volume `backups`, ao lado da do backup.
+- **Healthcheck do `db-backup`** (staging): `unhealthy` quando
+  `vitali_backup.prom` tem mais de **26 h**. Backup parado aparece em `docker ps`,
+  sem Prometheus.
+- **`scripts/smoke_test.sh`**, checagens 11 e 12: último backup com menos de
+  **26 h**, último drill com menos de **30 h**. Velho reprova nomeando a checagem;
+  métrica ausente é `skip` contado (saída 2), nunca verde silencioso.
+
+As regras de `docker/observability/alerts.yml` (`VitaliBackupStale`) continuam sem
+quem as avalie: a pilha de observabilidade não roda na lab.
+
+### Conserto da retenção (ordem 012)
+
+Até 14/09 **todo backup cifrado saía 1**. `backup.sh` roda com `set -euo pipefail`
+e a retenção listava `vitali_*.dump vitali_*.dump.gpg`; o primeiro glob nunca casa
+com a cifra ligada (o claro é apagado logo após o gpg). Sob `pipefail` o `ls` que
+falhava vencia o `tail`, e o `set -e` matava o script **depois** de gpg e métrica e
+**antes** da poda. Consequências medidas: o `.gpg` saía íntegro toda noite (7 de 7
+artefatos decifram), mas `KEEP_LAST` nunca rodou — 8 artefatos no pico, um acima de
+7. Primeira execução afetada: 11/09 23:08:46 UTC, o primeiro backup cifrado; o
+defeito estava no código desde `d307f1e` (13/06), que introduziu a cifra. O
+conserto é o `|| true` na atribuição; a poda também remove o `.inventario.txt` de
+cada artefato podado.
+
+### Lacuna aberta: o sinal prova frescura, não término
+
+O healthcheck e o smoke disseram `healthy` durante todo o período acima, por cima
+de um script que saía 1. Não por defeito deles: leem a métrica, e a métrica é
+escrita **antes** da retenção, de propósito (poda é faxina, não parte de "o backup
+deu certo"). O que eles provam é **"existe backup recente e restaurável"**, não
+**"o `backup.sh` terminou bem"**. E ninguém vê o exit code do backup: o `crond` do
+busybox não o manda a lugar nenhum — a saída vai para o log do contêiner
+(`/proc/1/fd/1`) e só. Uma falha **depois** da métrica continua invisível.
+**Isto está aberto**, não resolvido.
 
 ### Recovery objectives
 
@@ -432,7 +526,8 @@ one such offsite-only exercise passes.
 > `.maestro/INTENT.md` §Limites proíbe.
 >
 > **O que staging tem, e é o que deve ter:** backup cifrado diário local (AES256, rodando
-> sozinho às 02:00 UTC desde 12/09) e **drill de restore provado** (ordem 003).
+> sozinho às 02:00 UTC desde 12/09) e **drill de restore provado** (ordem 003), que
+> desde 13/09 roda toda noite (ordem 011 — ver "Drill noturno" acima).
 >
 > **O código abaixo está pronto e desligado.** `BACKUP_S3_BUCKET` vazio faz o `backup.sh`
 > pular o bloco de upload inteiro. Ligar, no dia da produção, é preencher cinco variáveis —
@@ -525,9 +620,11 @@ explicitamente local.
 
 ### Drill de restore a partir do offsite — roteiro
 
-O `restore_test.sh` já sabe puxar do bucket: com `BACKUP_S3_BUCKET` setado ele lista o
-prefixo, pega o objeto mais recente e ignora o `BACKUP_DIR`. O que muda no roteiro é **de
-onde vem o artefato** — e é a única prova que vale num incêndio, porque exercita a
+Use o `run_restore_drill.sh --from-s3`: ele baixa o objeto mais recente de
+`<prefix>/daily/` por contêiner efêmero (sem `aws` no host) e entrega um arquivo local ao
+drill canônico. **Não** use o caminho S3 do próprio `restore_test.sh`: ele lista
+`<prefix>/` e não `<prefix>/daily/`, onde o `backup.sh` grava, e exige `aws` no host. O que
+muda no roteiro é **de onde vem o artefato** — e é a única prova que vale num incêndio, porque exercita a
 credencial, a rede e o bucket, não só o `gpg` e o `pg_restore`.
 
 ```bash
@@ -538,9 +635,13 @@ bash scripts/run_restore_drill.sh \
   --env-file /srv/vulcan/apps/vitali/.env.staging \
   --from-s3 \
   --workdir /srv/vulcan/apps/vitali/drill \
-  --reference /srv/vulcan/apps/vitali/migracao/inventario-LAB.txt \
-  --inventory-sql /srv/vulcan/apps/vitali/migracao/inventario.sql
+  --inventory-sql scripts/inventario.sql
 ```
+
+A foto de inventário **não sobe ao bucket** — o `backup.sh` envia só o `.gpg`. O drill
+procura a foto no volume local; num incêndio de verdade, sem o host, a fase 2 fica sem
+referência e só a fase 1 prova alguma coisa. Resolver isso é trabalho do dia em que o
+offsite for ligado.
 
 O que o drill tem de provar, e em que ordem:
 
@@ -548,7 +649,8 @@ O que o drill tem de provar, e em que ordem:
 2. **O artefato baixado decifra** com a chave em custódia — se a chave testada for a cópia
    do cofre, e não a do host, esta é a prova de que a custódia funciona.
 3. **Restaura num banco descartável** com `emr_patient > 0` em algum tenant.
-4. **Inventário conferido tabela a tabela** contra a referência.
+4. **Inventário conferido tabela a tabela** contra a foto do dump (ou, sem ela, relatado
+   contra a referência estática).
 5. **Limpeza verificada** — nenhum `.dump` em claro sobrando, nenhum container órfão.
 
 Só depois dos cinco o RTO de 4h deste documento passa a ter base. Hoje ele é uma intenção.

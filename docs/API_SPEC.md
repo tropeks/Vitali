@@ -276,6 +276,89 @@ GET /api/v1/glosas
   Auth: Bearer + billing.read
 ```
 
+> **Os caminhos acima são o desenho original.** O código monta o faturamento em
+> `/api/v1/billing/` (`backend/apps/billing/urls.py`: `guides`, `batches`, `glosas`, …).
+> A §6.1 descreve o ciclo de vida como ele roda hoje.
+
+### 6.1 Ciclo de vida da guia e do lote TISS (estado em 25/09/2026)
+
+Todas as rotas exigem `IsAuthenticated`, o módulo de billing e `IsFaturistaOrAdmin`. A
+regra das transições vive em `backend/apps/billing/services/batch_lifecycle.py`; as views
+só traduzem recusa em HTTP.
+
+**Estados.** Guia (`GUIDE_STATUS`): `draft` → `pending` → `submitted` → `paid` | `denied` |
+`appeal`. Lote (`BATCH_STATUS`): `open` → `closed` → `submitted` → `processed`, ou
+`cancelled`.
+
+| Transição | Quem faz | Auditoria |
+|---|---|---|
+| guia nasce `draft` | criação manual e os geradores `from-lab-order`, `from-admission`, `bill-surgical-materials` | — |
+| `draft` → `pending` | `marcar-pronta` (ato explícito de pessoa) | `AuditLog` `guide_marked_ready` |
+| `pending` → `submitted` | fechamento do lote (caminho normal) | nenhuma linha própria |
+| `pending` → `submitted` | `submit` avulso (guia transmitida fora de lote) | `AuditLog` `guide_submitted` |
+| lote `open` → `closed` | `close` | — |
+
+**Os geradores automáticos entregam `draft`, de propósito** (ordem 009): guia derivada de
+pedido de exame, internação ou caso cirúrgico não foi conferida por ninguém, e declará-la
+pronta na criação seria afirmar à operadora algo que não se sabe.
+`backend/apps/billing/tests/test_guide_creators_stay_draft.py` trava esse comportamento.
+
+```
+POST /api/v1/billing/guides/{id}/marcar-pronta/          (ordem 009)
+  draft → pending. Grava AuditLog guide_marked_ready (old/new status, guide_number, provider_id).
+  Response 200: TISSGuide
+  Response 400: { "code": "guide_not_draft", "detail": "Só guia em rascunho pode ser
+                  declarada pronta; esta está em '<status>'." }
+
+POST /api/v1/billing/guides/{id}/submit/                 (ordem 010, issue #213)
+  pending → submitted, para guia transmitida fora de lote. Grava AuditLog guide_submitted.
+  Recusa draft — antes da ordem 010 aceitava e saltava direto para submitted.
+  Response 200: TISSGuide
+  Response 400: { "code": "guide_not_ready", "detail": "Só guia declarada pronta pode ser
+                  enviada; esta está em '<status>'. Declare-a pronta antes (marcar-pronta).
+                  Use POST /api/v1/billing/guides/{id}/marcar-pronta/ antes." }
+                  A guia não muda de estado.
+
+POST /api/v1/billing/batches/{id}/close/                 (ordens 008 e 009)
+  open → closed. Serviço: batch_lifecycle.fechar_lote. Grava status, closed_at e
+  total_value (soma de total_value das guias avaliadas) e promove as guias pending
+  do lote para submitted. As recusas saem nesta ordem:
+  Response 200: TISSBatch (status "closed", total_value gravado)
+  Response 400: { "detail": "Batch is already '<status>', cannot close." }   — lote não está open
+  Response 400: { "guides": ["..."] }  — guia já apresentada em outro lote closed/submitted
+  Response 409: { "code": "batch_has_draft_guides",
+                  "detail": "Há guias em rascunho neste lote. ...",
+                  "guides": [{ "guide_id", "guide_number", "status": "draft" }] }
+                  — roda ANTES da glosa; nomeia cada guia a declarar pronta (ou remover)
+  Response 409: { "code": "glosa_safety_block", "detail": "...",
+                  "guides": [{ "guide_id", "guide_number",
+                               "alerts": [{ "id", "check_code", "severity", "message",
+                                            "recommendation", "guide_item" }] }] }
+                  — só com a flag glosa_safety ligada no tenant (OFF por padrão);
+                    lista apenas as guias com alerta bloqueante não reconhecido
+  Response 409: { "code": "batch_modified_during_close", "detail": "..." }
+                  — o conjunto de guias mudou entre a avaliação e a finalização
+
+POST /api/v1/billing/glosa-safety-alerts/{alert_id}/acknowledge/
+  Body: { "reason": "..." }  — obrigatório, mínimo 10 caracteres, para alerta severity=block
+  Reconhece o alerta; grava AuditLog glosa_alert_overridden (ordem 007). O fechamento
+  seguinte libera a guia.
+
+POST /api/v1/billing/batches/{id}/export/
+  Gera e grava o XML do lote. Response 400 se o lote ainda está open ou está vazio.
+GET  /api/v1/billing/batches/{id}/download/
+  Baixa o XML. Leitura auditada (ordem 019).
+```
+
+**Caminho feliz de um lote:** montar o lote com guias → `marcar-pronta` em cada rascunho →
+`close` → `export` → `download`. `manage.py verify_revenue_chain --tenant <schema> --create`
+percorre por comando a parte que prova receita — guia de um atendimento real, XML contra o
+XSD da ANS, lote, guia declarada pronta, `fechar_lote` — e sai 0 só com o lote `closed` e
+valor maior que zero; que a guia termina em `submitted` é asserção de
+`test_verify_revenue_chain_closes_batch.py` (ordens 006, 008 e 009). Com a flag
+`glosa_safety` ligada, a segunda execução em diante é barrada pelo `duplicate` da própria
+cunha; ver `docs/AI-NATIVE-WEDGES.md` §2.
+
 ---
 
 ## 7. Pharmacy Endpoints

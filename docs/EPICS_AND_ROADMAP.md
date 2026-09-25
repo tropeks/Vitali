@@ -447,7 +447,7 @@ O **mesmo motor** observe-preveja-intercepte-aprenda, aplicado às próximas dor
     - [ ] TISSGuide and TISSGuideItem models
     - [ ] Guide creation API (auto-populate from encounter)
     - [ ] XML generation engine (Jinja2 templates + XSD validation)
-    - [ ] Guide lifecycle (draft → pending → submitted → paid/denied)
+    - [x] Guide lifecycle (draft → pending → submitted → paid/denied) (ordens 009–010)
     - [ ] Frontend: guide creation/editing form
     - [ ] Frontend: guide list with status filters
   Story Points: 13

@@ -61,7 +61,7 @@ COMPOSE_ENV_FILE=.env.staging \
   bash scripts/smoke_test.sh
 ```
 
-Subsequent deploys are handled automatically by `.github/workflows/deploy-staging.yml` on every push to `master`.
+Subsequent deploys are **manual**: `.github/workflows/deploy-staging.yml` only builds and publishes images to GHCR on push to `master` — it never connects to a host (see "Correção de um erro deste documento" below). With the new `IMAGE_TAG`, repeat steps 4, 5, 6, 6b and 10.
 
 ---
 
@@ -191,7 +191,11 @@ BOOTSTRAP_ADMIN_PASSWORD='<generated>' docker compose -p vitali-staging ... exec
 ```
 
 `bootstrap_beta` is idempotent (public tenant + domain, clinic tenant + domain,
-default roles, clinic admin). It replaces the `manage.py shell -c` blobs that
+default roles, clinic admin + `UserTenantMembership`, beta plan + subscription,
+feature flags matching the subscription). It is the supported way to create a
+clinic from the command line; `scripts/provision_tenant.sh` and `make
+create-tenant` are legacy — they create only `Tenant` + `Domain` (see
+[DEVELOPMENT.md](./DEVELOPMENT.md)). It replaces the `manage.py shell -c` blobs that
 used to live only in the CI workflow.
 
 ### 3. Tunnel + DNS
@@ -296,8 +300,10 @@ All variables must be set in `.env.staging` (and GitHub Secrets for the CI pipel
 
 - **Automated DB backups** run via the optional `db-backup` profile:
   `docker compose -f docker-compose.staging.yml --profile backup up -d`. Daily pg_dump
-  to the `backups` volume, retention `BACKUP_KEEP_LAST` (default 7). See
-  [BACKUPS.md](./BACKUPS.md) — configure an offsite (S3) copy for production.
+  to the `backups` volume, retention `BACKUP_KEEP_LAST` (default 7), and a nightly
+  restore drill from the host crontab (`scripts/install_drill_cron.sh`, order 011).
+  Offsite (S3) is ready and switched off by decision of 12/09 (order 004) — it becomes
+  a prerequisite on production day, in the cloud. See [BACKUPS.md](./BACKUPS.md).
 - **TLS** is served by `docker/nginx/ssl.conf` (a `:443` server + HTTP→HTTPS redirect),
   enabled once certs are mounted under `/etc/nginx/ssl/`. See [TLS.md](./TLS.md).
 

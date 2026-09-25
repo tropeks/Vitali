@@ -8,6 +8,11 @@
 
 ## Quick start
 
+> **This is for your own machine.** `docker-compose.yml` publishes Postgres
+> (`5435`), Redis (`6379`, no password) and Django (`8000`) on **every
+> interface**. On a personal laptop behind your own firewall that is fine. On a
+> shared machine it is not — see [The forge rule](#the-forge-rule) below.
+
 ```bash
 # 1. Copy environment file
 cp .env.example .env
@@ -20,17 +25,45 @@ make up
 make migrate
 make migrate-tenant
 
-# 4. Create your first tenant
-make create-tenant
+# 4. Bootstrap the public tenant + your first clinic (idempotent — safe to re-run)
+BOOTSTRAP_ADMIN_PASSWORD='<choose-one>' docker compose exec \
+  -e BOOTSTRAP_ADMIN_PASSWORD django python manage.py bootstrap_beta \
+  --public-domain localhost \
+  --clinic-slug demo --clinic-domain demo.localhost \
+  --admin-email admin@demo.localhost
 
-# 5. Seed demo data
-make seed-demo tenant=<schema_name>
+# 5. Pre-create this month's and next month's audit-log partitions (idempotent)
+docker compose exec django python manage.py ensure_audit_partitions
 
-# 6. Access
+# 6. Seed demo data
+make seed-demo tenant=demo
+
+# 7. Access
 # Backend API: http://localhost:8000/api/v1/
 # Frontend:    http://localhost:3000
 # Django admin: http://localhost:8000/admin/
 ```
+
+### Creating a tenant: use `bootstrap_beta`, not `make create-tenant`
+
+`bootstrap_beta` (`backend/apps/core/management/commands/bootstrap_beta.py`)
+creates, idempotently: the public tenant and its domain, the clinic tenant and
+its domain(s), the default roles in the clinic schema, the clinic admin (from
+`BOOTSTRAP_ADMIN_PASSWORD`, never a CLI argument) with its
+`UserTenantMembership`, a beta plan + subscription, and `FeatureFlag` rows that
+match the subscription's modules. Run `python manage.py bootstrap_beta --help`
+for the options (`--module` narrows the module set).
+
+The self-serve signup (`apps/core/views_signup.py`) goes through
+`apps.core.services.provisioning.provision_tenant`, which does the same job
+transactionally (tenant, domain, roles, owner + membership, trial subscription,
+feature flags) and drops the schema on partial failure.
+
+**Legacy paths — do not use:** `make create-tenant` and
+`scripts/provision_tenant.sh` only create the `Tenant` and `Domain` rows. They
+create **no** admin, **no** roles, **no** membership and **no** feature flags,
+so the resulting clinic has nobody who can log in and no module switched on.
+Both will be replaced by a management command (order 022).
 
 ## Local PIX Setup {#local-pix-setup}
 
@@ -87,12 +120,93 @@ In sandbox, you can simulate payment completion via the Asaas dashboard.
 
 ## Running tests
 
+### Where tests run
+
+1. **CI — the default path.** `.github/workflows/ci.yml` runs on every push to
+   `main`, `master`, `develop` and `order/**`, and on pull requests against
+   `main`, `master`, `develop` and `onda0-perimetro-multitenant` — so an order
+   branch is tested **before** it is merged (order 005). Commits that touch only
+   `.maestro/**`, `docs/**` or `**/*.md` are skipped by `paths-ignore`; to ask
+   for a run anyway, use `gh workflow run ci.yml --ref <branch>`. Five jobs:
+
+   | Job | What it runs |
+   |---|---|
+   | `Backend — Lint & Types` | `ruff check`, `ruff format --check`, `mypy`, `lint-imports`, compiled translation catalogs |
+   | `Backend — Tests` | `migrate_schemas --shared`, then `pytest --cov=apps` over the whole suite |
+   | `Frontend — Lint, Types & Unit` | `npm run lint`, `npm run type-check`, `npm test` (vitest — order 012) |
+   | `Frontend — E2E (Playwright)` | Playwright against the compose stack |
+   | `Docker — Validate Build` | `bash -n` on the ops scripts, `docker compose config` on every compose file, image builds |
+
+2. **The lab — when you need a run before pushing.** Tests run in a throwaway
+   container on the lab host through the `lab` Docker context. Nothing is
+   published on a host port.
+3. **Your own machine** — `make test` below, with the local compose stack.
+
+### The forge rule
+
+> **Never bring up the Vitali compose stack on the forge — not even "for a
+> minute".** The forge is a shared machine that holds secrets. On 17/09 a
+> `docker compose up` from `master` there published Redis without a password,
+> Postgres and Django on `0.0.0.0` to the LAN for 1h46. Tests go to CI or to the
+> lab. The rule is about the forge; it does not forbid `make up` on your own
+> machine.
+
+### Running the backend suite on the lab
+
+Prerequisites on the lab: a Docker network with a Postgres and a Redis attached
+and **no published ports** (today: containers `v018-pg` and `v018-redis` on
+network `v018net`).
+
+```bash
+# 1. Test image with dev dependencies (pytest, ruff, mypy)
+sg docker -c 'docker --context lab build --build-arg INSTALL_DEV=true -t vitali-test:x ./backend'
+
+# 2. Overlay with scripts/ at /scripts — REQUIRED (see below)
+printf 'FROM vitali-test:x\nCOPY . /scripts\n' > /tmp/dfx
+sg docker -c 'docker --context lab build -t vitali-test:x-full -f /tmp/dfx ./scripts'
+
+# 3. Run
+sg docker -c 'docker --context lab run --rm --network v018net \
+  -e DJANGO_SETTINGS_MODULE=vitali.settings.development \
+  -e DATABASE_URL=postgres://vitali:vitali@postgres:5432/vitali \
+  -e REDIS_URL=redis://redis:6379/0 \
+  -e COVERAGE_FILE=/tmp/.coverage \
+  vitali-test:x-full pytest <target> -q --no-header'
+```
+
+Why each piece is there:
+
+- **`sg docker`** — needed when your login session predates your addition to
+  the `docker` group.
+- **`COVERAGE_FILE=/tmp/.coverage`** — without it pytest-cov stops with an
+  `INTERNALERROR` writing its data file (uid mismatch: 1001 vs 1000). `/tmp` is
+  always writable.
+- **The `scripts/` overlay** — `apps/core/tests/test_drill_metric.py` executes
+  `/scripts/drill_metric.sh`. Without the overlay those 5 tests fail, and the
+  failure is **not** environmental noise to wave away.
+
+Reference measurement: the whole backend suite on 18/09, on `6a169b8` — 3,843
+passed, 45 skipped, 0 failed, in about 1h25.
+
+### Local backend tests (your own machine)
+
 ```bash
 make test
 # Or with coverage:
 make test-cov
 # Or specific file:
 make test args="apps/billing/tests/"
+```
+
+### Frontend unit tests (vitest)
+
+Run on the host with `frontend/node_modules` installed — no compose needed:
+
+```bash
+cd frontend
+npm test            # vitest run — the same command CI gates on
+npm run test:watch  # watch mode
+npm run lint && npm run type-check
 ```
 
 ## Code style
