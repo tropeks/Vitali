@@ -1,7 +1,48 @@
 # Vitali
 
-> Plataforma Hospitalar SaaS — ERP + EMR + AI · **v1.0.0**
-> Django 5 · Next.js 14 · PostgreSQL 16 (schema-per-tenant) · Celery · Redis
+> Plataforma Hospitalar SaaS — ERP + EMR + AI · **v1.0.0** + trabalho não versionado em `onda0`
+> Django 5.2 · Next.js 15 · PostgreSQL 16 (schema-per-tenant) · Celery · Redis
+
+A direção do projeto está em [`.maestro/INTENT.md`](.maestro/INTENT.md) (INTENT v6, 25/09). O trabalho
+anda por **ordens** numeradas em [`.maestro/orders/`](.maestro/orders/), cada uma com prova
+gravada. A integração é o branch `onda0-perimetro-multitenant`. `master` está atrás por
+decisão, e a sincronia `onda0 → master` é ordem própria.
+
+---
+
+## Estado atual (25/09/2026)
+
+As ordens 005 a 021 estão aceitas. O que elas deixaram de pé:
+
+| Frente | Estado | Ordens |
+|--------|--------|--------|
+| **CI** | Testa antes do merge: backend (lint, mypy, pytest), frontend (lint, tipos e **vitest com portão**), E2E e validação de build Docker. Roda em PR contra `onda0` e em push para `order/**` | 005, 012 |
+| **Cadeia de receita** | Guia TISS válida → guia **declarada pronta** → lote → **fechamento**, pelo caminho real (`services/batch_lifecycle`). Ciclo da guia `draft → pending → submitted`. Lote com rascunho não fecha (409 `batch_has_draft_guides`), e `submit` recusa rascunho (400 `guide_not_ready`) | 006, 008, 009, 010 |
+| **Cunha de glosa** | Intercepta dado real de staging, e o override fica auditado. A flag `glosa_safety` continua **OFF** por padrão | 007 |
+| **Recuperação** | Drill de restore **toda noite**. Recuperação parada fica vermelha, e a fase 2 do drill compara contra o inventário do dump. Offsite **adiado até a produção**, por decisão do Capitão | 003, 004, 011, 012 |
+| **Catálogos** | LOINC 2.83 com 112.405 códigos em staging. CBHPM 2022 com 4.881 procedimentos: o `porte` é classe publicada, e `valor() = 0` até existir contrato ("importar o livro não produz preço; preço é contrato") | 013 |
+| **Assinatura ICP-Brasil** | O truststore vive em volume e sobrevive ao deploy. Com o truststore vazio, a assinatura é **recusada** (400), e não gravada como não-ICP em silêncio | 014, 015 |
+| **Trilha de leitura** | Toda rota `GET` que lê dado de paciente ou dado pessoal sensível deixa trilha, ou está isenta com motivo escrito. A cobertura se mede pelo roteador do Django (`apps/core/audit_coverage.py`): 321 rotas `GET`, **0 sem cobertura** | 016–019 |
+| **Retenção da trilha** | `core_auditlog` particionada por mês e por tenant. Retenção de **20 anos** (240 meses), por decisão do Capitão ([ADR-0001](docs/adr/ADR-0001-retencao-auditoria-20-anos.md)). Expurgo **desligado de fábrica**, e nada se apaga sem recibo de exportação fria | 020, 021 |
+
+**Em aberto:**
+
+* **Criar clínica ainda tem portas demais.** O caminho certo é o serviço
+  `apps/core/services/provisioning.py`, usado pelo signup self-serve.
+  `scripts/provision_tenant.sh` e `make create-tenant` o contornam: não criam admin, papéis,
+  membership nem assinatura, e o script interpola variável de shell dentro do código Python
+  que executa. A **ordem 022** fecha essas duas portas.
+* **`POST /api/v1/platform/tenants` aceita anônimo** (`AllowAny`, só com o throttle padrão
+  de 100/h por IP): cria tenant e admin com senha escolhida por quem chama. Em 25/09 a rota
+  não era alcançável pelos hostnames públicos de staging, que caem em schema de tenant, mas
+  isso é roteamento, não código. A **ordem 023**, que vai antes da 022, exige operador de
+  plataforma e um throttle dedicado.
+* Sorologia de doador de sangue fora do grafo de `Patient`, e por isso invisível à guarda
+  da trilha.
+* O destino frio S3 Glacier da trilha foi decidido, mas não está construído.
+* Revogação ICP fail-closed desligada em staging. Precisa ser ligada para a produção.
+* O sinal de backup prova que o backup é recente, não que terminou: o exit code do backup
+  não chega a lugar nenhum.
 
 ---
 
@@ -10,17 +51,23 @@
 | Camada | Tecnologia |
 |--------|-----------|
 | Backend | Django 5.2 + DRF 3.16 + django-tenants |
-| Frontend | Next.js 14 + React 18 + Tailwind + shadcn/ui |
+| Frontend | Next.js 15 + React 18 + Tailwind + shadcn/ui |
 | Database | PostgreSQL 16 (schema-per-tenant — LGPD) |
 | Cache/Queue | Redis 7 + Celery 5 |
 | AI | Claude API (primary) + OpenAI (fallback) |
 | WhatsApp | Evolution API → Official API |
 | CI/CD | GitHub Actions |
-| Infra | Docker Compose → AWS ECS |
+| Infra | Docker Compose na lab (Vulcan), exposto por Cloudflare Tunnel · AWS ECS é destino declarado, fora deste horizonte |
 
 ---
 
 ## Quickstart
+
+> **Na forge, não.** O quickstart abaixo sobe a stack inteira e serve para a **sua**
+> máquina de desenvolvimento. A forge, máquina compartilhada da frota, **não roda compose do
+> Vitali**: regra do Imediato desde 17/09/2026, depois de a stack de dev ficar exposta na
+> LAN por 1h46. Na forge, teste roda no CI ou na lab (ver
+> [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md)).
 
 ```bash
 # 1. Copiar variáveis de ambiente
@@ -36,9 +83,17 @@ make migrate
 # 4. Criar superuser
 make superuser
 
-# 5. Criar primeiro tenant
-make create-tenant
+# 5. Criar primeiro tenant (ambiente novo inteiro: public + clínica + papéis + admin)
+BOOTSTRAP_ADMIN_PASSWORD=... docker compose exec -e BOOTSTRAP_ADMIN_PASSWORD django \
+  python manage.py bootstrap_beta --public-domain localhost \
+  --clinic-slug demo --clinic-domain demo.localhost --admin-email admin@example.com
+
+# 6. Pré-criar as partições da trilha de auditoria (mês corrente e seguinte; idempotente)
+docker compose exec django python manage.py ensure_audit_partitions
 ```
+
+`make create-tenant` ainda existe, mas cria só `Tenant` + `Domain`, sem admin nem papéis.
+Ele será substituído pelo comando `provision_tenant` na ordem 022.
 
 Acesse:
 - **Frontend:** http://localhost:3000
@@ -55,18 +110,28 @@ vitali/
 ├── backend/
 │   ├── vitali/            # Django project (settings, urls, wsgi)
 │   ├── apps/
-│   │   ├── core/          # Multi-tenancy, users, roles, audit, feature flags
-│   │   ├── emr/           # Prontuário eletrônico (Sprint 2+)
-│   │   ├── billing/       # Faturamento TISS/TUSS (Sprint 7+)
-│   │   ├── pharmacy/      # Farmácia & estoque (Sprint 6+)
-│   │   ├── ai/            # LLM Gateway, TUSS coding (Sprint 8+)
-│   │   └── whatsapp/      # Patient engagement (Sprint 10+)
+│   │   ├── core/          # Multi-tenancy, users, roles, audit (trilha + partição), feature flags, catálogos
+│   │   ├── emr/           # Prontuário eletrônico, laboratório, internação
+│   │   ├── billing/       # Faturamento TISS/TUSS, lotes, glosa
+│   │   ├── pharmacy/      # Farmácia & estoque, dose-safety
+│   │   ├── pharmacy_ai/   # Previsão de demanda e ruptura
+│   │   ├── ai/            # LLM Gateway, TUSS coding, escriba
+│   │   ├── signatures/    # Assinatura digital ICP-Brasil
+│   │   ├── hr/            # Recursos humanos
+│   │   ├── triage/        # Triagem (Manchester)
+│   │   ├── imaging/       # DICOM (rastreio de estudos)
+│   │   ├── fhir/          # Interoperabilidade FHIR R4
+│   │   ├── whatsapp/      # Engajamento do paciente
+│   │   └── ...            # analytics, concession, governance, mobile, organization,
+│   │                      # patient_portal, smart_scheduling, telemedicine
 │   └── requirements/
 ├── frontend/              # Next.js 14 App Router
 ├── docker/
 │   ├── nginx/             # Reverse proxy config
 │   └── postgres/          # DB initialization (extensions)
 ├── .github/workflows/     # CI/CD pipeline
+├── .maestro/              # Direção (INTENT) e ordens de trabalho
+├── scripts/               # Backup, drill de restore, ETL de catálogos, deploy
 ├── docker-compose.yml
 └── Makefile
 ```
@@ -148,17 +213,18 @@ make up              # Subir serviços
 make down            # Parar serviços
 make migrate         # Migrations no schema público
 make migrate-tenant  # Migrations em todos os tenants
-make test            # Rodar testes
+make test            # Rodar testes (na sua máquina; na forge, CI ou lab)
 make lint            # Ruff lint
 make shell           # Django shell
-make create-tenant   # Criar nova clínica
+make create-tenant   # Legado: só Tenant + Domain (ordem 022 substitui)
 ```
 
 ---
 
 ## Roadmap
 
-Versão atual: **v1.0.0** (primeiro release production-grade). Estado conforme `CHANGELOG.md`.
+Versão atual: **v1.0.0** (primeiro release production-grade). Depois do ciclo de sprints, o
+trabalho passou a andar por ordens (ver §Estado atual). Estado conforme `CHANGELOG.md`.
 
 ### Entregue (shipped)
 
@@ -198,9 +264,16 @@ Datas/escopo detalhados em `docs/EPICS_AND_ROADMAP.md` e nos planos `docs/PLAN_S
 ## Compliance
 
 - **LGPD:** Schema-per-tenant + criptografia de PII sensível em repouso (CPF, nome,
-  contato, endereço, diagnósticos via Fernet) + audit de acesso a prontuário
-- **TISS/TUSS:** ANS RN 501/2022 — geração XML + codificação automática via AI
-- **CFM:** Res. 1.821/2007 — audit log imutável (escrita + leitura) + assinatura digital
+  contato, endereço, diagnósticos via Fernet) + trilha de leitura **por rota** sobre dado
+  de paciente e dado pessoal sensível (art. 5º II, art. 37), com guarda que reprova rota
+  nova sem cobertura (ordens 016–019)
+- **TISS/TUSS:** ANS RN 501/2022 — geração XML + codificação automática via AI; cadeia
+  guia → lote → fechamento provada pelo caminho real (ordens 006–010)
+- **CFM:** Res. 1.821/2007 — audit log imutável (escrita + leitura), guardado por
+  **20 anos** (art. 8; Lei 13.787/2018, art. 6), em tabela particionada por mês e por
+  tenant, com expurgo desligado de fábrica e exportação fria obrigatória antes de qualquer
+  `DROP` ([ADR-0001](docs/adr/ADR-0001-retencao-auditoria-20-anos.md)) + assinatura
+  digital ICP-Brasil que recusa assinar com truststore vazio
 - **ANVISA:** Rastreabilidade de medicamentos controlados
 
 ---
@@ -214,6 +287,13 @@ Visão e arquitetura: [`docs/VISION-AI-NATIVE.md`](docs/VISION-AI-NATIVE.md) (te
 [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) ·
 [`docs/API_SPEC.md`](docs/API_SPEC.md)
 
+Direção e decisões: [`.maestro/INTENT.md`](.maestro/INTENT.md) ·
+[`.maestro/orders/`](.maestro/orders/) ·
+[`docs/adr/`](docs/adr/) ·
+[`docs/research/VITALI_CATALOGOS_ESTADO_REAL.md`](docs/research/VITALI_CATALOGOS_ESTADO_REAL.md)
+
+Desenvolvimento: [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) (onde rodar testes, regra da forge)
+
 Operação e deploy: [`docs/DEPLOY.md`](docs/DEPLOY.md) ·
 [`docs/RUNBOOK.md`](docs/RUNBOOK.md) ·
 [`docs/TENANT_MIGRATIONS.md`](docs/TENANT_MIGRATIONS.md)
@@ -221,6 +301,8 @@ Operação e deploy: [`docs/DEPLOY.md`](docs/DEPLOY.md) ·
 Segurança e compliance: [`docs/SECURITY.md`](docs/SECURITY.md) ·
 [`docs/SECRETS.md`](docs/SECRETS.md) ·
 [`docs/TLS.md`](docs/TLS.md) ·
+[`docs/ICP_BRASIL.md`](docs/ICP_BRASIL.md) ·
+[`docs/COMPLIANCE_CHECKLIST.md`](docs/COMPLIANCE_CHECKLIST.md) ·
 [`docs/BACKUPS.md`](docs/BACKUPS.md) ·
 [`docs/LGPD_PATIENT_PII_ENCRYPTION.md`](docs/LGPD_PATIENT_PII_ENCRYPTION.md)
 

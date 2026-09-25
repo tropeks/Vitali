@@ -309,7 +309,10 @@ Entity: TISSGuide
   - authorization_number: VARCHAR(20)
   - main_procedure_tuss: VARCHAR(20)
   - total_amount: DECIMAL(12,2)
-  - status: ENUM('draft','pending','submitted','paid','partial','denied','appealed')
+  - status: ENUM('draft','pending','submitted','paid','denied','appeal') DEFAULT 'draft'
+      -- GUIDE_STATUS em apps/billing/models.py. draft → pending só por marcar-pronta
+      -- (AuditLog guide_marked_ready, ordem 009); pending → submitted no fechamento do lote
+      -- ou pelo submit avulso, que recusa draft (AuditLog guide_submitted, ordem 010)
   - xml_content: TEXT  -- generated TISS XML
   - submission_date: TIMESTAMP
   - payment_date: TIMESTAMP
@@ -350,7 +353,10 @@ Entity: TISSBatch
   - guide_count: INTEGER NOT NULL
   - total_amount: DECIMAL(14,2) NOT NULL
   - xml_file_url: VARCHAR(500)  -- S3/MinIO path
-  - status: ENUM('generated','submitted','acknowledged','processed')
+  - status: ENUM('open','closed','submitted','processed','cancelled') DEFAULT 'open'
+      -- BATCH_STATUS em apps/billing/models.py. open → closed só com todas as guias
+      -- fora de draft (409 batch_has_draft_guides, ordem 009); o fechamento promove as
+      -- guias pending para submitted
   - submitted_at: TIMESTAMP
   - created_at: TIMESTAMP
   → has_many: TISSGuide (via batch_id)

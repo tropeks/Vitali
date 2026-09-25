@@ -38,13 +38,21 @@ cd .claude/skills/gstack && ./setup
 
 ## Health Stack
 
-Tools that `/health` runs. Backend tools live inside the `django` container and
-require `docker compose up -d`. Frontend tools run on the host with
-`frontend/node_modules` installed.
+**A forge não roda compose do Vitali** (regra do Imediato, 17/09/2026). Nem para rodar a
+suíte, nem "só um minuto": o compose publica portas que passam por fora do firewall da
+forge, e ela guarda segredos que não são do Vitali. Os comandos de backend abaixo rodam
+**no CI** (jobs `Backend — Lint & Types` e `Backend — Tests`, em push para `order/**` e em
+PR contra `onda0-perimetro-multitenant`) ou **na lab**, pelo contexto docker `lab`, com
+contêineres sem porta publicada. A receita da lab, e por que cada flag é obrigatória, está
+em `docs/DEVELOPMENT.md` §Running tests.
 
-- typecheck (backend): `docker compose exec -T django mypy apps/ vitali/ --ignore-missing-imports`
-- lint (backend): `docker compose exec -T django ruff check apps/ vitali/`
-- format-check (backend): `docker compose exec -T django ruff format --check apps/ vitali/`
-- test (backend): `docker compose exec -T django pytest -v`
+Tools that `/health` runs:
+
+- typecheck (backend): `mypy apps/ vitali/ --ignore-missing-imports` (CI ou lab)
+- lint (backend): `ruff check apps/ vitali/` (CI ou lab)
+- format-check (backend): `ruff format --check apps/ vitali/` (CI ou lab)
+- test (backend): `pytest -v` (CI ou lab; na lab, com o overlay de `scripts/` e
+  `COVERAGE_FILE=/tmp/.coverage`)
 - typecheck (frontend): `cd frontend && npx tsc --noEmit`
 - lint (frontend): `cd frontend && npx next lint`
+- test (frontend): `cd frontend && npm test` (vitest; o CI tem portão nele desde a ordem 012)

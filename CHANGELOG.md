@@ -4,6 +4,44 @@ All notable changes to Vitali Health are documented here.
 
 ## [Unreleased]
 
+### Ordens 005–021 — onda0 (2026-09-12 → 2026-09-22)
+
+From here on, work moves through numbered **orders** (`.maestro/orders/`), each with a
+recorded proof; direction lives in `.maestro/INTENT.md`. Merges land on
+`onda0-perimetro-multitenant`; `master` is behind by decision.
+
+- **CI gates before merge** (005, 012) — backend lint/types/tests, frontend lint/types and
+  a **vitest gate** (`Frontend — Lint, Types & Unit` runs `npm test`), E2E, Docker build
+  validation. Runs on PRs to `onda0` and pushes to `order/**`.
+- **Revenue chain closed** (006, 008, 009, 010) — valid TISS guide → guide **marked ready**
+  (audited) → batch → **close** through `services/batch_lifecycle`. Guide lifecycle
+  `draft → pending → submitted`; closing a batch with drafts returns
+  `409 batch_has_draft_guides`; `submit` refuses a draft (`400 guide_not_ready`, #213).
+  Auto-generated guides (lab order, admission, surgical materials) stay `draft`.
+- **Glosa wedge on real data** (007) — the `duplicate` check (ANS 1702) fires on staging
+  data; soft-stop → audited override → close. `glosa_safety` stays **OFF** by default.
+- **Recovery as a daily signal** (011, 012) — nightly restore drill with a single retry;
+  stale recovery turns red; phase 2 compares against the dump's own inventory. Backup
+  retention fixed (the `vitali_*.dump` glob never matched with encryption on). Offsite
+  stays deferred until production (order 004, Capitão's decision).
+- **CBHPM porte becomes a class** (013) — `porte` is the published class (`3B`,
+  `0,01 de 1A`); CH quantity moves to `porte_ch`, which only a contracted table fills;
+  `valor()` is `0` without a contract. PDF extractor in `scripts/catalogs/etl_cbhpm_pdf.py`.
+- **ICP-Brasil truststore** (014, 015) — truststore lives in a named volume and survives
+  deploys; an empty truststore now **refuses** the signature (400) instead of silently
+  saving it as non-ICP.
+- **Read audit trail by route** (016–019) — every `GET` route that reads patient data or
+  sensitive personal data (LGPD art. 5 II / art. 37, incl. HR) is covered or exempt with a
+  written reason; coverage is enumerated from the Django router
+  (`apps/core/audit_coverage.py`), with guards for traversal depth, views without a model,
+  route-level coverage and `AuditReadMixin` MRO position. HR `?employee=` filters for real.
+- **Audit log partitioning and 20-year retention** (020, 021) — `core_auditlog` is
+  partitioned (monthly RANGE × LIST by `schema_name`); `drop_partition` requires a verified
+  cold-export receipt; retention is **240 months per tenant** (`TenantAuditRetention`),
+  purge **off by default**, `purge_audit_logs` is dry-run by default;
+  `ensure_audit_partitions` runs after migrations and daily via Celery Beat. Decision
+  recorded in `docs/adr/ADR-0001-retencao-auditoria-20-anos.md`.
+
 ### Sprint 28 — Tenant Enforcement + Security Hardening (2026-06)
 
 Partial — see `docs/PLAN_SPRINT28.md` for per-item status (verification pending on a

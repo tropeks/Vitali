@@ -78,9 +78,13 @@ batch is sent to the payer — per-guia, not month-end report.
   duplicate / stale-price / non-tabulated / structural-completeness checks, plus
   clinical-compat (`TUSSCode` age/sex/CID), per-procedure ceiling, and an
   `Authorization`-requirement check.
-- **Gate:** per-guia soft-stop (409) at `TISSBatchViewSet.close` — returns only
-  the guias with an unacknowledged blocking alert, so the rest of the batch still
-  closes; override-with-reason per guia.
+- **Gate:** per-guia soft-stop (409 `glosa_safety_block`) at batch close —
+  `POST /api/v1/billing/batches/{id}/close/`, rule in
+  `apps/billing/services/batch_lifecycle.py` (`fechar_lote`, since order 008).
+  Returns only the guias with an unacknowledged blocking alert; override-with-reason
+  per guia at `POST /api/v1/billing/glosa-safety-alerts/{alert_id}/acknowledge/`.
+  Since order 009 a stricter gate runs **first**: a batch holding any `draft` guide
+  is refused with 409 `batch_has_draft_guides` before glosa is judged.
 - **Alert:** dedicated `GlosaSafetyAlert` (keeps the LLM `GlosaPrediction`
   artifact pure for the flywheel).
 - **Supporting:** `Authorization` model; item-level `was_denied` backfill in the
@@ -94,6 +98,51 @@ batch is sent to the payer — per-guia, not month-end report.
     on ANS-imported `TUSSCode` attributes and per-establishment config — **external
     truth, loaded by import/config, never invented.** Until loaded those checks stay
     inert (advise-only).
+
+#### O que já foi provado sobre dado real (ordens 007, 009 e 010)
+
+Estado em 25/09/2026. **A flag continua OFF por padrão** — em todo tenant, inclusive o
+`demo` de staging, que a ordem 007 ligou para medir e desligou ao fim (passo 5). Provado ≠
+ligado: ligar para valer é decisão de produto.
+
+- **A cunha julgou guia real pela primeira vez (ordem 007).** `billing_glosasafetyalert`
+  tinha 0 linhas; sobre as guias que a cadeia de receita (ordem 006) produziu, o motor
+  gravou `incomplete` (ANS 05, `advise`) e `not_in_table` (ANS 01, `block`), com o valor
+  ofensor na mensagem.
+- **O soft-stop fecha o ciclo com auditoria (ordem 007, §7–§8).** Alerta bloqueante aberto
+  impede o fechamento; o override com motivo o libera. O override grava
+  `glosa_alert_overridden` no `AuditLog` a partir de `GlosaSafetyAlert.acknowledge()` —
+  todo caminho que reconhece alerta passa por ali, não só o HTTP — com `check_code`,
+  `ans_glosa_code`, `severity` e `override_reason`. Ao lado de `glosa_alert_raised` e
+  `glosa_alert_override_kept`, é o flywheel alerta → override → desfecho.
+- **`duplicate` (ANS 1702) disparou sobre dado real (ordem 009).** Na 007 a checagem era
+  inalcançável por construção: `_ACTIVE_GUIDE_STATUSES = ["pending", "submitted", "paid"]`
+  (`services/glosa_safety.py`) exclui `draft`, e toda guia de staging era rascunho. A
+  ordem 009 pôs a guia no ciclo de vida (`draft → pending → submitted`) e a checagem passou
+  a ter o que ver — sem inventar número clínico nem contratual.
+- **O fluxo completo, pelos endpoints reais (ordem 009).** `verify_glosa_wedge --prove-block`
+  percorre os dois portões na ordem em que o fechamento os aplica: lote com rascunho
+  recusado (409 `batch_has_draft_guides`) → guia declarada pronta (`guide_marked_ready`) →
+  glosa bloqueia (409 `glosa_safety_block`, lote segue `open`) → override auditado
+  (`glosa_alert_overridden`) → fechamento libera.
+- **`submitted` voltou a significar enviado (ordem 010, issue #213).** O `submit` avulso da
+  guia aceitava `draft` e pulava direto para `submitted`, inflando a base da checagem
+  `duplicate` e o denominador da taxa de glosa. Agora recusa rascunho (400
+  `guide_not_ready`) e audita a transição (`guide_submitted`).
+
+**O que continua OFF ou sem prova:** a flag `glosa_safety` em todo tenant; as checagens
+clínicas, de teto e de autorização, que seguem inertes sem os atributos ANS e a
+configuração por estabelecimento; e o LLM explicador, que nenhuma dessas ordens usou — o
+motor é determinístico.
+
+> **Atenção operacional — flag ligada + `verify_revenue_chain --create`.** O comando cria a
+> guia de demonstração sempre sobre o **primeiro** `Encounter` do tenant e o **primeiro**
+> item da tabela de preço, e a deixa `submitted` ao fechar o lote. Com `glosa_safety`
+> ligada, a partir da **segunda** execução a guia nova repete encounter + TUSS de uma guia
+> já apresentada, e o `fechar_lote` recusa com `GlosaBloqueante` — o mesmo bloqueio que o
+> HTTP devolve como 409 `glosa_safety_block` — pelo `duplicate` (ANS 1702). Não é defeito: é a cunha funcionando sobre o rastro do próprio comando. Para
+> rodar a cadeia de novo com a flag ligada, reconheça o alerta com motivo ou desligue a
+> flag no tenant antes.
 
 ### 3. Stockout-prediction — `stockout_safety` (OFF)
 

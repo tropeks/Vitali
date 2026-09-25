@@ -288,6 +288,60 @@ docker compose -f docker-compose.staging.yml restart evolution-api
 
 ---
 
+## 8. Audit Trail (`core_auditlog`) Operations
+
+Background: `core_auditlog` is the LGPD art. 37 / CFM 1.821/2007 trail, append-only
+in the database, partitioned by month × tenant with a DEFAULT partition at both
+levels (order 020). Retention is **240 months per tenant, purge off by default**
+(order 021). The decision, the legal basis and the lock plan are in
+[`docs/adr/ADR-0001-retencao-auditoria-20-anos.md`](adr/ADR-0001-retencao-auditoria-20-anos.md);
+the control summary is in `docs/SECURITY.md` §3.6.
+
+### Alarm: rows in a DEFAULT partition
+
+`ensure_audit_partitions` runs after every `migrate_schemas` and daily via Celery Beat
+(`core.ensure_audit_partitions`, 00:15 `America/Sao_Paulo`). When it finds rows in a
+DEFAULT leaf it logs a `WARNING` (`core_auditlog: N linha(s) em folha(s) DEFAULT
+(partição faltando)`) and prints `ALERTA: …`. That means **a partition is missing**,
+not normal operation. Nothing is lost — DEFAULT accepts every write — but those rows
+are outside per-tenant retention until moved.
+
+```bash
+# Find it in the logs
+docker compose -f docker-compose.staging.yml logs celery-worker django \
+  | grep "folha(s) DEFAULT"
+
+# Measure (dry-run is the default — touches nothing)
+docker compose -f docker-compose.staging.yml exec -T django \
+  python manage.py backfill_audit_partitions
+```
+
+Then follow `docs/TENANT_MIGRATIONS.md` → "When the DEFAULT alarm fires". Typical
+causes: a tenant provisioned mid-month before the daily run, or Celery Beat down
+across a month boundary (check `celery -A vitali inspect scheduled`, §6).
+
+### `purge_audit_logs` — never enable without an order
+
+```bash
+# Dry-run (the default): per tenant, reports what it WOULD drop, exits 0
+docker compose -f docker-compose.staging.yml exec -T django \
+  python manage.py purge_audit_logs
+```
+
+- Without `--execute` it changes nothing. **Do not run `--execute`, and do not set
+  `TenantAuditRetention.purge_enabled=True` for any tenant, without an explicit
+  order from the Imediato.** Staging and production are not touched by orders
+  020/021.
+- Even when enabled, it only drops a tenant's dedicated partition older than
+  `retention_months`, never a DEFAULT partition, never with `DELETE`, and
+  `drop_partition` refuses without a verified cold-export receipt.
+- Cold copies go to `AUDIT_LOG_COLD_STORAGE_DIR` on local disk
+  (`LocalDiskColdStorageBackend`). There is **no** S3/Glacier backend yet.
+- **`core_auditlog_pre020`** (the pre-partitioning table) stays. No `DROP` without the
+  Imediato's explicit acceptance.
+
+---
+
 ## Monitoring & alerting
 
 | Tool | Where | What it watches | How to reach |

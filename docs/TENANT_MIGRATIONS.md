@@ -95,6 +95,69 @@ docker compose -f docker-compose.staging.yml exec -T django \
 # Should be empty
 ```
 
+### Step 4: Ensure `core_auditlog` partitions (order 021)
+
+Every deploy runs this **after** `migrate_schemas` — `scripts/migrate_schemas.sh`
+already does it as its last step:
+
+```bash
+docker compose -f docker-compose.staging.yml exec -T django \
+  python manage.py ensure_audit_partitions
+```
+
+It is idempotent. For every tenant (except `public`) it pre-creates the audit
+partition of the **current and next month**, then counts rows sitting in any
+DEFAULT leaf. Expected output ends with `nenhuma linha em folha DEFAULT`.
+
+Why it matters: `core_auditlog` is partitioned by month (`created_at`) and tenant
+(`schema_name`), with a DEFAULT partition at both levels so no audit row is ever
+refused (order 020). Without the dedicated partition, every write lands in DEFAULT,
+and per-tenant retention (240 months, [ADR-0001](./adr/ADR-0001-retencao-auditoria-20-anos.md))
+has nothing to act on. Celery Beat runs the same command daily
+(`core.ensure_audit_partitions`, 00:15 `America/Sao_Paulo`, migration `0045`) to
+cover the month turning over without a deploy.
+
+It is **not** in `CoreConfig.ready()`: `ready()` also runs during `migrate`,
+`makemigrations` and every management command, and touching the database there
+would break the migration itself.
+
+**New tenant provisioned mid-month:** run `ensure_audit_partitions` right after
+`migrate_schemas --schema=<new>`; otherwise its rows fall into DEFAULT until the
+next daily run.
+
+### When the DEFAULT alarm fires
+
+If Step 4 prints `ALERTA: N linha(s) em folha(s) DEFAULT — … partição faltando` (and
+logs a `WARNING` with the same counts), some rows landed in DEFAULT: a partition was
+missing when they were written. Do **not** try to create the partition by hand
+first — with rows for that month in DEFAULT, Postgres refuses it (`updated partition
+constraint for default partition … would be violated`). Move the rows out first:
+
+```bash
+# 1. Measure — dry-run is the default; reports every pending group and row count
+docker compose -f docker-compose.staging.yml exec -T django \
+  python manage.py backfill_audit_partitions
+
+# 2. Execute — one transaction per group (month, or month+tenant), lock_timeout 5s
+docker compose -f docker-compose.staging.yml exec -T django \
+  python manage.py backfill_audit_partitions --execute
+
+# 3. Confirm — must end with "nenhuma linha em folha DEFAULT"
+docker compose -f docker-compose.staging.yml exec -T django \
+  python manage.py ensure_audit_partitions
+```
+
+`--execute` briefly disables the append-only trigger on `core_auditlog` inside each
+group's transaction (the move is physically a `DELETE` + `INSERT`), which serialises
+concurrent audit writes for that moment. With a clinic in operation and large groups:
+run off-peak, use the dry-run counts to size the window, and re-run freely — the
+command is idempotent; a group that times out on the lock can be retried. The full
+lock plan is in [ADR-0001](./adr/ADR-0001-retencao-auditoria-20-anos.md).
+
+Orders 020/021 proved the backfill only on a disposable lab database. Running
+`--execute` against staging or production is an operational decision: get it
+cleared and reserve a maintenance window first. The dry-run is always safe.
+
 ---
 
 ## Retrying a Single Failed Tenant
@@ -183,6 +246,7 @@ If the migration was catastrophic and affects all tenants, restore from the full
 - [ ] Peak traffic window avoided (prefer early morning or scheduled maintenance)
 - [ ] At least one engineer monitoring logs during `migrate_schemas` run
 - [ ] Rollback procedure reviewed and backup path confirmed accessible
+- [ ] `ensure_audit_partitions` ran after `migrate_schemas` and printed `nenhuma linha em folha DEFAULT`
 
 ---
 
