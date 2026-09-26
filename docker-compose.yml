@@ -11,7 +11,14 @@ services:
       POSTGRES_USER: vitali
       POSTGRES_PASSWORD: vitali
     ports:
-      - "5435:5432"
+      # Loopback-only (INTENT do Vulcan, §Limites). MEDIDO 17/09 da lab
+      # (192.168.255.72) contra a forge: publicar em 0.0.0.0 (padrao antigo)
+      # ficava aberto na LAN mesmo com `input policy drop` no nftables, porque
+      # a porta publicada pelo Docker passa pelo hook `forward` (policy
+      # accept) apos o DNAT do prerouting — o drop do `input` nunca a ve.
+      # Consumidores in-container continuam alcancando por "postgres:5432"
+      # (rede interna do compose), sem mudanca.
+      - "127.0.0.1:5435:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -27,12 +34,20 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      # Loopback-only — mesma razao do postgres acima. Sem `env_file` aqui:
+      # REDIS_PASSWORD e lido pelo docker compose direto do `.env` da raiz
+      # do projeto (interpolacao de variavel, nao env do container), o mesmo
+      # padrao ja usado em docker-compose.prod.yml/staging.yml.
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required — copy .env.example to .env and set it}
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      # Com --requirepass, `redis-cli ping` sem senha volta NOAUTH e o
+      # healthcheck mente "unhealthy" com o Redis perfeitamente no ar — a
+      # mesma classe de falso-vermelho ja documentada no healthcheck do
+      # Orthanc mais abaixo. `-a` autentica a sonda.
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -46,7 +61,7 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgres://vitali:vitali@postgres:5432/${POSTGRES_DB:-vitali}
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-vitali.settings.production}
       E2E_MODE: ${E2E_MODE:-false}
       # Onda 2 / item 2.9: without this the Orthanc webhook + poller are inert
@@ -58,7 +73,13 @@ services:
       ORTHANC_USERNAME: ${ORTHANC_USERNAME:-vitali}
       ORTHANC_PASSWORD: ${ORTHANC_PASSWORD:-vitali}
     ports:
-      - "8000:8000"
+      # Loopback-only (mesma razao do postgres/redis acima). O `runserver
+      # 0.0.0.0:8000` do override.yml de dev e o bind DENTRO do container —
+      # nao muda: ele so precisa escutar em todas as interfaces do container
+      # para o Docker conseguir alcanca-lo. O isolamento vem da PUBLICACAO no
+      # host (aqui), nao do bind interno; o tunel cloudflared roda na propria
+      # forge e continua alcancando via 127.0.0.1:8000.
+      - "127.0.0.1:8000:8000"
     volumes:
       - static_files:/app/staticfiles
       - media_files:/app/media
@@ -108,7 +129,7 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgres://vitali:vitali@postgres:5432/${POSTGRES_DB:-vitali}
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-vitali.settings.production}
       # Onda 2 / item 2.9: this is the process that actually executes
       # imaging.sync_orthanc_studies (celery-beat only schedules it) — without
@@ -157,7 +178,7 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgres://vitali:vitali@postgres:5432/${POSTGRES_DB:-vitali}
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-vitali.settings.production}
     depends_on:
       postgres:
@@ -173,7 +194,7 @@ services:
       SERVER_PORT: 8080
       DATABASE_ENABLED: "false"
       REDIS_ENABLED: "true"
-      REDIS_URI: redis://redis:6379/1
+      REDIS_URI: redis://:${REDIS_PASSWORD}@redis:6379/1
       AUTHENTICATION_TYPE: apikey
       AUTHENTICATION_API_KEY: ${WHATSAPP_EVOLUTION_API_KEY:-change-me}
       WEBHOOK_GLOBAL_ENABLED: "false"

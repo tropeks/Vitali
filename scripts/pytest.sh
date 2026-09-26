@@ -1,0 +1,1 @@
+../.claude/skills/run-backend-tests/pytest.sh

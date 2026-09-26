@@ -12,16 +12,19 @@ services:
         # container recreate. Production builds (docker-compose.yml only) leave
         # this unset (default false) and stay slim.
         INSTALL_DEV: "true"
+    # 0.0.0.0 aqui e o bind DENTRO do container (runserver escutando em todas
+    # as interfaces do container, para o Docker alcanca-lo) — nao o mesmo
+    # 0.0.0.0 do achado de seguranca. O isolamento vem da publicacao no host,
+    # que e feita em docker-compose.yml (127.0.0.1:8000:8000); nao repetir
+    # aqui, senao esta linha sobrescreve aquela para 0.0.0.0 de novo.
     command: python manage.py runserver 0.0.0.0:8000
     environment:
       DJANGO_SETTINGS_MODULE: vitali.settings.development
       DATABASE_URL: postgres://vitali:vitali@postgres:5432/${POSTGRES_DB:-vitali}
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       DEBUG: "True"
     volumes:
       - ./backend:/app
-    ports:
-      - "8000:8000"
 
   celery-worker:
     build:
