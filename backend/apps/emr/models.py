@@ -1937,6 +1937,11 @@ class AISafetyAlert(models.Model):
         ("allergy", "Alergia cruzada"),
         ("dose", "Dose fora do intervalo"),
         ("contraindication", "Contraindicação"),
+        # Ordem 028: the LLM lost "dose" (it no longer judges dose on its own —
+        # see prescription_safety.VALID_ALERT_TYPES). This is its replacement:
+        # prose ONLY, always source="llm", always pointing at the engine
+        # verdict it explains via `explica` — never a verdict of its own.
+        ("dose_explicacao", "Explicação de dose (LLM, não decide)"),
     ]
 
     class Source(models.TextChoices):
@@ -1980,6 +1985,21 @@ class AISafetyAlert(models.Model):
     override_reason = models.TextField(blank=True)
     acknowledged_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    # Ordem 028: an alert_type="dose_explicacao" row (always source="llm")
+    # points at the engine alert_type="dose" verdict it explains. Never set on
+    # any other row. CASCADE: an explanation cannot outlive the verdict it
+    # explains (the engine row is upserted, never hard-deleted, in practice).
+    explica = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="explanations",
+        help_text=(
+            "Só para alert_type='dose_explicacao': o alerta do MOTOR (source='engine', "
+            "alert_type='dose') que esta linha explica. O LLM nunca decide sozinho."
+        ),
+    )
 
     class Meta:
         ordering = ["-created_at"]

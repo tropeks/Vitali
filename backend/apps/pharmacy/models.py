@@ -1229,11 +1229,31 @@ class DoseRule(models.Model):
         ),
     )
     active = models.BooleanField(default=True, db_index=True)
-    # Validation gate — a DoseRule enforces ONLY when validated=True (human pharmacist
-    # sign-off required). Default False = inert until a pharmacist explicitly validates
-    # via the UI. The DoseChecker ignores rules with validated=False so that imported
-    # or draft rules never silently enforce before clinical review.
-    validated = models.BooleanField(default=False, db_index=True)
+
+    class StatusValidacao(models.TextChoices):
+        """Validation gate (ordem 028) — a DoseRule enforces AS A BLOCK only when
+        ``validado``. An imported (``nao_validado``) rule is never inert anymore:
+        the engine still uses it to SIGNAL (advisory caution), it just never
+        raises a blocking verdict on its own — see ``DoseChecker`` and
+        ``DoseCheckService``. Default ``nao_validado`` until a pharmacist with an
+        active CRF cadastro explicitly signs off via ``DoseRuleViewSet.validate``.
+        """
+
+        NAO_VALIDADO = "nao_validado", "Não validado"
+        VALIDADO = "validado", "Validado"
+
+    status_validacao = models.CharField(
+        max_length=20,
+        choices=StatusValidacao.choices,
+        default=StatusValidacao.NAO_VALIDADO,
+        db_index=True,
+        help_text=(
+            "nao_validado (default, importado/rascunho) ou validado (farmacêutico com CRF "
+            "assinou). Substitui o antigo booleano `validated` (ordem 028) — veja a migration "
+            "de dados 0033."
+        ),
+    )
+    # "Quem validou" e "quando" — nomes preservados (ordem 028 não renomeia à toa).
     validated_by = models.ForeignKey(
         "core.User",
         null=True,
@@ -1242,11 +1262,57 @@ class DoseRule(models.Model):
         related_name="+",
     )
     validated_at = models.DateTimeField(null=True, blank=True)
+    # Retrato do CRF de quem validou (ordem 028): número e UF do Professional no
+    # MOMENTO da validação. O cadastro do farmacêutico pode mudar depois (renovar
+    # CRF, mudar de UF) — o retrato NÃO. Gravado uma única vez pela action
+    # `validate`; nunca reescrito por reimportação (que só limpa ao desvalidar).
+    validado_crf_numero = models.CharField(max_length=20, blank=True, default="")
+    validado_crf_uf = models.CharField(max_length=2, blank=True, default="")
+
+    # Procedência (ordem 028 / INTENT v6 §Limites): toda linha do formulário
+    # público carrega de onde veio o número, por linha. Obrigatório no import
+    # real (ver formulary_import.py); nunca inventado em código.
+    class FonteTipo(models.TextChoices):
+        BULA_ANVISA = "bula_anvisa", "Bula ANVISA"
+        LITERATURA = "literatura", "Literatura"
+
+    fonte_tipo = models.CharField(max_length=20, choices=FonteTipo.choices, blank=True, default="")
+    fonte_ref = models.CharField(
+        max_length=300,
+        blank=True,
+        default="",
+        help_text="Registro ANVISA + data da bula, OU referência/DOI da literatura.",
+    )
+    fonte_trecho = models.TextField(
+        blank=True, default="", help_text="A posologia citada, tal como consta na fonte."
+    )
     notes = models.TextField(
         blank=True, help_text="Clinical citation / source for this rule (e.g. reference, dataset)."
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def validated(self) -> bool:
+        """Compat shim for the pre-028 boolean.
+
+        Derived from ``status_validacao``. The HTTP surface (DRF serializer)
+        exposes it read-only — the only mutation path is
+        ``DoseRuleViewSet.validate``. The setter below exists ONLY so existing
+        ORM call sites/fixtures that still pass ``validated=True/False`` (Django
+        5.2 supports settable properties as ``Model(**kwargs)``) keep working
+        without silently losing the write; new code should set
+        ``status_validacao`` directly.
+        NOTE: not filterable in the ORM (it's a Python property, not a field);
+        query ``status_validacao=DoseRule.StatusValidacao.VALIDADO`` instead.
+        """
+        return self.status_validacao == self.StatusValidacao.VALIDADO
+
+    @validated.setter
+    def validated(self, value: bool) -> None:
+        self.status_validacao = (
+            self.StatusValidacao.VALIDADO if value else self.StatusValidacao.NAO_VALIDADO
+        )
 
     class Meta:
         ordering = ["formulary__drug__name", "age_min_days"]
