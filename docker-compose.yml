@@ -199,7 +199,9 @@ services:
       AUTHENTICATION_API_KEY: ${WHATSAPP_EVOLUTION_API_KEY:-change-me}
       WEBHOOK_GLOBAL_ENABLED: "false"
     ports:
-      - "8080:8080"
+      # Loopback-only (ordem 027): o #221 fechou postgres, redis e django e
+      # deixou este de fora. A API key padrao e `change-me`.
+      - "127.0.0.1:8080:8080"
     healthcheck:
       # evolution-api is a Node app; use node itself (no curl/wget assumed in image).
       test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:8080/',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))\""]
@@ -230,8 +232,11 @@ services:
       - ./docker/orthanc/vitali-webhook.lua:/etc/orthanc/vitali-webhook.lua:ro
       - orthanc_data:/var/lib/orthanc/db
     ports:
-      - "8042:8042"  # REST API + DICOMweb
-      - "4242:4242"  # DICOM C-STORE (modalities push studies here)
+      # Loopback-only (ordem 027). O REST tem credencial padrao vitali:vitali,
+      # e o C-STORE aceita estudo de quem alcancar a porta. Modalidade DICOM
+      # real empurrando para este host em dev e Ask-First, nao excecao local.
+      - "127.0.0.1:8042:8042"  # REST API + DICOMweb
+      - "127.0.0.1:4242:4242"  # DICOM C-STORE (modalities push studies here)
     healthcheck:
       # A imagem do Orthanc NAO tem curl nem wget (verificado em 25/08 contra
       # orthancteam/orthanc:26.6.1: curl AUSENTE, wget AUSENTE, python3 presente).
@@ -276,7 +281,9 @@ services:
       NEXT_PUBLIC_API_URL: http://django:8000
       DJANGO_API_URL: http://django:8000
     ports:
-      - "3000:3000"
+      # Loopback-only (ordem 027). O `next start` continua fazendo bind em
+      # 0.0.0.0 DENTRO do container; o que fecha e a publicacao no host.
+      - "127.0.0.1:3000:3000"
     depends_on:
       - django
 
@@ -285,7 +292,9 @@ services:
     image: nginx:alpine
     restart: unless-stopped
     ports:
-      - "80:80"
+      # Loopback-only (ordem 027). Em dev o proxy serve a propria maquina;
+      # producao publica 80/443 pelo docker-compose.prod.yml.
+      - "127.0.0.1:80:80"
     volumes:
       - ./docker/nginx/nginx.conf:/etc/nginx/templates/default.conf.template:ro
       - static_files:/app/staticfiles:ro
