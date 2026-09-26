@@ -165,7 +165,13 @@ class OverrideLeavesATrailTest(_PrescriptionFixture, TenantTestCase):
     def _assert_trail(self, alert, action, reason):
         from apps.core.models import AuditLog
 
-        rows = AuditLog.objects.filter(action=action, resource_id=str(alert.id))
+        # Same shape as glosa_alert_overridden: the resource is what the alert
+        # is about (the prescription item); the alert itself is in new_data.
+        rows = AuditLog.objects.filter(
+            action=action,
+            resource_type="prescription_item",
+            resource_id=str(alert.prescription_item_id),
+        )
         self.assertEqual(rows.count(), 1, f"nenhum AuditLog {action} para o override")
         row = rows.get()
         self.assertEqual(row.user_id, self.user.id)

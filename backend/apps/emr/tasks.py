@@ -41,8 +41,12 @@ def check_prescription_safety(self, item_id: str):
     Updates the item's safety status badge in cache.
     Uses select_for_update() to prevent race conditions on retry.
 
-    Idempotent: unique_together on (prescription_item, alert_type) prevents
-    duplicate alerts if the task retries.
+    Idempotent: unique_together on (prescription_item, alert_type, source)
+    prevents duplicate alerts if the task retries. The upsert is keyed on
+    source="llm" (ordem 026): without it, an engine row of the same type was
+    rewritten by the LLM — an acknowledged override reset to "flagged", or the
+    engine's advise turned into a blocking contraindication. The LLM only
+    explains; the engine's row is never touched here.
     """
     from apps.emr.models import AISafetyAlert, PrescriptionItem
     from apps.emr.services.prescription_safety import PrescriptionSafetyChecker
@@ -81,6 +85,7 @@ def check_prescription_safety(self, item_id: str):
                 safety_alert, _ = AISafetyAlert.objects.update_or_create(
                     prescription_item=item,
                     alert_type=alert.alert_type,
+                    source=AISafetyAlert.Source.LLM,
                     defaults={
                         "severity": alert.severity,
                         "message": alert.message,

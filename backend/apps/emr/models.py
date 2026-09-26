@@ -1991,13 +1991,44 @@ class AISafetyAlert(models.Model):
         return f"{self.get_severity_display()} — {self.get_alert_type_display()} ({self.prescription_item})"
 
     def acknowledge(self, user, reason=""):
+        """Override (acknowledge) the alert, and leave the trail.
+
+        Ordem 026: the override is the middle piece of the flywheel "alert →
+        override → outcome" the INTENT requires of every AI wedge. It used to
+        be a logger line only; now it writes an AuditLog in the same
+        transaction, in the shape of ``glosa_alert_overridden`` (ordem 007):
+        WHAT was overridden (type, source, severity) and WHY (the reason).
+        """
+        from django.db import transaction
         from django.utils import timezone
 
-        self.acknowledged_by = user
-        self.override_reason = reason
-        self.acknowledged_at = timezone.now()
-        self.status = "acknowledged"
-        self.save(update_fields=["acknowledged_by", "override_reason", "acknowledged_at", "status"])
+        from apps.core.models import AuditLog
+
+        status_anterior = self.status
+        with transaction.atomic():
+            self.acknowledged_by = user
+            self.override_reason = reason
+            self.acknowledged_at = timezone.now()
+            self.status = "acknowledged"
+            self.save(
+                update_fields=["acknowledged_by", "override_reason", "acknowledged_at", "status"]
+            )
+            AuditLog.objects.create(
+                user=user,
+                action=f"{self.alert_type}_alert_overridden",
+                resource_type="prescription_item",
+                resource_id=str(self.prescription_item_id),
+                old_data={"status": status_anterior},
+                new_data={
+                    "alert_id": str(self.id),
+                    "prescription_item_id": str(self.prescription_item_id),
+                    "alert_type": self.alert_type,
+                    "source": self.source,
+                    "severity": self.severity,
+                    "override_reason": reason,
+                    "acknowledged_at": self.acknowledged_at.isoformat(),
+                },
+            )
 
 
 # ─── Clinical-deterioration wedge (PR D2): NEWS2 early-warning alert ──────────
