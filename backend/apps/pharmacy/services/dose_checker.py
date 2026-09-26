@@ -92,6 +92,14 @@ class DoseVerdict:
     # meaningful for OUT_OF_RANGE/SAFE returns; "block" elsewhere (the orchestrator
     # routes WEIGHT_GATE/UNIT_MISMATCH as blocking regardless).
     enforcement: str = "block"
+    # Ordem 028: whether the matched rule (``rule_id``) has pharmacist sign-off
+    # (``DoseRule.status_validacao == "validado"``). A rule that has NOT been
+    # validated still SIGNALS (this engine keeps evaluating it) but the
+    # orchestrator (apps.emr.services.dose_safety) demotes any verdict that
+    # would otherwise BLOCK (OUT_OF_RANGE/block, WEIGHT_GATE, UNIT_MISMATCH) to
+    # a non-blocking advisory when this is False. Meaningless (False, ignored)
+    # for SAFE/NOT_APPLICABLE/NO_RULE_MATCH — those never block either way.
+    rule_validated: bool = False
 
 
 class DoseChecker:
@@ -181,7 +189,11 @@ class DoseChecker:
         #    unbounded. Rule absent ≠ unsafe → NOT_APPLICABLE (but logged).
         #    Materialize the active rules ONCE: _select_rule iterates this list and
         #    the unmatched-path logic below reuses it — a single query total.
-        active_rules = list(formulary.dose_rules.filter(active=True, validated=True))
+        #    Ordem 028: a NÃO validated rule is no longer excluded here — it still
+        #    SIGNALS (the orchestrator demotes any blocking verdict it drives to
+        #    advisory); only ``active=True`` gates whether the engine sees it at
+        #    all. ``_most_specific`` prefers a validated rule on a genuine tie.
+        active_rules = list(formulary.dose_rules.filter(active=True))
         candidates = DoseChecker._matching_candidates(
             active_rules=active_rules,
             patient_age_days=patient_age_days,
@@ -226,8 +238,10 @@ class DoseChecker:
             # past the hard weight gate as a mere NO_RULE_MATCH advisory. The weight
             # gate is the higher-priority block; the missing frequency surfaces on
             # re-evaluation once the weight is recorded.
-            if weight_kg is None and any(
-                DoseChecker._age_matches(r, patient_age_days)
+            weight_gated_rules = [
+                r
+                for r in active_rules
+                if DoseChecker._age_matches(r, patient_age_days)
                 and DoseChecker._route_matches(r, route)
                 and DoseChecker._role_matches(r, prescribed_role)
                 and (
@@ -235,9 +249,15 @@ class DoseChecker:
                     or r.weight_min_kg is not None
                     or r.weight_max_kg is not None
                 )
-                for r in active_rules
-            ):
+            ]
+            if weight_kg is None and weight_gated_rules:
                 dose_label = DoseChecker._dose_label(dose_amount, dose_unit)
+                # Ordem 028: if a VALIDATED rule is among the weight-gated
+                # candidates it wins (the gate stays blocking); only when EVERY
+                # weight-gated candidate is still nao_validado does this demote.
+                rule_validated = any(
+                    r.status_validacao == r.StatusValidacao.VALIDADO for r in weight_gated_rules
+                )
                 return DoseVerdict(
                     verdict=Verdict.WEIGHT_GATE,
                     reason=(
@@ -246,6 +266,7 @@ class DoseChecker:
                         "para liberar a verificação."
                     ),
                     rule_id=None,
+                    rule_validated=rule_validated,
                 )
             dose_label = DoseChecker._dose_label(dose_amount, dose_unit)
             return DoseVerdict(
@@ -257,6 +278,12 @@ class DoseChecker:
                 ),
             )
 
+        # Ordem 028: the matched rule's validation status travels with every
+        # verdict from here on — the orchestrator demotes a would-be-blocking
+        # verdict (OUT_OF_RANGE/block, WEIGHT_GATE, UNIT_MISMATCH) to advisory
+        # when this is False.
+        rule_validated = rule.status_validacao == rule.StatusValidacao.VALIDADO
+
         # 3. Unit coherence — NEVER coerce mg↔mL↔mcg. Mismatch or missing dose →
         #    DATA_MISSING (advisory), never a silent wrong comparison.
         if dose_amount is None:
@@ -264,6 +291,7 @@ class DoseChecker:
                 verdict=Verdict.DATA_MISSING,
                 reason="Dose não informada de forma estruturada; verificação de dose indisponível.",
                 rule_id=rule.id,
+                rule_validated=rule_validated,
             )
         if not dose_unit:
             return DoseVerdict(
@@ -273,6 +301,7 @@ class DoseChecker:
                     f"regra ({rule.dose_unit}). Verificação indisponível."
                 ),
                 rule_id=rule.id,
+                rule_validated=rule_validated,
             )
         elif dose_unit != rule.dose_unit:
             # A same-dimension mismatch is the dangerous off-by-1000 confusion
@@ -288,6 +317,7 @@ class DoseChecker:
                         "Confirme a unidade da dose."
                     ),
                     rule_id=rule.id,
+                    rule_validated=rule_validated,
                 )
             return DoseVerdict(
                 verdict=Verdict.DATA_MISSING,
@@ -297,6 +327,7 @@ class DoseChecker:
                     "Verificação de dose indisponível."
                 ),
                 rule_id=rule.id,
+                rule_validated=rule_validated,
             )
 
         dose = Decimal(dose_amount)
@@ -319,6 +350,7 @@ class DoseChecker:
                         "verificação."
                     ),
                     rule_id=rule.id,
+                    rule_validated=rule_validated,
                 )
             if DoseChecker._weight_is_stale(weight_recorded_at, now, weight_staleness_days):
                 return DoseVerdict(
@@ -329,6 +361,7 @@ class DoseChecker:
                         "para reavaliar."
                     ),
                     rule_id=rule.id,
+                    rule_validated=rule_validated,
                 )
             weight = Decimal(weight_kg)
             expected_low = _q(Decimal(rule.min_per_kg) * weight)
@@ -360,6 +393,7 @@ class DoseChecker:
                 max_per_dose=absolute_max,
                 rule_id=rule.id,
                 enforcement="block",
+                rule_validated=rule_validated,
             )
 
         # 6. Range check (boundary == low/high is allowed).
@@ -375,6 +409,7 @@ class DoseChecker:
                 max_per_dose=absolute_max,
                 rule_id=rule.id,
                 enforcement=rule.enforcement,
+                rule_validated=rule_validated,
             )
 
         # 7. Max-per-day: frequency × per-dose vs the daily cap.
@@ -394,6 +429,7 @@ class DoseChecker:
                     max_per_dose=absolute_max,
                     rule_id=rule.id,
                     enforcement=rule.enforcement,
+                    rule_validated=rule_validated,
                 )
 
         # 7b. Daily cap exists but frequency is missing → we CANNOT verify the
@@ -412,6 +448,7 @@ class DoseChecker:
                 expected_high=expected_high,
                 max_per_dose=absolute_max,
                 rule_id=rule.id,
+                rule_validated=rule_validated,
             )
 
         # 8. Within band, under both ceilings → SAFE.
@@ -426,6 +463,7 @@ class DoseChecker:
             max_per_dose=absolute_max,
             rule_id=rule.id,
             enforcement=rule.enforcement,
+            rule_validated=rule_validated,
         )
 
     # ── helpers ────────────────────────────────────────────────────────────────
@@ -533,20 +571,25 @@ class DoseChecker:
 
         Narrower age band first, then narrower weight band, then narrower frequency
         band (AXIS 1), then a concrete route before a blank (any-route) rule, then —
-        on a genuine tie — the STRICTER (lowest absolute_max_dose) rule, and only
-        finally a stable id tie-break. Never let an arbitrary UUID pick a looser
-        (higher-ceiling) rule. dose_role is NOT part of the key: it is an exact-match
-        filter (AXIS 2), so all surviving candidates already share the same role.
+        ordem 028 — a VALIDATED rule before a nao_validado one for the SAME band
+        (so importing a pharmacist-reviewed rule for a case a draft already
+        covers makes the validated one win), then — on a genuine tie — the
+        STRICTER (lowest absolute_max_dose) rule, and only finally a stable id
+        tie-break. Never let an arbitrary UUID pick a looser (higher-ceiling)
+        rule. dose_role is NOT part of the key: it is an exact-match filter
+        (AXIS 2), so all surviving candidates already share the same role.
         """
         age_span = DoseChecker._span(rule.age_min_days, rule.age_max_days)
         weight_span = DoseChecker._span(rule.weight_min_kg, rule.weight_max_kg)
         freq_span = DoseChecker._span(rule.freq_min_per_day, rule.freq_max_per_day)
         route_rank = 0 if rule.route else 1
+        validated_rank = 0 if rule.status_validacao == rule.StatusValidacao.VALIDADO else 1
         return (
             age_span,
             weight_span,
             freq_span,
             route_rank,
+            validated_rank,
             Decimal(rule.absolute_max_dose),
             str(rule.id),
         )

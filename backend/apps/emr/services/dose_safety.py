@@ -18,6 +18,24 @@ Fail posture (locked fail decision table, plan §2.6):
   SAFE → resolve any stale engine 'dose' alert to status="safe".
   NOT_APPLICABLE → nothing.
 
+Ordem 028 — a nao_validado rule only SIGNALS, never blocks: a verdict that
+would otherwise BLOCK (OUT_OF_RANGE with enforcement=block, WEIGHT_GATE,
+UNIT_MISMATCH) but whose matched rule has ``rule_validated=False``
+(``DoseVerdict.rule_validated``, set by the engine) is demoted here to the
+SAME advisory shape as DATA_MISSING (severity=caution, status=flagged,
+outside the gate), with the deterministic reason amended to say the rule is
+not yet pharmacist-validated. See ``_demote_for_unvalidated_rule``.
+
+Ordem 028 — the LLM only explains, after the fact: every genuine engine
+write (create OR update, i.e. whenever ``_audit`` actually fires) for a
+verdict that is neither SAFE nor NOT_APPLICABLE schedules — via
+``transaction.on_commit`` — the Celery task
+``apps.emr.tasks.explain_dose_verdict``, which asks the LLM to explain (never
+decide) this exact verdict and writes it on its OWN row
+(``source="llm"``, ``alert_type="dose_explicacao"``, FK ``explica`` to this
+alert). It goes through the same consent/DPA/scrub/ceiling gate as ordem 025
+and never touches this alert.
+
 Idempotency / clobber-safety (plan §4 gap #1): every alert write is an
 update_or_create keyed on (prescription_item, alert_type="dose", source="engine").
 It NEVER touches the source="llm" row — the LLM explainer and the engine verdict
@@ -190,27 +208,65 @@ class DoseCheckService:
             dose_role=item.dose_role or None,
         )
 
-        # Routing (dose-engine v2, AXIS 3):
-        #   WEIGHT_GATE / UNIT_MISMATCH → ALWAYS blocking (you cannot dose per-kg
+        # Routing (dose-engine v2, AXIS 3; ordem 028 AXIS "validated"):
+        #   WEIGHT_GATE / UNIT_MISMATCH → blocking (you cannot dose per-kg
         #     without a weight, and a unit mismatch is always dangerous —
-        #     enforcement mode is irrelevant for these).
-        #   OUT_OF_RANGE → blocking IFF the matched rule's enforcement == "block";
-        #     under an "advise" rule it is a NON-blocking caution (opioids/sedatives
-        #     with no hard pharmacological ceiling).
+        #     enforcement mode is irrelevant for these) — UNLESS the matched
+        #     rule is not yet pharmacist-validated, in which case it demotes to
+        #     the same advisory shape as DATA_MISSING (ordem 028).
+        #   OUT_OF_RANGE → blocking IFF the matched rule's enforcement == "block"
+        #     AND the rule is validated; an "advise" rule (opioids/sedatives with
+        #     no hard pharmacological ceiling) OR a nao_validado rule is a
+        #     NON-blocking caution either way.
         #   DATA_MISSING / ENGINE_ERROR / NO_RULE_MATCH → advisory (unchanged).
         #   SAFE → resolve. NOT_APPLICABLE → nothing.
-        if verdict.verdict == Verdict.OUT_OF_RANGE:
-            if verdict.enforcement == "advise":
-                self._raise_advisory_alert(item, verdict, gate)
-            else:
-                self._raise_blocking_alert(item, verdict, gate)
-        elif verdict.verdict in _BLOCKING_VERDICTS:
+        is_advise_out_of_range = (
+            verdict.verdict == Verdict.OUT_OF_RANGE and verdict.enforcement == "advise"
+        )
+        would_block = verdict.verdict in _BLOCKING_VERDICTS and not is_advise_out_of_range
+
+        if would_block and not verdict.rule_validated:
+            self._raise_advisory_alert(
+                item,
+                self._demote_for_unvalidated_rule(verdict),
+                gate,
+                action=self._unvalidated_action(verdict),
+            )
+        elif would_block:
             self._raise_blocking_alert(item, verdict, gate)
-        elif verdict.verdict in _ADVISORY_VERDICTS:
+        elif is_advise_out_of_range or verdict.verdict in _ADVISORY_VERDICTS:
             self._raise_advisory_alert(item, verdict, gate)
         elif verdict.verdict == Verdict.SAFE:
             self._resolve_to_safe(item, verdict, gate)
         # NOT_APPLICABLE → nothing (no alert, no badge, no false green).
+
+    @staticmethod
+    def _demote_for_unvalidated_rule(verdict: DoseVerdict) -> DoseVerdict:
+        """A would-be-blocking verdict whose matched rule is nao_validado is
+        never suppressed — it still signals — but it is not entitled to block
+        on its own say-so (INTENT v6 §Limites: unreviewed data never enforces).
+        The deterministic reason is amended (never replaced) so the audit trail
+        and the alert message both keep saying WHY it stopped blocking."""
+        from dataclasses import replace
+
+        return replace(
+            verdict,
+            reason=(
+                f"{verdict.reason} Esta regra ainda não foi validada por "
+                "farmacêutico — o alerta é informativo e não bloqueia."
+            ),
+        )
+
+    @staticmethod
+    def _unvalidated_action(verdict: DoseVerdict) -> str:
+        """AuditLog action name for a verdict demoted for lack of validation —
+        distinct from the normal advisory actions so the flywheel can tell a
+        genuine advisory apart from a would-have-blocked-but-unvalidated one."""
+        if verdict.verdict == Verdict.WEIGHT_GATE:
+            return "dose_weight_gate_nao_validada"
+        if verdict.verdict == Verdict.UNIT_MISMATCH:
+            return "dose_unit_mismatch_nao_validada"
+        return "dose_out_of_range_nao_validada"
 
     def _raise_blocking_alert(
         self, item: PrescriptionItem, verdict: DoseVerdict, gate: str
@@ -262,23 +318,25 @@ class DoseCheckService:
                 },
             )
             self._audit("dose_alert_raised", item, verdict, gate, alert_id=alert.id)
+            self._schedule_explanation(alert.id, verdict)
 
     def _raise_advisory_alert(
-        self, item: PrescriptionItem, verdict: DoseVerdict, gate: str
+        self, item: PrescriptionItem, verdict: DoseVerdict, gate: str, *, action: str | None = None
     ) -> None:
         from apps.emr.models import AISafetyAlert
 
-        if verdict.verdict == Verdict.NO_RULE_MATCH:
-            action = "dose_no_rule_match"
-        elif verdict.verdict == Verdict.DATA_MISSING:
-            action = "dose_data_missing"
-        elif verdict.verdict == Verdict.OUT_OF_RANGE:
-            # AXIS 3: an OUT_OF_RANGE on an enforcement="advise" rule routed here.
-            # It is a visible caution, not a block — the reason already states the
-            # dose exceeded the expected range.
-            action = "dose_out_of_range_advisory"
-        else:
-            action = "dose_check_unavailable"
+        if action is None:
+            if verdict.verdict == Verdict.NO_RULE_MATCH:
+                action = "dose_no_rule_match"
+            elif verdict.verdict == Verdict.DATA_MISSING:
+                action = "dose_data_missing"
+            elif verdict.verdict == Verdict.OUT_OF_RANGE:
+                # AXIS 3: an OUT_OF_RANGE on an enforcement="advise" rule routed here.
+                # It is a visible caution, not a block — the reason already states the
+                # dose exceeded the expected range.
+                action = "dose_out_of_range_advisory"
+            else:
+                action = "dose_check_unavailable"
         with transaction.atomic():
             existing = (
                 AISafetyAlert.objects.select_for_update()
@@ -318,6 +376,35 @@ class DoseCheckService:
                 },
             )
             self._audit(action, item, verdict, gate, alert_id=alert.id)
+            self._schedule_explanation(alert.id, verdict)
+
+    @staticmethod
+    def _schedule_explanation(alert_id, verdict: DoseVerdict) -> None:
+        """Ordem 028: after a genuine engine write (never SAFE/NOT_APPLICABLE —
+        those never reach here), schedule the LLM explanation task post-commit.
+
+        The task re-runs the SAME consent/DPA/ceiling gate as ordem 025 and can
+        end up doing nothing (flag off, no DPA, circuit open, ceiling hit); this
+        call site never blocks and never raises — it only enqueues.
+        """
+        context = {
+            "verdict": verdict.verdict.value,
+            "reason": verdict.reason,
+            "expected_low": str(verdict.expected_low) if verdict.expected_low is not None else None,
+            "expected_high": (
+                str(verdict.expected_high) if verdict.expected_high is not None else None
+            ),
+            "max_per_dose": str(verdict.max_per_dose) if verdict.max_per_dose is not None else None,
+            "rule_id": str(verdict.rule_id) if verdict.rule_id is not None else None,
+            "status_validacao": "validado" if verdict.rule_validated else "nao_validado",
+        }
+
+        def _enqueue() -> None:
+            from apps.emr.tasks import explain_dose_verdict
+
+            explain_dose_verdict.delay(str(alert_id), context)
+
+        transaction.on_commit(_enqueue)
 
     def _resolve_to_safe(self, item: PrescriptionItem, verdict: DoseVerdict, gate: str) -> None:
         """SAFE: clear any stale engine 'dose' alert (resolve to status='safe')."""

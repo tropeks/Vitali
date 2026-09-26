@@ -600,7 +600,11 @@ class TestDoseCheckerRuleSelection(_Base):
         )
 
         chosen = DoseChecker._select_rule(
-            active_rules=list(formulary.dose_rules.filter(active=True, validated=True)),
+            # Ordem 028: the engine no longer filters by validated=True — a
+            # nao_validado rule still signals. This helper test still only
+            # needs `active=True`; both fixtures rules are validated=True here
+            # anyway, exercising the tie-break unaffected by validation status.
+            active_rules=list(formulary.dose_rules.filter(active=True)),
             formulary=formulary,
             patient_age_days=3650,
             weight_kg=None,
@@ -971,24 +975,28 @@ class TestDoseEngineV2BackwardCompat(_Base):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# S29-02: validated=True gate. A DoseRule only enforces when validated=True.
-# Illustrative numbers — NOT clinical truth.
+# Ordem 028: a nao_validado rule still SIGNALS — the pure engine never demotes
+# a verdict by itself (only the orchestrator, apps.emr.services.dose_safety,
+# does — see test_dose_safety_enforcement.py). This engine's ONLY
+# responsibility toward validation is to (a) keep using a nao_validado rule
+# exactly like a validado one, and (b) report which one it used via
+# ``DoseVerdict.rule_validated``. Illustrative numbers — NOT clinical truth.
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-class TestDoseCheckerValidatedGate(_Base):
-    """The DoseChecker must ignore DoseRules with validated=False.
-
-    A rule that is active=True but validated=False is inert: the engine treats
-    it as if it does not exist. Only after a human pharmacist sets validated=True
-    does the rule participate in dose enforcement.
-    """
+class TestDoseCheckerRuleValidatedFlag(_Base):
+    """A nao_validado rule is no longer inert: the engine signals with it
+    exactly as it would with a validado one, and reports ``rule_validated`` on
+    the verdict so the orchestrator can decide whether a would-be-blocking
+    verdict actually blocks."""
 
     def _make_gated_formulary(self, *, validated: bool):
         """ILLUSTRATIVE formulary + fixed rule. NOT clinical."""
         from apps.pharmacy.models import DoseRule, Drug, MedicationFormulary
 
-        drug = Drug.objects.create(name="FAKE-GatedDrug", generic_name="fake_gated")
+        drug = Drug.objects.create(
+            name=f"FAKE-GatedDrug-{validated}", generic_name=f"fake_gated_{validated}"
+        )
         formulary = MedicationFormulary.objects.create(
             drug=drug,
             strength_value=Decimal("10.000"),
@@ -1008,49 +1016,102 @@ class TestDoseCheckerValidatedGate(_Base):
         )
         return drug
 
-    def test_non_validated_rule_is_ignored_by_checker(self):
-        """Key gating proof (S29-02):
+    def _check(self, drug, *, dose):
+        return DoseChecker.check(
+            drug=drug,
+            dose_amount=dose,
+            dose_unit="mg",
+            route="IV",
+            frequency_per_day=None,
+            patient_age_days=3650,
+            weight_kg=None,
+            weight_recorded_at=self.fresh,
+            now=self.now,
+            weight_staleness_days=90,
+        )
 
-        1. A DoseRule with active=True, validated=False covering this patient
-           must NOT enforce — the checker returns NOT_APPLICABLE (no active
-           validated rules), never SAFE or OUT_OF_RANGE.
-        2. After the same rule is set validated=True and saved, an in-range
-           dose must return SAFE — the gate is now open.
-        """
+    def test_unvalidated_rule_still_signals_safe_in_band(self):
+        drug = self._make_gated_formulary(validated=False)
+        v = self._check(drug, dose=Decimal("10"))  # in-range (band [5,15])
+        self.assertEqual(v.verdict, Verdict.SAFE, f"got {v.verdict}: {v.reason}")
+        self.assertFalse(v.rule_validated)
+
+    def test_unvalidated_rule_still_signals_out_of_range(self):
+        """The ENGINE still returns OUT_OF_RANGE for a nao_validado rule — it is
+        the orchestrator, not the engine, that decides this may not block."""
+        drug = self._make_gated_formulary(validated=False)
+        v = self._check(drug, dose=Decimal("30"))  # over absolute_max_dose=15
+        self.assertEqual(v.verdict, Verdict.OUT_OF_RANGE, f"got {v.verdict}: {v.reason}")
+        self.assertFalse(v.rule_validated)
+
+    def test_validated_rule_reports_rule_validated_true(self):
+        drug = self._make_gated_formulary(validated=True)
+        v = self._check(drug, dose=Decimal("10"))
+        self.assertEqual(v.verdict, Verdict.SAFE)
+        self.assertTrue(v.rule_validated)
+
+    def test_validating_a_rule_after_the_fact_flips_the_flag(self):
         from apps.pharmacy.models import DoseRule
 
-        # Phase 1: rule exists but is NOT validated → invisible to the checker.
         drug = self._make_gated_formulary(validated=False)
-        v_before = DoseChecker.check(
-            drug=drug,
-            dose_amount=Decimal("10"),  # in-range (band [5,15])
-            dose_unit="mg",
-            route="IV",
-            frequency_per_day=None,
-            patient_age_days=3650,
-            weight_kg=None,
-            weight_recorded_at=self.fresh,
-            now=self.now,
-            weight_staleness_days=90,
-        )
-        # With no validated rules the engine sees an empty active-rules list →
-        # NOT_APPLICABLE (advisory gap), never a false SAFE.
-        self.assertEqual(
-            v_before.verdict,
-            Verdict.NOT_APPLICABLE,
-            f"Expected NOT_APPLICABLE for unvalidated rule, got {v_before.verdict}: {v_before.reason}",
-        )
+        self.assertFalse(self._check(drug, dose=Decimal("10")).rule_validated)
 
-        # Phase 2: pharmacist validates the rule → it must now enforce.
         rule = DoseRule.objects.get(formulary__drug=drug)
         rule.validated = True
-        rule.save(update_fields=["validated"])
+        rule.save(update_fields=["status_validacao"])
 
-        v_after = DoseChecker.check(
+        self.assertTrue(self._check(drug, dose=Decimal("10")).rule_validated)
+
+    def test_validated_rule_wins_tie_over_unvalidated_same_specificity(self):
+        """Ordem 028: 'para o mesmo caso, vence a validada.' Two rules tied on
+        every specificity dimension (same spans, same route) except one is
+        validado and the other is nao_validado — the validado one must win,
+        exactly like the pre-existing absolute_max_dose tie-break."""
+        from apps.pharmacy.models import DoseRule, Drug, MedicationFormulary
+
+        drug = Drug.objects.create(name="FAKE-ValidatedTie", generic_name="fake_valtie")
+        formulary = MedicationFormulary.objects.create(
             drug=drug,
-            dose_amount=Decimal("10"),  # same in-range dose
+            strength_value=Decimal("1.000"),
+            strength_unit="mg",
+            route="PO",
+            active=True,
+        )
+        shared = {
+            "formulary": formulary,
+            "basis": "fixed",
+            "dose_unit": "mg",
+            "route": "PO",
+            "absolute_max_dose": Decimal("100"),
+            "active": True,
+        }
+        # Same age span (0–40000) as the unvalidated one below — different
+        # bounds (natural key) but a tied specificity score, and a DIFFERENT
+        # band so which one won is observable via the verdict.
+        DoseRule.objects.create(
+            age_min_days=0,
+            age_max_days=40000,
+            min_per_dose=Decimal("1"),
+            max_per_dose=Decimal("2"),
+            validated=False,
+            **shared,
+        )
+        validado = DoseRule.objects.create(
+            age_min_days=1,
+            age_max_days=40001,
+            min_per_dose=Decimal("50"),
+            max_per_dose=Decimal("60"),
+            validated=True,
+            **shared,
+        )
+        # Patient 3650 days falls in BOTH bands. Dose 55 is SAFE under the
+        # validado band [50,60] but OUT_OF_RANGE under the nao_validado band
+        # [1,2] — only the winning rule's band determines the verdict.
+        v = DoseChecker.check(
+            drug=drug,
+            dose_amount=Decimal("55"),
             dose_unit="mg",
-            route="IV",
+            route="PO",
             frequency_per_day=None,
             patient_age_days=3650,
             weight_kg=None,
@@ -1058,8 +1119,6 @@ class TestDoseCheckerValidatedGate(_Base):
             now=self.now,
             weight_staleness_days=90,
         )
-        self.assertEqual(
-            v_after.verdict,
-            Verdict.SAFE,
-            f"Expected SAFE after validation, got {v_after.verdict}: {v_after.reason}",
-        )
+        self.assertEqual(v.verdict, Verdict.SAFE, f"got {v.verdict}: {v.reason}")
+        self.assertEqual(v.rule_id, validado.id)
+        self.assertTrue(v.rule_validated)

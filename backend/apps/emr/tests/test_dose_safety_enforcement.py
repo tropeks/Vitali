@@ -977,3 +977,148 @@ class TestDoseRoleOrchestration(_EnforceBase):
         self.assertEqual(resp.data["code"], "dose_safety_block")
         rx.refresh_from_db()
         self.assertFalse(rx.is_signed)
+
+
+def make_perkg_drug_unvalidated(name_suffix=""):
+    """ILLUSTRATIVE per_kg formulary, SAME band as make_perkg_drug but
+    nao_validado (ordem 028). NOT clinical."""
+    drug = Drug.objects.create(
+        name=f"FAKE-Enf-Unvalidated{name_suffix}", generic_name=f"fake_enf_unval{name_suffix}"
+    )
+    formulary = MedicationFormulary.objects.create(
+        drug=drug,
+        strength_value=Decimal("10.000"),
+        strength_unit="mg",
+        route="IV",
+        is_injectable=True,
+        is_high_alert=True,
+        active=True,
+    )
+    DoseRule.objects.create(
+        formulary=formulary,
+        basis="per_kg",
+        dose_unit="mg",
+        min_per_kg=Decimal("0.5000"),
+        max_per_kg=Decimal("1.0000"),
+        absolute_max_dose=Decimal("50.0000"),
+        active=True,
+        validated=False,
+    )
+    return drug
+
+
+class TestUnvalidatedRuleNeverBlocks(_EnforceBase):
+    """Ordem 028: 'a regra que casou está nao_validado' demotes what would
+    otherwise BLOCK to the same advisory shape as DATA_MISSING — never a
+    silent pass (the alert still exists, still caution/flagged), and never a
+    block. Matrix: {validada, nao_validada} × {OUT_OF_RANGE block, WEIGHT_GATE,
+    UNIT_MISMATCH} — only 'validada × bloqueante' reaches the gate."""
+
+    def test_out_of_range_block_on_unvalidated_rule_is_advisory_not_409(self):
+        from apps.emr.services.dose_safety import DoseCheckService
+
+        drug = make_perkg_drug_unvalidated("-OOR")
+        rx, _item = self._make_rx(dose=Decimal("40"), drug=drug)  # band [5,10] → OOR
+        resp = self._sign(rx)
+        self.assertEqual(resp.status_code, 200)
+        rx.refresh_from_db()
+        self.assertTrue(rx.is_signed)
+
+        self.assertFalse(DoseCheckService.has_blocking_dose_alert(rx))
+        alert = AISafetyAlert.objects.get(
+            prescription_item__prescription=rx, source="engine", alert_type="dose"
+        )
+        self.assertEqual(alert.severity, "caution")
+        self.assertEqual(alert.status, "flagged")
+        self.assertIn("validada por farmacêutico", alert.message)
+        self.assertIn("fora do intervalo", alert.message)  # deterministic reason kept
+
+    def test_weight_gate_on_unvalidated_rule_is_advisory_not_409(self):
+        from apps.emr.services.dose_safety import DoseCheckService
+
+        drug = make_perkg_drug_unvalidated("-WG")
+        patient2 = Patient.objects.create(
+            full_name="Unval NoWeight", birth_date=date(1990, 1, 1), gender="F", cpf="40404040404"
+        )
+        enc2 = Encounter.objects.create(patient=patient2, professional=self.prof)
+        rx = Prescription.objects.create(encounter=enc2, patient=patient2, prescriber=self.prof)
+        PrescriptionItem.objects.create(
+            prescription=rx,
+            drug=drug,
+            quantity=Decimal("5"),
+            unit_of_measure="un",
+            dose_amount=Decimal("7"),
+            dose_unit="mg",
+            route="IV",
+            frequency_per_day=1,
+        )
+        resp = self._sign(rx)
+        self.assertEqual(resp.status_code, 200)
+        rx.refresh_from_db()
+        self.assertTrue(rx.is_signed)
+        self.assertFalse(DoseCheckService.has_blocking_dose_alert(rx))
+        alert = AISafetyAlert.objects.get(
+            prescription_item__prescription=rx, source="engine", alert_type="dose"
+        )
+        self.assertEqual(alert.severity, "caution")
+        self.assertIn("validada por farmacêutico", alert.message)
+
+    def test_unit_mismatch_on_unvalidated_rule_is_advisory_not_409(self):
+        from apps.emr.services.dose_safety import DoseCheckService
+
+        drug = make_perkg_drug_unvalidated("-UM")
+        rx, _item = self._make_rx(dose=Decimal("7"), unit="mcg", drug=drug)
+        resp = self._sign(rx)
+        self.assertEqual(resp.status_code, 200)
+        rx.refresh_from_db()
+        self.assertTrue(rx.is_signed)
+        self.assertFalse(DoseCheckService.has_blocking_dose_alert(rx))
+        alert = AISafetyAlert.objects.get(
+            prescription_item__prescription=rx, source="engine", alert_type="dose"
+        )
+        self.assertEqual(alert.severity, "caution")
+        self.assertIn("validada por farmacêutico", alert.message)
+
+    def test_validated_rule_still_blocks_regression(self):
+        """Regression guard: this whole demotion is ONLY for nao_validado
+        rules — a validado rule's OUT_OF_RANGE/block still 409s exactly as
+        before ordem 028."""
+        rx, _item = self._make_rx(dose=Decimal("40"))  # default make_perkg_drug → validated=True
+        resp = self._sign(rx)
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(resp.data["code"], "dose_safety_block")
+        alert = AISafetyAlert.objects.get(
+            prescription_item__prescription=rx, source="engine", alert_type="dose"
+        )
+        self.assertEqual(alert.severity, "contraindication")
+        self.assertNotIn("validada por farmacêutico", alert.message)
+
+    def test_safe_dose_on_unvalidated_rule_is_still_safe(self):
+        """SAFE is unaffected by validation status either way. A first-time
+        SAFE verdict with no prior alert writes nothing (unchanged pre-028
+        behavior — ``_resolve_to_safe`` only clears a STALE alert); re-evaluate
+        after an out-of-range dose created one to see it resolve to safe."""
+        from apps.emr.services.dose_safety import DoseCheckService
+
+        drug = make_perkg_drug_unvalidated("-SAFE")
+        rx, item = self._make_rx(dose=Decimal("40"), drug=drug)  # OUT_OF_RANGE → advisory
+        # Fresh DB fetch: this fixture's self.patient carries birth_date as a
+        # raw string (base setUp), which only ever gets coerced to a real
+        # `date` on a real DB round-trip (the HTTP sign endpoint the OTHER
+        # tests use does this implicitly). Calling the service directly needs
+        # the same coercion.
+        rx.refresh_from_db()
+        service = DoseCheckService(requesting_user=self.doctor)
+        service.evaluate_prescription(rx, gate="sign")
+        AISafetyAlert.objects.get(
+            prescription_item__prescription=rx, source="engine", alert_type="dose"
+        )
+
+        item.dose_amount = Decimal("7")  # now in band [5,10]
+        item.save(update_fields=["dose_amount"])
+        service.evaluate_prescription(rx, gate="dispense")
+
+        alert = AISafetyAlert.objects.get(
+            prescription_item__prescription=rx, source="engine", alert_type="dose"
+        )
+        self.assertEqual(alert.status, "safe")
