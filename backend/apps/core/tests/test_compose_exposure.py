@@ -96,7 +96,6 @@ class ComposeDevPublicaSoEmLoopbackTests(SimpleTestCase):
             + "\n  ".join(expostas),
         )
 
-
     def test_nenhum_servico_usa_a_rede_do_host(self):
         # network_mode: host não declara `ports`: o processo escuta direto nas
         # interfaces do host e passa por fora da verificação acima.
