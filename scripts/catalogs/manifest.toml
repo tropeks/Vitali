@@ -132,6 +132,34 @@ model = "core.TUSSCode"
 expected_rows = 54136
 version = ""   # competência, ex.: "202607"
 
+# ─── Pendente de fonte (ordem 028) — o import já existe, falta o arquivo ────
+
+# formulario_doses: apps.pharmacy.MedicationFormulary/DoseRule (TENANT_APPS,
+# não SHARED/public como os demais catálogos deste manifesto — o comando roda
+# dentro do schema de cada tenant). O mecanismo e o importador
+# (apps.pharmacy.services.formulary_import / manage.py import_formulary) já
+# existem; o arquivo-fonte é compilado por um farmacêutico contratado pelo
+# Capitão (decisão do Diretor, 26/09/2026) e NÃO existe ainda. `pending_source`
+# faz seed_catalogs relatar "pendente de fonte" e pular este catálogo sem
+# falhar os outros — diferente de `blocked` (acesso/compra): aqui não falta
+# nada de engenharia, só o arquivo. `version`/`sha256` ficam vazios até então;
+# quando o arquivo chegar, version = a data da compilação da base, sha256 = o
+# hash do arquivo entregue (ver docs/FORMULARIO_DOSES.md §4). `version_arg`
+# aqui é um placeholder: `import_formulary` (--file, sem rótulo de versão
+# próprio) ainda não tem essa flag — só passa a valer quando este catálogo sair
+# de pending_source (fora desta ordem; ver INTENT v6 e a ordem 028 §Fora).
+[[catalog]]
+key = "formulario_doses"
+command = "import_formulary"
+source_arg = "--file"
+version_arg = "--version"
+file = "formulario_doses.csv"
+model = "pharmacy.DoseRule"
+expected_rows = 0
+version = ""
+sha256 = ""
+pending_source = "farmacêutico contratado pelo Capitão (decisão do Diretor, 26/09/2026)"
+
 # ─── Bloqueados por acesso à fonte, não por código ──────────────────────────
 
 [[catalog]]

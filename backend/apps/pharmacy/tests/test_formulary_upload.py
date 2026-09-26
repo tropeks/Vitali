@@ -125,10 +125,11 @@ class TestFormularyUploadAPI(TenantTestCase):
         """
         csv = (
             "drug_name,drug_generic,strength_value,strength_unit,route,basis,"
-            "dose_unit,min_per_dose,max_per_dose,absolute_max_dose,dose_role,enforcement\n"
-            "FAKE-Blocker,fake_blocker,10.000,mg,IV,fixed,mg,5,15,15,maintenance,block\n"
-            "FAKE-Adviser,fake_adviser,10.000,mg,IV,fixed,mg,5,15,15,maintenance,advise\n"
-            "FAKE-Default,fake_default,10.000,mg,IV,fixed,mg,5,15,15,maintenance,\n"
+            "dose_unit,min_per_dose,max_per_dose,absolute_max_dose,dose_role,enforcement,"
+            "fonte_tipo,fonte_ref,fonte_trecho\n"
+            "FAKE-Blocker,fake_blocker,10.000,mg,IV,fixed,mg,5,15,15,maintenance,block,literatura,DOI:10.0000/fake,Trecho ficticio de teste\n"
+            "FAKE-Adviser,fake_adviser,10.000,mg,IV,fixed,mg,5,15,15,maintenance,advise,literatura,DOI:10.0000/fake,Trecho ficticio de teste\n"
+            "FAKE-Default,fake_default,10.000,mg,IV,fixed,mg,5,15,15,maintenance,,literatura,DOI:10.0000/fake,Trecho ficticio de teste\n"
         )
         upload = SimpleUploadedFile("enf.csv", csv.encode("utf-8"), content_type="text/csv")
         resp = self._client(self.farmaceutico).post(
@@ -145,8 +146,9 @@ class TestFormularyUploadAPI(TenantTestCase):
         """An unknown enforcement value is a 400 with no partial import."""
         csv = (
             "drug_name,drug_generic,strength_value,strength_unit,route,basis,"
-            "dose_unit,min_per_dose,max_per_dose,absolute_max_dose,dose_role,enforcement\n"
-            "FAKE-Bad,fake_bad,10.000,mg,IV,fixed,mg,5,15,15,maintenance,kaboom\n"
+            "dose_unit,min_per_dose,max_per_dose,absolute_max_dose,dose_role,enforcement,"
+            "fonte_tipo,fonte_ref,fonte_trecho\n"
+            "FAKE-Bad,fake_bad,10.000,mg,IV,fixed,mg,5,15,15,maintenance,kaboom,literatura,DOI:10.0000/fake,Trecho ficticio de teste\n"
         )
         upload = SimpleUploadedFile("bad.csv", csv.encode("utf-8"), content_type="text/csv")
         resp = self._client(self.farmaceutico).post(
@@ -176,10 +178,17 @@ class TestFormularyUploadAPI(TenantTestCase):
 
         header = (
             "drug_name,drug_generic,strength_value,strength_unit,route,basis,"
-            "dose_unit,min_per_dose,max_per_dose,absolute_max_dose,dose_role,enforcement\n"
+            "dose_unit,min_per_dose,max_per_dose,absolute_max_dose,dose_role,enforcement,"
+            "fonte_tipo,fonte_ref,fonte_trecho\n"
         )
-        csv_v1 = header + "FAKE-Reval,fake_reval,10.000,mg,IV,fixed,mg,5,15,15,maintenance,block\n"
-        csv_v2 = header + "FAKE-Reval,fake_reval,10.000,mg,IV,fixed,mg,5,20,20,maintenance,block\n"
+        csv_v1 = (
+            header
+            + "FAKE-Reval,fake_reval,10.000,mg,IV,fixed,mg,5,15,15,maintenance,block,literatura,DOI:10.0000/fake,Trecho ficticio de teste\n"
+        )
+        csv_v2 = (
+            header
+            + "FAKE-Reval,fake_reval,10.000,mg,IV,fixed,mg,5,20,20,maintenance,block,literatura,DOI:10.0000/fake,Trecho ficticio de teste\n"
+        )
 
         client = self._client(self.farmaceutico)
         resp = client.post(
@@ -194,7 +203,7 @@ class TestFormularyUploadAPI(TenantTestCase):
         rule.validated = True
         rule.validated_by = self.farmaceutico
         rule.validated_at = timezone.now()
-        rule.save(update_fields=["validated", "validated_by", "validated_at"])
+        rule.save(update_fields=["status_validacao", "validated_by", "validated_at"])
 
         # Preview of the changed CSV surfaces the warning count — and persists nothing.
         preview = client.post(
@@ -241,7 +250,7 @@ class TestFormularyUploadAPI(TenantTestCase):
         rule.validated = True
         rule.validated_by = self.farmaceutico
         rule.validated_at = timezone.now()
-        rule.save(update_fields=["validated", "validated_by", "validated_at"])
+        rule.save(update_fields=["status_validacao", "validated_by", "validated_at"])
 
         resp = client.post(_COMMIT_URL, {"file": _csv_upload(_SAMPLE_CSV)}, format="multipart")
         self.assertEqual(resp.status_code, 201, resp.content)
@@ -256,14 +265,15 @@ class TestFormularyUploadAPI(TenantTestCase):
         per-line 400 errors (fail-loud contract), never a DB-level exception."""
         header = (
             "drug_name,drug_generic,strength_value,strength_unit,route,basis,"
-            "dose_unit,min_per_dose,max_per_dose,absolute_max_dose,dose_role,enforcement\n"
+            "dose_unit,min_per_dose,max_per_dose,absolute_max_dose,dose_role,enforcement,"
+            "fonte_tipo,fonte_ref,fonte_trecho\n"
         )
         csv = (
             header
             # strength_value: 11 integer digits > max_digits=10 (with 3 decimal places)
-            + "FAKE-BigVal,fake_big,12345678901,mg,IV,fixed,mg,5,15,15,maintenance,block\n"
+            + "FAKE-BigVal,fake_big,12345678901,mg,IV,fixed,mg,5,15,15,maintenance,block,literatura,DOI:10.0000/fake,Trecho ficticio de teste\n"
             # strength_unit: 11 chars > max_length=10 (also not a valid choice)
-            + "FAKE-BigUnit,fake_unit,10.000,miligramas!,IV,fixed,mg,5,15,15,maintenance,block\n"
+            + "FAKE-BigUnit,fake_unit,10.000,miligramas!,IV,fixed,mg,5,15,15,maintenance,block,literatura,DOI:10.0000/fake,Trecho ficticio de teste\n"
         )
         upload = SimpleUploadedFile("range.csv", csv.encode(), content_type="text/csv")
         resp = self._client(self.farmaceutico).post(
@@ -280,11 +290,12 @@ class TestFormularyUploadAPI(TenantTestCase):
         """Excel Windows PT-BR exports cp1252 — the upload must decode it."""
         header = (
             "drug_name,drug_generic,strength_value,strength_unit,route,basis,"
-            "dose_unit,min_per_dose,max_per_dose,absolute_max_dose,dose_role,enforcement\n"
+            "dose_unit,min_per_dose,max_per_dose,absolute_max_dose,dose_role,enforcement,"
+            "fonte_tipo,fonte_ref,fonte_trecho\n"
         )
         csv = (
             header
-            + "FAKE-Acentuação,fake_acentuação,10.000,mg,IV,fixed,mg,5,15,15,maintenance,block\n"
+            + "FAKE-Acentuação,fake_acentuação,10.000,mg,IV,fixed,mg,5,15,15,maintenance,block,literatura,DOI:10.0000/fake,Trecho ficticio de teste\n"
         )
         upload = SimpleUploadedFile("cp1252.csv", csv.encode("cp1252"), content_type="text/csv")
         resp = self._client(self.farmaceutico).post(
@@ -311,3 +322,186 @@ class TestFormularyUploadAPI(TenantTestCase):
         commit = client.post(_COMMIT_URL, {"file": _csv_upload(_SAMPLE_CSV)}, format="multipart")
         self.assertEqual(commit.status_code, 403)
         self.assertEqual(DoseRule.objects.count(), 0)
+
+    # ── ordem 028: procedência obrigatória ────────────────────────────────────
+
+    def test_missing_fonte_tipo_rejects_whole_import(self):
+        """A row without fonte_tipo/fonte_ref/fonte_trecho fails the WHOLE
+        import — no number may claim to come from nowhere."""
+        header = (
+            "drug_name,drug_generic,strength_value,strength_unit,route,basis,"
+            "dose_unit,min_per_dose,max_per_dose,absolute_max_dose,dose_role,enforcement\n"
+        )
+        csv = header + "FAKE-NoProv,fake_noprov,10.000,mg,IV,fixed,mg,5,15,15,maintenance,block\n"
+        upload = SimpleUploadedFile("noprov.csv", csv.encode(), content_type="text/csv")
+        resp = self._client(self.farmaceutico).post(
+            _COMMIT_URL, {"file": upload}, format="multipart"
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertTrue(
+            any("fonte_tipo" in e for e in resp.json()["errors"]),
+            resp.json()["errors"],
+        )
+        self.assertEqual(DoseRule.objects.count(), 0)
+
+    def test_invalid_fonte_tipo_value_rejected(self):
+        header = (
+            "drug_name,drug_generic,strength_value,strength_unit,route,basis,"
+            "dose_unit,min_per_dose,max_per_dose,absolute_max_dose,dose_role,enforcement,"
+            "fonte_tipo,fonte_ref,fonte_trecho\n"
+        )
+        csv = (
+            header + "FAKE-BadProv,fake_badprov,10.000,mg,IV,fixed,mg,5,15,15,maintenance,block,"
+            "boato,ref,trecho\n"
+        )
+        upload = SimpleUploadedFile("badprov.csv", csv.encode(), content_type="text/csv")
+        resp = self._client(self.farmaceutico).post(
+            _COMMIT_URL, {"file": upload}, format="multipart"
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertTrue(any("fonte_tipo" in e for e in resp.json()["errors"]))
+
+    def test_commit_stores_procedencia_fields(self):
+        resp = self._client(self.farmaceutico).post(
+            _COMMIT_URL, {"file": _csv_upload(_SAMPLE_CSV)}, format="multipart"
+        )
+        self.assertEqual(resp.status_code, 201, resp.content)
+        rule = DoseRule.objects.get(formulary__drug__name="FAKE-ImportDrugA")
+        self.assertEqual(rule.fonte_tipo, "literatura")
+        self.assertEqual(rule.fonte_ref, "DOI:10.0000/fake-import-a")
+        self.assertIn("Trecho ficticio", rule.fonte_trecho)
+
+    # ── ordem 028: fonte sintética recusada fora de teste ─────────────────────
+
+    def test_synthetic_header_is_refused_by_default(self):
+        from apps.pharmacy.services.formulary_import import (
+            FormularyImportError,
+            parse_and_validate,
+        )
+
+        csv = (
+            "# sintetico: true\n"
+            "drug_name,drug_generic,strength_value,strength_unit,route,basis,"
+            "dose_unit,min_per_dose,max_per_dose,absolute_max_dose,dose_role,enforcement,"
+            "fonte_tipo,fonte_ref,fonte_trecho\n"
+            "FAKE-Synthetic,fake_syn,10.000,mg,IV,fixed,mg,1,2,2,maintenance,block,"
+            "literatura,DOI:x,trecho\n"
+        )
+        with self.assertRaises(FormularyImportError) as ctx:
+            parse_and_validate(csv)
+        self.assertTrue(any("sintética" in e for e in ctx.exception.errors))
+
+    def test_synthetic_header_allowed_with_explicit_flag(self):
+        from apps.pharmacy.services.formulary_import import parse_and_validate
+
+        csv = (
+            "# sintetico: true\n"
+            "drug_name,drug_generic,strength_value,strength_unit,route,basis,"
+            "dose_unit,min_per_dose,max_per_dose,absolute_max_dose,dose_role,enforcement,"
+            "fonte_tipo,fonte_ref,fonte_trecho\n"
+            "FAKE-Synthetic,fake_syn,10.000,mg,IV,fixed,mg,1,2,2,maintenance,block,"
+            "literatura,DOI:x,trecho\n"
+        )
+        rows = parse_and_validate(csv, allow_synthetic=True)
+        self.assertEqual(len(rows), 1)
+
+    def test_upload_ui_never_allows_synthetic(self):
+        """The upload endpoints call parse_and_validate WITHOUT allow_synthetic
+        — a synthetic-marked file is refused even by an authorized pharmacist."""
+        csv = (
+            "# sintetico: true\n"
+            "drug_name,drug_generic,strength_value,strength_unit,route,basis,"
+            "dose_unit,min_per_dose,max_per_dose,absolute_max_dose,dose_role,enforcement,"
+            "fonte_tipo,fonte_ref,fonte_trecho\n"
+            "FAKE-Synthetic,fake_syn,10.000,mg,IV,fixed,mg,1,2,2,maintenance,block,"
+            "literatura,DOI:x,trecho\n"
+        )
+        upload = SimpleUploadedFile("syn.csv", csv.encode(), content_type="text/csv")
+        resp = self._client(self.farmaceutico).post(
+            _COMMIT_URL, {"file": upload}, format="multipart"
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(DoseRule.objects.count(), 0)
+
+    # ── ordem 028: reimportação que desvalida ─────────────────────────────────
+
+    def test_reimport_changed_values_writes_dedicated_invalidation_audit(self):
+        """On top of the existing formulary_imported summary audit, a validated
+        rule whose numbers changed gets its OWN dose_rule_invalidated_by_import
+        AuditLog row, and its CRF portrait is cleared."""
+        from django.utils import timezone
+
+        header = (
+            "drug_name,drug_generic,strength_value,strength_unit,route,basis,"
+            "dose_unit,min_per_dose,max_per_dose,absolute_max_dose,dose_role,enforcement,"
+            "fonte_tipo,fonte_ref,fonte_trecho\n"
+        )
+        csv_v1 = (
+            header + "FAKE-Reval2,fake_reval2,10.000,mg,IV,fixed,mg,5,15,15,maintenance,block,"
+            "literatura,DOI:x,trecho\n"
+        )
+        csv_v2 = (
+            header + "FAKE-Reval2,fake_reval2,10.000,mg,IV,fixed,mg,5,20,20,maintenance,block,"
+            "literatura,DOI:x,trecho\n"
+        )
+
+        client = self._client(self.farmaceutico)
+        client.post(
+            _COMMIT_URL,
+            {"file": SimpleUploadedFile("v1.csv", csv_v1.encode(), content_type="text/csv")},
+            format="multipart",
+        )
+        rule = DoseRule.objects.get(formulary__drug__name="FAKE-Reval2")
+        rule.validated = True
+        rule.validated_by = self.farmaceutico
+        rule.validated_at = timezone.now()
+        rule.validado_crf_numero = "555555"
+        rule.validado_crf_uf = "SP"
+        rule.save(
+            update_fields=[
+                "status_validacao",
+                "validated_by",
+                "validated_at",
+                "validado_crf_numero",
+                "validado_crf_uf",
+            ]
+        )
+
+        resp = client.post(
+            _COMMIT_URL,
+            {"file": SimpleUploadedFile("v2.csv", csv_v2.encode(), content_type="text/csv")},
+            format="multipart",
+        )
+        self.assertEqual(resp.status_code, 201, resp.content)
+
+        rule.refresh_from_db()
+        self.assertFalse(rule.validated)
+        self.assertEqual(rule.validado_crf_numero, "")
+        self.assertEqual(rule.validado_crf_uf, "")
+
+        log = AuditLog.objects.get(
+            action="dose_rule_invalidated_by_import", resource_id=str(rule.id)
+        )
+        self.assertEqual(log.old_data["status_validacao"], "validado")
+        self.assertEqual(log.new_data["status_validacao"], "nao_validado")
+        self.assertEqual(log.new_data["changes"]["max_per_dose"]["before"], "15.0000")
+        self.assertEqual(log.new_data["changes"]["max_per_dose"]["after"], "20")
+
+    def test_reimport_unchanged_values_writes_no_invalidation_audit(self):
+        """Idempotent re-import of identical values: no
+        dose_rule_invalidated_by_import row at all."""
+        from django.utils import timezone
+
+        client = self._client(self.farmaceutico)
+        client.post(_COMMIT_URL, {"file": _csv_upload(_SAMPLE_CSV)}, format="multipart")
+        rule = DoseRule.objects.first()
+        rule.validated = True
+        rule.validated_by = self.farmaceutico
+        rule.validated_at = timezone.now()
+        rule.save(update_fields=["status_validacao", "validated_by", "validated_at"])
+
+        client.post(_COMMIT_URL, {"file": _csv_upload(_SAMPLE_CSV)}, format="multipart")
+
+        self.assertFalse(AuditLog.objects.filter(action="dose_rule_invalidated_by_import").exists())
+        rule.refresh_from_db()
+        self.assertTrue(rule.validated)

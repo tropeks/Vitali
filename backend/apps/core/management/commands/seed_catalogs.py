@@ -65,6 +65,7 @@ Depois desta, rode ``verify_catalogs`` — este comando carrega, aquele atesta.
 
 from __future__ import annotations
 
+import hashlib
 import tomllib
 from dataclasses import dataclass
 from io import StringIO
@@ -90,6 +91,17 @@ class CatalogSpec:
     version: str
     etl: str = ""
     blocked: str = ""
+    # Ordem 028: um catálogo cuja fonte ainda não existe (ex. formulario_doses,
+    # esperando o farmacêutico contratado) fica DECLARADO no manifesto com
+    # version="" e este campo nomeando quem a fornece. Diferente de `blocked`
+    # (acesso/compra): aqui o trabalho de engenharia já está pronto, só falta o
+    # arquivo. Reportado como pendente e pulado — nunca falha os outros.
+    pending_source: str = ""
+    # Ordem 028: quando preenchido, o sha256 do arquivo em --source-dir/file é
+    # conferido byte a byte antes do import; divergência falha alto nomeando o
+    # catálogo (procedência não se confere só pelo nome do arquivo). Opcional —
+    # os catálogos pré-028 continuam sem ele.
+    sha256: str = ""
 
 
 def load_manifest(path: Path) -> list[CatalogSpec]:
@@ -130,6 +142,8 @@ def load_manifest(path: Path) -> list[CatalogSpec]:
                 version=str(entry.get("version", "")).strip(),
                 etl=str(entry.get("etl", "")),
                 blocked=str(entry.get("blocked", "")),
+                pending_source=str(entry.get("pending_source", "")),
+                sha256=str(entry.get("sha256", "")).strip(),
             )
         )
     return specs
@@ -142,6 +156,15 @@ def count_rows(model_label: str) -> int:
     except LookupError as exc:
         raise CommandError(f"modelo do manifesto não existe: {model_label}") from exc
     return int(model.objects.count())
+
+
+def _file_sha256(path: Path) -> str:
+    """sha256 hex digest of a file's bytes, read in chunks (large sources)."""
+    digest = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 class Command(BaseCommand):
@@ -218,6 +241,15 @@ class Command(BaseCommand):
                 self.stdout.write(f"  {label} BLOQUEADO — {spec.blocked}")
                 continue
 
+            if spec.pending_source:
+                # Ordem 028: a fonte ainda não existe (o farmacêutico contratado
+                # não entregou o arquivo) — fato registrado, não falha. Checado
+                # ANTES de `version` vazio: um catálogo pendente de fonte não
+                # precisa (e não pode) ter version preenchida ainda.
+                skipped.append(spec.key)
+                self.stdout.write(f"  {label} PENDENTE DE FONTE — {spec.pending_source}")
+                continue
+
             if not spec.version:
                 # A recusa central deste comando. Ver o docstring.
                 failures.append(spec.key)
@@ -247,6 +279,19 @@ class Command(BaseCommand):
                 hint = f" — gere com scripts/catalogs/{spec.etl}" if spec.etl else ""
                 self.stdout.write(self.style.ERROR(f"  {label} FONTE AUSENTE: {source_file}{hint}"))
                 continue
+
+            if spec.sha256:
+                actual = _file_sha256(source_file)
+                if actual != spec.sha256:
+                    failures.append(spec.key)
+                    self.stdout.write(
+                        self.style.ERROR(
+                            f"  {label} SHA256 DIVERGENTE: manifesto tem {spec.sha256}, "
+                            f"arquivo tem {actual}. Procedência não confere — o arquivo em "
+                            f"{source_file} não é o que o manifesto atesta."
+                        )
+                    )
+                    continue
 
             argv = [spec.source_arg, str(source_file), spec.version_arg, spec.version]
             if dry_run:

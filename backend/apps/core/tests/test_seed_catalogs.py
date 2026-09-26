@@ -22,11 +22,14 @@ from __future__ import annotations
 
 import tempfile
 import textwrap
+from io import StringIO
 from pathlib import Path
 
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import SimpleTestCase
+
+from apps.test_utils import TenantTestCase
 
 MANIFEST_UM_CATALOGO = """
 [[catalog]]
@@ -132,6 +135,90 @@ class SeedCatalogsContratoTests(SimpleTestCase):
         with self.assertRaises(CommandError) as ctx:
             call_command("seed_catalogs", "--manifest", str(manifesto))
         self.assertIn("--source-dir", str(ctx.exception))
+
+    # ── ordem 028: pending_source e sha256 ──────────────────────────────────
+
+    def test_pending_source_e_pulado_sem_reprovar_mesmo_com_versao_vazia(self) -> None:
+        """formulario_doses: version="" MAS pending_source preenchido não é a
+        recusa central (SEM VERSÃO) — é fato registrado (fonte pendente)."""
+        manifesto = self.tmp / "manifest.toml"
+        manifesto.write_text(
+            textwrap.dedent(
+                """
+                [[catalog]]
+                key = "formulario_doses"
+                command = "import_formulary"
+                source_arg = "--file"
+                version_arg = "--version"
+                file = "formulario_doses.csv"
+                model = "pharmacy.DoseRule"
+                expected_rows = 0
+                version = ""
+                pending_source = "farmacêutico contratado"
+                """
+            ),
+            encoding="utf-8",
+        )
+        # Não deve levantar CommandError (nenhuma falha) mesmo com version vazia.
+        call_command("seed_catalogs", "--manifest", str(manifesto), "--plan")
+
+
+class SeedCatalogsSha256Tests(TenantTestCase):
+    """Ordem 028: conferência de sha256 — fora de SimpleTestCase porque
+    ``count_rows`` (chamado antes da checagem de sha256) já toca o banco
+    (``core.CID10Code.objects.count()``), mesmo sem nenhum import real
+    acontecer aqui."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+
+    def test_sha256_divergente_falha_nomeando_o_catalogo(self) -> None:
+        source_dir = self.tmp / "fontes"
+        source_dir.mkdir()
+        (source_dir / "cid10_full.csv").write_text("conteudo de teste", encoding="utf-8")
+
+        wrong_digest = "0" * 64
+        manifesto = _escreve_manifesto(
+            self.tmp, version='"2008"', extra=f'sha256 = "{wrong_digest}"\n'
+        )
+        buffer = StringIO()
+        with self.assertRaises(CommandError) as ctx:
+            call_command(
+                "seed_catalogs",
+                "--manifest",
+                str(manifesto),
+                "--source-dir",
+                str(source_dir),
+                stdout=buffer,
+            )
+        self.assertIn("cid10", str(ctx.exception))
+        self.assertIn("SHA256 DIVERGENTE", buffer.getvalue())
+
+    def test_sha256_confere_prossegue_para_o_import_real(self) -> None:
+        import hashlib
+
+        source_dir = self.tmp / "fontes"
+        source_dir.mkdir()
+        source_file = source_dir / "cid10_full.csv"
+        source_file.write_text("conteudo de teste", encoding="utf-8")
+        digest = hashlib.sha256(source_file.read_bytes()).hexdigest()
+
+        manifesto = _escreve_manifesto(self.tmp, version='"2008"', extra=f'sha256 = "{digest}"\n')
+        buffer = StringIO()
+        with self.assertRaises(CommandError):
+            call_command(
+                "seed_catalogs",
+                "--manifest",
+                str(manifesto),
+                "--source-dir",
+                str(source_dir),
+                stdout=buffer,
+            )
+        # The sha256 check passed (not the failure) — it fails further along,
+        # inside the real import_cid10 command, on the fabricated CSV content.
+        self.assertNotIn("SHA256 DIVERGENTE", buffer.getvalue())
 
 
 class ManifestoDoRepoTests(SimpleTestCase):

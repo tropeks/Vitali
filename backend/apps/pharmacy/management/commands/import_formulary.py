@@ -10,13 +10,19 @@ Usage:
 
 INVIOLABLE PRINCIPLE: no clinical number is invented here. The importer only
 reads what the CSV provides. Imported DoseRules are NEVER self-validated —
-validated=False is the default and must remain so until a human pharmacist
-reviews and validates each rule via the UI.
+status_validacao="nao_validado" is the default and must remain so until a
+human pharmacist with an ACTIVE CRF cadastro validates each rule via the UI
+(``DoseRuleViewSet.validate``).
 
 This command is a thin CLI wrapper around
 ``apps.pharmacy.services.formulary_import`` — the SAME parse/validate/upsert
 service used by the pharmacist-facing upload UI (D-T1), so both paths share one
 implementation and one set of invariants.
+
+THE FULL COLUMN CONTRACT — including accepted units, band rules and the
+mandatory procedência columns below — is ``docs/FORMULARIO_DOSES.md``, written
+for the pharmacist who compiles the source file. This docstring only summarizes
+it for whoever runs the command.
 
 Behaviour:
   - Idempotent: MedicationFormulary update_or_create by drug name; DoseRule
@@ -53,6 +59,12 @@ Expected CSV columns (comma-delimited by default):
     age_max_days       — DoseRule.age_max_days  (optional integer; blank → None = unbounded)
     weight_min_kg      — DoseRule.weight_min_kg (optional decimal; blank → None = unbounded)
     weight_max_kg      — DoseRule.weight_max_kg (optional decimal; blank → None = unbounded)
+    fonte_tipo         — DoseRule.fonte_tipo    (REQUIRED: 'bula_anvisa' or 'literatura')
+    fonte_ref          — DoseRule.fonte_ref     (REQUIRED: registro ANVISA+data da bula, ou DOI/referência)
+    fonte_trecho       — DoseRule.fonte_trecho  (REQUIRED: a posologia citada, tal como na fonte)
+
+A row missing any of the three fonte_* columns fails the WHOLE import — no
+number here may claim to come from nowhere.
 """
 
 import logging

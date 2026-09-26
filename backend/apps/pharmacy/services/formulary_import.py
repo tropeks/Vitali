@@ -11,12 +11,25 @@ This module is shared by BOTH consumers of the import:
 
 INVIOLABLE PRINCIPLE (carried over from the original command): no clinical
 number is ever invented here. The importer only reads what the CSV provides.
-Imported DoseRules are NEVER self-validated — ``validated=False`` is the default
-and MUST remain so until a human pharmacist signs off each rule via the curation
-UI (``DoseRuleViewSet.validate``). A rule that is ``active=True`` but
-``validated=False`` is inert in the DoseChecker; only the explicit pharmacist
-sign-off arms it. That sign-off gate is what makes it safe to turn the
+Imported DoseRules are NEVER self-validated — ``status_validacao="nao_validado"``
+is the default and MUST remain so until a human pharmacist WITH AN ACTIVE CRF
+signs off each rule via the curation UI (``DoseRuleViewSet.validate``). Ordem
+028: a ``nao_validado`` rule is no longer inert — the engine uses it to SIGNAL
+(advisory), it just never blocks on its own; only the explicit CRF sign-off
+arms it to block. That sign-off gate is what makes it safe to turn the
 ``dose_safety`` feature flag ON after an upload.
+
+Ordem 028 — procedência is mandatory, per row: every row MUST carry
+``fonte_tipo`` (``bula_anvisa`` | ``literatura``), ``fonte_ref`` (the ANVISA
+registry + bula date, or the literature reference/DOI) and ``fonte_trecho``
+(the posology as cited). A row missing any of the three fails the WHOLE import
+(fail-loud, no partial import) — see ``docs/FORMULARIO_DOSES.md`` for the full
+column contract written for the pharmacist who compiles the source file.
+
+Ordem 028 — synthetic sources are test-only: a file whose first lines carry a
+``# sintetico: true`` header is refused UNLESS the caller passes
+``allow_synthetic=True`` explicitly to ``parse_and_validate``. Neither the
+``import_formulary`` command nor the upload UI ever pass it — only tests do.
 
 Behaviour preserved from the command:
   - Idempotent: MedicationFormulary upsert by drug name; DoseRule upsert by
@@ -26,6 +39,11 @@ Behaviour preserved from the command:
   - Physical line numbers (1-based, counting comment lines) are reported in
     error messages so operators can find the bad row in any editor.
   - Lines starting with '#' are treated as comments and skipped.
+  - Reimporting a row whose band/ceiling/unit changed on an already-``validado``
+    rule demotes it back to ``nao_validado`` (clearing the CRF portrait) and
+    writes ``AuditLog dose_rule_invalidated_by_import`` with the old and new
+    values — the new numbers were never signed off. A row that did not
+    clinically change keeps its validation untouched.
 
 Expected CSV columns (comma-delimited by default) — see the management command
 docstring for the full per-column contract.
@@ -34,12 +52,14 @@ docstring for the full per-column contract.
 from __future__ import annotations
 
 import csv
+import re
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
+from apps.core.models import AuditLog
 from apps.pharmacy.models import DoseRule, Drug, MedicationFormulary
 
 # Natural-key fields for DoseRule update_or_create lookup (matches the
@@ -206,6 +226,18 @@ def parse_row(row: dict, *, line_number: int) -> dict:
     entry["weight_min_kg"] = _opt_decimal(row, "weight_min_kg")
     entry["weight_max_kg"] = _opt_decimal(row, "weight_max_kg")
 
+    # Procedência (ordem 028) — MANDATORY per row. No number in this file may
+    # claim to come from nowhere; a row that omits any of the three fails the
+    # WHOLE import (see parse_and_validate — fail-loud, no partial import).
+    entry["fonte_tipo"] = _required_str(row, "fonte_tipo")
+    if entry["fonte_tipo"] not in ("bula_anvisa", "literatura"):
+        raise ValueError(
+            f"column 'fonte_tipo' must be 'bula_anvisa' or 'literatura', "
+            f"got {entry['fonte_tipo']!r}"
+        )
+    entry["fonte_ref"] = _required_str(row, "fonte_ref")
+    entry["fonte_trecho"] = _required_str(row, "fonte_trecho")
+
     return entry
 
 
@@ -226,7 +258,23 @@ def _physical_lines(all_lines: list[str]) -> list[tuple[int, str]]:
     ]
 
 
-def parse_and_validate(content: str, *, delimiter: str = ",") -> list[dict]:
+_SYNTHETIC_HEADER_RE = re.compile(r"^\s*#\s*sintetico\s*:\s*true\s*$", re.IGNORECASE)
+
+
+def _is_synthetic_source(all_lines: list[str]) -> bool:
+    """True if any comment line declares ``# sintetico: true``.
+
+    Ordem 028: a synthetic source (fabricated drugs/values for tests) is
+    recognizable by this header and refused outside test code (see
+    ``allow_synthetic`` on ``parse_and_validate``) — no test fixture may ever
+    look, to the importer or the manifest, like a real pharmacist-supplied file.
+    """
+    return any(_SYNTHETIC_HEADER_RE.match(ln) for ln in all_lines)
+
+
+def parse_and_validate(
+    content: str, *, delimiter: str = ",", allow_synthetic: bool = False
+) -> list[dict]:
     """Parse CSV text → list of validated parsed-row dicts.
 
     Runs the SAME two passes the command always ran:
@@ -235,8 +283,22 @@ def parse_and_validate(content: str, *, delimiter: str = ",") -> list[dict]:
     ALL errors are collected; if any exist, a single ``FormularyImportError`` is
     raised and NOTHING is parsed-through. On success every row is guaranteed to
     parse and to satisfy the model field/clean validators.
+
+    ``allow_synthetic`` (ordem 028): a source file whose comments declare
+    ``# sintetico: true`` is refused with a ``FormularyImportError`` unless the
+    caller passes this explicitly. Neither ``import_formulary`` nor the upload
+    UI ever set it — only tests do, so a synthetic (fabricated, non-clinical)
+    file can never be mistaken for — or accidentally loaded as — real data.
     """
     all_lines = content.splitlines(keepends=True)
+    if _is_synthetic_source(all_lines) and not allow_synthetic:
+        raise FormularyImportError(
+            [
+                "Fonte marcada como sintética ('# sintetico: true') — recusada fora de "
+                "teste. Esta marcação existe para que dados fabricados nunca sejam "
+                "confundidos com o formulário real."
+            ]
+        )
     physical_lines = _physical_lines(all_lines)
     if not physical_lines:
         raise FormularyImportError(["CSV file is empty or contains only comments."])
@@ -323,8 +385,11 @@ def parse_and_validate(content: str, *, delimiter: str = ",") -> list[dict]:
             age_max_days=entry.get("age_max_days"),
             weight_min_kg=entry.get("weight_min_kg"),
             weight_max_kg=entry.get("weight_max_kg"),
+            fonte_tipo=entry["fonte_tipo"],
+            fonte_ref=entry["fonte_ref"],
+            fonte_trecho=entry["fonte_trecho"],
             active=True,
-            validated=False,  # NEVER self-validate; human sign-off required
+            status_validacao=DoseRule.StatusValidacao.NAO_VALIDADO,  # NEVER self-validate
         )
         try:
             rule_instance.full_clean(exclude=["formulary"])
@@ -431,7 +496,15 @@ def write_rows(parsed_rows: list[dict], *, dry_run: bool = False) -> ImportSumma
                 "absolute_max_dose": entry["absolute_max_dose"],
                 "max_per_day": entry.get("max_per_day"),
                 "active": True,
-                # validated stays False — human sign-off only, NEVER set by importer
+                # Procedência is metadata about the number, not a clinical number
+                # itself — it always tracks the latest import and is deliberately
+                # NOT in _DOSERULE_CLINICAL_FIELDS (correcting a citation typo
+                # must not de-arm a validated rule).
+                "fonte_tipo": entry["fonte_tipo"],
+                "fonte_ref": entry["fonte_ref"],
+                "fonte_trecho": entry["fonte_trecho"],
+                # status_validacao stays nao_validado — human CRF sign-off only,
+                # NEVER set by the importer.
             }
 
             # Detect clinically-changed fields BEFORE the upsert so a re-import
@@ -462,15 +535,28 @@ def write_rows(parsed_rows: list[dict], *, dry_run: bool = False) -> ImportSumma
 
             # SAFETY GATE: a validated rule whose clinical numbers changed goes
             # BACK to pending. The new values were never signed off — they must
-            # not enter the DoseChecker armed, and validated_by/at must not keep
-            # pointing at the pharmacist who approved the OLD values.
+            # not enter the DoseChecker armed, and validated_by/at/CRF portrait
+            # must not keep pointing at the pharmacist who approved the OLD
+            # values. AuditLog dose_rule_invalidated_by_import carries the old
+            # and new clinical values (from `changed_fields`) — written inside
+            # this same atomic block, so a dry_run's rollback discards it too.
             if existing_rule is not None and existing_rule.validated and changed_fields:
                 rule_defaults.update(
-                    validated=False,
+                    status_validacao=DoseRule.StatusValidacao.NAO_VALIDADO,
                     validated_by=None,
                     validated_at=None,
+                    validado_crf_numero="",
+                    validado_crf_uf="",
                 )
                 revalidation_required += 1
+                AuditLog.objects.create(
+                    user=None,  # system action (CLI or upload UI) — see `formulary_imported`
+                    action="dose_rule_invalidated_by_import",
+                    resource_type="DoseRule",
+                    resource_id=str(existing_rule.id),
+                    old_data={"status_validacao": "validado"},
+                    new_data={"status_validacao": "nao_validado", "changes": changed_fields},
+                )
 
             _rule, r_created = DoseRule.objects.update_or_create(
                 **natural_key,
