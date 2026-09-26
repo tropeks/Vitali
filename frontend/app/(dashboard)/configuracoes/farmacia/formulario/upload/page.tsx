@@ -12,7 +12,7 @@ const TEMPLATE_HEADER =
   'drug_name,drug_generic,strength_value,strength_unit,route,basis,dose_unit,' +
   'min_per_dose,max_per_dose,absolute_max_dose,min_per_kg,max_per_kg,max_per_day,' +
   'dose_role,enforcement,freq_min_per_day,freq_max_per_day,age_min_days,age_max_days,' +
-  'weight_min_kg,weight_max_kg'
+  'weight_min_kg,weight_max_kg,fonte_tipo,fonte_ref,fonte_trecho'
 
 const TEMPLATE_BODY = [
   '# Modelo de formulário de doses — preencha uma linha por regra de dose.',
@@ -21,9 +21,12 @@ const TEMPLATE_BODY = [
   '# absolute_max_dose é sempre obrigatório (teto absoluto por administração).',
   '# enforcement=block (padrão) bloqueia dose fora da faixa; advise apenas alerta',
   '#   (opioides/sedativos sem teto rígido). Em branco = block.',
+  '# fonte_tipo (bula_anvisa|literatura), fonte_ref e fonte_trecho são obrigatórios em toda linha',
+  '#   (ordem 028; contrato completo em docs/FORMULARIO_DOSES.md). Toda linha nasce não validada.',
+  '# AS LINHAS ABAIXO SÃO FICTÍCIAS — mostram o formato, não são doses.',
   TEMPLATE_HEADER,
-  'Exemplo-Fixo,exemplo generico,10.000,mg,IV,fixed,mg,5,15,15,,,,maintenance,block,,,,,,',
-  'Exemplo-PorKg,exemplo generico,40.000,mg,IV,per_kg,mg,,,700,5,7,,maintenance,advise,1,1,,,,',
+  'Exemplo-Fixo,exemplo generico,10.000,mg,IV,fixed,mg,5,15,15,,,,maintenance,block,,,,,,,bula_anvisa,EXEMPLO registro e data da bula,EXEMPLO trecho da posologia',
+  'Exemplo-PorKg,exemplo generico,40.000,mg,IV,per_kg,mg,,,700,5,7,,maintenance,advise,1,1,,,,,literatura,EXEMPLO referencia ou DOI,EXEMPLO trecho da posologia',
 ].join('\n')
 
 interface PreviewRow {

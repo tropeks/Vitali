@@ -307,6 +307,8 @@ def find_llm_dose_offenders(source_text: str, label: str) -> list[str]:
     tree = ast.parse(source_text)
     offenders: list[str] = []
     for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
         if not (_is_aisafetyalert_manager_call(node) or _is_aisafetyalert_direct_call(node)):
             continue
         kwargs = {kw.arg: kw.value for kw in node.keywords if kw.arg}

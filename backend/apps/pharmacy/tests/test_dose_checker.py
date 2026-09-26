@@ -1012,7 +1012,11 @@ class TestDoseCheckerRuleValidatedFlag(_Base):
             max_per_dose=Decimal("15.0000"),
             absolute_max_dose=Decimal("15.0000"),
             active=True,
-            validated=validated,
+            status_validacao=(
+                DoseRule.StatusValidacao.VALIDADO
+                if validated
+                else DoseRule.StatusValidacao.NAO_VALIDADO
+            ),
         )
         return drug
 

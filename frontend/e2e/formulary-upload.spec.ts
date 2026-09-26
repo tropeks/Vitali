@@ -23,12 +23,12 @@ const CSV_HEADER =
   'drug_name,drug_generic,strength_value,strength_unit,route,basis,dose_unit,' +
   'min_per_dose,max_per_dose,absolute_max_dose,min_per_kg,max_per_kg,max_per_day,' +
   'dose_role,enforcement,freq_min_per_day,freq_max_per_day,age_min_days,age_max_days,' +
-  'weight_min_kg,weight_max_kg';
+  'weight_min_kg,weight_max_kg,fonte_tipo,fonte_ref,fonte_trecho';
 
 const CSV_BODY = [
   CSV_HEADER,
-  'FAKE-E2E-Alpha,fake e2e alpha,10.000,mg,IV,fixed,mg,5,15,15,,,,maintenance,block,,,,,,',
-  'FAKE-E2E-Beta,fake e2e beta,5.000,mg,PO,fixed,mg,2.5,10,10,,,,maintenance,advise,,,,,,',
+  'FAKE-E2E-Alpha,fake e2e alpha,10.000,mg,IV,fixed,mg,5,15,15,,,,maintenance,block,,,,,,,literatura,FAKE-E2E referencia ficticia,FAKE-E2E trecho ficticio',
+  'FAKE-E2E-Beta,fake e2e beta,5.000,mg,PO,fixed,mg,2.5,10,10,,,,maintenance,advise,,,,,,,literatura,FAKE-E2E referencia ficticia,FAKE-E2E trecho ficticio',
 ].join('\n');
 
 test.describe('Formulary CSV upload — preview and commit', () => {
