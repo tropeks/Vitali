@@ -1122,3 +1122,80 @@ class TestDoseCheckerRuleValidatedFlag(_Base):
         self.assertEqual(v.verdict, Verdict.SAFE, f"got {v.verdict}: {v.reason}")
         self.assertEqual(v.rule_id, validado.id)
         self.assertTrue(v.rule_validated)
+
+    def test_validated_rule_wins_over_a_narrower_nested_unvalidated_one(self):
+        """Revisão (P1): 'se houver regra validada e não validada para o mesmo
+        caso, vence a validada' — SEMPRE, não só num empate de especificidade.
+        A regra validada é AMPLA (idade irrestrita); a nao_validado é
+        ESTREITA e aninhada (uma banda etária que caberia inteira dentro da
+        ampla — como uma reimportação recém-chegada, ainda sem sign-off).
+        Antes do conserto, a especificidade (span mais estreito) escolhia a
+        nao_validado só por ser mais específica, mesmo cobrindo o MESMO
+        paciente que a validada já cobria — silenciosamente rebaixando um
+        bloqueio revisado por humano a um advisory não revisado."""
+        from apps.pharmacy.models import DoseRule, Drug, MedicationFormulary
+
+        drug = Drug.objects.create(name="FAKE-NestedNarrow", generic_name="fake_nestednarrow")
+        formulary = MedicationFormulary.objects.create(
+            drug=drug,
+            strength_value=Decimal("1.000"),
+            strength_unit="mg",
+            route="PO",
+            active=True,
+        )
+        wide_validated = DoseRule.objects.create(
+            formulary=formulary,
+            basis="fixed",
+            dose_unit="mg",
+            route="PO",
+            min_per_dose=Decimal("10"),
+            max_per_dose=Decimal("20"),
+            absolute_max_dose=Decimal("30"),
+            active=True,
+            validated=True,
+            # age_min_days/age_max_days left unbounded (None) — covers everyone.
+        )
+        # Narrower, nested band (100–200 days) — the patient below (150) falls
+        # inside BOTH rules. Its own dose band is irrelevant to which rule is
+        # picked; only that it is NOT the one that decides.
+        DoseRule.objects.create(
+            formulary=formulary,
+            basis="fixed",
+            dose_unit="mg",
+            route="PO",
+            age_min_days=100,
+            age_max_days=200,
+            min_per_dose=Decimal("1"),
+            max_per_dose=Decimal("2"),
+            absolute_max_dose=Decimal("2"),
+            active=True,
+            validated=False,
+        )
+
+        # Dose 25: OUTSIDE the wide validated band [10,20] (but under its
+        # absolute ceiling 30) — a genuine OUT_OF_RANGE the validated rule
+        # must catch. Under the narrow nao_validado rule this dose would
+        # ALSO be OUT_OF_RANGE (25 > absolute_max_dose 2), so a wrong
+        # selection would be invisible on verdict/severity alone — only
+        # rule_id/rule_validated expose it, which is exactly what this test
+        # pins down.
+        v = DoseChecker.check(
+            drug=drug,
+            dose_amount=Decimal("25"),
+            dose_unit="mg",
+            route="PO",
+            frequency_per_day=None,
+            patient_age_days=150,
+            weight_kg=None,
+            weight_recorded_at=self.fresh,
+            now=self.now,
+            weight_staleness_days=90,
+        )
+        self.assertEqual(v.verdict, Verdict.OUT_OF_RANGE, f"got {v.verdict}: {v.reason}")
+        self.assertEqual(
+            v.rule_id,
+            wide_validated.id,
+            "a regra validada (ampla) deveria ter sido escolhida, nao a nao_validado (estreita)",
+        )
+        self.assertTrue(v.rule_validated)
+        self.assertEqual(v.enforcement, "block")

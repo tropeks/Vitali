@@ -569,15 +569,28 @@ class DoseChecker:
     def _specificity_key(rule):
         """Sort key: smaller = more specific, picked first.
 
-        Narrower age band first, then narrower weight band, then narrower frequency
-        band (AXIS 1), then a concrete route before a blank (any-route) rule, then —
-        ordem 028 — a VALIDATED rule before a nao_validado one for the SAME band
-        (so importing a pharmacist-reviewed rule for a case a draft already
-        covers makes the validated one win), then — on a genuine tie — the
-        STRICTER (lowest absolute_max_dose) rule, and only finally a stable id
-        tie-break. Never let an arbitrary UUID pick a looser (higher-ceiling)
-        rule. dose_role is NOT part of the key: it is an exact-match filter
-        (AXIS 2), so all surviving candidates already share the same role.
+        Ordem 028 (review fix): ``validated_rank`` is the FIRST component, not
+        a tie-break among the rest. "Se houver regra validada e não validada
+        para o mesmo caso, vence a validada" means exactly that — ANY
+        candidate rule that is ``validado`` beats ANY candidate that is
+        ``nao_validado``, independent of whose band is narrower. Putting it
+        last (only breaking a genuine span tie) let a freshly-reimported
+        nao_validado band that is narrower than an existing validado one
+        silently outrank it, demoting what should still be a human-reviewed
+        block to an unreviewed advisory — exactly the hole INTENT v6 §Limites
+        closes ("dado de dose... entra por importação validada ou por humano
+        qualificado"). The universal absolute ceiling is unaffected: it is
+        still the min() over ALL matching candidates, computed separately in
+        ``_check`` — not just the most-specific one.
+
+        Within each validated/nao_validado group: narrower age band first,
+        then narrower weight band, then narrower frequency band (AXIS 1), then
+        a concrete route before a blank (any-route) rule, then — on a genuine
+        tie — the STRICTER (lowest absolute_max_dose) rule, and only finally a
+        stable id tie-break. Never let an arbitrary UUID pick a looser
+        (higher-ceiling) rule. dose_role is NOT part of the key: it is an
+        exact-match filter (AXIS 2), so all surviving candidates already share
+        the same role.
         """
         age_span = DoseChecker._span(rule.age_min_days, rule.age_max_days)
         weight_span = DoseChecker._span(rule.weight_min_kg, rule.weight_max_kg)
@@ -585,11 +598,11 @@ class DoseChecker:
         route_rank = 0 if rule.route else 1
         validated_rank = 0 if rule.status_validacao == rule.StatusValidacao.VALIDADO else 1
         return (
+            validated_rank,
             age_span,
             weight_span,
             freq_span,
             route_rank,
-            validated_rank,
             Decimal(rule.absolute_max_dose),
             str(rule.id),
         )
