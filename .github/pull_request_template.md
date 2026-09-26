@@ -8,7 +8,7 @@
 
 <!-- How did you verify this? Check what applies. -->
 
-- [ ] Backend tests pass in Docker: `docker compose exec -T django python manage.py test <app.tests.test_x>`
+- [ ] Backend tests pass in CI or on the lab: `scripts/pytest.sh <apps/x/tests/test_y.py>` (never compose on the forge)
 - [ ] Frontend type-check passes: `cd frontend && npm run type-check`
 - [ ] Manual smoke test in browser (describe the happy path)
 - [ ] Edge cases tested (list them)
@@ -19,7 +19,7 @@
 
 <!-- Delete if no migrations. Otherwise: -->
 
-- [ ] Migration runs cleanly: `docker compose exec -T django python manage.py migrate_schemas`
+- [ ] Migration runs cleanly (the CI `Backend — Tests` job runs `migrate_schemas --shared`; tenant schemas are built by the suite)
 - [ ] Reversible (or documented why not)
 - [ ] Safe under concurrent writes (or documented why it's OK to take a brief lock)
 

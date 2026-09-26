@@ -51,8 +51,11 @@ Tools that `/health` runs:
 - typecheck (backend): `mypy apps/ vitali/ --ignore-missing-imports` (CI ou lab)
 - lint (backend): `ruff check apps/ vitali/` (CI ou lab)
 - format-check (backend): `ruff format --check apps/ vitali/` (CI ou lab)
-- test (backend): `pytest -v` (CI ou lab; na lab, com o overlay de `scripts/` e
-  `COVERAGE_FILE=/tmp/.coverage`)
+- test (backend): `scripts/pytest.sh [alvo]` — roda na **lab**, nunca no daemon local
+  (imagem de teste, overlay de `scripts/` e dos arquivos de compose, `COVERAGE_FILE`,
+  rede sem porta publicada). Detalhes: skill `run-backend-tests`. **Não** use
+  `docker compose exec django pytest`: além de subir compose, aquele contêiner roda a
+  imagem baked e testa código velho (falso-verde).
 - typecheck (frontend): `cd frontend && npx tsc --noEmit`
 - lint (frontend): `cd frontend && npx next lint`
 - test (frontend): `cd frontend && npm test` (vitest; o CI tem portão nele desde a ordem 012)
