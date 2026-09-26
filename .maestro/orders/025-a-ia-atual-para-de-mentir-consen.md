@@ -100,3 +100,7 @@ vazamento se fosse consertado na ordem errada:
 - Direção vigente na criação: INTENT v6 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 025` (você não fecha a própria ordem).
+accepted_at: 2026-09-25T21:49:28-03:00
+accepted_session: desconhecido
+accepted_tree: 3cf0edff953cea921a34e605b03ac515626b9f59
+accepted_intent: 6
