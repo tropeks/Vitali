@@ -104,16 +104,18 @@ restore:
 
 # ─── Tenant Management ───────────────────────────────────────────────────────
 
+# Valores chegam ao shell pelo ambiente ("$$var"), nunca colados no texto do
+# comando: um nome com aspas não reabre o quoting.
 create-tenant:
-	@if [ -z "$(slug)" ] || [ -z "$(name)" ] || [ -z "$(domain)" ] || [ -z "$(owner_email)" ] || [ -z "$(owner_name)" ]; then \
+	@if [ -z "$$slug" ] || [ -z "$$name" ] || [ -z "$$domain" ] || [ -z "$$owner_email" ] || [ -z "$$owner_name" ]; then \
 		echo "Uso: make create-tenant slug=<slug> name=<nome> domain=<host> owner_email=<email> owner_name=<nome> [cnpj=<cnpj>] [modules=emr,billing]"; \
 		echo "  (ordem 022: casca fina sobre manage.py provision_tenant — sem input() interativo, sem senha na linha de comando; o dono ativa pelo convite por e-mail)"; \
 		exit 1; \
 	fi
 	docker compose exec django python manage.py provision_tenant \
-		--slug "$(slug)" --name "$(name)" --domain "$(domain)" \
-		--owner-email "$(owner_email)" --owner-name "$(owner_name)" \
-		$(if $(cnpj),--cnpj "$(cnpj)") $(if $(modules),--modules "$(modules)")
+		--slug "$$slug" --name "$$name" --domain "$$domain" \
+		--owner-email "$$owner_email" --owner-name "$$owner_name" \
+		$(if $(cnpj),--cnpj "$$cnpj") $(if $(modules),--modules "$$modules")
 
 seed-demo:
 	@echo "Seeding demo data for tenant schema '$(or $(tenant),demo)'..."

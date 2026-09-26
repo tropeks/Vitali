@@ -91,8 +91,11 @@ BOOTSTRAP_ADMIN_PASSWORD=... docker compose exec -e BOOTSTRAP_ADMIN_PASSWORD dja
 docker compose exec django python manage.py ensure_audit_partitions
 ```
 
-`make create-tenant` ainda existe, mas cria só `Tenant` + `Domain`, sem admin nem papéis.
-Ele será substituído pelo comando `provision_tenant` na ordem 022.
+Para criar outra clínica depois do bootstrap, use `manage.py provision_tenant` (ou
+`make create-tenant slug=... name=... domain=... owner_email=... owner_name=...`). Ele
+chama o mesmo serviço do signup: papéis, admin sem senha com convite, membership,
+assinatura de trial, flags e as folhas da trilha de auditoria. É idempotente e não aceita
+senha na linha de comando.
 
 Acesse:
 - **Frontend:** http://localhost:3000
@@ -218,7 +221,7 @@ make migrate-tenant  # Migrations em todos os tenants
 make test            # Rodar testes (na sua máquina; na forge, CI ou lab)
 make lint            # Ruff lint
 make shell           # Django shell
-make create-tenant   # Legado: só Tenant + Domain (ordem 022 substitui)
+make create-tenant slug=... name=... domain=... owner_email=... owner_name=...  # Clínica nova (manage.py provision_tenant)
 ```
 
 ---

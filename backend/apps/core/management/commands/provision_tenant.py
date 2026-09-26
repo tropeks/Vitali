@@ -275,7 +275,9 @@ class Command(BaseCommand):
                 owner_password=None,  # sem senha na linha de comando — ver docstring
                 domain=requested.domain,
                 modules=requested.modules,
-                status=Tenant.Status.TRIAL,
+                # PENDING, como o signup: o dono nasce sem senha e a ativação
+                # pelo convite (SetPasswordView) é que leva a clínica a TRIAL.
+                status=Tenant.Status.PENDING,
                 create_subscription=True,
                 send_welcome=True,
             )

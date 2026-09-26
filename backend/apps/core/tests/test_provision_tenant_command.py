@@ -177,10 +177,9 @@ class ProvisionTenantCommandParityTests(TestCase):
         )
         tenant_b = result_b.tenant
 
-        # A ÚNICA diferença declarada é o status: o comando nasce TRIAL
-        # (igual ao outro caminho de operador, TenantRegistrationView); o
-        # signup nasce PENDING até o dono ativar pelo link.
-        self.assertEqual(tenant_a.status, Tenant.Status.TRIAL)
+        # Os dois nascem PENDING: o dono não tem senha, e é a ativação pelo
+        # convite (SetPasswordView) que leva a clínica a TRIAL.
+        self.assertEqual(tenant_a.status, Tenant.Status.PENDING)
         self.assertEqual(tenant_b.status, Tenant.Status.PENDING)
 
         state_a = _tenant_state(tenant_a)
