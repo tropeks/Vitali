@@ -229,48 +229,208 @@ class DoseTypeLeavesVALIDAlertTypesTest(TenantTestCase):
         self.assertNotIn("dose", VALID_ALERT_TYPES)
 
 
+# ── guarda AST reusável (revisão P2) ─────────────────────────────────────────
+#
+# alert_type que o LLM tem permissão de gravar (source="llm") — tudo que NÃO
+# for um destes literais reprova, e uma expressão que não é sequer um literal
+# de string (variável, atributo, chamada — "o leitor não consegue provar")
+# TAMBÉM reprova. A única exceção documentada é o padrão dinâmico já existente
+# em apps.emr.tasks.check_prescription_safety (alert_type=alert.alert_type),
+# cuja segurança vem de VALID_ALERT_TYPES (prescription_safety.py) já não
+# conter "dose" — uma invariante de OUTRO arquivo que uma varredura puramente
+# sintática, por linha, não tem como enxergar sem uma análise de fluxo de dados
+# que este guard não faz. Ver DoseTypeLeavesVALIDAlertTypesTest acima para a
+# prova complementar (em tempo de execução) dessa invariante.
+_PERMITTED_LLM_ALERT_TYPE_LITERALS = frozenset(
+    {"dose_explicacao", "drug_interaction", "allergy", "contraindication"}
+)
+
+
+def _is_llm_source(node: ast.AST) -> bool:
+    if isinstance(node, ast.Constant) and node.value == "llm":
+        return True
+    # AISafetyAlert.Source.LLM
+    return isinstance(node, ast.Attribute) and node.attr == "LLM"
+
+
+def _alert_type_is_forbidden(node: ast.AST) -> bool:
+    """True quando alert_type é um literal de string FORA do conjunto
+    permitido (pega "dose", variações/typos e qualquer outro literal não
+    catalogado) OU um acesso de atributo cujo nome final é literalmente
+    "dose"/"DOSE" (cobre um futuro enum tipo AISafetyAlert.AlertType.DOSE,
+    que ainda não existe hoje — daí o "se existir enum" ser sempre falso na
+    varredura real, mas coberto nos trechos sintéticos)."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value not in _PERMITTED_LLM_ALERT_TYPE_LITERALS
+    if isinstance(node, ast.Attribute):
+        return node.attr.lower() == "dose"
+    return False
+
+
+def _is_aisafetyalert_manager_call(node: ast.AST) -> bool:
+    """``AISafetyAlert.objects.<create|update_or_create|get_or_create|
+    bulk_create>(...)``. For ``bulk_create`` the actual kwargs live on the
+    NESTED ``AISafetyAlert(...)`` calls inside the list argument, which
+    ``_is_aisafetyalert_direct_call`` catches independently via ``ast.walk``
+    (it visits nested nodes regardless of the enclosing call) — this branch
+    exists mainly so the method name itself is a named, intentional part of
+    the contract, not an accident of tree-walking."""
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr in {"create", "update_or_create", "get_or_create", "bulk_create"}
+        and isinstance(node.func.value, ast.Attribute)
+        and node.func.value.attr == "objects"
+        and isinstance(node.func.value.value, ast.Name)
+        and node.func.value.value.id == "AISafetyAlert"
+    )
+
+
+def _is_aisafetyalert_direct_call(node: ast.AST) -> bool:
+    """``AISafetyAlert(...)`` — direct instantiation. Catches both
+    ``AISafetyAlert(...).save()`` style writes and each item of a
+    ``bulk_create([AISafetyAlert(...), ...])`` list, since ``ast.walk``
+    descends into the list literal and visits each inner ``Call`` node too."""
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "AISafetyAlert"
+    )
+
+
+def find_llm_dose_offenders(source_text: str, label: str) -> list[str]:
+    """Parse ``source_text`` and return ``["<label>:<lineno>", ...]`` for every
+    AISafetyAlert write whose ``source`` is the LLM and whose ``alert_type``
+    cannot be proven safe. Shared by the real-code scan and the synthetic
+    pattern tests below — one function, so "the guard passes for real" and
+    "the guard catches these patterns" are provably the SAME guard."""
+    tree = ast.parse(source_text)
+    offenders: list[str] = []
+    for node in ast.walk(tree):
+        if not (_is_aisafetyalert_manager_call(node) or _is_aisafetyalert_direct_call(node)):
+            continue
+        kwargs = {kw.arg: kw.value for kw in node.keywords if kw.arg}
+        source_node = kwargs.get("source")
+        alert_type_node = kwargs.get("alert_type")
+        if source_node is None or alert_type_node is None:
+            continue
+        if _is_llm_source(source_node) and _alert_type_is_forbidden(alert_type_node):
+            offenders.append(f"{label}:{node.lineno}")
+    return offenders
+
+
 class NoCodeWritesLlmDoseAlertTest(TenantTestCase):
     """Guard (mirrors ordem 026's source= guard): nenhum código de produção
-    grava AISafetyAlert com source='llm' e alert_type='dose' — o LLM só
-    explica (dose_explicacao), nunca decide (dose)."""
+    grava AISafetyAlert com source='llm' e um alert_type que não seja um dos
+    literais permitidos — o LLM só explica (dose_explicacao) ou fala de
+    interação/alergia/contraindicação; nunca decide dose."""
 
-    @staticmethod
-    def _is_llm_source(node: ast.AST) -> bool:
-        if isinstance(node, ast.Constant) and node.value == "llm":
-            return True
-        # AISafetyAlert.Source.LLM
-        return isinstance(node, ast.Attribute) and node.attr == "LLM"
-
-    @staticmethod
-    def _is_literal_dose(node: ast.AST) -> bool:
-        return isinstance(node, ast.Constant) and node.value == "dose"
-
-    def test_no_upsert_writes_source_llm_alert_type_dose(self):
+    def test_no_write_uses_source_llm_with_a_forbidden_alert_type(self):
         apps_dir = pathlib.Path(__file__).resolve().parents[2]
-        offenders = []
+        offenders: list[str] = []
+        scanned = 0
         for path in apps_dir.rglob("*.py"):
             if "tests" in path.parts or "migrations" in path.parts:
                 continue
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-            for node in ast.walk(tree):
-                if not (
-                    isinstance(node, ast.Call)
-                    and isinstance(node.func, ast.Attribute)
-                    and node.func.attr in {"create", "update_or_create", "get_or_create"}
-                    and isinstance(node.func.value, ast.Attribute)
-                    and node.func.value.attr == "objects"
-                    and isinstance(node.func.value.value, ast.Name)
-                    and node.func.value.value.id == "AISafetyAlert"
-                ):
-                    continue
-                kwargs = {kw.arg: kw.value for kw in node.keywords if kw.arg}
-                source_node = kwargs.get("source")
-                alert_type_node = kwargs.get("alert_type")
-                if source_node is None or alert_type_node is None:
-                    continue
-                if self._is_llm_source(source_node) and self._is_literal_dose(alert_type_node):
-                    offenders.append(f"{path.relative_to(apps_dir.parent)}:{node.lineno}")
-        self.assertGreaterEqual(
-            len(list(apps_dir.rglob("*.py"))), 100, "varredura não enxergou o código"
+            scanned += 1
+            source_text = path.read_text(encoding="utf-8")
+            label = str(path.relative_to(apps_dir.parent))
+            offenders.extend(find_llm_dose_offenders(source_text, label))
+        self.assertGreaterEqual(scanned, 100, "varredura não enxergou o código")
+        self.assertEqual(
+            offenders, [], "código grava AISafetyAlert(source=llm, alert_type=<não permitido>)"
         )
-        self.assertEqual(offenders, [], "código grava AISafetyAlert(source=llm, alert_type=dose)")
+
+
+class GuardCatchesSyntheticPatternsTest(TenantTestCase):
+    """Revisão (P2): prova, com trechos de código FABRICADOS (nunca rodados,
+    só analisados como texto pela MESMA função ``find_llm_dose_offenders``
+    que varre o código real acima), que o guard pega os três padrões pedidos
+    — manager call, bulk_create e instanciação direta + .save() — e que não
+    acusa falso positivo para um alert_type permitido."""
+
+    def test_catches_literal_dose_via_update_or_create(self):
+        src = (
+            "AISafetyAlert.objects.update_or_create(\n"
+            "    prescription_item=item,\n"
+            '    alert_type="dose",\n'
+            '    source="llm",\n'
+            "    defaults={},\n"
+            ")\n"
+        )
+        offenders = find_llm_dose_offenders(src, "sintetico")
+        self.assertEqual(len(offenders), 1, offenders)
+
+    def test_catches_literal_dose_via_bulk_create(self):
+        src = (
+            "AISafetyAlert.objects.bulk_create([\n"
+            "    AISafetyAlert(\n"
+            "        prescription_item=item,\n"
+            '        alert_type="dose",\n'
+            "        source=AISafetyAlert.Source.LLM,\n"
+            "    ),\n"
+            "])\n"
+        )
+        offenders = find_llm_dose_offenders(src, "sintetico")
+        self.assertEqual(len(offenders), 1, offenders)
+
+    def test_catches_literal_dose_via_direct_instantiate_then_save(self):
+        src = (
+            "alert = AISafetyAlert(\n"
+            "    prescription_item=item,\n"
+            '    alert_type="dose",\n'
+            '    source="llm",\n'
+            ")\n"
+            "alert.save()\n"
+        )
+        offenders = find_llm_dose_offenders(src, "sintetico")
+        self.assertEqual(len(offenders), 1, offenders)
+
+    def test_catches_unknown_literal_not_just_the_word_dose(self):
+        """A typo/variant literal (never in the permitted set) must ALSO
+        reprove — the guard checks set membership, not just == "dose"."""
+        src = (
+            "AISafetyAlert.objects.create(\n"
+            "    prescription_item=item,\n"
+            '    alert_type="dosage",\n'
+            '    source="llm",\n'
+            ")\n"
+        )
+        offenders = find_llm_dose_offenders(src, "sintetico")
+        self.assertEqual(len(offenders), 1, offenders)
+
+    def test_catches_hypothetical_dose_enum_attribute(self):
+        """Se um enum futuro ganhar um membro DOSE, o guard já pega."""
+        src = (
+            "AISafetyAlert.objects.create(\n"
+            "    prescription_item=item,\n"
+            "    alert_type=AISafetyAlert.AlertType.DOSE,\n"
+            '    source="llm",\n'
+            ")\n"
+        )
+        offenders = find_llm_dose_offenders(src, "sintetico")
+        self.assertEqual(len(offenders), 1, offenders)
+
+    def test_does_not_flag_a_permitted_literal(self):
+        src = (
+            "AISafetyAlert.objects.update_or_create(\n"
+            "    prescription_item=item,\n"
+            '    alert_type="dose_explicacao",\n'
+            "    source=AISafetyAlert.Source.LLM,\n"
+            "    defaults={},\n"
+            ")\n"
+        )
+        offenders = find_llm_dose_offenders(src, "sintetico")
+        self.assertEqual(offenders, [])
+
+    def test_does_not_flag_an_engine_sourced_write(self):
+        src = (
+            "AISafetyAlert.objects.update_or_create(\n"
+            "    prescription_item=item,\n"
+            '    alert_type="dose",\n'
+            '    source="engine",\n'
+            "    defaults={},\n"
+            ")\n"
+        )
+        offenders = find_llm_dose_offenders(src, "sintetico")
+        self.assertEqual(offenders, [])
