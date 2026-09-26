@@ -301,6 +301,22 @@ class DoseCheckService:
                 )
                 return
 
+            # Idempotency (revisão P1 — mirrors the advisory path below): an
+            # UNCHANGED blocking verdict (same message, still flagged,
+            # still contraindication) is the SAME clinical situation on
+            # re-evaluation — the dispense gate re-evaluates on every
+            # attempt while the alert sits unacknowledged. Without this,
+            # every retry wrote a fresh AuditLog and re-scheduled a real LLM
+            # call via _schedule_explanation. Return without touching the
+            # row, without auditing, without scheduling.
+            if (
+                existing is not None
+                and existing.status == "flagged"
+                and existing.severity == "contraindication"
+                and existing.message == verdict.reason
+            ):
+                return
+
             alert, _created = AISafetyAlert.objects.update_or_create(
                 prescription_item=item,
                 alert_type="dose",

@@ -1122,3 +1122,69 @@ class TestUnvalidatedRuleNeverBlocks(_EnforceBase):
             prescription_item__prescription=rx, source="engine", alert_type="dose"
         )
         self.assertEqual(alert.status, "safe")
+
+
+class TestBlockingAndDemotedIdempotency(_EnforceBase):
+    """Revisão (P1): re-avaliar o MESMO veredito bloqueante repetidas vezes
+    (o dispense reavalia a cada tentativa) não pode reescrever o AuditLog nem
+    reagendar a explicação do LLM a cada chamada — só ``_raise_advisory_alert``
+    tinha esse curto-circuito de idempotência; ``_raise_blocking_alert`` não."""
+
+    def _evaluate_three_times_with_mocked_explanation(self, rx, *, gates):
+        from unittest.mock import patch
+
+        from apps.emr.services.dose_safety import DoseCheckService
+
+        rx.refresh_from_db()
+        service = DoseCheckService(requesting_user=self.doctor)
+        with patch("apps.emr.tasks.explain_dose_verdict.delay") as mock_delay:
+            for gate in gates:
+                with self.captureOnCommitCallbacks(execute=True):
+                    service.evaluate_prescription(rx, gate=gate)
+        return mock_delay
+
+    def test_repeated_identical_blocking_verdict_writes_one_audit_and_schedules_once(self):
+        from apps.core.models import AuditLog
+
+        rx, item = self._make_rx(dose=Decimal("40"))  # OUT_OF_RANGE on a validated rule → block
+        mock_delay = self._evaluate_three_times_with_mocked_explanation(
+            rx, gates=["sign", "dispense", "dispense"]
+        )
+
+        self.assertEqual(
+            AuditLog.objects.filter(action="dose_alert_raised", resource_id=str(item.id)).count(),
+            1,
+            "reavaliar o MESMO veredito bloqueante 3x deveria gravar 1 AuditLog, nao 3",
+        )
+        mock_delay.assert_called_once()
+
+        alert = AISafetyAlert.objects.get(
+            prescription_item=item, source="engine", alert_type="dose"
+        )
+        self.assertEqual(alert.severity, "contraindication")
+        self.assertEqual(alert.status, "flagged")
+
+    def test_repeated_identical_advisory_verdict_schedules_explanation_once(self):
+        """Belt-and-suspenders: the advisory path already had the idempotency
+        short-circuit — confirm it also caps the LLM scheduling at one call,
+        not just the AuditLog."""
+        from apps.core.models import AuditLog
+
+        drug = make_perkg_drug_unvalidated("-Idem")
+        rx, item = self._make_rx(dose=Decimal("40"), drug=drug)  # demoted (nao_validado) advisory
+        mock_delay = self._evaluate_three_times_with_mocked_explanation(
+            rx, gates=["sign", "dispense", "dispense"]
+        )
+
+        self.assertEqual(
+            AuditLog.objects.filter(
+                action="dose_out_of_range_nao_validada", resource_id=str(item.id)
+            ).count(),
+            1,
+        )
+        mock_delay.assert_called_once()
+
+        alert = AISafetyAlert.objects.get(
+            prescription_item=item, source="engine", alert_type="dose"
+        )
+        self.assertEqual(alert.severity, "caution")
