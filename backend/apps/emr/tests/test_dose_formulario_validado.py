@@ -62,8 +62,10 @@ from apps.test_utils import TenantTestCase
 # de importação já existente). "Ficticiol" 1–2 mg é sintético.
 _FICTICIOL_CSV = (
     "drug_name,drug_generic,strength_value,strength_unit,route,basis,"
-    "dose_unit,min_per_dose,max_per_dose,absolute_max_dose,dose_role,enforcement\n"
-    "Ficticiol,ficticiolum,100.000,mg,IV,fixed,mg,1,2,2,maintenance,block\n"
+    "dose_unit,min_per_dose,max_per_dose,absolute_max_dose,dose_role,enforcement,"
+    "fonte_tipo,fonte_ref,fonte_trecho\n"
+    "Ficticiol,ficticiolum,100.000,mg,IV,fixed,mg,1,2,2,maintenance,block,"
+    "literatura,DOI:10.0000/ficticiol,Trecho ficticio de teste — nao clinico\n"
 )
 
 
@@ -242,11 +244,12 @@ class ValidateRequiresCRFTest(TenantTestCase):
         rule.refresh_from_db()
         self.assertTrue(rule.validated)
 
-        # Os campos ainda não existem — acessa por getattr para falhar por
-        # asserção (o campo ausente), não por AttributeError de coleta.
+        # Fase 1 acessava estes campos por getattr (nomes ainda não existiam).
+        # Fase 2 (implementação): o retrato do CRF ganhou nomes próprios
+        # (validado_crf_numero/uf); "quando" NÃO foi renomeado — continua
+        # validated_at, por decisão explícita ("não renomeie coluna à toa").
         crf_numero = getattr(rule, "validado_crf_numero", None)
         crf_uf = getattr(rule, "validado_crf_uf", None)
-        validado_em = getattr(rule, "validado_em", None)
 
         self.assertEqual(
             crf_numero,
@@ -259,8 +262,8 @@ class ValidateRequiresCRFTest(TenantTestCase):
             "retrato da UF do CRF não foi gravado na validação (campo ausente ou vazio)",
         )
         self.assertIsNotNone(
-            validado_em,
-            "data da validação (validado_em) não foi gravada (campo ausente)",
+            rule.validated_at,
+            "data da validação (validated_at) não foi gravada",
         )
 
 
