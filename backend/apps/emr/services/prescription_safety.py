@@ -33,8 +33,16 @@ logger = logging.getLogger(__name__)
 
 SAFETY_CACHE_TTL = 3600  # 1 hour
 
-VALID_ALERT_TYPES = {"drug_interaction", "allergy", "dose", "contraindication"}
+VALID_ALERT_TYPES = {"drug_interaction", "allergy", "contraindication"}
 VALID_SEVERITIES = {"caution", "contraindication"}
+
+# Ordem 028: "dose" LEFT VALID_ALERT_TYPES — the LLM no longer judges dose on
+# its own (INTENT v6 §Resultado: "motor determinístico autoritativo; o LLM só
+# explica"). apps.emr.services.dose_explainer is what replaces it: it only
+# EXPLAINS a verdict the deterministic engine already reached, on its own
+# alert_type="dose_explicacao" row. A response that still says type="dose" is
+# a stale/adversarial LLM reply — discarded here (never becomes an alert) and
+# only counted in the log, exactly like any other unknown alert_type.
 
 
 @dataclass
@@ -168,10 +176,13 @@ class PrescriptionSafetyChecker:
             gateway = ClaudeGateway()
             system_prompt = (
                 "Você é um especialista em segurança farmacológica. "
-                "Analise possíveis interações medicamentosas, alergias cruzadas, "
-                "problemas de dose ou contraindicações. "
+                "Analise possíveis interações medicamentosas, alergias cruzadas "
+                "ou contraindicações. NÃO analise dose — a checagem de dose é "
+                "feita por um motor determinístico separado; se você tiver algo "
+                "a dizer sobre a dose prescrita, isso será pedido a você "
+                "separadamente, depois do veredito do motor. "
                 "Responda APENAS com um JSON válido no formato: "
-                '{"alerts": [{"type": "drug_interaction|allergy|dose|contraindication", '
+                '{"alerts": [{"type": "drug_interaction|allergy|contraindication", '
                 '"severity": "caution|contraindication", '
                 '"message": "...", "recommendation": "..."}]}. '
                 'Se não houver alertas, retorne {"alerts": []}. '
@@ -184,7 +195,7 @@ class PrescriptionSafetyChecker:
                 f"Novo medicamento sendo prescrito: {drug_name}\n"
                 f"Outros medicamentos já na receita: {other_drugs_text}\n"
                 f"Alergias conhecidas do paciente: {allergies_text}\n\n"
-                "Verifique interações, alergias cruzadas, dose e contraindicações. "
+                "Verifique interações e alergias cruzadas (NÃO dose). "
                 "Retorne um JSON com os alertas encontrados."
             )
 

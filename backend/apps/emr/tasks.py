@@ -129,6 +129,28 @@ def check_prescription_safety(self, item_id: str):
         raise self.retry(exc=exc) from exc
 
 
+# ── Ordem 028 — dose explanation (the LLM only explains, never decides) ──────
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def explain_dose_verdict(self, alert_id: str, verdict_context: dict) -> None:
+    """Thin Celery wrapper around ``apps.emr.services.dose_explainer``.
+
+    Scheduled via ``transaction.on_commit`` by
+    ``apps.emr.services.dose_safety.DoseCheckService`` whenever the engine
+    writes/updates a dose verdict that is neither SAFE nor NOT_APPLICABLE.
+    Fail-open by design (see the service docstring) — this wrapper only adds
+    retry-on-transient-error semantics, mirroring ``check_prescription_safety``.
+    """
+    from apps.emr.services.dose_explainer import explain_dose_verdict as _explain
+
+    try:
+        _explain(alert_id, verdict_context)
+    except Exception as exc:
+        logger.exception("explain_dose_verdict task failed for alert %s: %s", alert_id, exc)
+        raise self.retry(exc=exc) from exc
+
+
 # ── S-090 / F-02: Appointment WhatsApp confirmation ──────────────────────────
 
 
