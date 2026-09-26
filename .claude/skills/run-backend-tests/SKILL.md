@@ -1,59 +1,67 @@
 ---
 name: run-backend-tests
-description: Roda a suíte pytest do backend do Vitali do jeito que executa o código do checkout (mount-run da imagem de dev), em vez do `docker compose exec django pytest`, que roda código velho da imagem baked e dá falso-verde. Use sempre que for rodar, reproduzir ou depurar teste de backend do Vitali.
+description: Roda a suíte pytest do backend do Vitali NA LAB (contexto docker `lab`, contêiner efêmero sem porta publicada), contra o código do checkout, pelo `scripts/pytest.sh`. Nunca na forge, nunca com compose. Use sempre que for rodar, reproduzir ou depurar teste de backend do Vitali, ou rodar ruff/mypy na imagem de teste.
 ---
 
 # Rodar teste de backend do Vitali
 
-## O problema que este skill existe para evitar
+## A regra
 
-`docker compose exec -T django pytest` **mente**. O container `vitali-django-1` sobe de uma
-imagem já construída e o bind `./backend:/app` não está ativo nele: o pytest lá dentro executa
-o código que foi copiado na hora do build, não o que você acabou de editar. O resultado é o
-pior tipo de verde — verde de código velho.
+**A forge não roda compose do Vitali** (regra do Imediato, 17/09/2026). Nem para rodar a
+suíte, nem "só um minuto". Em 17/09 um `docker compose up` na forge publicou redis sem senha,
+postgres e django em `0.0.0.0` para a LAN por 1h46. Porta publicada por Docker entra pelo hook
+FORWARD depois do DNAT e nunca passa pelo `input` com policy drop do nftables. A forge guarda
+segredos que não são do Vitali.
 
-O jeito correto é subir um container efêmero da **imagem de dev** (`vitali-django`, a única que
-tem pytest instalado; a `ghcr.io/tropeks/vitali-backend:latest` de produção não tem) montando o
-`backend/` do checkout por cima de `/app`.
+Teste de backend roda **no CI** (jobs `Backend — Lint & Types` e `Backend — Tests`) ou **na
+lab**, por este wrapper.
 
 ## Comando
 
-Sempre a partir de `/home/rcosta00/dev/vitali`:
+A partir da raiz do checkout:
 
 ```bash
-scripts/pytest.sh apps/pharmacy/tests/test_stockout_checker.py
+scripts/pytest.sh apps/core/tests/test_auth.py          # um alvo
+scripts/pytest.sh apps/core/tests/test_auth.py -x -k 023
+scripts/pytest.sh                                        # a suíte inteira (~1h30)
+PYTEST_NO_BUILD=1 scripts/pytest.sh <alvo>               # reusa as imagens já construídas
+PYTEST_CMD="ruff check apps/ vitali/" scripts/pytest.sh  # outro comando na mesma imagem
 ```
 
-O wrapper vive em `.claude/skills/run-backend-tests/pytest.sh` (o `scripts/pytest.sh` é o link).
-Ele expande para:
+Recibo de ordem: `maestro evidence --record --label order-NN -- scripts/pytest.sh`.
 
-```bash
-sudo -n docker run --rm --network vitali_default \
-  -e DJANGO_SETTINGS_MODULE=vitali.settings.development \
-  -e DATABASE_URL=postgres://vitali:vitali@postgres:5432/vitali \
-  -e REDIS_URL=redis://redis:6379/0 \
-  -v "$PWD/backend:/app" vitali-django \
-  pytest <alvo> -q --no-cov --reuse-db -p no:cacheprovider
-```
+O wrapper:
 
-Verificado em 2026-08-24: `--collect-only` coleta 3717 testes; o módulo acima passa 16/16 em 0,21s.
+1. descarta `DOCKER_HOST`/`DOCKER_CONTEXT` e fala **só** com `docker --context lab`;
+2. reexecuta a si mesmo sob `sg docker` quando a sessão é anterior à entrada no grupo;
+3. constrói `vitali-test:x` (`INSTALL_DEV=true`, a partir de `./backend`) e o overlay
+   `vitali-test:x-full`, com `scripts/` em `/scripts` e os arquivos de compose de dev em `/`;
+4. roda um contêiner `--rm` com `--name vpytest-<data>-<pid>` na rede `v018net`, onde postgres
+   e redis vivem sem porta publicada, com `COVERAGE_FILE=/tmp/.coverage`.
 
-## Flags que importam
+## Por que cada peça é obrigatória
 
-| Flag | Quando |
+| peça | sem ela |
 |---|---|
-| `--reuse-db` | **default**. Os bancos `test_vitali*` já existem no `vitali-postgres-1`; reusar é o que torna a rodada instantânea. |
-| `--create-db` | Só quando você mexeu em migration ou o schema de teste está podre. Paga o preço de recriar todos os schemas de tenant. |
-| `--no-cov` | Sempre, a menos que você queira o relatório de cobertura — o plugin de cov custa segundos por rodada. |
-| `-p no:cacheprovider` | Evita o `PermissionError` em `/app/.pytest_cache` (o uid do container não é dono do checkout). |
-| `-x` / `-k` | Como em qualquer pytest. |
+| `--context lab` | o teste roda na forge |
+| overlay de `scripts/` | as 5 falhas de `test_drill_metric` **não** são ambientais: ele executa `/scripts/drill_metric.sh` |
+| compose no overlay | `test_compose_exposure` reprova por arquivo ausente (de propósito: guarda que se pula é verde falso) |
+| `COVERAGE_FILE=/tmp/.coverage` | `INTERNALERROR` do pytest-cov (uid 1001 contra 1000) |
+| `--name` único | depois de uma queda, confira `docker --context lab ps -a --filter name=vpytest` antes de relançar |
+
+## O que este skill mandava antes, e por que era perigoso
+
+Até a ordem 027 (26/09/2026), o `master` trazia um wrapper que fazia
+`sudo -n docker run --network vitali_default ...` **no daemon local**, contra a rede de uma
+stack de compose de pé. Seguido na forge, ele exigia exatamente o `docker compose up` que
+expôs a LAN. Se encontrar esse texto em algum branch antigo, não o siga.
 
 ## Gotchas vizinhos
 
-- **`makemigrations` precisa de root no container**: acrescente `-u root` ao `docker run` e depois
-  `chown` o arquivo gerado de volta para `rcosta00`, senão a migration nasce pertencendo ao root.
-- **Não existe `vt.sh`** neste repo, por mais que pareça que deveria.
-- **Deploy carrega código real**: o `docker build` do compose canônico copia o checkout, então o
-  falso-verde é problema só de *teste*, não de deploy.
+- **`docker compose exec django pytest` mente**: o contêiner roda a imagem baked, sem o bind
+  do checkout, e testa código velho. Além disso, exige compose de pé.
+- **Teste que constrói schema real** leva de 1 a 3 min cada. Dois provisionamentos reais na
+  mesma transação de teste esbarram em `pending trigger events`; o contorno é
+  `SET CONSTRAINTS ALL IMMEDIATE` entre os dois (ordem 022).
 - **Permissão nova em `DEFAULT_ROLES` não propaga** para tenant já provisionado: rode
   `create_default_roles --overwrite` por tenant, ou a feature nasce invisível no menu.
