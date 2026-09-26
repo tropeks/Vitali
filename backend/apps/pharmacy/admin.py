@@ -128,4 +128,22 @@ class DoseRuleAdmin(admin.ModelAdmin):
     ]
     list_filter = ["basis", "active"]
     search_fields = ["formulary__drug__name", "notes"]
-    readonly_fields = ["id", "created_at", "updated_at"]
+    # Ordem 028 (revisão, P1): validação e procedência são gravadas SÓ pelo
+    # caminho de negócio (DoseRuleViewSet.validate exige CRF ativo;
+    # formulary_import grava a procedência do arquivo-fonte) — nunca por um
+    # admin digitando à mão. Sem isto, o Django admin deixava marcar
+    # status_validacao=validado e escrever um CRF qualquer, contornando o
+    # requisito de CRF ativo inteiramente.
+    readonly_fields = [
+        "id",
+        "created_at",
+        "updated_at",
+        "status_validacao",
+        "validated_by",
+        "validated_at",
+        "validado_crf_numero",
+        "validado_crf_uf",
+        "fonte_tipo",
+        "fonte_ref",
+        "fonte_trecho",
+    ]
