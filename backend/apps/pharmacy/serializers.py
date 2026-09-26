@@ -549,12 +549,19 @@ class POReceiveItemSerializer(serializers.Serializer):
 class DoseRuleSerializer(serializers.ModelSerializer):
     """Read-only serializer for DoseRule curation list.
 
-    INVIOLABLE: `validated` is exposed as read-only here. The only mutation path
-    is through the DoseRuleViewSet.validate action — never through serializer writes.
+    INVIOLABLE: `validated`/`status_validacao` are exposed as read-only here.
+    The only mutation path is through the DoseRuleViewSet.validate action —
+    never through serializer writes.
     """
 
     drug_name = serializers.CharField(source="formulary.drug.name", read_only=True)
     validated_by = serializers.SerializerMethodField()
+    # Ordem 028: `validated` is now a derived Python property (not a model
+    # field) — declared explicitly so DRF's ModelSerializer field-introspection
+    # (which only auto-builds fields for real model Fields) still exposes it.
+    # Kept for the existing frontend contract; `status_validacao` is the new,
+    # richer source of truth (nao_validado/validado).
+    validated = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = DoseRule
@@ -569,9 +576,12 @@ class DoseRuleSerializer(serializers.ModelSerializer):
             "max_per_dose",
             "absolute_max_dose",
             "active",
+            "status_validacao",
             "validated",
             "validated_by",
             "validated_at",
+            "validado_crf_numero",
+            "validado_crf_uf",
         ]
         # All fields are read-only — this serializer is never used for writes.
         read_only_fields = fields

@@ -1473,8 +1473,9 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
 class DoseRuleViewSet(viewsets.ReadOnlyModelViewSet):
     """Read-only list of DoseRule entries with a pharmacist-only `validate` action.
 
-    INVIOLABLE: `validated` is NEVER writable through this viewset's serializer.
-    The ONLY mutation path is through the `validate` action below.
+    INVIOLABLE: `status_validacao`/`validated` are NEVER writable through this
+    viewset's serializer. The ONLY mutation path is through the `validate`
+    action below.
     """
 
     serializer_class = DoseRuleSerializer
@@ -1483,9 +1484,9 @@ class DoseRuleViewSet(viewsets.ReadOnlyModelViewSet):
         qs = DoseRule.objects.select_related("formulary__drug", "validated_by")
         validated = self.request.query_params.get("validated")
         if validated == "true":
-            qs = qs.filter(validated=True)
+            qs = qs.filter(status_validacao=DoseRule.StatusValidacao.VALIDADO)
         elif validated == "false":
-            qs = qs.filter(validated=False)
+            qs = qs.filter(status_validacao=DoseRule.StatusValidacao.NAO_VALIDADO)
         return qs
 
     def get_permissions(self):
@@ -1501,10 +1502,25 @@ class DoseRuleViewSet(viewsets.ReadOnlyModelViewSet):
     def validate(self, request, pk=None):
         """POST /pharmacy/dose-rules/{id}/validate/ — pharmacist sign-off on a DoseRule.
 
-        Sets validated=True, validated_by=request.user, validated_at=now() and
-        writes an AuditLog row with action="dose_rule_validated". Returns 409 if
-        the rule is already validated.
+        Ordem 028: requires the requesting user to have an ACTIVE professional
+        cadastro with ``council_type="CRF"`` (farmacêutico) — a role permission
+        alone is no longer enough (INTENT v6 §Limites: dose data "entra por
+        importação validada ou por humano qualificado"). Without one, 403 with
+        ``code="CRF_REQUIRED"`` and the rule is left untouched.
+
+        On success, sets ``status_validacao="validado"``, ``validated_by``,
+        ``validated_at`` AND a portrait of the CRF that validated
+        (``validado_crf_numero``/``validado_crf_uf``) — a snapshot of the
+        Professional cadastro AT THIS MOMENT. The cadastro can change later
+        (renew the CRF, move UF); the portrait never does — it is written here
+        once and never touched again by anything but this action failing to
+        run (a re-import invalidating the rule clears it, see
+        formulary_import.write_rows). Writes AuditLog
+        ``dose_rule_validated`` carrying the CRF. Returns 409 if the rule is
+        already validated.
         """
+        from apps.emr.models import Professional
+
         rule = self.get_object()
 
         if rule.validated:
@@ -1513,17 +1529,46 @@ class DoseRuleViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
 
-        rule.validated = True
+        professional = Professional.objects.filter(
+            user=request.user, council_type="CRF", is_active=True
+        ).first()
+        if professional is None:
+            return Response(
+                {
+                    "detail": (
+                        "Validar uma regra de dose exige cadastro profissional de "
+                        "farmacêutico (CRF) ativo."
+                    ),
+                    "code": "CRF_REQUIRED",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        rule.status_validacao = DoseRule.StatusValidacao.VALIDADO
         rule.validated_by = request.user
         rule.validated_at = timezone.now()
-        rule.save(update_fields=["validated", "validated_by", "validated_at"])
+        rule.validado_crf_numero = professional.council_number
+        rule.validado_crf_uf = professional.council_state
+        rule.save(
+            update_fields=[
+                "status_validacao",
+                "validated_by",
+                "validated_at",
+                "validado_crf_numero",
+                "validado_crf_uf",
+            ]
+        )
 
         log_audit(
             request,
             "dose_rule_validated",
             "DoseRule",
             rule.id,
-            new_data={"validated_by": request.user.email},
+            new_data={
+                "validated_by": request.user.email,
+                "crf_numero": professional.council_number,
+                "crf_uf": professional.council_state,
+            },
         )
 
         return Response(self.get_serializer(rule).data)
@@ -1654,7 +1699,9 @@ class CurationReadinessView(APIView):
     def get(self, request):
         # ── Dose wedge ────────────────────────────────────────────────────────
         dose_total = DoseRule.objects.filter(active=True).count()
-        dose_ready = DoseRule.objects.filter(active=True, validated=True).count()
+        dose_ready = DoseRule.objects.filter(
+            active=True, status_validacao=DoseRule.StatusValidacao.VALIDADO
+        ).count()
         if dose_total == 0:
             dose_blockers = []
             dose_text = "Nenhuma regra de dose cadastrada."
