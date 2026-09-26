@@ -97,6 +97,17 @@ class ComposeDevPublicaSoEmLoopbackTests(SimpleTestCase):
         )
 
 
+    def test_nenhum_servico_usa_a_rede_do_host(self):
+        # network_mode: host não declara `ports`: o processo escuta direto nas
+        # interfaces do host e passa por fora da verificação acima.
+        na_rede_do_host = [
+            f"{nome}: {servico} network_mode={definicao['network_mode']!r}"
+            for nome, servico, definicao in _servicos()
+            if str(definicao.get("network_mode", "")).startswith("host")
+        ]
+        self.assertEqual(na_rede_do_host, [], "\n  ".join(na_rede_do_host))
+
+
 class ComposeDevRedisExigeSenhaTests(SimpleTestCase):
     def setUp(self):
         self.servicos: dict[str, list[tuple[str, dict]]] = {}

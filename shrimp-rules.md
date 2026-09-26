@@ -39,7 +39,9 @@
 
 - Linting: `ruff check` + `ruff format`. CI gate.
 - Type checking: `mypy apps/ vitali/ --ignore-missing-imports`. CI gate.
-- Test runner: `pytest -v` (via `make test` which runs inside `docker compose exec django`).
+- Test runner: `pytest`, run **in CI or on the lab** via `scripts/pytest.sh [target]` — never
+  `docker compose` on the forge (Imediato's rule, 17/09/2026: Docker-published ports bypass the
+  forge firewall). `make test` is only for your own machine. See `docs/DEVELOPMENT.md` §Running tests.
 - All three available baked into the dev image when `INSTALL_DEV=true` (set automatically by `docker-compose.override.yml`).
 - Use `transaction.atomic()` around any multi-step DB writes. Use `transaction.on_commit(lambda: task.delay(...))` to enqueue Celery tasks AFTER commit — NEVER call `.delay()` directly inside a transaction, the task may run before commit and read stale data.
 - AuditLog (`apps.core.models.AuditLog`) is append-only. Never UPDATE or DELETE rows. For cascade chains, use `correlation_id: uuid4()` in `new_data` JSON to group sibling entries.

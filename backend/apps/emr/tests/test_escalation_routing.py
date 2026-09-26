@@ -10,7 +10,7 @@ Tests:
 The router is always fail-safe: any error is logged and swallowed. Vitals
 recording (and DeteriorationAlert creation) must survive a routing crash.
 
-Run: docker compose exec -T django pytest apps/emr/tests/test_escalation_routing.py -v
+Run: scripts/pytest.sh apps/emr/tests/test_escalation_routing.py  (lab; never compose on the forge)
 """
 
 from decimal import Decimal

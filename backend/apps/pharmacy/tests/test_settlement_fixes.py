@@ -7,7 +7,7 @@ Regression tests for the professional-settlement defect fixes:
   #4 map_item drug/material XOR + existence validation (was 500 via CheckConstraint)
   #6 external_id idempotency backed by a partial UniqueConstraint (TOCTOU)
 
-Run: docker compose exec -T django pytest apps/pharmacy/tests/test_settlement_fixes.py
+Run: scripts/pytest.sh apps/pharmacy/tests/test_settlement_fixes.py  (lab; never compose on the forge)
 """
 
 from decimal import Decimal

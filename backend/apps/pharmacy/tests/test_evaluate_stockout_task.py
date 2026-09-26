@@ -6,7 +6,7 @@ Tests:
   - product with lead_time_days + velocity → StockAlert(kind=stockout_risk)
   - PeriodicTask "pharmacy.evaluate_stockout" registered after migration
 
-Run: docker compose exec -T django pytest apps/pharmacy/tests/test_evaluate_stockout_task.py -v
+Run: scripts/pytest.sh apps/pharmacy/tests/test_evaluate_stockout_task.py  (lab; never compose on the forge)
 """
 
 import datetime

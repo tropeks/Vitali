@@ -46,6 +46,7 @@ lab network inspect "$LAB_NETWORK" >/dev/null 2>&1 || {
 
 if [ "${PYTEST_NO_BUILD:-0}" != "1" ]; then
   lab build -q --build-arg INSTALL_DEV=true -t vitali-test:x ./backend >/dev/null
+  # O contexto só serve ao build: sai antes do `exec` final, que não dispara trap EXIT.
   ctx="$(mktemp -d)"
   trap 'rm -rf "$ctx"' EXIT
   cp -r scripts "$ctx/scripts"
@@ -53,6 +54,8 @@ if [ "${PYTEST_NO_BUILD:-0}" != "1" ]; then
   printf '%s\n' 'FROM vitali-test:x' 'COPY scripts /scripts' \
     'COPY docker-compose.yml docker-compose.override.yml /' > "$ctx/Dockerfile"
   lab build -q -t vitali-test:x-full "$ctx" >/dev/null
+  rm -rf "$ctx"
+  trap - EXIT
 fi
 
 name="vpytest-$(date +%Y%m%d%H%M%S)-$$"

@@ -8,10 +8,10 @@
 
 ## Quick start
 
-> **This is for your own machine.** `docker-compose.yml` publishes Postgres
-> (`5435`), Redis (`6379`, no password) and Django (`8000`) on **every
-> interface**. On a personal laptop behind your own firewall that is fine. On a
-> shared machine it is not — see [The forge rule](#the-forge-rule) below.
+> **This is for your own machine.** `docker-compose.yml` publishes every port on
+> `127.0.0.1` only, and Redis requires `REDIS_PASSWORD` from `.env` (#221 and
+> order 027; `test_compose_exposure` guards both). Even so, the stack never runs
+> on the forge — see [The forge rule](#the-forge-rule) below.
 
 ```bash
 # 1. Copy environment file
