@@ -166,36 +166,55 @@ Prerequisites on the lab: a Docker network with a Postgres and a Redis attached
 and **no published ports** (today: containers `v018-pg` and `v018-redis` on
 network `v018net`).
 
+Use the wrapper (order 027). It is the recipe below, executable:
+
+```bash
+scripts/pytest.sh <target>          # e.g. apps/core/tests/test_auth.py -x
+scripts/pytest.sh                   # the whole suite
+PYTEST_NO_BUILD=1 scripts/pytest.sh <target>              # reuse the images
+PYTEST_CMD="ruff check apps/ vitali/" scripts/pytest.sh   # another command in the image
+```
+
+What it runs:
+
 ```bash
 # 1. Test image with dev dependencies (pytest, ruff, mypy)
-sg docker -c 'docker --context lab build --build-arg INSTALL_DEV=true -t vitali-test:x ./backend'
+docker --context lab build --build-arg INSTALL_DEV=true -t vitali-test:x ./backend
 
-# 2. Overlay with scripts/ at /scripts — REQUIRED (see below)
-printf 'FROM vitali-test:x\nCOPY . /scripts\n' > /tmp/dfx
-sg docker -c 'docker --context lab build -t vitali-test:x-full -f /tmp/dfx ./scripts'
+# 2. Overlay: scripts/ at /scripts and the dev compose files at / (REQUIRED).
+#    Build context = a temp dir with scripts/, docker-compose.yml and
+#    docker-compose.override.yml, and this Dockerfile:
+#      FROM vitali-test:x
+#      COPY scripts /scripts
+#      COPY docker-compose.yml docker-compose.override.yml /
 
-# 3. Run
-sg docker -c 'docker --context lab run --rm --network v018net \
+# 3. Run, with a unique --name
+docker --context lab run --rm --name vpytest-<ts>-<pid> --network v018net \
   -e DJANGO_SETTINGS_MODULE=vitali.settings.development \
   -e DATABASE_URL=postgres://vitali:vitali@postgres:5432/vitali \
   -e REDIS_URL=redis://redis:6379/0 \
   -e COVERAGE_FILE=/tmp/.coverage \
-  vitali-test:x-full pytest <target> -q --no-header'
+  vitali-test:x-full pytest <target> -q --no-header -p no:cacheprovider
 ```
 
 Why each piece is there:
 
+- **`--context lab`, always** — the wrapper drops `DOCKER_HOST`/`DOCKER_CONTEXT`
+  and never talks to the local daemon.
 - **`sg docker`** — needed when your login session predates your addition to
-  the `docker` group.
+  the `docker` group; the wrapper re-executes itself under it.
 - **`COVERAGE_FILE=/tmp/.coverage`** — without it pytest-cov stops with an
   `INTERNALERROR` writing its data file (uid mismatch: 1001 vs 1000). `/tmp` is
   always writable.
 - **The `scripts/` overlay** — `apps/core/tests/test_drill_metric.py` executes
   `/scripts/drill_metric.sh`. Without the overlay those 5 tests fail, and the
   failure is **not** environmental noise to wave away.
+- **The compose files in the overlay** — `apps/core/tests/test_compose_exposure.py`
+  (order 027) reads `docker-compose.yml` and `docker-compose.override.yml` and
+  fails when they are missing: a guard that skips itself is a false green.
 
-Reference measurement: the whole backend suite on 18/09, on `6a169b8` — 3,843
-passed, 45 skipped, 0 failed, in about 1h25.
+Reference measurement: the whole backend suite on 26/09, on `fca984f` — 3,899
+passed, 45 skipped, 0 failed, in about 1h47.
 
 ### Local backend tests (your own machine)
 
