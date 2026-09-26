@@ -4,7 +4,6 @@ Core views — Auth, Tenant registration, User management.
 
 import hashlib
 import logging
-from datetime import timedelta
 
 import jwt
 from django.conf import settings
@@ -25,7 +24,6 @@ from rest_framework_simplejwt.views import TokenRefreshView as _BaseRefreshView
 
 from .models import (
     AuditLog,
-    Domain,
     FeatureFlag,
     Role,
     Tenant,
@@ -585,6 +583,9 @@ class TenantRegistrationView(APIView):
 
         # Reject a duplicate admin email up front (User.email is globally unique in
         # the public schema) so we never create a schema we'd just have to roll back.
+        # provision_tenant() checks this too, but the friendly 409 code here
+        # (ADMIN_EMAIL_TAKEN, not the service's EMAIL_TAKEN) is this endpoint's
+        # existing contract — kept so ordem 023's tests need no asserção change.
         if User.objects.filter(email=data["admin_email"]).exists():
             return Response(
                 {
@@ -596,82 +597,34 @@ class TenantRegistrationView(APIView):
                 status=status.HTTP_409_CONFLICT,
             )
 
-        # 1. Create Tenant (auto_create_schema=True → creates the PG schema)
-        tenant = Tenant(
-            name=data["name"],
-            slug=data["slug"],
-            cnpj=data.get("cnpj", ""),
-            status=Tenant.Status.TRIAL,
-            trial_ends_at=timezone.now() + timedelta(days=14),
-        )
-        tenant.save()  # triggers schema creation
+        # Ordem 022: one path only. provision_tenant() (apps.core.services.
+        # provisioning) is the SAME function views_signup.SelfServeSignupView
+        # and manage.py provision_tenant call — this view used to duplicate
+        # role/admin/membership creation by hand.
+        from .services.provisioning import ProvisioningConflict, ProvisioningError, provision_tenant
 
-        # Everything after schema creation is wrapped so a partial failure rolls the
-        # WHOLE thing back (drop the schema), leaving no orphaned half-tenant. This is
-        # the reentrancy fix: a failed registration leaves zero state, so a retry is
-        # clean rather than colliding with leftovers (LabX anti-pattern A1).
         try:
-            # 2. Create (or reuse) domain — idempotent so a retry doesn't 500 on a
-            #    leftover row.
-            host = request.get_host().split(":")[0]
-            if "localhost" in host or "127.0.0.1" in host:
-                domain_url = f"{tenant.slug}.localhost"
-            else:
-                base = host.split(".", 1)[-1] if "." in host else host
-                domain_url = f"{tenant.slug}.{base}"
-
-            domain, _domain_created = Domain.objects.get_or_create(
-                domain=domain_url,
-                defaults={"tenant": tenant, "is_primary": True},
+            result = provision_tenant(
+                name=data["name"],
+                slug=data["slug"],
+                cnpj=data.get("cnpj", ""),
+                owner_email=data["admin_email"],
+                owner_full_name=data["admin_full_name"],
+                owner_password=data["admin_password"],
+                host=request.get_host(),
+                status=Tenant.Status.TRIAL,
+                trial_days=14,
+                create_subscription=True,
+                send_welcome=False,  # a senha já foi definida — sem convite a emitir
+                created_by=None,  # o operador de plataforma não é salvo (ver _platform_operator)
             )
-
-            # 3. Inside the new schema: create admin Role + admin User (idempotent).
-            admin_user_data = {}
-            with schema_context(tenant.schema_name):
-                from .permissions import DEFAULT_ROLES
-
-                roles_created = {}
-                for role_name, perms in DEFAULT_ROLES.items():
-                    role, _role_created = Role.objects.get_or_create(
-                        name=role_name,
-                        defaults={"permissions": perms, "is_system": True},
-                    )
-                    roles_created[role_name] = role
-
-                admin_role = roles_created["admin"]
-
-                admin_user = User(
-                    email=data["admin_email"],
-                    full_name=data["admin_full_name"],
-                    role=admin_role,
-                    is_active=True,
-                    is_staff=True,
-                )
-                admin_user.set_password(data["admin_password"])
-                admin_user.save()
-
-                admin_user_data = {
-                    "id": str(admin_user.pk),
-                    "email": admin_user.email,
-                    "full_name": admin_user.full_name,
-                    "role": admin_role.name,
-                }
-
-            # Bind the admin user to the new tenant (Model B). User/Role/membership are
-            # all public-schema models, created outside the schema_context.
-            UserTenantMembership.objects.get_or_create(
-                user=admin_user,
-                tenant=tenant,
-                defaults={"role": admin_role, "is_active": True},
+        except ProvisioningConflict as exc:
+            return Response(
+                {"error": {"code": exc.code, "message": str(exc) or exc.code}},
+                status=status.HTTP_409_CONFLICT,
             )
-        except Exception:
-            # Compensating rollback — drop the schema + tenant row so no orphan
-            # survives. force_drop because auto_drop_schema is off by default.
-            logger.exception("Tenant registration failed; rolling back %s", tenant.slug)
-            try:
-                tenant.delete(force_drop=True)
-            except Exception:
-                logger.exception("Rollback of tenant %s failed", tenant.slug)
+        except ProvisioningError:
+            logger.exception("Tenant registration failed for slug=%s", data["slug"])
             return Response(
                 {
                     "error": {
@@ -684,6 +637,14 @@ class TenantRegistrationView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+        tenant = result.tenant
+        admin_user_data = {
+            "id": str(result.owner.pk),
+            "email": result.owner.email,
+            "full_name": result.owner.full_name,
+            "role": result.owner.role.name,
+        }
+
         return Response(
             {
                 "tenant": {
@@ -694,7 +655,7 @@ class TenantRegistrationView(APIView):
                     "status": tenant.status,
                     "trial_ends_at": tenant.trial_ends_at,
                 },
-                "domain": domain.domain,
+                "domain": result.domain.domain,
                 "admin_user": admin_user_data,
                 "trial_ends_at": tenant.trial_ends_at,
             },

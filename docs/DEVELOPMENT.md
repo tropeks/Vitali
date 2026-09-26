@@ -44,7 +44,7 @@ make seed-demo tenant=demo
 # Django admin: http://localhost:8000/admin/
 ```
 
-### Creating a tenant: use `bootstrap_beta`, not `make create-tenant`
+### Creating a tenant: `bootstrap_beta` for a fresh environment, `provision_tenant` for one clinic
 
 `bootstrap_beta` (`backend/apps/core/management/commands/bootstrap_beta.py`)
 creates, idempotently: the public tenant and its domain, the clinic tenant and
@@ -52,18 +52,27 @@ its domain(s), the default roles in the clinic schema, the clinic admin (from
 `BOOTSTRAP_ADMIN_PASSWORD`, never a CLI argument) with its
 `UserTenantMembership`, a beta plan + subscription, and `FeatureFlag` rows that
 match the subscription's modules. Run `python manage.py bootstrap_beta --help`
-for the options (`--module` narrows the module set).
+for the options (`--module` narrows the module set). Use this to stand up a
+whole fresh environment (public tenant + one demo clinic), not to add ONE
+clinic to an environment that already exists.
 
-The self-serve signup (`apps/core/views_signup.py`) goes through
-`apps.core.services.provisioning.provision_tenant`, which does the same job
-transactionally (tenant, domain, roles, owner + membership, trial subscription,
-feature flags) and drops the schema on partial failure.
+To provision a single clinic — self-serve signup, the platform-admin API
+(`POST /api/v1/platform/tenants`), and `manage.py provision_tenant` (also
+what `make create-tenant` calls) — all three now go through the exact same
+function, `apps.core.services.provisioning.provision_tenant` (ordem 022): it
+creates the tenant + schema, routing domain, default roles, owner user +
+membership, trial subscription + feature flags, and the owner's two
+dedicated audit-log partitions — transactionally, dropping the schema on
+partial failure. Run `python manage.py provision_tenant --help` for the
+options. There is no `--password` argument by design: the owner activates via
+the same set-password e-mail link self-serve signup issues.
 
-**Legacy paths — do not use:** `make create-tenant` and
-`scripts/provision_tenant.sh` only create the `Tenant` and `Domain` rows. They
-create **no** admin, **no** roles, **no** membership and **no** feature flags,
-so the resulting clinic has nobody who can log in and no module switched on.
-Both will be replaced by a management command (order 022).
+**Removed:** `scripts/provision_tenant.sh` (ordem 022) — it interpolated the
+clinic name into a `manage.py shell -c` string, so a name with an apostrophe
+broke it and a name crafted for it could run arbitrary code with every
+clinic's database credentials. `make create-tenant` no longer runs an
+interactive `shell -c` blob either; it calls `manage.py provision_tenant`
+with `slug=`/`name=`/`domain=`/`owner_email=`/`owner_name=` make variables.
 
 ## Local PIX Setup {#local-pix-setup}
 

@@ -192,11 +192,14 @@ BOOTSTRAP_ADMIN_PASSWORD='<generated>' docker compose -p vitali-staging ... exec
 
 `bootstrap_beta` is idempotent (public tenant + domain, clinic tenant + domain,
 default roles, clinic admin + `UserTenantMembership`, beta plan + subscription,
-feature flags matching the subscription). It is the supported way to create a
-clinic from the command line; `scripts/provision_tenant.sh` and `make
-create-tenant` are legacy — they create only `Tenant` + `Domain` (see
-[DEVELOPMENT.md](./DEVELOPMENT.md)). It replaces the `manage.py shell -c` blobs that
-used to live only in the CI workflow.
+feature flags matching the subscription). It is the supported way to bootstrap
+a whole fresh environment from the command line. To provision ONE additional
+clinic into an environment that already exists, use `manage.py provision_tenant`
+instead (ordem 022; see [DEVELOPMENT.md](./DEVELOPMENT.md)) — the same
+transactional path self-serve signup and the platform-admin API use, also
+idempotent, also no CLI password argument. `scripts/provision_tenant.sh` was
+removed (it interpolated the clinic name into a `manage.py shell -c` string);
+`make create-tenant` now calls `manage.py provision_tenant`.
 
 ### 3. Tunnel + DNS
 

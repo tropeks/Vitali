@@ -26,31 +26,32 @@ Também funciona como o alarme do item 4 da Emenda: depois de garantir as
 partições, relata quantas linhas hoje vivem em alguma folha DEFAULT (a rede de
 segurança que nunca pode recusar uma escrita) — a partir de agora, uma
 contagem não-zero aqui significa **partição faltando**, não normalidade.
+
+Ordem 022: o laço agora isola falha POR TENANT. Antes, uma clínica cuja folha
+do mês corrente não podia ser criada (porque já existe uma linha dela na
+DEFAULT do mês — ver ``partitioning.ensure_tenant_partition``) fazia
+``IntegrityError`` subir cru e abortava o comando inteiro, deixando sem folha
+TODOS os tenants ainda não processados no laço (ordem alfabética por
+``schema_name``, então "ainda não processados" é determinístico). Cada
+(tenant, mês) agora roda dentro do próprio ``transaction.atomic()``
+(savepoint) — sem isso, o ``IntegrityError`` envenena a transação inteira e
+nem a query seguinte roda. O comando termina com ``CommandError`` nomeando
+cada tenant que falhou e apontando ``backfill_audit_partitions`` (que move as
+linhas presas na DEFAULT para a folha dedicada — rodar o comando de novo
+depois costuma resolver).
 """
 
 from __future__ import annotations
 
-import datetime
 import logging
 
-from django.core.management.base import BaseCommand
-from django.utils import timezone
+from django.core.management.base import BaseCommand, CommandError
+from django.db import transaction
 
 from apps.core import partitioning
 from apps.core.models import Tenant
 
 logger = logging.getLogger(__name__)
-
-
-def _month_starts(count: int, *, today: datetime.date | None = None) -> list[datetime.date]:
-    """The first day of *today*'s month, plus the next *count - 1* months."""
-    today = today or timezone.now().date()
-    months = []
-    year, month = today.year, today.month
-    for _ in range(count):
-        months.append(datetime.date(year, month, 1))
-        year, month = (year + 1, 1) if month == 12 else (year, month + 1)
-    return months
 
 
 class Command(BaseCommand):
@@ -60,17 +61,24 @@ class Command(BaseCommand):
     )
 
     def handle(self, *args, **options):
-        months = _month_starts(2)
-        tenants = list(Tenant.objects.exclude(schema_name="public"))
+        months = partitioning.month_starts(2)
+        # order_by("schema_name"): determinístico, não a ordem física da
+        # tabela — quem "vem depois no laço" tem que ser previsível para quem
+        # lê o log, e não pode mudar de execução pra execução.
+        tenants = list(Tenant.objects.exclude(schema_name="public").order_by("schema_name"))
 
         for month_start in months:
             partitioning.ensure_month_partition(month_start)
 
         created = 0
+        failures: list[tuple[str, str]] = []
         for tenant in tenants:
             for month_start in months:
-                partitioning.ensure_tenant_partition(month_start, tenant.schema_name)
-                created += 1
+                error = self._ensure_one_leaf(tenant.schema_name, month_start)
+                if error is None:
+                    created += 1
+                else:
+                    failures.append((tenant.schema_name, error))
 
         self.stdout.write(
             self.style.SUCCESS(
@@ -80,6 +88,34 @@ class Command(BaseCommand):
         )
 
         self._warn_on_default_rows()
+
+        if failures:
+            detail = "; ".join(f"{schema} ({cause})" for schema, cause in failures)
+            raise CommandError(
+                f"{len(failures)} tenant(s) sem folha dedicada — provável linha já presa na "
+                "folha DEFAULT do mês (rode "
+                "apps.core.management.commands.backfill_audit_partitions e execute este "
+                f"comando de novo): {detail}"
+            )
+
+    def _ensure_one_leaf(self, schema_name: str, month_start) -> str | None:
+        """Ensure the dedicated leaf for one (tenant, month). Returns None on
+        success, or an error description on failure — never raises: a savepoint
+        (``transaction.atomic()``) isolates the failure so it can't poison the
+        rest of the loop (see module docstring)."""
+        try:
+            with transaction.atomic():
+                partitioning.ensure_tenant_partition(month_start, schema_name)
+        except Exception as exc:  # noqa: BLE001 — isolado por tenant, ver docstring
+            logger.error(
+                "ensure_audit_partitions: falhou tenant=%s mes=%s-%s err=%s",
+                schema_name,
+                month_start.year,
+                month_start.month,
+                exc,
+            )
+            return f"{month_start.isoformat()}: {exc}"
+        return None
 
     def _warn_on_default_rows(self) -> None:
         counts = partitioning.default_leaf_row_counts()

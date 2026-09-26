@@ -2,9 +2,12 @@
 S-132: Public self-serve clinic signup.
 
 A clinic fills in name + CNPJ + email on the marketing site and gets a fully
-provisioned, functional trial tenant in minutes — no engineer, no
-``provision_tenant.sh``. The owner activates by clicking the welcome email's
-set-password link (which flips the tenant PENDING → TRIAL).
+provisioned, functional trial tenant in minutes — no engineer, no shell
+script (ordem 022 removed ``scripts/provision_tenant.sh``; the equivalent
+manual path is now ``manage.py provision_tenant``, the same
+``services.provisioning.provision_tenant`` call this view makes). The owner
+activates by clicking the welcome email's set-password link (which flips the
+tenant PENDING → TRIAL).
 
 Billing (Asaas recurring subscription) is wired best-effort: a gateway outage
 must never block provisioning, so failures are logged and the tenant is left in

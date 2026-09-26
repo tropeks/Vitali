@@ -15,7 +15,7 @@ help:
 	@echo "  make test            Run backend tests"
 	@echo "  make lint            Run ruff linter"
 	@echo "  make fmt             Run ruff formatter"
-	@echo "  make create-tenant   Create a new tenant (interactive)"
+	@echo "  make create-tenant   Create a new tenant (slug=... name=... domain=... owner_email=... owner_name=...)"
 	@echo "  make seed-demo       Seed demo data (patients, appointments, PIX charges)"
 	@echo "  make logs            Follow all service logs"
 	@echo "  make ps              Show running containers"
@@ -105,18 +105,15 @@ restore:
 # ─── Tenant Management ───────────────────────────────────────────────────────
 
 create-tenant:
-	@echo "Creating tenant..."
-	docker compose exec django python manage.py shell -c "\
-from apps.core.models import Tenant, Domain; \
-import sys; \
-name = input('Clinic name: '); \
-slug = input('Slug (schema name): '); \
-domain = input('Domain (e.g. clinica.localhost): '); \
-t = Tenant(name=name, slug=slug, schema_name=slug); \
-t.save(); \
-Domain.objects.create(domain=domain, tenant=t, is_primary=True); \
-print(f'Tenant {name} created with schema {slug}') \
-"
+	@if [ -z "$(slug)" ] || [ -z "$(name)" ] || [ -z "$(domain)" ] || [ -z "$(owner_email)" ] || [ -z "$(owner_name)" ]; then \
+		echo "Uso: make create-tenant slug=<slug> name=<nome> domain=<host> owner_email=<email> owner_name=<nome> [cnpj=<cnpj>] [modules=emr,billing]"; \
+		echo "  (ordem 022: casca fina sobre manage.py provision_tenant — sem input() interativo, sem senha na linha de comando; o dono ativa pelo convite por e-mail)"; \
+		exit 1; \
+	fi
+	docker compose exec django python manage.py provision_tenant \
+		--slug "$(slug)" --name "$(name)" --domain "$(domain)" \
+		--owner-email "$(owner_email)" --owner-name "$(owner_name)" \
+		$(if $(cnpj),--cnpj "$(cnpj)") $(if $(modules),--modules "$(modules)")
 
 seed-demo:
 	@echo "Seeding demo data for tenant schema '$(or $(tenant),demo)'..."

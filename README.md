@@ -27,11 +27,13 @@ As ordens 005 a 021 estão aceitas. O que elas deixaram de pé:
 
 **Em aberto:**
 
-* **Criar clínica ainda tem portas demais.** O caminho certo é o serviço
-  `apps/core/services/provisioning.py`, usado pelo signup self-serve.
-  `scripts/provision_tenant.sh` e `make create-tenant` o contornam: não criam admin, papéis,
-  membership nem assinatura, e o script interpola variável de shell dentro do código Python
-  que executa. A **ordem 022** fecha essas duas portas.
+* **Criar clínica tinha portas demais — ordem 022 fecha em um só caminho.**
+  `apps/core/services/provisioning.py` (`provision_tenant`) é agora a ÚNICA
+  fonte: signup self-serve, `POST /api/v1/platform/tenants` e
+  `manage.py provision_tenant` chamam a mesma função. `scripts/provision_tenant.sh`
+  (que interpolava o nome da clínica dentro de um `manage.py shell -c`) foi
+  removido; `make create-tenant` chama o comando novo. Pendente de aceite do
+  diretor.
 * **`POST /api/v1/platform/tenants` exige operador de plataforma** (`IsPlatformAdmin`), com
   throttle dedicado de 5/h por operador (ordem 023). Até então aceitava anônimo.
 * Sorologia de doador de sangue fora do grafo de `Patient`, e por isso invisível à guarda

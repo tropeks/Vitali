@@ -1,19 +1,22 @@
 """
-Ordem 022, passo 0 — teste vermelho antes do conserto.
+Ordem 022 — a clínica nova nasce com partição de auditoria, e o laço de
+``ensure_audit_partitions`` isola falha por tenant.
 
-Duas hipóteses lidas do código (021/020) e ainda não provadas:
+Duas hipóteses lidas do código (021/020), confirmadas na lab (ver o commit
+vermelho ``313cff7``) e agora fechadas pelo conserto:
 
-1. Nenhum caminho de criação de tenant chama ``ensure_tenant_partition``.
-   Provisionar uma clínica pelo caminho real (``services.provisioning.
-   provision_tenant``, o mesmo que o signup usa) e escrever um ``AuditLog``
-   pelo ORM logo em seguida, sem rodar ``ensure_audit_partitions`` antes,
-   deveria cair na folha DEDICADA do mês — hoje cai na DEFAULT.
+1. ``services.provisioning.provision_tenant`` (o mesmo caminho que o signup e
+   o comando ``manage.py provision_tenant`` usam) agora garante a folha
+   dedicada do mês corrente e do seguinte logo depois do schema. Uma escrita
+   real de ``AuditLog`` pelo ORM, sem rodar ``ensure_audit_partitions`` antes,
+   cai na folha DEDICADA do mês, não na DEFAULT.
 
-2. ``ensure_audit_partitions`` percorre os tenants num laço sem isolar falha
-   por tenant. Uma clínica com linha na DEFAULT do mês corrente faz
-   ``ensure_tenant_partition`` levantar ``IntegrityError`` ao tentar anexar a
-   folha dedicada — e hoje isso aborta o comando inteiro, deixando sem folha
-   os tenants que ainda não tinham sido processados no laço.
+2. ``ensure_audit_partitions`` isola cada (tenant, mês) num savepoint próprio:
+   uma clínica com linha na DEFAULT do mês corrente ainda faz
+   ``ensure_tenant_partition`` levantar ``IntegrityError`` para ELA, mas isso
+   não aborta o comando inteiro — os demais tenants ganham suas folhas de
+   qualquer jeito, e o comando termina com ``CommandError`` nomeando quem
+   falhou e apontando ``backfill_audit_partitions``.
 
 Nenhum dos dois testes prepara a condição medida com SQL cru (lição da
 ordem 021: teste que constrói à mão a condição medida mede a si mesmo).
@@ -25,6 +28,7 @@ import datetime
 from io import StringIO
 
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.db import connection
 from django.test import TestCase
 from django_tenants.utils import schema_context
@@ -96,12 +100,12 @@ class ProvisionTenantAuditPartitionTests(TestCase):
 
 class EnsureAuditPartitionsLoopIsolationTests(TestCase):
     """Item 2: uma clínica com linha na DEFAULT do mês não pode derrubar as
-    demais no laço do comando."""
+    demais no laço do comando — nem quem vem antes, nem quem vem depois."""
 
     def test_default_leaf_conflict_does_not_starve_the_other_tenants(self):
         problematic = _fast_tenant("problem-022")
-        _fast_tenant("second-022")
-        _fast_tenant("third-022")
+        second = _fast_tenant("second-022")
+        third = _fast_tenant("third-022")
 
         today = datetime.date.today()
         # Estado normal de deploy: a folha do MÊS (sem folha dedicada por
@@ -113,35 +117,22 @@ class EnsureAuditPartitionsLoopIsolationTests(TestCase):
                 action="login", resource_type="user", resource_id="collision-022-1"
             )
 
-        # Não presumimos a ordem do laço: consultamos a MESMA queryset que o
-        # comando usa e usamos a ordem observada para saber quem "vem depois".
-        ordered = list(Tenant.objects.exclude(schema_name="public"))
-        ordered_names = [t.schema_name for t in ordered]
-        self.assertIn(problematic.schema_name, ordered_names)
-        idx = ordered_names.index(problematic.schema_name)
-        tenants_after = ordered[idx + 1 :]
-        self.assertTrue(
-            tenants_after,
-            f"cenário precisa de ao menos um tenant depois do problemático; ordem real={ordered_names}",
-        )
-
         out = StringIO()
         err = StringIO()
-        raised = None
-        try:
+        with self.assertRaises(CommandError) as ctx:
             call_command("ensure_audit_partitions", stdout=out, stderr=err)
-        except Exception as exc:  # noqa: BLE001 — queremos inspecionar qualquer forma de falha
-            raised = exc
 
-        self.assertIsNotNone(
-            raised, "esperava que o comando terminasse com erro (clínica com linha na DEFAULT)"
-        )
-        message = str(raised)
+        message = str(ctx.exception)
         self.assertIn(problematic.schema_name, message)
         self.assertIn("backfill_audit_partitions", message)
 
+        # Não dependemos da ordem do laço (que agora é determinística —
+        # order_by("schema_name") — mas isso é um detalhe de implementação
+        # que este teste não deveria precisar conhecer): TODOS os outros
+        # tenants ganham as duas folhas, estejam antes ou depois do
+        # problemático em qualquer ordenação possível.
         next_month = _next_month(today)
-        for tenant in tenants_after:
+        for tenant in (second, third):
             for month_date in (today, next_month):
                 leaf = partitioning.tenant_partition_name(
                     partitioning.month_partition_name(month_date), tenant.schema_name

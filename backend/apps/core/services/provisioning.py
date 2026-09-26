@@ -1,20 +1,33 @@
 """
-Tenant provisioning service (S-132 self-serve signup).
+Tenant provisioning service (S-132 self-serve signup; ordem 022 made it the
+ONLY path).
 
-Replaces the per-engineer ``scripts/provision_tenant.sh`` ritual with a single
-idempotent, transactional code path that both the public self-serve signup
-endpoint and the platform-admin registration view call.
+Originally replaced the per-engineer ``scripts/provision_tenant.sh`` ritual
+(removed by ordem 022 — it interpolated the clinic name into a ``manage.py
+shell -c`` string) with a single idempotent, transactional code path. Ordem
+022 finished the job: this is now the ONE function every way of creating a
+tenant calls — ``views_signup.SelfServeSignupView`` (public self-serve
+signup), ``views.TenantRegistrationView`` (platform-operator API), and
+``manage.py provision_tenant`` (the operator CLI that replaced the shell
+script and ``make create-tenant``'s interactive ``shell -c`` blob).
 
 What ``provision_tenant`` does, in order:
   1. Create the :class:`Tenant` (``auto_create_schema=True`` builds the PG schema).
-  2. Create (or reuse) the routing :class:`Domain` for ``<slug>.<base-host>``.
-  3. Inside the new schema, seed the default :class:`Role` set and the owner
+  2. Create (or reuse) the routing :class:`Domain` for ``<slug>.<base-host>``
+     (or the caller-supplied ``domain``, verbatim).
+  3. Pre-create the current + next month's dedicated ``core_auditlog``
+     partition for this tenant (:mod:`apps.core.partitioning`) — so its very
+     first audit write never falls back to the shared DEFAULT leaf.
+  4. Inside the new schema, seed the default :class:`Role` set and the owner
      :class:`User`, then bind them via :class:`UserTenantMembership` (Model B).
-  4. Create the trial :class:`Subscription` linked to the default :class:`Plan`.
+  5. Create the trial :class:`Subscription` (with the requested ``modules``,
+     or the self-serve default) linked to the default :class:`Plan`.
 
 Everything after the tenant row is wrapped so a partial failure rolls the WHOLE
 thing back — the schema is dropped and no orphaned half-tenant is left behind, so
-a retry starts clean rather than colliding with leftovers.
+a retry starts clean rather than colliding with leftovers. That rollback can only
+ever reach the tenant THIS call created (see ``created_here`` below) — a
+collision against a pre-existing tenant never touches it.
 """
 
 import logging
@@ -27,6 +40,7 @@ from django.db import IntegrityError
 from django.utils import timezone
 from django_tenants.utils import schema_context
 
+from apps.core import partitioning
 from apps.core.models import Domain, Plan, Role, Subscription, Tenant, User, UserTenantMembership
 
 logger = logging.getLogger(__name__)
@@ -130,17 +144,40 @@ def provision_tenant(
     owner_full_name: str,
     owner_password: str | None = None,
     host: str = "",
+    domain: str | None = None,
+    modules: list[str] | None = None,
     status: str = Tenant.Status.PENDING,
     trial_days: int | None = None,
     create_subscription: bool = True,
     send_welcome: bool = True,
     created_by: User | None = None,
 ) -> ProvisionResult:
-    """Provision a tenant + owner + trial subscription. See module docstring."""
+    """Provision a tenant + owner + trial subscription. See module docstring.
+
+    ``domain``: when given, used verbatim as the routing hostname instead of
+    deriving one from ``host`` — the management command passes this
+    explicitly rather than deriving it from a request that doesn't exist.
+
+    ``modules``: active module keys for the trial subscription + feature
+    flags. ``None`` keeps the existing self-serve default
+    (``settings.SELF_SERVE_DEFAULT_MODULES``).
+    """
     if User.objects.filter(email=owner_email).exists():
         # Caller should have checked, but guard so we never build a schema we'd
         # only have to roll back (User.email is globally unique in public schema).
         raise ProvisioningConflict("EMAIL_TAKEN", "OWNER_EMAIL_TAKEN")
+
+    domain_url = domain or build_domain_url(host, slug)
+    if Domain.objects.filter(domain=domain_url).exists():
+        # The tenant we're about to create doesn't exist yet, so ANY existing
+        # row here belongs to someone else. Domain.get_or_create used to
+        # silently REUSE that other tenant's domain instead of rejecting —
+        # checked up front, like the email guard above, so we never build a
+        # schema we'd just have to roll back.
+        logger.warning(
+            "provisioning.conflict slug=%s code=DOMAIN_TAKEN domain=%s", slug, domain_url
+        )
+        raise ProvisioningConflict("DOMAIN_TAKEN")
 
     if trial_days is None:
         trial_days = getattr(settings, "SELF_SERVE_TRIAL_DAYS", 14)
@@ -164,18 +201,35 @@ def provision_tenant(
         logger.warning("provisioning.conflict slug=%s code=%s err=%s", slug, code, exc)
         raise ProvisioningConflict(code) from exc
 
+    # Only from HERE does a rollback belong to THIS call: the tenant row (and
+    # its schema) now exist because WE just created them, so _drop_tenant may
+    # touch them. Anything raised above this line has nothing to roll back —
+    # in particular, a slug/CNPJ collision against a pre-existing tenant never
+    # reaches (and can never drop) that pre-existing tenant.
+    created_here = True
+
     try:
-        domain_url = build_domain_url(host, tenant.slug)
-        domain, _ = Domain.objects.get_or_create(
+        domain_row, domain_row_created = Domain.objects.get_or_create(
             domain=domain_url,
             defaults={"tenant": tenant, "is_primary": True},
         )
+        if not domain_row_created and domain_row.tenant_id != tenant.id:
+            # Lost a race: another request claimed this exact hostname between
+            # the pre-check above and this INSERT.
+            raise ProvisioningConflict("DOMAIN_TAKEN")
+
+        # Order 022: the audit trail must never fall back to the DEFAULT leaf
+        # between "clinic created" and the next boot/Beat run of
+        # ensure_audit_partitions — pre-create the current + next month's
+        # dedicated leaf for THIS tenant now, inside the same rollback guard.
+        for month_start in partitioning.month_starts(2):
+            partitioning.ensure_tenant_partition(month_start, tenant.schema_name)
 
         owner = _create_owner(tenant, owner_email, owner_full_name, owner_password)
 
         subscription = None
         if create_subscription:
-            subscription = _create_trial_subscription(tenant, trial_ends_at)
+            subscription = _create_trial_subscription(tenant, trial_ends_at, modules=modules)
 
         invitation_token = None
         if send_welcome and owner_password is None:
@@ -184,18 +238,25 @@ def provision_tenant(
             _, invitation_token = issue_password_set_invitation(
                 owner, tenant=tenant, created_by=created_by
             )
+    except ProvisioningConflict as exc:
+        logger.warning("provisioning.conflict slug=%s code=%s err=%s", slug, exc.code, exc)
+        if created_here:
+            _drop_tenant(tenant, slug)
+        raise
     except IntegrityError as exc:
         # A concurrent signup won the race between our up-front email pre-check
         # and the owner INSERT (or any other unique collision inside the schema).
         # Roll the half-built schema back and surface a friendly 409, not a 500.
         code = _classify_integrity_error(exc)
         logger.warning("provisioning.conflict slug=%s code=%s err=%s", slug, code, exc)
-        _drop_tenant(tenant, slug)
+        if created_here:
+            _drop_tenant(tenant, slug)
         raise ProvisioningConflict(code) from exc
     except Exception as exc:  # noqa: BLE001 — re-raised after rollback
         logger.error("provisioning.failed slug=%s err=%s", slug, exc)
         # Drop the half-built schema + tenant row so a retry starts clean.
-        _drop_tenant(tenant, slug)
+        if created_here:
+            _drop_tenant(tenant, slug)
         raise ProvisioningError(str(exc)) from exc
 
     logger.info(
@@ -203,7 +264,7 @@ def provision_tenant(
     )
     return ProvisionResult(
         tenant=tenant,
-        domain=domain,
+        domain=domain_row,
         owner=owner,
         subscription=subscription,
         owner_invitation_token=invitation_token,
@@ -255,9 +316,15 @@ def _create_owner(tenant, email, full_name, password):
     return owner
 
 
-def _create_trial_subscription(tenant, trial_ends_at) -> Subscription:
+def _create_trial_subscription(
+    tenant, trial_ends_at, modules: list[str] | None = None
+) -> Subscription:
     plan = _default_plan()
-    modules = list(getattr(settings, "SELF_SERVE_DEFAULT_MODULES", ["emr"]))
+    modules = (
+        list(modules)
+        if modules is not None
+        else list(getattr(settings, "SELF_SERVE_DEFAULT_MODULES", ["emr"]))
+    )
     today = timezone.now().date()
     subscription = Subscription.objects.create(
         tenant=tenant,

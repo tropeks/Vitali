@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 
 from django.db import connection
+from django.utils import timezone
 from psycopg2 import sql
 
 TABLE = "core_auditlog"
@@ -105,6 +106,23 @@ def _month_bounds(for_date: date) -> tuple[date, date]:
 def month_partition_name(for_date: date) -> str:
     start, _ = _month_bounds(for_date)
     return f"{TABLE}_y{start.year:04d}m{start.month:02d}"
+
+
+def month_starts(count: int, *, today: date | None = None) -> list[date]:
+    """The first day of *today*'s month, plus the next *count - 1* months.
+
+    Shared by ``ensure_audit_partitions`` (the daily Beat/boot sweep over
+    every tenant — order 021) and ``services.provisioning.provision_tenant``
+    (order 022: pre-creates the same two leaves for the ONE tenant just born,
+    so it never has to wait for the sweep to stop falling into DEFAULT).
+    """
+    today = today or timezone.now().date()
+    months = []
+    year, month = today.year, today.month
+    for _ in range(count):
+        months.append(date(year, month, 1))
+        year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+    return months
 
 
 def _safe_schema_fragment(schema_name: str) -> str:
