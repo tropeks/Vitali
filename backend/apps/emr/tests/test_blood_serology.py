@@ -293,3 +293,74 @@ class TestSerologyAPI(BloodDonorAPITestBase):
         assert len(filtered) == 1
         assert str(filtered[0]["bag"]) == str(bag1.pk)
         assert filtered[0]["all_non_reactive"] is True
+
+
+# ─── Ordem 029: leitura de doador e de sorologia deixa trilha ─────────────────
+
+
+class TestLeituraDeixaTrilha(BloodDonorAPITestBase):
+    """Ordem 029 — doador e sorologia são dado pessoal sensível de quem NÃO é
+    paciente (LGPD art. 5º II). Os viewsets já tinham `AuditReadMixin`, mas a
+    `list` sem `?patient=`/`?search=` não gravava nada: o `DonorPanel` de
+    `/banco-de-sangue` lia o cadastro inteiro de doadores sem rastro, e
+    `?bag=` devolvia o painel RDC 34 (HIV, hepatites) sem rastro também.
+
+    Pelo caminho real — APIClient → roteador → viewset —, não por
+    `as_view()` montado à mão (INTENT v6, Prioridade 4: aceite de mecanismo
+    exige prova no caminho real).
+    """
+
+    def _trilha(self, action, resource_type):
+        from apps.core.models import AuditLog
+
+        return AuditLog.objects.filter(action=action, resource_type=resource_type)
+
+    def test_listar_doadores_sem_filtro_deixa_trilha(self):
+        BloodDonor.objects.create(full_name="Doador Trilha", cpf="52998224725")
+        resp = self._client(self.reader).get(f"{BASE}/blood-donors/")
+        assert resp.status_code == 200, resp.content
+
+        trilha = self._trilha("view_record_list", "BloodDonor")
+        assert trilha.count() == 1
+        assert trilha.get().user == self.reader
+
+    def test_abrir_um_doador_deixa_trilha(self):
+        doador = BloodDonor.objects.create(full_name="Doador Detalhe", cpf="52998224725")
+        resp = self._client(self.reader).get(f"{BASE}/blood-donors/{doador.pk}/")
+        assert resp.status_code == 200, resp.content
+
+        trilha = self._trilha("view_record", "BloodDonor")
+        assert list(trilha.values_list("resource_id", flat=True)) == [str(doador.pk)]
+
+    def test_listar_sorologias_sem_filtro_deixa_trilha(self):
+        registrar_sorologia(self._bag(identifier="DIN-TR1"), _all_non_reactive(), by=self.manager)
+        resp = self._client(self.reader).get(f"{BASE}/blood-bag-serologies/")
+        assert resp.status_code == 200, resp.content
+
+        trilha = self._trilha("view_record_list", "BloodBagSerology")
+        assert trilha.count() == 1
+        assert trilha.get().user == self.reader
+
+    def test_consultar_sorologia_de_uma_bolsa_registra_qual_bolsa(self):
+        bag = self._bag(identifier="DIN-TR2")
+        registrar_sorologia(
+            bag,
+            {**_all_non_reactive(), "hiv": BloodBagSerology.Result.REAGENTE},
+            by=self.manager,
+        )
+        resp = self._client(self.reader).get(f"{BASE}/blood-bag-serologies/?bag={bag.pk}")
+        assert resp.status_code == 200, resp.content
+
+        log = self._trilha("view_record_list", "BloodBagSerology").get()
+        # A trilha diz QUAL bolsa foi consultada, não só que alguém listou.
+        assert log.new_data == {"bag": str(bag.pk)}
+
+    def test_abrir_uma_sorologia_deixa_trilha(self):
+        sorologia = registrar_sorologia(
+            self._bag(identifier="DIN-TR3"), _all_non_reactive(), by=self.manager
+        )
+        resp = self._client(self.reader).get(f"{BASE}/blood-bag-serologies/{sorologia.pk}/")
+        assert resp.status_code == 200, resp.content
+
+        trilha = self._trilha("view_record", "BloodBagSerology")
+        assert list(trilha.values_list("resource_id", flat=True)) == [str(sorologia.pk)]

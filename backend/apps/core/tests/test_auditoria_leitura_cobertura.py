@@ -279,3 +279,76 @@ class CoberturaDeAuditoriaDeLeituraTests(SimpleTestCase):
                 40,
                 f"{view} está em VIEWS_SEM_MODEL sem motivo — isenção sem motivo vira hábito",
             )
+
+
+class DadoPessoalForaDoGrafoDePatientTests(SimpleTestCase):
+    """Ordem 029 — doador de sangue e sorologia: dado pessoal sensível de quem
+    NÃO é paciente, fora do grafo de `emr.Patient`.
+
+    Os dois viewsets herdavam `AuditReadMixin`, e a guarda dava as quatro rotas
+    GET como cobertas — mas só porque não as considerava sensíveis: `motivo=''`,
+    e `list` de view "não sensível" passa sem `AUDIT_LIST_ALWAYS`. A `list` sem
+    filtro não gravava nada, e tirar o mixin amanhã não reprovaria nada. Verde
+    que não significa verde (INTENT v6, §Limites).
+    """
+
+    VIEWS_DO_DOADOR = ("BloodDonorViewSet", "BloodBagSerologyViewSet")
+
+    def test_doador_e_sorologia_exigem_trilha(self) -> None:
+        exigem = {v["view"] for v in exigem_trilha()}
+        for view in self.VIEWS_DO_DOADOR:
+            self.assertIn(
+                view,
+                exigem,
+                f"{view} lê dado pessoal sensível de doador (LGPD art. 5º II) e a guarda "
+                "não a exige — está fora do grafo de Patient e fora de MODELS_SENSIVEIS",
+            )
+
+    def test_toda_rota_get_do_doador_exige_e_tem_trilha(self) -> None:
+        rotas = [r for r in rotas_get_registradas() if r["view"] in self.VIEWS_DO_DOADOR]
+        acoes = sorted((r["view"], r["action"]) for r in rotas)
+        self.assertEqual(
+            acoes,
+            [
+                ("BloodBagSerologyViewSet", "list"),
+                ("BloodBagSerologyViewSet", "retrieve"),
+                ("BloodDonorViewSet", "list"),
+                ("BloodDonorViewSet", "retrieve"),
+            ],
+        )
+        for r in rotas:
+            self.assertTrue(r["motivo"], f"{r['view']}.{r['action']} sem motivo de trilha")
+            self.assertTrue(r["coberta"], f"{r['view']}.{r['action']} exige trilha e não grava")
+            self.assertFalse(r["isenta"], f"{r['view']}.{r['action']} isenta — não pode")
+
+    def test_toda_view_com_identificador_pessoal_esta_classificada(self) -> None:
+        """O entregável durável da 029: a guarda passa a PERGUNTAR.
+
+        `MODELS_SENSIVEIS` é lista explícita e só cobre o que alguém lembrou de
+        pôr nela; doador entrou no Sprint H2, depois da 017, e ninguém lembrou.
+        Toda view cujo model tem campo que identifica pessoa natural
+        (`IDENTIFICADORES_PESSOAIS`) precisa estar classificada — alcança
+        `Patient`, OU `MODELS_SENSIVEIS`, OU `MODELS_SEM_DADO_SENSIVEL` com
+        motivo. O nome do campo dispara a pergunta; não a responde.
+        """
+        faltando = audit_coverage.views_com_identificador_nao_classificadas()
+        if faltando:
+            detalhe = "\n".join(
+                f"  {v['app']}.{v['view']} ({v['model']}) — campos: {', '.join(v['identificadores'])}"
+                for v in faltando
+            )
+            self.fail(
+                f"{len(faltando)} view(s) servem model com identificador de pessoa e "
+                f"ninguém decidiu se o dado é sensível.\n{detalhe}\n\n"
+                "Decida e escreva o motivo em apps/core/audit_coverage.py: "
+                "MODELS_SENSIVEIS (exige trilha) ou MODELS_SEM_DADO_SENSIVEL (não exige)."
+            )
+
+    def test_a_pergunta_por_identificador_enxerga_o_prontuario(self) -> None:
+        """Piso contra vacuidade: se a detecção de campo quebrar, a lista de
+        views com identificador encolhe e o teste acima passa sem verificar
+        nada. `PatientViewSet` (cpf, cns, birth_date) e `BloodDonorViewSet`
+        (cpf) têm de aparecer."""
+        vistas = {v["view"] for v in audit_coverage.views_com_identificador()}
+        for view in ("PatientViewSet", "BloodDonorViewSet"):
+            self.assertIn(view, vistas, f"a pergunta por identificador não viu {view}")
