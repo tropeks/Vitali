@@ -352,3 +352,92 @@ class DadoPessoalForaDoGrafoDePatientTests(SimpleTestCase):
         vistas = {v["view"] for v in audit_coverage.views_com_identificador()}
         for view in ("PatientViewSet", "BloodDonorViewSet"):
             self.assertIn(view, vistas, f"a pergunta por identificador não viu {view}")
+
+
+class ViewSemQuerysetTests(SimpleTestCase):
+    """Ordem 030 — a guarda passa a enxergar view sem `queryset`.
+
+    `views_registradas()` e `_rotas_get_do_roteador()` só viam view com
+    `queryset`/`get_queryset`. Medido em 27/09: 103 classes com GET ficavam de
+    fora, entre elas as 22 views FHIR de leitura de prontuário
+    (`/api/v1/fhir/Patient/`, `Condition`, `Observation`, `DocumentReference`...),
+    que não gravavam trilha nenhuma. Não eram isentas: eram invisíveis, e
+    ninguém tinha decidido nada.
+    """
+
+    def test_toda_rota_get_sem_queryset_grava_trilha_ou_esta_isenta(self) -> None:
+        from apps.core.audit_coverage_routes import rotas_sem_queryset_nao_classificadas
+
+        faltando = rotas_sem_queryset_nao_classificadas()
+        if faltando:
+            detalhe = "\n".join(
+                f"  {r['modulo']}.{r['view']}" + (f".{r['action']}" if r["action"] else "")
+                for r in faltando
+            )
+            self.fail(
+                f"{len(faltando)} rota(s) GET de view sem queryset sem classificação.\n"
+                f"{detalhe}\n\n"
+                "Se lê dado de paciente ou dado pessoal sensível: `AuditReadAPIViewMixin` "
+                "como PRIMEIRA base (apps/core/mixins.py), com `audit_resource_type` e, "
+                "se a rota for de detalhe, `AUDIT_LOOKUP_KWARG`. Se não lê: declare em "
+                "apps/core/audit_coverage_routes.APIVIEWS_ISENTAS COM O MOTIVO."
+            )
+
+    def test_toda_leitura_fhir_de_paciente_grava_trilha(self) -> None:
+        """Nomeado de propósito, além do teste geral: o FHIR é a porta de
+        interoperabilidade — o prontuário sai do sistema por ela. Das 22 views
+        de leitura, 20 leem prontuário e gravam; `Practitioner` (read/search) é
+        o cadastro do profissional, a mesma decisão de `emr.Professional` na
+        ordem 029, e fica isento com motivo."""
+        from apps.core.audit_coverage_routes import rotas_get_sem_queryset
+
+        fhir = [r for r in rotas_get_sem_queryset() if r["modulo"] == "apps.fhir.views"]
+        leituras = [r for r in fhir if r["view"] != "CapabilityStatementView"]
+        self.assertEqual(len(leituras), 22, sorted(r["view"] for r in leituras))
+        profissional = {"PractitionerReadView", "PractitionerSearchView"}
+        sem_trilha = sorted(
+            r["view"] for r in leituras if r["view"] not in profissional and not r["coberta"]
+        )
+        self.assertFalse(sem_trilha, f"leitura FHIR de prontuário sem trilha: {sem_trilha}")
+        for r in leituras:
+            if r["view"] in profissional:
+                self.assertTrue(r["isenta"], f"{r['view']} precisa de isenção com motivo")
+
+    def test_a_enumeracao_sem_queryset_enxerga_o_sistema(self) -> None:
+        """Piso contra vacuidade, na mesma folga dos outros (~35%): 103 classes
+        com GET medidas em 27/09 → piso 67."""
+        from apps.core.audit_coverage_routes import rotas_get_sem_queryset
+
+        total = len(rotas_get_sem_queryset())
+        self.assertGreater(total, 67, f"a enumeração sem queryset devolveu só {total}")
+
+    def test_toda_isencao_de_apiview_tem_motivo_escrito(self) -> None:
+        from apps.core.audit_coverage_routes import APIVIEWS_ISENTAS
+
+        for chave, motivo in APIVIEWS_ISENTAS.items():
+            self.assertGreater(
+                len(motivo.strip()),
+                40,
+                f"a isenção de {chave} não explica nada — isenção sem motivo vira hábito",
+            )
+
+    def test_nenhuma_isencao_de_apiview_e_orfa(self) -> None:
+        from apps.core.audit_coverage_routes import isencoes_de_apiview_sem_rota
+
+        orfas = isencoes_de_apiview_sem_rota()
+        self.assertFalse(
+            orfas,
+            f"isenção sem rota, ou de view que já grava trilha: {orfas} — apague a entrada",
+        )
+
+    def test_auditreadapiviewmixin_vem_antes_de_apiview(self) -> None:
+        from apps.core.audit_coverage_routes import apiview_mixin_fora_de_ordem
+
+        fora = apiview_mixin_fora_de_ordem()
+        self.assertFalse(fora, "trilha morta por ordem de base:\n" + "\n".join(fora))
+
+    def test_lookup_da_trilha_casa_o_kwarg_da_rota(self) -> None:
+        from apps.core.audit_coverage_routes import lookup_que_nao_casa_a_rota
+
+        erros = lookup_que_nao_casa_a_rota()
+        self.assertFalse(erros, "\n".join(erros))

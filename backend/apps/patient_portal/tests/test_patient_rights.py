@@ -59,6 +59,19 @@ class PatientRightsTest(TenantTestCase):
         self.assertEqual(res["Content-Type"], "application/pdf")
         self.assertIn('attachment; filename="patient_export_', res["Content-Disposition"])
 
+    def test_exportar_o_prontuario_deixa_trilha_apontando_o_titular(self):
+        """Ordem 030: o export LGPD é a cópia mais ampla do prontuário que sai do
+        sistema (cadastro, agenda, atendimentos, receitas, alergias) e não
+        deixava rastro. O leitor é o próprio titular; o alvo em `resource_id` é
+        o paciente dele, para `/audit-trail/?patient=` achar a leitura."""
+        res = self.client.get(f"{EXPORT_URL}?export_format=json")
+        self.assertEqual(res.status_code, 200)
+
+        log = AuditLog.objects.get(action="view_record_list", resource_type="PortalExport")
+        self.assertEqual(log.resource_id, str(self.patient.pk))
+        self.assertEqual(log.user, self.portal_user)
+        self.assertEqual(log.new_data, {"export_format": "json"})
+
     def test_deletion_request(self):
         self.assertEqual(AuditLog.objects.filter(action="patient_deletion_requested").count(), 0)
         res = self.client.post(DELETE_REQ_URL, {"reason": "Privacy concerns"})

@@ -96,3 +96,26 @@ class TestPrescriptionPDFAuthz(TenantTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "application/pdf")
         self.assertTrue(response.content.startswith(b"%PDF-"))
+
+    @patch("apps.emr.views_pdf.PrescriptionPDFGenerator")
+    def test_baixar_o_pdf_deixa_trilha(self, mock_generator_cls):
+        """Ordem 030: o PDF da receita é a leitura mais forte que há — o dado sai
+        do sistema em arquivo — e era `APIView` sem trilha nenhuma."""
+        from apps.core.models import AuditLog
+
+        mock_generator_cls.return_value.generate.return_value = b"%PDF-1.4 fake"
+        client = self._client_for(self.clinical_user)
+        response = client.get(f"/api/v1/prescriptions/{self.prescription_signed.id}/pdf/")
+        self.assertEqual(response.status_code, 200)
+
+        log = AuditLog.objects.get(action="view_record", resource_type="Prescription")
+        self.assertEqual(log.resource_id, str(self.prescription_signed.id))
+        self.assertEqual(log.user, self.clinical_user)
+
+    def test_pdf_negado_nao_deixa_trilha(self):
+        from apps.core.models import AuditLog
+
+        client = self._client_for(self.no_emr_user)
+        response = client.get(f"/api/v1/prescriptions/{self.prescription_signed.id}/pdf/")
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(AuditLog.objects.filter(action__startswith="view_record").exists())
