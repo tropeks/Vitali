@@ -697,12 +697,16 @@ PATCH /api/v1/telemedicine/sessions/{id}/recording/        — set recording_url
 # Admin surface — clinic staff mint and manage portal invites
 GET  /api/v1/portal/access/                       — list (filter ?status=)
 POST /api/v1/portal/access/                       — mint invite
+                                                    201 carries invite_token, once
 POST /api/v1/portal/access/activate/              — patient consumes invite
                                                     body: {invite_token}
 GET  /api/v1/portal/access/{id}/                  — read
 POST /api/v1/portal/access/{id}/revoke/           — revoke
 
   Auth: Bearer + patient_portal module + users.read (write paths use users.write)
+  invite_token (the activation-link secret) appears only in the 201 of the invite,
+  for manual hand-off when WhatsApp and email both fail. List, read, revoke and
+  activate never return it (order 031).
 
 # Self-data surface — portal users see only their own patient
 GET  /api/v1/portal/me/                           — own Patient profile

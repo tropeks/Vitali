@@ -48,6 +48,14 @@ class PortalConsentSerializer(serializers.ModelSerializer):
 
 
 class PatientPortalAccessSerializer(serializers.ModelSerializer):
+    """Leitura do acesso ao portal: status do convite, nunca a credencial.
+
+    ``invite_token`` é o segredo do link de ativação e fica de fora (ordem
+    031): lista, detalhe, revoke e activate não precisam dele, e quem só tem
+    ``users.read`` não deve ver a credencial de todo convite aberto. O token sai
+    uma vez, no 201 do convite, por ``PatientPortalInviteSerializer``.
+    """
+
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     patient_name = serializers.CharField(source="patient.full_name", read_only=True)
 
@@ -60,7 +68,6 @@ class PatientPortalAccessSerializer(serializers.ModelSerializer):
             "patient_name",
             "status",
             "status_display",
-            "invite_token",
             "invite_expires_at",
             "invited_at",
             "activated_at",
@@ -72,7 +79,6 @@ class PatientPortalAccessSerializer(serializers.ModelSerializer):
             "id",
             "status",
             "status_display",
-            "invite_token",
             "invite_expires_at",
             "invited_at",
             "activated_at",
@@ -80,6 +86,19 @@ class PatientPortalAccessSerializer(serializers.ModelSerializer):
             "last_seen_at",
             "patient_name",
         ]
+
+
+class PatientPortalInviteSerializer(PatientPortalAccessSerializer):
+    """Resposta do convite recém-criado: a única que devolve ``invite_token``.
+
+    Vai para quem tem ``users.write`` e acabou de convidar. É a saída manual
+    quando ``deliver_portal_invite`` não entrega por nenhum canal (fail-open):
+    como chave de API, mostrada uma vez, na criação.
+    """
+
+    class Meta(PatientPortalAccessSerializer.Meta):
+        fields = [*PatientPortalAccessSerializer.Meta.fields, "invite_token"]
+        read_only_fields = [*PatientPortalAccessSerializer.Meta.read_only_fields, "invite_token"]
 
 
 class PatientPortalAccessCreateSerializer(serializers.ModelSerializer):

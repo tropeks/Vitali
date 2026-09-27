@@ -39,6 +39,7 @@ from .models import PatientPortalAccess, PortalConsent
 from .serializers import (
     PatientPortalAccessCreateSerializer,
     PatientPortalAccessSerializer,
+    PatientPortalInviteSerializer,
     PatientRepresentativeSerializer,
     PortalAllergySerializer,
     PortalAppointmentSerializer,
@@ -117,7 +118,7 @@ class AccessListCreateView(AuditReadAPIViewMixin, APIView):
         # Fail-open: delivery problems never fail invite creation.
         deliver_portal_invite(access)
         return Response(
-            PatientPortalAccessSerializer(access).data,
+            PatientPortalInviteSerializer(access).data,
             status=status.HTTP_201_CREATED,
         )
 

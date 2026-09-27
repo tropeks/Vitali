@@ -408,6 +408,7 @@ to the intended controls above. Companion docs hold the operator details.
 | `core_auditlog` partitioned (month × tenant, DEFAULT at both levels), purge gated by verified cold export | ✅ Shipped (order 020) | migration `0043`, `apps/core/partitioning.py`, `apps/core/cold_storage.py`; see §3.6.2 |
 | Audit retention 240 months per tenant, purge off by default; partitions ensured on deploy + daily | ✅ Shipped (order 021) | `TenantAuditRetention`, `ensure_audit_partitions`, [ADR-0001](./adr/ADR-0001-retencao-auditoria-20-anos.md) |
 | ICP-Brasil trust store on a volume; empty store refuses signing | ✅ Shipped (orders 014, 015) | `docker-compose.{staging,prod}.yml` (`icp_truststore`), `apps/signatures/services/icp_brasil.py`; see [ICP_BRASIL.md](./ICP_BRASIL.md) |
+| Portal invite secret (`invite_token`) returned only once, in the 201 of the invite; list, read, revoke and activate omit it. Stored in clear text (hashing not built) | ✅ Shipped (order 031) | `apps/patient_portal/serializers.py` (`PatientPortalAccessSerializer` / `PatientPortalInviteSerializer`) |
 | Audit cold copy offsite (S3 Glacier) | ❌ Not built | only `LocalDiskColdStorageBackend` exists |
 | ICP-Brasil revocation (CRL/OCSP) enforced | ❌ Off | `ICP_BRASIL_CHECK_REVOCATION=False` everywhere; production prerequisite |
 | Fail-fast secret validation at prod startup | ✅ Shipped | `vitali/settings/_security_checks.py`; see [SECRETS.md](./SECRETS.md) |
