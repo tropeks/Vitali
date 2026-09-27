@@ -181,6 +181,66 @@ class PatientPortalViewsTest(TenantTestCase):
         )
         self.assertEqual(resp.status_code, 403)
 
+    # ─── invite_token fora da leitura (ordem 031) ────────────────────────────
+    #
+    # O token é o segredo do link de ativação. Sai uma vez, no 201 do convite,
+    # para quem tem `users.write` e pode precisar entregá-lo à mão se o WhatsApp
+    # e o e-mail falharem. Nenhuma outra resposta o devolve: quem só tem
+    # `users.read` vê o status do convite, nunca a credencial.
+
+    def _leitor(self) -> User:
+        return _make_user(
+            role_name="portal_leitor_031",
+            perms=["users.read"],
+            email="leitor_031@test.com",
+            full_name="Leitor",
+        )
+
+    def test_lista_de_acessos_nao_devolve_o_token(self):
+        access = self._mint_invite()
+        self.client.force_authenticate(user=self._leitor())
+        resp = self.client.get(ACCESS_URL)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        entry = next(e for e in resp.data if e["id"] == str(access.pk))
+        self.assertEqual(entry["status"], "invited")
+        self.assertNotIn("invite_token", entry)
+        self.assertNotIn(access.invite_token, resp.content.decode())
+
+    def test_detalhe_do_acesso_nao_devolve_o_token(self):
+        access = self._mint_invite()
+        self.client.force_authenticate(user=self._leitor())
+        resp = self.client.get(_access_detail_url(access.pk))
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data["status"], "invited")
+        self.assertNotIn("invite_token", resp.data)
+        self.assertNotIn(access.invite_token, resp.content.decode())
+
+    def test_revogar_nao_devolve_o_token(self):
+        access = self._mint_invite()
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.post(_access_revoke_url(access.pk))
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertNotIn("invite_token", resp.data)
+
+    def test_ativar_nao_devolve_o_token(self):
+        access = self._mint_invite()
+        self.client.force_authenticate(user=self.patient_user)
+        resp = self.client.post(ACTIVATE_URL, {"invite_token": access.invite_token}, format="json")
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data["status"], "active")
+        self.assertNotIn("invite_token", resp.data)
+
+    def test_convite_criado_devolve_o_token_uma_vez(self):
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.post(
+            ACCESS_URL,
+            {"user": self.patient_user.pk, "patient": str(self.patient.pk)},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 201, resp.data)
+        access = PatientPortalAccess.objects.get(pk=resp.data["id"])
+        self.assertEqual(resp.data["invite_token"], access.invite_token)
+
     # ─── Activate ────────────────────────────────────────────────────────────
 
     def test_activate_consumes_invite_token(self):
