@@ -352,8 +352,36 @@ class TestLeituraDeixaTrilha(BloodDonorAPITestBase):
         assert resp.status_code == 200, resp.content
 
         log = self._trilha("view_record_list", "BloodBagSerology").get()
-        # A trilha diz QUAL bolsa foi consultada, não só que alguém listou.
+        # A trilha diz QUAL bolsa foi consultada, não só que alguém listou —
+        # em `resource_id`, que é o que `/audit-trail/` expõe (`new_data` não).
         assert log.new_data == {"bag": str(bag.pk)}
+        assert log.resource_id == str(bag.pk)
+
+    def test_quem_le_a_trilha_ve_qual_bolsa_foi_consultada(self):
+        """O caminho do DPO, não o banco cru: `GET /audit-trail/?resource=`."""
+        bag = self._bag(identifier="DIN-TR4")
+        registrar_sorologia(bag, _all_non_reactive(), by=self.manager)
+        self._client(self.reader).get(f"{BASE}/blood-bag-serologies/?bag={bag.pk}")
+
+        admin = User.objects.create_user(
+            email="dpo@t.com",
+            password="pw",
+            role=Role.objects.create(name="admin", permissions=["admin"], is_system=True),
+        )
+        resp = self._client(admin).get(
+            f"{BASE}/audit-trail/",
+            {"resource_type": "BloodBagSerology", "resource": str(bag.pk)},
+        )
+        assert resp.status_code == 200, resp.content
+        linhas = resp.json()["results"]
+        assert [(r["action"], r["resource_id"]) for r in linhas] == [
+            ("view_record_list", str(bag.pk))
+        ]
+
+    def test_bolsa_malformada_devolve_400_e_nao_grava(self):
+        resp = self._client(self.reader).get(f"{BASE}/blood-bag-serologies/?bag=nao-e-uuid")
+        assert resp.status_code == 400, resp.content
+        assert not self._trilha("view_record_list", "BloodBagSerology").exists()
 
     def test_abrir_uma_sorologia_deixa_trilha(self):
         sorologia = registrar_sorologia(

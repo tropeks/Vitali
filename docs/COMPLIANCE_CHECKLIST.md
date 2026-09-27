@@ -14,7 +14,8 @@ Antes de promover um tenant de clínica para produção, o operador deve percorr
 ## 2. Padrões Clínicos e Retenção (CFM)
 - [ ] **Trilha de Auditoria (Audit Log)**: Todas as ações clínicas (criação de registros, alterações, assinaturas) estão gerando as trilhas de auditoria imutáveis.
 - [x] **Trilha imutável no banco**: `core_auditlog` recusa `UPDATE`/`DELETE`/`TRUNCATE` por trigger e `REVOKE` (migration `0019`, reaplicada na tabela particionada pela `0043`).
-- [x] **Trilha de leitura de prontuário** — ordens 016 a 019. O roteador do Django enumera as views, nunca `grep`; `apps/core/audit_coverage.py` classifica (caminho até `emr.Patient` por FK/OneToOne/M2M, sem atravessar `core.User`/`Tenant`/`Role`; ou model em `MODELS_SENSIVEIS`); o teste reprova view ou rota `GET` sem trilha. Fechamento da 019: 154 views · 74 exigem trilha · 321 rotas `GET` · 0 sem cobertura. Detalhe em `docs/SECURITY.md` §3.6.1.
+- [x] **Trilha de leitura de prontuário** — ordens 016 a 019. O roteador do Django enumera as views, nunca `grep`; `apps/core/audit_coverage.py` classifica (caminho até `emr.Patient` por FK/OneToOne/M2M, sem atravessar `core.User`/`Tenant`/`Role`; ou model em `MODELS_SENSIVEIS`); o teste reprova view ou rota `GET` sem trilha. Fechamento da 029: 154 views · 76 exigem trilha · 321 rotas `GET` · 0 sem cobertura. Detalhe em `docs/SECURITY.md` §3.6.1.
+- [x] **Doador de sangue e sorologia deixam trilha** — ordem 029: `emr.BloodDonor` e `emr.BloodBagSerology` (HIV, hepatites) em `MODELS_SENSIVEIS`, `list` sempre grava, e o `?bag=` consultado aparece no `/audit-trail/` (`?resource=`). A guarda passa a exigir classificação de toda view com identificador de pessoa natural.
 - [x] **Faixa 2 — RH com dado pessoal sensível** (LGPD art. 5º II e art. 37) — ordens 017 e 018: afastamento, exame ocupacional, dependente e ponto deixam trilha; `?employee=` filtra de verdade.
 - [x] **Retenção de 20 anos da trilha** — ordem 021 e `docs/adr/ADR-0001-retencao-auditoria-20-anos.md`: 240 meses por tenant (`TenantAuditRetention.retention_months=240`), expurgo desligado de fábrica (`purge_enabled=False`). Base: Res. CFM 1.821/2007 art. 8; Lei 13.787/2018 art. 6.
 - [x] **Partição e isolamento por tenant da trilha** — ordem 020: `core_auditlog` particionada por mês (`created_at`) e por tenant (`schema_name`), DEFAULT nos dois níveis; `DROP` de partição exige recibo de exportação fria verificado.
@@ -35,7 +36,7 @@ Antes de promover um tenant de clínica para produção, o operador deve percorr
 ## 4. Pendências conhecidas (não bloqueiam este checklist, mas precisam de ordem própria)
 - [ ] **Revogação ICP-Brasil ligada em produção** — ver seção 3.
 - [ ] **Destino frio S3 Glacier da trilha** — decidido pelo Capitão na ordem 020 (Glacier Flexible, São Paulo, Object Lock em modo compliance, credencial só-grava), **não implementado**: só existe `LocalDiskColdStorageBackend`. Fora da ordem 021; precisa de `boto3` e prova em MinIO.
-- [ ] **Sorologia de doador de sangue fora do crivo** — `emr.BloodDonor` e `emr.BloodBagSerology` não alcançam `emr.Patient` e não estão em `MODELS_SENSIVEIS`; o guarda de cobertura não exige trilha ali. As duas views herdam `AuditReadMixin` hoje, mas nada reprova se ele sair.
+- [ ] **Leitura FHIR sem trilha** — as 22 views de leitura de `apps/fhir/views.py` (`/api/v1/fhir/Patient/`, `Condition`, `Observation`...) são `APIView` pura, sem `queryset`: a guarda não as enumera e o módulo não grava auditoria. Achado na revisão da ordem 029.
 - [ ] **`core_auditlog_pre020`** — tabela antiga de auditoria, preservada pela ordem 020. Nenhum `DROP` sem aceite explícito do Imediato.
 
 ---

@@ -14,10 +14,13 @@ same per-action gate H1 mounts (reused via ``_HemoterapiaPermissionMixin``).
 
 from __future__ import annotations
 
+import uuid
+
 from django.core.exceptions import ValidationError as DjangoValidationError
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import mixins, status, viewsets
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 
 from apps.core.mixins import AuditReadMixin
@@ -43,6 +46,9 @@ class BloodDonorViewSet(AuditReadMixin, _HemoterapiaPermissionMixin, viewsets.Mo
     serializer_class = BloodDonorSerializer
     queryset = BloodDonor.objects.all()
     audit_resource_type = "BloodDonor"
+    #: Ordem 029: o próprio listar já é o acesso sensível (nome, CPF e aptidão de
+    #: cada doador). O ``DonorPanel`` carrega na montagem da tela, sem polling.
+    AUDIT_LIST_ALWAYS = True
 
     def perform_create(self, serializer):
         obj = serializer.save()
@@ -77,11 +83,20 @@ class BloodBagSerologyViewSet(
 
     serializer_class = BloodBagSerologySerializer
     audit_resource_type = "BloodBagSerology"
+    #: Ordem 029: listar devolve o painel RDC 34 (HIV, hepatites) — grava sempre,
+    #: e ``?bag=`` vai para a trilha como critério (qual bolsa foi consultada).
+    AUDIT_LIST_ALWAYS = True
+    AUDIT_LIST_PARAMS = ("bag",)
 
     def get_queryset(self):
         qs = BloodBagSerology.objects.select_related("bag", "tested_by")
         bag = self.request.query_params.get("bag")
         if bag:
+            try:
+                uuid.UUID(bag)
+            except ValueError as exc:
+                # Antes estourava 500 dentro do filtro (e nem chegava à trilha).
+                raise DRFValidationError({"bag": "Identificador de bolsa inválido."}) from exc
             qs = qs.filter(bag_id=bag)
         return qs
 

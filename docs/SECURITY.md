@@ -150,19 +150,35 @@ Reading a patient record must leave a trace (Res. CFM 1.821/2007; LGPD art. 37).
   order 016). Depth limit `SALTOS_MAXIMOS = 6`; the result saturates at 4.
 - **Band 2 — sensitive personal data outside the chart (order 017):** the model is
   in `MODELS_SENSIVEIS` — `hr.LeaveRequest`, `hr.OccupationalHealthExam`,
-  `hr.Dependent` (LGPD art. 5º II / third-party data) and `hr.TimeEntry`
-  (art. 37, Imediato's decision of 17/09). An explicit list, never a field-name
-  heuristic (the keyword attempt flagged `CostCenter.name` and `Room.name`).
+  `hr.Dependent` (LGPD art. 5º II / third-party data), `hr.TimeEntry`
+  (art. 37, Imediato's decision of 17/09), and since order 029 `emr.BloodDonor`
+  and `emr.BloodBagSerology` (donor identity and the RDC 34 panel: HIV,
+  hepatitis). An explicit list, never a field-name classifier (the keyword
+  attempt flagged `CostCenter.name` and `Room.name`).
+- **The guard asks, and does not classify (order 029).** An explicit list only
+  covers what someone remembered: blood donors came in after order 017 and nobody
+  added them. Every registered view whose model has a field that identifies a
+  natural person (`IDENTIFICADORES_PESSOAIS`: `cpf`, `rg`, `cns`, `birth_date`,
+  `full_name`, `mother_name`, `phone`, `telefone`, `email`, by exact name or
+  `_<name>` suffix) must be classified with a written reason: sensitive
+  (`MODELS_SENSIVEIS`, or it reaches `Patient`) or not (`MODELS_SEM_DADO_SENSIVEL`,
+  now also `emr.Professional` and `pharmacy.Supplier`).
+- **The list criterion lands in `resource_id` (order 029).** A view's own
+  `AUDIT_LIST_PARAMS` criterion (`?bag=`, `?employee=`) used to live only in
+  `new_data`, which `/audit-trail/` deliberately does not expose. Now the first
+  non-`search` criterion is the `resource_id` (`patient` still wins), and
+  `/audit-trail/` accepts `?resource=`.
 - **Every exemption carries a written reason**, tested at more than 40 characters:
   `ISENTAS` (whole class), `ACTIONS_ISENTAS` / `LIST_ALWAYS_ISENTAS` (single route),
-  `MODELS_SEM_DADO_SENSIVEL` (HR work-organisation models), `VIEWS_SEM_MODEL`.
+  `MODELS_SEM_DADO_SENSIVEL` (models without sensitive data), `VIEWS_SEM_MODEL`.
 - **Guards against passing by vacuity:** enumeration floors (more than 100 views and
   more than 210 GET routes); every view resolves a model or is declared in
   `VIEWS_SEM_MODEL`; `AuditReadMixin` precedes `RetrieveModelMixin`/`ListModelMixin`
   in the MRO; and, since order 019, coverage is checked **per GET route**, not per
   class — a class that inherits the mixin is not proof that each route writes.
-- **State at the close of order 019:** 154 registered views · 74 require the trail ·
-  321 GET routes · 0 uncovered.
+- **State at the close of order 029:** 154 registered views · 76 require the trail ·
+  321 GET routes · 0 uncovered · 11 views serve a personal identifier, 0 unclassified.
+  (Order 019 closed at 74.)
 - **Order 018:** `?employee=` really filters `LeaveRequestViewSet`,
   `OccupationalHealthExamViewSet` and `DependentViewSet` (same pattern as
   `TimeEntryViewSet`), so `AUDIT_LIST_PARAMS = ("employee",)` records a criterion
@@ -176,11 +192,11 @@ billing not linked to a guide — plus the self-refreshing collective panels
 (order 019). One row per repaint says the screen was open, not who looked up whom;
 the reasons live in `audit_coverage*.py`.
 
-**Known gap:** blood-donor serology (`emr.BloodDonor`, `emr.BloodBagSerology`) has
-no path to `emr.Patient` and is not in `MODELS_SENSIVEIS`, so the guard does **not**
-require a trail there. Both viewsets currently inherit `AuditReadMixin`, but nothing
-fails if that is removed, and their `list` is not `AUDIT_LIST_ALWAYS`. Needs its own
-order.
+**Known gap (found in order 029's review):** the 22 FHIR read/search views in
+`apps/fhir/views.py` (`/api/v1/fhir/Patient/`, `Condition`, `Observation`,
+`DocumentReference`, `DiagnosticReport`, and more) are plain `APIView`s with no
+`queryset`, so the router enumeration never sees them, and the module writes no
+audit row. Chart reads outside the guard by construction. Needs its own order.
 
 #### 3.6.2 Storage, retention and purge (orders 020–021, ADR-0001)
 

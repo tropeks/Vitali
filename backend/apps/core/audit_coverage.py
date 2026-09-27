@@ -35,6 +35,18 @@ CLASSE herda `AuditReadMixin`?", mas o mixin só intercepta `retrieve`/`list`
 condicionalmente. A pergunta certa, por ROTA, vive em
 `apps.core.audit_coverage_routes` — `rotas_get_registradas()`/
 `rotas_sem_cobertura()`, com `ACTIONS_ISENTAS`/`LIST_ALWAYS_ISENTAS`.
+
+**Ordem 029 — a lista explícita só cobre o que alguém lembrou.** Doador de sangue
+(`emr.BloodDonor`) e a sorologia RDC 34 da bolsa (`emr.BloodBagSerology`: HIV,
+hepatites) entraram no Sprint H2, depois da 017, e ninguém os pôs em
+`MODELS_SENSIVEIS`. Os viewsets tinham o mixin, mas a guarda os dava como "não
+sensíveis" e por isso aceitava `list` sem `AUDIT_LIST_ALWAYS`: o cadastro inteiro
+de doadores saía sem rastro. A classificação continua explícita, mas agora a
+guarda PERGUNTA: toda view cujo model tem campo que identifica pessoa natural
+(`IDENTIFICADORES_PESSOAIS`) precisa estar classificada, por um dos dois lados, com
+motivo (`views_com_identificador_nao_classificadas()`). O nome do campo dispara a
+pergunta e não a responde. Isso é o oposto do crivo que a 017 recusou, porque
+aquele CLASSIFICAVA por nome.
 """
 
 from __future__ import annotations
@@ -112,12 +124,27 @@ MODELS_SENSIVEIS: dict[str, str] = {
         "(o controlador mantém registro das operações de tratamento), e a "
         "trilha custa uma linha."
     ),
+    "emr.BloodDonor": (
+        "Ordem 029. `full_name`, `cpf` e `birth_date` identificam um TERCEIRO que "
+        "não é paciente (o doador); `apto` e `notes` carregam a inaptidão a doar, "
+        "e `abo`/`rh_factor` o tipo sanguíneo — dado de saúde, LGPD art. 5º II. "
+        "Fora do grafo de Patient: o doador não tem FK para ninguém."
+    ),
+    "emr.BloodBagSerology": (
+        "Ordem 029. `hiv`, `hbsag`, `anti_hbc`, `anti_hcv`, `sifilis`, `chagas` e "
+        "`htlv` (painel RDC 34) são dado de saúde do doador daquela bolsa, LGPD "
+        "art. 5º II. A bolsa liga pelo DIN, identificador de doação que o serviço "
+        "de hemoterapia reassocia ao doador (a RDC 34 manda convocar o reagente). "
+        "Reversível, então não é anonimizado (LGPD art. 12): é pseudonimizado, no "
+        "sentido do art. 13 §4º, e continua dado pessoal."
+    ),
 }
 
-#: Models do app `hr` que NÃO exigem trilha — organização do trabalho, não
-#: pessoa. Declaração explícita, com motivo, para o teste de classificação
-#: completa do app `hr` (ordem 017): toda view de RH registrada no roteador é
-#: OU exige trilha (e está em `MODELS_SENSIVEIS`) OU consta aqui.
+#: Models que NÃO exigem trilha — organização do trabalho, não pessoa.
+#: Declaração explícita, com motivo, para dois testes de classificação: o do
+#: app `hr` (ordem 017), onde toda view registrada no roteador exige trilha OU
+#: consta aqui; e o de `IDENTIFICADORES_PESSOAIS` (ordem 029), onde todo model
+#: servido com campo que identifica pessoa natural é sensível OU consta aqui.
 MODELS_SEM_DADO_SENSIVEL: dict[str, str] = {
     "hr.Employee": (
         "O dado pessoal do funcionário vive em `core.User`. Este model só tem "
@@ -145,7 +172,42 @@ MODELS_SEM_DADO_SENSIVEL: dict[str, str] = {
         "Nome, período e unidade de uma escala assistencial. Organização do "
         "trabalho do setor, sem dado pessoal de ninguém."
     ),
+    "emr.Professional": (
+        "Ordem 029 (a pergunta de IDENTIFICADORES_PESSOAIS disparou pelo `cns`). "
+        "O `ProfessionalSerializer` NÃO devolve o `cns` — cifrado em repouso, só o "
+        "BPA/APAC o consome. A rota devolve conselho, especialidade, CBO e CNES do "
+        "profissional no exercício da função; nome e e-mail vêm de `core.User` "
+        "(staff, ver ISENTAS). Nenhum dado de saúde."
+    ),
+    "pharmacy.Supplier": (
+        "Ordem 029 (a pergunta disparou por `contact_email`/`contact_phone`). O "
+        "fornecedor é pessoa jurídica (`cnpj`); `contact_name`/`contact_email`/"
+        "`contact_phone` são o contato comercial do representante. É dado pessoal "
+        "comum (LGPD art. 5º I), não sensível, e não é de paciente: fora do "
+        "critério de trilha de leitura da Prioridade 4."
+    ),
 }
+
+#: Ordem 029 — campos que identificam uma pessoa natural. NÃO classificam: um
+#: model com um deles, servido por view, só obriga alguém a DECIDIR (e escrever)
+#: se o dado é sensível — `MODELS_SENSIVEIS` ou `MODELS_SEM_DADO_SENSIVEL`. Casa
+#: o nome exato OU o sufixo `_<nome>` (`contact_phone`, `donor_cpf`,
+#: `patient_full_name`); ver `_campos_identificadores`. Nomes inequívocos de
+#: pessoa, de propósito: `name`/`nome`/`address` ficam de fora, nem por sufixo,
+#: porque sala, centro de custo e clínica também têm (a lição da 017).
+IDENTIFICADORES_PESSOAIS: frozenset[str] = frozenset(
+    {
+        "cpf",
+        "rg",
+        "cns",
+        "birth_date",
+        "full_name",
+        "mother_name",
+        "phone",
+        "telefone",
+        "email",
+    }
+)
 
 
 def caminho_ate_paciente(model, visto: set[str] | None = None, prof: int = 0) -> str:
@@ -346,3 +408,53 @@ def mixin_fora_de_ordem() -> list[str]:
                     "retrieve()/list()"
                 )
     return achados
+
+
+def _campos_identificadores(model) -> list[str]:
+    """Campos concretos do model que casam `IDENTIFICADORES_PESSOAIS`, por nome
+    exato ou por sufixo `_<identificador>` (revisão da 029: `Supplier` tinha
+    `contact_phone`/`contact_email` e escapava do casamento exato)."""
+    achados = []
+    for campo in model._meta.concrete_fields:
+        nome = campo.name
+        if nome in IDENTIFICADORES_PESSOAIS or any(
+            nome.endswith(f"_{ident}") for ident in IDENTIFICADORES_PESSOAIS
+        ):
+            achados.append(nome)
+    return sorted(achados)
+
+
+def views_com_identificador() -> list[dict]:
+    """Toda view registrada cujo model tem campo de `IDENTIFICADORES_PESSOAIS`.
+
+    Olha só os campos concretos do próprio model (`concrete_fields`), nunca os
+    do model alcançado por FK: o dado do usuário que criou o registro é
+    `core.User`, a mesma aresta espúria de `ARESTAS_PROIBIDAS`.
+    """
+    from django.apps import apps as django_apps
+
+    achadas: list[dict] = []
+    for v in views_registradas():
+        if v["model"] is None:
+            continue
+        identificadores = _campos_identificadores(django_apps.get_model(v["model"]))
+        if identificadores:
+            achadas.append({**v, "identificadores": identificadores})
+    return achadas
+
+
+def views_com_identificador_nao_classificadas() -> list[dict]:
+    """Views com identificador de pessoa que ninguém classificou (ordem 029).
+
+    Classificada = tem `motivo` (alcança `Patient` ou está em
+    `MODELS_SENSIVEIS`), OU está em `ISENTAS`, OU o model está em
+    `MODELS_SEM_DADO_SENSIVEL`. O resto é a próxima tabela de doador: dado de
+    pessoa fora do grafo de `Patient` que a guarda não exigiria.
+    """
+    return [
+        v
+        for v in views_com_identificador()
+        if not v["motivo"]
+        and v["view"] not in ISENTAS
+        and v["model"] not in MODELS_SEM_DADO_SENSIVEL
+    ]

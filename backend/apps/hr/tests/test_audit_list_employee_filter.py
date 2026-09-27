@@ -107,6 +107,9 @@ class _EmployeeFilterAuditMixin:
         )
         assert logs.count() == 1
         assert logs.get().new_data == {"employee": str(self.employee_a.id)}
+        # Ordem 029: o alvo também vai para `resource_id` — `new_data` não sai
+        # no `/audit-trail/`, e sem isto quem lê a trilha não via QUEM foi lido.
+        assert logs.get().resource_id == str(self.employee_a.id)
 
     def test_unfiltered_list_now_logs_the_whole_roster(self):
         """Decisão mudou (correção pós-ordem 019, `AUDIT_LIST_ALWAYS`).

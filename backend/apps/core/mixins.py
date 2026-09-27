@@ -84,9 +84,26 @@ class AuditReadMixin:
             }
             if criteria or self.AUDIT_LIST_ALWAYS:
                 self._log_audit_event(
-                    request, "view_record_list", criteria.get("patient", ""), new_data=criteria
+                    request, "view_record_list", self._alvo_da_busca(criteria), new_data=criteria
                 )
         return response
+
+    def _alvo_da_busca(self, criteria: dict[str, str]) -> str:
+        """O id que a busca dirigida mirou, para ``resource_id``.
+
+        Ordem 029: antes era sempre ``criteria.get("patient")``, e o critério de
+        ``AUDIT_LIST_PARAMS`` próprio da view (``?employee=`` no RH, ``?bag=`` na
+        sorologia) só existia em ``new_data``, que ``AuditTrailEntrySerializer``
+        não expõe de propósito. Quem lia a trilha via "alguém listou" e nunca
+        "listou o quê". ``patient`` continua vencendo. ``search`` nunca é alvo:
+        é texto livre, não id.
+        """
+        if criteria.get("patient"):
+            return criteria["patient"]
+        for param in self.AUDIT_LIST_PARAMS:
+            if param != "search" and criteria.get(param):
+                return criteria[param]
+        return ""
 
     def finalize_response(self, request, response, *args, **kwargs):
         """Fecha a lacuna que a ordem 019 mediu: ``@action`` de detalhe que lê

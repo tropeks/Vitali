@@ -59,6 +59,9 @@ class AuditTrailPagination(PageNumberPagination):
 
 class AuditTrailFilter(django_filters.FilterSet):
     patient = django_filters.CharFilter(field_name="resource_id", lookup_expr="exact")
+    #: Ordem 029: o mesmo ``resource_id`` com nome que não mente quando o alvo
+    #: não é paciente (a bolsa da sorologia, o funcionário do RH).
+    resource = django_filters.CharFilter(field_name="resource_id", lookup_expr="exact")
     user = django_filters.NumberFilter(field_name="user_id", lookup_expr="exact")
     resource_type = django_filters.CharFilter(field_name="resource_type", lookup_expr="exact")
     action = django_filters.CharFilter(field_name="action", lookup_expr="exact")
@@ -67,7 +70,7 @@ class AuditTrailFilter(django_filters.FilterSet):
 
     class Meta:
         model = AuditLog
-        fields = ("patient", "user", "resource_type", "action", "date_from", "date_to")
+        fields = ("patient", "resource", "user", "resource_type", "action", "date_from", "date_to")
 
 
 class AuditTrailListView(generics.ListAPIView):
