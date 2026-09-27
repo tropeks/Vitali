@@ -192,11 +192,26 @@ billing not linked to a guide — plus the self-refreshing collective panels
 (order 019). One row per repaint says the screen was open, not who looked up whom;
 the reasons live in `audit_coverage*.py`.
 
-**Known gap (found in order 029's review):** the 22 FHIR read/search views in
-`apps/fhir/views.py` (`/api/v1/fhir/Patient/`, `Condition`, `Observation`,
-`DocumentReference`, `DiagnosticReport`, and more) are plain `APIView`s with no
-`queryset`, so the router enumeration never sees them, and the module writes no
-audit row. Chart reads outside the guard by construction. Needs its own order.
+- **Views without a queryset (order 030).** The enumeration above only saw views with
+  `queryset`/`get_queryset`, so 106 GET routes of plain `APIView`s were invisible,
+  51 of them reading patient data and 48 writing nothing: the 20 FHIR chart reads
+  (`/api/v1/fhir/*`), the portal's LGPD export, the staff prescription and lab-report
+  PDFs, imaging studies, telemedicine and triage sessions. `AuditReadAPIViewMixin`
+  (`apps/core/mixins.py`) writes the trail in `finalize_response` on every GET 2xx,
+  declaratively: `AUDIT_LOOKUP_KWARG` for a detail route (`view_record`), otherwise
+  `view_record_list` with the target in `resource_id` (FHIR: the cleaned
+  `patient`/`subject` reference or the confined SMART patient; portal: the account
+  holder's patient). `rotas_get_sem_queryset()` requires every such route to be
+  covered, declared in `APIVIEWS_TRILHA_PROPRIA` (3 views that already wrote their own
+  action, checked in the `get()` source), or exempt in `APIVIEWS_ISENTAS` with a reason
+  (module-qualified keys). Static checks: mixin before `APIView` in the MRO, and
+  `AUDIT_LOOKUP_KWARG` names a real URL kwarg. **State at the close of order 030:**
+  106 routes · 47 with a trail · 59 exempt · 0 unclassified.
+- **A trail row is never lost to length (order 030).** `AuditLog.resource_id` is
+  `varchar(36)`; a longer target used to make the insert fail, and the mixin swallows
+  audit errors so a read never breaks, so the read went unrecorded. A long bogus
+  `?patient=` was enough to erase one's own trace. Now the full value goes to
+  `new_data["resource_id_completo"]` and `resource_id` keeps the first 36 characters.
 
 #### 3.6.2 Storage, retention and purge (orders 020–021, ADR-0001)
 

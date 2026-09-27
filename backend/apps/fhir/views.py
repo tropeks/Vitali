@@ -26,6 +26,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.mixins import AuditReadAPIViewMixin
 from apps.core.permissions import HasPermission, ModuleRequiredPermission
 from apps.emr.models import (
     Allergy,
@@ -109,6 +110,41 @@ def _context_allows(request, patient_pk) -> bool:
     """True unless a patient-confined SMART token points at a different patient."""
     ctx = smart_patient_context(request)
     return ctx is None or ctx == patient_pk
+
+
+class _LeituraFHIR(AuditReadAPIViewMixin, APIView):
+    """Base das 20 leituras FHIR de prontuário: grava trilha (ordem 030).
+
+    A porta FHIR é por onde o prontuário sai do sistema para outro sistema, e
+    até a 030 nenhuma leitura por ela deixava rastro. O alvo da busca vai limpo
+    para ``resource_id`` — ``Patient/<uuid>`` vira ``<uuid>``, para o
+    ``/audit-trail/?patient=<uuid>`` achar a leitura — e, sem parâmetro de
+    paciente, é o paciente do contexto de um token SMART confinado: a busca já
+    estava restrita a ele. ``Practitioner`` não herda daqui (é cadastro de
+    profissional, isento na guarda com motivo).
+    """
+
+    _PARAMS_DE_PACIENTE = ("patient", "subject", "beneficiary")
+
+    def _alvo_da_busca(self, criteria: dict[str, str]) -> str:
+        for param in self._PARAMS_DE_PACIENTE:
+            if criteria.get(param):
+                pid = _ref_uuid(criteria[param])
+                return str(pid) if pid else ""
+        if criteria.get("encounter"):
+            # Revisão da 030: `?encounter=` sem `?patient=` já mira UM paciente
+            # (o do atendimento). Sem isto a linha ficava com `resource_id`
+            # vazio, igual a uma varredura sem filtro, e o
+            # `/audit-trail/?patient=` não a achava.
+            eid = _ref_uuid(criteria["encounter"])
+            pid = (
+                Encounter.objects.filter(pk=eid).values_list("patient_id", flat=True).first()
+                if eid
+                else None
+            )
+            return str(pid) if pid else ""
+        ctx = smart_patient_context(self.request)
+        return str(ctx) if ctx else ""
 
 
 FHIR_VERSION = "4.0.1"
@@ -282,8 +318,11 @@ class CapabilityStatementView(APIView):
         )
 
 
-class PatientReadView(APIView):
+class PatientReadView(_LeituraFHIR):
     """GET /api/v1/fhir/Patient/{id}/ — single-resource read."""
+
+    audit_resource_type = "Patient"
+    AUDIT_LOOKUP_KWARG = "patient_id"
 
     def get_permissions(self):
         return [IsAuthenticated(), _FHIR_MODULE, HasPermission("fhir.read"), _SMART_SCOPE]
@@ -302,7 +341,7 @@ class PatientReadView(APIView):
         return Response(patient_to_fhir(patient))
 
 
-class PatientSearchView(APIView):
+class PatientSearchView(_LeituraFHIR):
     """
     GET /api/v1/fhir/Patient/?identifier=…|…&name=…&_count=…&_offset=…
 
@@ -312,6 +351,9 @@ class PatientSearchView(APIView):
     - `name` — case-insensitive substring match against `full_name`.
     - `_count` / `_offset` — page size (capped at 100, default 20) and page start.
     """
+
+    audit_resource_type = "Patient"
+    AUDIT_LIST_PARAMS = ("identifier", "name")
 
     def get_permissions(self):
         return [IsAuthenticated(), _FHIR_MODULE, HasPermission("fhir.read"), _SMART_SCOPE]
@@ -370,8 +412,11 @@ def _self_link(request, patient) -> str:
         return f"Patient/{patient.pk}"
 
 
-class EncounterReadView(APIView):
+class EncounterReadView(_LeituraFHIR):
     """GET /api/v1/fhir/Encounter/{id}/ — single-resource read."""
+
+    audit_resource_type = "Encounter"
+    AUDIT_LOOKUP_KWARG = "encounter_id"
 
     def get_permissions(self):
         return [IsAuthenticated(), _FHIR_MODULE, HasPermission("fhir.read"), _SMART_SCOPE]
@@ -388,7 +433,7 @@ class EncounterReadView(APIView):
         return Response(encounter_to_fhir(encounter))
 
 
-class EncounterSearchView(APIView):
+class EncounterSearchView(_LeituraFHIR):
     """
     GET /api/v1/fhir/Encounter/?subject=Patient/{uuid}&status=…&_count=…
 
@@ -399,6 +444,9 @@ class EncounterSearchView(APIView):
       Translated back to the Vitali Encounter.status column.
     - `_count` — page size, capped at 100. Default 20.
     """
+
+    audit_resource_type = "Encounter"
+    AUDIT_LIST_PARAMS = ("subject", "patient", "status")
 
     _STATUS_REVERSE = {"in-progress": "open", "finished": "signed", "cancelled": "cancelled"}
 
@@ -530,8 +578,11 @@ def _practitioner_self_link(request, professional) -> str:
 # ─── AllergyIntolerance ──────────────────────────────────────────────────────
 
 
-class AllergyIntoleranceReadView(APIView):
+class AllergyIntoleranceReadView(_LeituraFHIR):
     """GET /api/v1/fhir/AllergyIntolerance/{id}/ — single-resource read."""
+
+    audit_resource_type = "AllergyIntolerance"
+    AUDIT_LOOKUP_KWARG = "allergy_id"
 
     def get_permissions(self):
         return [IsAuthenticated(), _FHIR_MODULE, HasPermission("fhir.read"), _SMART_SCOPE]
@@ -546,7 +597,7 @@ class AllergyIntoleranceReadView(APIView):
         return Response(allergy_to_fhir(allergy))
 
 
-class AllergyIntoleranceSearchView(APIView):
+class AllergyIntoleranceSearchView(_LeituraFHIR):
     """
     GET /api/v1/fhir/AllergyIntolerance/?patient=Patient/{id}&clinical-status=…&_count=…
 
@@ -555,6 +606,9 @@ class AllergyIntoleranceSearchView(APIView):
     - `clinical-status` — `active` | `inactive` | `resolved`.
     - `_count` — page size, capped at 100. Default 20.
     """
+
+    audit_resource_type = "AllergyIntolerance"
+    AUDIT_LIST_PARAMS = ("patient", "clinical-status")
 
     def get_permissions(self):
         return [IsAuthenticated(), _FHIR_MODULE, HasPermission("fhir.read"), _SMART_SCOPE]
@@ -596,8 +650,11 @@ def _allergy_self_link(request, allergy) -> str:
 # PrescriptionItem) — the FHIR id is the PrescriptionItem id.
 
 
-class MedicationRequestReadView(APIView):
+class MedicationRequestReadView(_LeituraFHIR):
     """GET /api/v1/fhir/MedicationRequest/{id}/ — single-resource read."""
+
+    audit_resource_type = "MedicationRequest"
+    AUDIT_LOOKUP_KWARG = "item_id"
 
     def get_permissions(self):
         return [IsAuthenticated(), _FHIR_MODULE, HasPermission("fhir.read"), _SMART_SCOPE]
@@ -616,7 +673,7 @@ class MedicationRequestReadView(APIView):
         return Response(prescription_item_to_fhir(item))
 
 
-class MedicationRequestSearchView(APIView):
+class MedicationRequestSearchView(_LeituraFHIR):
     """
     GET /api/v1/fhir/MedicationRequest/?patient=Patient/{id}&status=…&_count=…
 
@@ -628,6 +685,9 @@ class MedicationRequestSearchView(APIView):
 
     `status` is translated to the underlying Vitali Prescription.status set.
     """
+
+    audit_resource_type = "MedicationRequest"
+    AUDIT_LIST_PARAMS = ("patient", "status")
 
     _STATUS_REVERSE = {
         "draft": ["draft"],
@@ -686,8 +746,11 @@ def _medication_request_self_link(request, item) -> str:
 # so it's stable across reads.
 
 
-class ObservationReadView(APIView):
+class ObservationReadView(_LeituraFHIR):
     """GET /api/v1/fhir/Observation/<encounter-id>-<loinc>/"""
+
+    audit_resource_type = "Observation"
+    AUDIT_LOOKUP_KWARG = "observation_id"
 
     def get_permissions(self):
         return [IsAuthenticated(), _FHIR_MODULE, HasPermission("fhir.read"), _SMART_SCOPE]
@@ -710,7 +773,7 @@ class ObservationReadView(APIView):
         return Response(resource)
 
 
-class ObservationSearchView(APIView):
+class ObservationSearchView(_LeituraFHIR):
     """
     GET /api/v1/fhir/Observation/?patient=…&encounter=…&code=…&_count=…
 
@@ -722,6 +785,9 @@ class ObservationSearchView(APIView):
     - `_count` / `_offset` — page size (capped at 100, default 50; vitals are
       dense) and page start.
     """
+
+    audit_resource_type = "Observation"
+    AUDIT_LIST_PARAMS = ("patient", "encounter", "code")
 
     def get_permissions(self):
         return [IsAuthenticated(), _FHIR_MODULE, HasPermission("fhir.read"), _SMART_SCOPE]
@@ -776,8 +842,11 @@ def _observation_self_link(request, observation: dict) -> str:
 # ─── Condition ───────────────────────────────────────────────────────────────
 
 
-class ConditionReadView(APIView):
+class ConditionReadView(_LeituraFHIR):
     """GET /api/v1/fhir/Condition/{id}/ — single-resource read."""
+
+    audit_resource_type = "Condition"
+    AUDIT_LOOKUP_KWARG = "condition_id"
 
     def get_permissions(self):
         return [IsAuthenticated(), _FHIR_MODULE, HasPermission("fhir.read"), _SMART_SCOPE]
@@ -792,7 +861,7 @@ class ConditionReadView(APIView):
         return Response(medical_history_to_fhir(history))
 
 
-class ConditionSearchView(APIView):
+class ConditionSearchView(_LeituraFHIR):
     """
     GET /api/v1/fhir/Condition/?patient=…&clinical-status=…&category=…&_count=…
 
@@ -802,6 +871,9 @@ class ConditionSearchView(APIView):
     - `category` — `problem-list-item` | `encounter-diagnosis`.
     - `_count` — page size, capped at 100. Default 20.
     """
+
+    audit_resource_type = "Condition"
+    AUDIT_LIST_PARAMS = ("patient", "clinical-status", "category")
 
     _CATEGORY_REVERSE = {
         "problem-list-item": ["chronic", "acute"],
@@ -870,8 +942,11 @@ def _condition_self_link(request, history) -> str:
 _SERVICE_REQUEST_DOC_TYPES = ("referral", "exam_request")
 
 
-class ServiceRequestReadView(APIView):
+class ServiceRequestReadView(_LeituraFHIR):
     """GET /api/v1/fhir/ServiceRequest/{id}/ — single-resource read."""
+
+    audit_resource_type = "ServiceRequest"
+    AUDIT_LOOKUP_KWARG = "service_request_id"
 
     def get_permissions(self):
         return [IsAuthenticated(), _FHIR_MODULE, HasPermission("fhir.read"), _SMART_SCOPE]
@@ -890,7 +965,7 @@ class ServiceRequestReadView(APIView):
         return Response(clinical_document_to_fhir(document))
 
 
-class ServiceRequestSearchView(APIView):
+class ServiceRequestSearchView(_LeituraFHIR):
     """
     GET /api/v1/fhir/ServiceRequest/?patient=…&status=…&category=…&_count=…
 
@@ -902,6 +977,9 @@ class ServiceRequestSearchView(APIView):
       Vitali `doc_type`.
     - `_count` — page size, capped at 100. Default 20.
     """
+
+    audit_resource_type = "ServiceRequest"
+    AUDIT_LIST_PARAMS = ("patient", "category", "status")
 
     def get_permissions(self):
         return [IsAuthenticated(), _FHIR_MODULE, HasPermission("fhir.read"), _SMART_SCOPE]
@@ -960,8 +1038,11 @@ def _service_request_self_link(request, document) -> str:
 _DOCUMENT_REFERENCE_DOC_TYPES = ("certificate",)
 
 
-class DocumentReferenceReadView(APIView):
+class DocumentReferenceReadView(_LeituraFHIR):
     """GET /api/v1/fhir/DocumentReference/{id}/ — single-resource read."""
+
+    audit_resource_type = "DocumentReference"
+    AUDIT_LOOKUP_KWARG = "document_reference_id"
 
     def get_permissions(self):
         return [IsAuthenticated(), _FHIR_MODULE, HasPermission("fhir.read"), _SMART_SCOPE]
@@ -980,7 +1061,7 @@ class DocumentReferenceReadView(APIView):
         return Response(clinical_document_to_document_reference(document))
 
 
-class DocumentReferenceSearchView(APIView):
+class DocumentReferenceSearchView(_LeituraFHIR):
     """
     GET /api/v1/fhir/DocumentReference/?patient=…&_count=…&_offset=…
 
@@ -988,6 +1069,9 @@ class DocumentReferenceSearchView(APIView):
     - `patient` / `subject` — `Patient/<uuid>` or bare uuid (joins via encounter).
     - `_count` / `_offset` — page size (capped at 100, default 20) and page start.
     """
+
+    audit_resource_type = "DocumentReference"
+    AUDIT_LIST_PARAMS = ("patient", "subject")
 
     def get_permissions(self):
         return [IsAuthenticated(), _FHIR_MODULE, HasPermission("fhir.read"), _SMART_SCOPE]
@@ -1032,8 +1116,11 @@ def _document_reference_self_link(request, document) -> str:
 _DIAGNOSTIC_REPORT_DOC_TYPES = ("report",)
 
 
-class DiagnosticReportReadView(APIView):
+class DiagnosticReportReadView(_LeituraFHIR):
     """GET /api/v1/fhir/DiagnosticReport/{id}/ — single-resource read."""
+
+    audit_resource_type = "DiagnosticReport"
+    AUDIT_LOOKUP_KWARG = "diagnostic_report_id"
 
     def get_permissions(self):
         return [IsAuthenticated(), _FHIR_MODULE, HasPermission("fhir.read"), _SMART_SCOPE]
@@ -1052,7 +1139,7 @@ class DiagnosticReportReadView(APIView):
         return Response(clinical_document_to_diagnostic_report(document))
 
 
-class DiagnosticReportSearchView(APIView):
+class DiagnosticReportSearchView(_LeituraFHIR):
     """
     GET /api/v1/fhir/DiagnosticReport/?patient=…&status=…&_count=…&_offset=…
 
@@ -1062,6 +1149,9 @@ class DiagnosticReportSearchView(APIView):
       `preliminary` → unsigned.
     - `_count` / `_offset` — page size (capped at 100, default 20) and page start.
     """
+
+    audit_resource_type = "DiagnosticReport"
+    AUDIT_LIST_PARAMS = ("patient", "subject", "status")
 
     def get_permissions(self):
         return [IsAuthenticated(), _FHIR_MODULE, HasPermission("fhir.read"), _SMART_SCOPE]
@@ -1109,8 +1199,11 @@ def _diagnostic_report_self_link(request, document) -> str:
 # PatientInsurance (convênio) rows surface as FHIR Coverage.
 
 
-class CoverageReadView(APIView):
+class CoverageReadView(_LeituraFHIR):
     """GET /api/v1/fhir/Coverage/{id}/ — single-resource read."""
+
+    audit_resource_type = "Coverage"
+    AUDIT_LOOKUP_KWARG = "coverage_id"
 
     def get_permissions(self):
         return [IsAuthenticated(), _FHIR_MODULE, HasPermission("fhir.read"), _SMART_SCOPE]
@@ -1125,7 +1218,7 @@ class CoverageReadView(APIView):
         return Response(patient_insurance_to_fhir(insurance))
 
 
-class CoverageSearchView(APIView):
+class CoverageSearchView(_LeituraFHIR):
     """
     GET /api/v1/fhir/Coverage/?patient=…&status=…&_count=…&_offset=…
 
@@ -1134,6 +1227,9 @@ class CoverageSearchView(APIView):
     - `status` — FHIR Coverage.status (`active` | `cancelled`).
     - `_count` / `_offset` — page size (capped at 100, default 20) and page start.
     """
+
+    audit_resource_type = "Coverage"
+    AUDIT_LIST_PARAMS = ("patient", "beneficiary", "status")
 
     def get_permissions(self):
         return [IsAuthenticated(), _FHIR_MODULE, HasPermission("fhir.read"), _SMART_SCOPE]

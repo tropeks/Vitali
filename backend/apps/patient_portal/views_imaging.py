@@ -15,7 +15,7 @@ from apps.core.utils import tenant_has_feature
 
 from .models import PatientPortalAccess
 from .serializers_imaging import PortalImagingReportSerializer, PortalImagingStudySerializer
-from .views import _SelfView
+from .views import _SelfLeitura, _SelfView
 
 
 def _patient_studies(patient):
@@ -25,7 +25,10 @@ def _patient_studies(patient):
     )
 
 
-class MeImagingStudiesView(_SelfView):
+class MeImagingStudiesView(_SelfLeitura):
+    audit_resource_type = "PortalImagingStudies"
+    AUDIT_LIST_PARAMS: tuple[str, ...] = ()
+
     def get(self, request):
         patient = self._patient(request)
         studies = _patient_studies(patient).order_by("-study_date")[:100]

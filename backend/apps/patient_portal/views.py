@@ -30,6 +30,7 @@ from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.mixins import AuditReadAPIViewMixin
 from apps.core.models import AuditLog
 from apps.core.permissions import HasPermission, ModuleRequiredPermission
 from apps.emr.models import Allergy, Appointment, Encounter, Prescription
@@ -78,8 +79,15 @@ class IsPortalSelfAccess(BasePermission):
 # ─── Admin surface ───────────────────────────────────────────────────────────
 
 
-class AccessListCreateView(APIView):
+class AccessListCreateView(AuditReadAPIViewMixin, APIView):
     """GET / POST `/api/v1/portal/access/` — clinic staff manage invites."""
+
+    audit_resource_type = "PatientPortalAccess"
+    AUDIT_LIST_PARAMS: tuple[str, ...] = ("status",)
+
+    def _alvo_da_busca(self, criteria: dict[str, str]) -> str:
+        # `?status=` é filtro, não id: vai para `new_data`, nunca para `resource_id`.
+        return ""
 
     def get_permissions(self):
         if self.request.method == "POST":
@@ -114,8 +122,11 @@ class AccessListCreateView(APIView):
         )
 
 
-class AccessDetailView(APIView):
+class AccessDetailView(AuditReadAPIViewMixin, APIView):
     """GET `/api/v1/portal/access/{id}/`."""
+
+    audit_resource_type = "PatientPortalAccess"
+    AUDIT_LOOKUP_KWARG = "access_id"
 
     def get_permissions(self):
         return [IsAuthenticated(), _PORTAL_MODULE, HasPermission("users.read")]
@@ -202,12 +213,36 @@ class _SelfView(APIView):
         return access.patient
 
 
-class MeView(_SelfView):
+class _SelfLeitura(AuditReadAPIViewMixin, _SelfView):
+    """``_SelfView`` que deixa trilha de leitura (ordem 030).
+
+    Quem lê é o próprio titular, e ler o próprio prontuário continua sendo
+    operação de tratamento a registrar (LGPD art. 37) — o export, sobretudo, é
+    a cópia mais ampla do prontuário que sai do sistema. O alvo em
+    ``resource_id`` é o paciente do titular, para ``/audit-trail/?patient=``
+    achar a leitura; os ``AUDIT_LIST_PARAMS`` de cada view (ex.
+    ``export_format``) vão para ``new_data``. As ``_SelfView`` que não leem
+    prontuário, ou que já gravam trilha própria, continuam em ``_SelfView`` e
+    estão classificadas na guarda.
+    """
+
+    def _alvo_da_busca(self, criteria: dict[str, str]) -> str:
+        access = getattr(self.request.user, "patient_portal_access", None)
+        return str(access.patient_id) if access is not None else ""
+
+
+class MeView(_SelfLeitura):
+    audit_resource_type = "PortalProfile"
+    AUDIT_LIST_PARAMS: tuple[str, ...] = ()
+
     def get(self, request):
         return Response(PortalPatientSerializer(self._patient(request)).data)
 
 
-class MeRepresentativesView(_SelfView):
+class MeRepresentativesView(_SelfLeitura):
+    audit_resource_type = "PortalRepresentatives"
+    AUDIT_LIST_PARAMS: tuple[str, ...] = ()
+
     def get(self, request):
         patient = self._patient(request)
         return Response(
@@ -217,7 +252,10 @@ class MeRepresentativesView(_SelfView):
         )
 
 
-class MeConsentsView(_SelfView):
+class MeConsentsView(_SelfLeitura):
+    audit_resource_type = "PortalConsents"
+    AUDIT_LIST_PARAMS: tuple[str, ...] = ()
+
     def get(self, request):
         return Response(
             PortalConsentSerializer(
@@ -258,14 +296,20 @@ class MeConsentRevokeView(_SelfView):
         return Response(PortalConsentSerializer(consent).data)
 
 
-class MeAppointmentsView(_SelfView):
+class MeAppointmentsView(_SelfLeitura):
+    audit_resource_type = "PortalAppointments"
+    AUDIT_LIST_PARAMS: tuple[str, ...] = ()
+
     def get(self, request):
         patient = self._patient(request)
         qs = Appointment.objects.filter(patient=patient).order_by("-start_time")[:100]
         return Response(PortalAppointmentSerializer(qs, many=True).data)
 
 
-class MeEncountersView(_SelfView):
+class MeEncountersView(_SelfLeitura):
+    audit_resource_type = "PortalEncounters"
+    AUDIT_LIST_PARAMS: tuple[str, ...] = ()
+
     def get(self, request):
         patient = self._patient(request)
         # Patients only see signed encounters — draft / cancelled clinical
@@ -276,7 +320,10 @@ class MeEncountersView(_SelfView):
         return Response(PortalEncounterSerializer(qs, many=True).data)
 
 
-class MePrescriptionsView(_SelfView):
+class MePrescriptionsView(_SelfLeitura):
+    audit_resource_type = "PortalPrescriptions"
+    AUDIT_LIST_PARAMS: tuple[str, ...] = ()
+
     def get(self, request):
         patient = self._patient(request)
         qs = Prescription.objects.filter(
@@ -286,14 +333,20 @@ class MePrescriptionsView(_SelfView):
         return Response(PortalPrescriptionSerializer(qs, many=True).data)
 
 
-class MeAllergiesView(_SelfView):
+class MeAllergiesView(_SelfLeitura):
+    audit_resource_type = "PortalAllergies"
+    AUDIT_LIST_PARAMS: tuple[str, ...] = ()
+
     def get(self, request):
         patient = self._patient(request)
         qs = Allergy.objects.filter(patient=patient).order_by("-created_at")
         return Response(PortalAllergySerializer(qs, many=True).data)
 
 
-class MeExportView(_SelfView):
+class MeExportView(_SelfLeitura):
+    audit_resource_type = "PortalExport"
+    AUDIT_LIST_PARAMS: tuple[str, ...] = ("export_format",)
+
     def get(self, request):
         patient = self._patient(request)
         export_format = request.query_params.get("export_format", "json")

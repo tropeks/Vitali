@@ -308,7 +308,10 @@ def _classes_do_roteador() -> list[type]:
     """
     from django.urls import get_resolver
 
-    vistas: dict[str, type] = {}
+    # Chave módulo + classe (ordem 030): nome de classe se repete entre apps
+    # (`SessionListCreateView` na telemedicina e na triagem), e deduplicar só
+    # pelo nome escondia a segunda.
+    vistas: dict[tuple[str, str], type] = {}
 
     def andar(resolver):
         for padrao in resolver.url_patterns:
@@ -317,9 +320,9 @@ def _classes_do_roteador() -> list[type]:
                 continue
             cb = getattr(padrao, "callback", None)
             cls = getattr(cb, "cls", None) or getattr(cb, "view_class", None)
-            if cls is None or cls.__name__ in vistas:
+            if cls is None:
                 continue
-            vistas[cls.__name__] = cls
+            vistas.setdefault((cls.__module__, cls.__name__), cls)
 
     andar(get_resolver())
     return list(vistas.values())

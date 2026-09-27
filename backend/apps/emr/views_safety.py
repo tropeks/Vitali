@@ -23,6 +23,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.mixins import AuditReadAPIViewMixin
 from apps.core.permissions import HasPermission
 from apps.emr.models import AISafetyAlert, PrescriptionItem
 
@@ -237,7 +238,7 @@ def _serialize_deterioration_alert(alert) -> dict:
     }
 
 
-class DeteriorationAlertsView(APIView):
+class DeteriorationAlertsView(AuditReadAPIViewMixin, APIView):
     """GET /deterioration-alerts/ — the clinical deterioration early-warning surface.
 
     Lists OPEN ``DeteriorationAlert`` rows produced by the NEWS2 engine
@@ -248,6 +249,9 @@ class DeteriorationAlertsView(APIView):
     (the engine never ran; no stale early-warnings should surface). Read-only;
     advise/escalation only — there is NO gate on vitals recording anywhere.
     """
+
+    audit_resource_type = "DeteriorationAlert"
+    AUDIT_LIST_PARAMS: tuple[str, ...] = ("encounter_id",)
 
     def get_permissions(self):
         # NEWS2 scores are clinical data — emr.read excludes non-clinical roles.
@@ -373,7 +377,7 @@ def _serialize_no_show_risk(risk) -> dict:
     }
 
 
-class NoShowRiskView(APIView):
+class NoShowRiskView(AuditReadAPIViewMixin, APIView):
     """GET /no-show-risk/ — the front-desk no-show risk surface.
 
     Lists OPEN ``NoShowRisk`` rows (highest score first, capped) so the reception
@@ -385,6 +389,9 @@ class NoShowRiskView(APIView):
     surface, and reception — the intended audience — holds the schedule
     permissions, not the clinical emr.* ones. Mirrors AppointmentViewSet.
     """
+
+    audit_resource_type = "NoShowRisk"
+    AUDIT_LIST_PARAMS: tuple[str, ...] = ()
 
     def get_permissions(self):
         return [IsAuthenticated(), HasPermission("schedule.read")]

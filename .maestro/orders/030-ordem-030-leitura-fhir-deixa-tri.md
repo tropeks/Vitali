@@ -23,15 +23,17 @@ porque são `APIView` pura, sem `queryset`. O Diretor pediu: a leitura FHIR deix
 a guarda passa a enumerar `APIView`.
 
 Medido na lab, no tip `df89ab1`, enumerando pelo roteador as rotas GET de toda view sem
-`queryset`/`get_queryset`: **103 classes**, não 22. Nenhuma herda `AuditReadMixin`, e não
+`queryset`/`get_queryset`: **106 classes**, não 22. A primeira medição deu 103, porque
+deduplicava por nome de classe e `SessionListCreateView`/`SessionDetailView` (telemedicina e
+triagem) e `MeView` (core e portal) colidiam. A enumeração da guarda usa módulo + classe. Nenhuma herda `AuditReadMixin`, e não
 há middleware de auditoria. Um levantamento view a view (o `get()` de cada uma, com
 arquivo:linha) classificou assim:
 
 | | n | onde |
 |---|---|---|
-| leem dado de paciente | **49** | fhir 20, portal 15, emr 8, imaging 2, telemedicina 2, billing 1, farmácia 1 |
+| leem dado de paciente | **51** | fhir 20, portal 15, emr 8, imaging 2, telemedicina 2, triagem 2, billing 1, farmácia 1 |
 | ... e já gravam trilha no GET, em formato próprio | 3 | `LabOrderORMView`, `MeImagingReportView`, `MeLabReportPDFView` |
-| ... e **não gravam nada** | **46** | |
+| ... e **não gravam nada** | **48** | |
 | não leem dado de pessoa | 54 | analytics, config, catálogo, framework |
 
 Entre as 46 estão o **export LGPD do portal** (`/portal/me/export/`: cadastro, agenda,
@@ -58,13 +60,13 @@ O alvo sai de onde a leitura realmente mira:
 
 ## O corte
 
-**Recebem trilha (43):** as 20 leituras FHIR de prontuário; no portal, as de staff
+**Recebem trilha pelo mixin (44):** as 20 leituras FHIR de prontuário; no portal, as de staff
 (`AccessListCreateView`, `AccessDetailView`) e as do titular (`MeView`, `MeAllergies`,
 `MeAppointments`, `MeConsents`, `MeEncounters`, `MeExport`, `MePrescriptions`,
 `MeRepresentatives`, `MeImagingStudies`, `MeLabResults`); no emr, `LabReportPDFView`,
 `PrescriptionPDFView`, `WaitlistViewSet`, `DeteriorationAlertsView` e `NoShowRiskView`;
-imagem (`StudyListCreateView`, `StudyDetailView`); telemedicina (`SessionListCreateView`,
-`SessionDetailView`); farmácia (`ControlledAlertsView`).
+imagem (`StudyListCreateView`, `StudyDetailView`); telemedicina e triagem (`SessionListCreateView`,
+`SessionDetailView` de cada uma); farmácia (`ControlledAlertsView`).
 
 - **Os painéis sem polling** (deterioração, no-show, controlados, lista de espera): o
   levantamento do `frontend/` não achou `setInterval` neles. Uma linha por abertura de tela
@@ -91,7 +93,11 @@ action que gravam, e a guarda confere no fonte do `get()` que a action continua 
   pelo laudo;
 - `PIXChargeView` e `MeReceivablesView`: financeiro sem guia, a faixa 3 que o
   `SECURITY.md` §3.6.1 já declara sem trilha de leitura (o PIX ainda faz polling de 5 s);
-- as 54 que não leem dado de pessoa, cada uma com o motivo.
+- as que não leem dado de pessoa (agregado de analytics, configuração da clínica, próprio
+  usuário, catálogo, estoque, framework), cada uma com o motivo.
+
+Fechamento: **106 rotas GET sem queryset · 47 com trilha (44 pelo mixin, 3 próprias) · 59
+isentas com motivo · 0 sem classificação.**
 
 ## O entregável durável: a guarda enxerga view sem queryset
 
@@ -102,13 +108,45 @@ decisão**, coberta, trilha própria ou isenta com motivo. Testes novos em
 `test_auditoria_leitura_cobertura.py`:
 - toda rota classificada;
 - as 20 leituras FHIR de prontuário cobertas, nomeadas;
-- piso de enumeração (> 67, a folga de ~35% dos outros pisos);
+- piso de enumeração (> 67, a folga de ~35% dos outros pisos sobre as 103 da medição);
 - motivo escrito em toda isenção;
 - nenhuma isenção órfã, sem rota ou de view que já grava;
 - o mixin antes de `APIView` na MRO (senão o `finalize_response` do DRF vence e a trilha
   morre calada);
+- as enumerações antigas (`_classes_do_roteador()`, `_rotas_get_do_roteador()`) passam a
+  deduplicar por módulo + classe, não só pelo nome. Medido: as 5 colisões de nome de hoje
+  (`MeView`, `Session{ListCreate,Detail,Complete,Cancel}View`) são todas entre views sem
+  queryset, então nenhuma view com queryset estava escondida, mas a armadilha fica fechada;
 - **`AUDIT_LOOKUP_KWARG` casa um kwarg real da rota**, e toda rota de detalhe coberta
   declara um (estático: lê a URL e o atributo).
+
+## Achado no caminho: a trilha podia ser apagada com um critério longo
+
+`AuditLog.resource_id` é `varchar(36)`. O teste da leitura de `Observation` FHIR (id
+composto `<uuid>_<loinc>`, 44 caracteres) mostrou o `create` estourando e o `except` do
+mixin (que existe para a auditoria nunca quebrar uma leitura) engolindo o erro: a leitura
+saía **sem trilha, calada**. Vale para as duas trilhas, desde antes desta ordem.
+`PatientViewSet.list` ignora `?patient=`, então `GET /patients/?patient=<80 caracteres>`
+devolvia o rol inteiro sem rastro nenhum: mandar um critério comprido bastava para apagar o
+próprio rastro.
+
+Conserto sem migration (a tabela é particionada e imutável): em `_log_audit_event`, um alvo
+com mais de 36 caracteres vai inteiro para `new_data["resource_id_completo"]`, e o
+`resource_id` guarda o começo (um UUID cabe inteiro). A linha nunca se perde por tamanho.
+Testes: `Observation` FHIR e `?patient=` longo em `PatientViewSet`.
+
+## O que a revisão mudou (maestro:revisor, sem P1)
+
+- **Busca FHIR por `?encounter=`** sem `?patient=` gravava `resource_id` vazio, igual a uma
+  varredura sem filtro, e o `/audit-trail/?patient=` não a achava. Agora o atendimento é
+  resolvido para o paciente dele. Tem teste.
+- **Os dois caminhos que devolvem `HttpResponse` cru** (export do portal em PDF, PDF do laudo
+  do staff) ganharam teste de trilha próprio. O mecanismo já funcionava (o
+  `finalize_response` do DRF recebe qualquer resposta), mas nada o travava.
+- `AccessListCreateView` registra o `?status=` em `new_data`, sem ele virar `resource_id`.
+- O motivo da isenção de `ScribeStatusView` estava errado: o poll devolve o rascunho de
+  SOAP **antes** de ele virar `SOAPNote`. Reescrito com a razão real: é o rascunho da IA
+  sobre o atendimento de quem o pediu, não releitura de dado armazenado de outra pessoa.
 
 ## Provas
 
@@ -126,8 +164,6 @@ decisão**, coberta, trilha própria ou isenta com motivo. Testes novos em
 - `ObservationReadView` separa o id por `_`; a docstring e o `CapabilityStatement` falam em
   `-`.
 - `imaging/viewer-auth/` devolve 204 sem checar nada; o nginx não usa essa rota.
-- `_classes_do_roteador()` deduplica por nome de classe. `core.MeView` e
-  `patient_portal.MeView` colidem ali; a enumeração nova usa módulo + classe.
 
 Nenhuma migration, nenhuma mudança de model, nenhuma mudança de permissão.
 

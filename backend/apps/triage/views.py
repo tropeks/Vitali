@@ -7,6 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.mixins import AuditReadAPIViewMixin
 from apps.core.permissions import HasPermission, ModuleRequiredPermission
 
 from .models import TriageSession
@@ -32,8 +33,11 @@ class QuestionBankView(APIView):
         return Response(TriageQuestionSerializer(RED_FLAG_QUESTIONS, many=True).data)
 
 
-class SessionListCreateView(APIView):
+class SessionListCreateView(AuditReadAPIViewMixin, APIView):
     """GET / POST `/api/v1/triage/sessions/`."""
+
+    audit_resource_type = "TriageSession"
+    AUDIT_LIST_PARAMS: tuple[str, ...] = ()
 
     def get_permissions(self):
         if self.request.method == "POST":
@@ -61,8 +65,11 @@ class SessionListCreateView(APIView):
         return Response(TriageSessionSerializer(session).data, status=status.HTTP_201_CREATED)
 
 
-class SessionDetailView(APIView):
+class SessionDetailView(AuditReadAPIViewMixin, APIView):
     """GET `/api/v1/triage/sessions/{id}/`."""
+
+    audit_resource_type = "TriageSession"
+    AUDIT_LOOKUP_KWARG = "session_id"
 
     def get_permissions(self):
         return [IsAuthenticated(), _TRIAGE_MODULE, HasPermission("triage.read")]

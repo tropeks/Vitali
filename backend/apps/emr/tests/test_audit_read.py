@@ -119,3 +119,20 @@ class TestAuditReadLogging(TenantTestCase):
                 )
                 self.assertEqual(log.resource_id, str(self.patient.id))
                 self.assertEqual(log.new_data, {"action": action_name})
+
+    def test_criterio_longo_nao_apaga_a_trilha(self):
+        """Ordem 030: `resource_id` é varchar(36). Um `?patient=` longo fazia a
+        gravação estourar, o erro era engolido e a busca saía sem rastro —
+        mandar um critério comprido bastava para apagar a própria trilha."""
+        from apps.core.models import AuditLog
+        from apps.emr.views import PatientViewSet
+
+        longo = "x" * 80
+        request = APIRequestFactory().get("/api/v1/patients/", {"patient": longo})
+        force_authenticate(request, user=self.user)
+        response = PatientViewSet.as_view({"get": "list"})(request)
+
+        self.assertEqual(response.status_code, 200)
+        log = AuditLog.objects.get(action="view_record_list", resource_type="Patient")
+        self.assertEqual(log.resource_id, longo[:36])
+        self.assertEqual(log.new_data, {"patient": longo, "resource_id_completo": longo})

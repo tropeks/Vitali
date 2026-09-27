@@ -27,7 +27,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.core.mixins import AuditReadMixin
+from apps.core.mixins import AuditReadAPIViewMixin, AuditReadMixin
 from apps.core.permissions import HasPermission, IsPlatformAdmin, ModuleRequiredPermission
 
 from .models import DicomStudy, ImagingModality, ModalityWorklistItem
@@ -92,8 +92,11 @@ class ModalityWorklistViewSet(
         return Response(DicomWorkflowEventSerializer(event).data, status=201 if created else 200)
 
 
-class StudyListCreateView(APIView):
+class StudyListCreateView(AuditReadAPIViewMixin, APIView):
     """GET / POST `/api/v1/imaging/studies/`."""
+
+    audit_resource_type = "DicomStudy"
+    AUDIT_LIST_PARAMS: tuple[str, ...] = ("patient", "encounter", "lab_order", "lab_order_item")
 
     DEFAULT_COUNT = 50
     MAX_COUNT = 200
@@ -151,8 +154,11 @@ class ViewerAuthorizationView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class StudyDetailView(APIView):
+class StudyDetailView(AuditReadAPIViewMixin, APIView):
     """GET `/api/v1/imaging/studies/{id}/`."""
+
+    audit_resource_type = "DicomStudy"
+    AUDIT_LOOKUP_KWARG = "study_id"
 
     def get_permissions(self):
         return [IsAuthenticated(), _IMAGING_MODULE, HasPermission("imaging.read")]

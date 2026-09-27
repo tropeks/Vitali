@@ -116,7 +116,7 @@ class TrilhaDeLeituraFHIRTests(TenantTestCase):
         log = self._trilha("view_record_list", "AllergyIntolerance").get()
         assert log.resource_id == str(self.ana.pk)
 
-    def test_ler_uma_observacao_deixa_trilha_com_o_id_composto(self):
+    def _atendimento_com_sinais_vitais(self):
         md = User.objects.create_user(email="md_trilha@test.com", password="pw")
         professional = Professional.objects.create(
             user=md, council_type="CRM", council_number="700300", council_state="SP"
@@ -128,10 +128,30 @@ class TrilhaDeLeituraFHIRTests(TenantTestCase):
             encounter_date=datetime(2026, 5, 19, 9, 0, tzinfo=UTC),
         )
         VitalSigns.objects.create(encounter=encounter, weight_kg=70, heart_rate=72)
+        return encounter
+
+    def test_buscar_observacoes_de_um_atendimento_aponta_o_paciente(self):
+        """Revisão da 030: `?encounter=` sem `?patient=` já mira um paciente, e
+        a trilha precisa dizer qual, senão parece varredura sem filtro."""
+        encounter = self._atendimento_com_sinais_vitais()
+        resp = self.client.get(f"{BASE}/Observation/", {"encounter": f"Encounter/{encounter.pk}"})
+        assert resp.status_code == 200, resp.content
+
+        log = self._trilha("view_record_list", "Observation").get()
+        assert log.resource_id == str(self.ana.pk)
+        assert log.new_data == {"encounter": f"Encounter/{encounter.pk}"}
+
+    def test_ler_uma_observacao_deixa_trilha_com_o_id_composto(self):
+        encounter = self._atendimento_com_sinais_vitais()
         observation_id = f"{encounter.pk}_29463-7"
 
         resp = self.client.get(f"{BASE}/Observation/{observation_id}/")
         assert resp.status_code == 200, resp.content
 
+        # O id composto tem 44 caracteres e `resource_id` é varchar(36): antes
+        # da 030 a gravação estourava e a leitura saía sem trilha, calada. Agora
+        # `resource_id` guarda o começo (o UUID do atendimento, inteiro) e o id
+        # completo vai para `new_data`.
         log = self._trilha("view_record", "Observation").get()
-        assert log.resource_id == observation_id
+        assert log.resource_id == str(encounter.pk)
+        assert log.new_data == {"resource_id_completo": observation_id}

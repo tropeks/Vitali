@@ -13,6 +13,7 @@ from django.http import HttpResponse
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
+from apps.core.mixins import AuditReadAPIViewMixin
 from apps.core.permissions import HasPermission
 from apps.emr.models import Prescription
 from apps.emr.services.prescription_pdf import PrescriptionPDFGenerator
@@ -20,13 +21,16 @@ from apps.emr.services.prescription_pdf import PrescriptionPDFGenerator
 logger = logging.getLogger(__name__)
 
 
-class PrescriptionPDFView(APIView):
+class PrescriptionPDFView(AuditReadAPIViewMixin, APIView):
     """
     GET /emr/prescriptions/{prescription_id}/pdf/
 
     Generates and returns a PDF for the given prescription.
     403 if not signed, 404 if not found.
     """
+
+    audit_resource_type = "Prescription"
+    AUDIT_LOOKUP_KWARG = "prescription_id"
 
     permission_classes = [IsAuthenticated, HasPermission("emr.read")]  # type: ignore[list-item]
 

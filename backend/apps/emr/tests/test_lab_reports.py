@@ -6,7 +6,7 @@ from unittest.mock import patch
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from apps.core.models import Role, User
+from apps.core.models import AuditLog, Role, User
 from apps.emr.models import LabOrder, LabOrderItem, LabTest, Patient
 from apps.signatures.models import LabReportArtifact
 from apps.test_utils import TenantTestCase
@@ -66,6 +66,11 @@ class LabReportViewsTest(TenantTestCase):
         self.assertEqual(pdf.status_code, 200)
         self.assertEqual(pdf.content, b"%PDF-report")
         self.assertEqual(pdf["X-Document-SHA256"], "a" * 64)
+        # Ordem 030: baixar o laudo assinado deixa trilha. A linha de
+        # `lab_report_released` acima é da assinatura (POST); esta é a leitura.
+        leitura = AuditLog.objects.get(action="view_record", resource_type="LabReport")
+        self.assertEqual(leitura.resource_id, str(self.order.id))
+        self.assertEqual(leitura.user, self.user)
 
     def test_draft_report_cannot_be_released(self):
         self.order.status = LabOrder.Status.COLLECTED

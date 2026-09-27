@@ -7,7 +7,65 @@ from apps.core.models import AuditLog
 logger = logging.getLogger(__name__)
 
 
-class AuditReadMixin:
+class _GravaLeitura:
+    """O que as duas trilhas de leitura compartilham: escrever a linha e
+    escolher o alvo de uma busca. Base de ``AuditReadMixin`` (viewset) e de
+    ``AuditReadAPIViewMixin`` (``APIView`` pura, ordem 030)."""
+
+    audit_resource_type: str | None = None
+
+    #: Query params whose presence turns a ``list`` into a targeted lookup.
+    AUDIT_LIST_PARAMS: tuple[str, ...] = ("patient", "search")
+
+    def _alvo_da_busca(self, criteria: dict[str, str]) -> str:
+        """O id que a busca dirigida mirou, para ``resource_id``.
+
+        Ordem 029: antes era sempre ``criteria.get("patient")``, e o critério de
+        ``AUDIT_LIST_PARAMS`` próprio da view (``?employee=`` no RH, ``?bag=`` na
+        sorologia) só existia em ``new_data``, que ``AuditTrailEntrySerializer``
+        não expõe de propósito. Quem lia a trilha via "alguém listou" e nunca
+        "listou o quê". ``patient`` continua vencendo. ``search`` nunca é alvo:
+        é texto livre, não id.
+        """
+        if criteria.get("patient"):
+            return criteria["patient"]
+        for param in self.AUDIT_LIST_PARAMS:
+            if param != "search" and criteria.get(param):
+                return criteria[param]
+        return ""
+
+    #: ``AuditLog.resource_id`` é ``max_length=36`` (um UUID). Ver
+    #: ``_log_audit_event``.
+    _RESOURCE_ID_MAX = 36
+
+    def _log_audit_event(self, request, action, resource_id, new_data=None):
+        # Ordem 030: um alvo com mais de 36 caracteres (o id composto de
+        # `Observation` FHIR, ou um `?patient=` com lixo longo) estourava o
+        # `varchar(36)`, o `create` falhava, o `except` abaixo engolia o erro e
+        # a leitura saía SEM trilha, calada. Pior: bastava mandar um critério
+        # longo para apagar o próprio rastro. A linha nunca se perde por
+        # tamanho: `resource_id` guarda o começo (um UUID cabe inteiro) e o
+        # valor completo vai para `new_data`.
+        alvo = str(resource_id or "")
+        if len(alvo) > self._RESOURCE_ID_MAX:
+            new_data = {**(new_data or {}), "resource_id_completo": alvo}
+            alvo = alvo[: self._RESOURCE_ID_MAX]
+        try:
+            user = request.user if getattr(request.user, "is_authenticated", False) else None
+            AuditLog.objects.create(
+                user=user,
+                action=action,
+                resource_type=self.audit_resource_type or self.__class__.__name__,
+                resource_id=alvo,
+                new_data=new_data,
+                ip_address=request.META.get("REMOTE_ADDR") or None,
+                user_agent=request.META.get("HTTP_USER_AGENT", "")[:2000],
+            )
+        except Exception:  # noqa: BLE001 — audit logging must never break a read
+            logger.warning("%s audit failed", action, exc_info=True)
+
+
+class AuditReadMixin(_GravaLeitura):
     """Log read access to the immutable AuditLog — CFM Res. 1.821/2007 requires
     traceability of access to clinical records, not just changes.
 
@@ -54,11 +112,6 @@ class AuditReadMixin:
     específica vai em ``new_data`` para não perder qual sub-recurso foi lido.
     """
 
-    audit_resource_type: str | None = None
-
-    #: Query params whose presence turns a ``list`` into a targeted lookup.
-    AUDIT_LIST_PARAMS: tuple[str, ...] = ("patient", "search")
-
     #: Ordem 019, item 1 — ver docstring da classe.
     AUDIT_LIST_ALWAYS: bool = False
 
@@ -88,23 +141,6 @@ class AuditReadMixin:
                 )
         return response
 
-    def _alvo_da_busca(self, criteria: dict[str, str]) -> str:
-        """O id que a busca dirigida mirou, para ``resource_id``.
-
-        Ordem 029: antes era sempre ``criteria.get("patient")``, e o critério de
-        ``AUDIT_LIST_PARAMS`` próprio da view (``?employee=`` no RH, ``?bag=`` na
-        sorologia) só existia em ``new_data``, que ``AuditTrailEntrySerializer``
-        não expõe de propósito. Quem lia a trilha via "alguém listou" e nunca
-        "listou o quê". ``patient`` continua vencendo. ``search`` nunca é alvo:
-        é texto livre, não id.
-        """
-        if criteria.get("patient"):
-            return criteria["patient"]
-        for param in self.AUDIT_LIST_PARAMS:
-            if param != "search" and criteria.get(param):
-                return criteria[param]
-        return ""
-
     def finalize_response(self, request, response, *args, **kwargs):
         """Fecha a lacuna que a ordem 019 mediu: ``@action`` de detalhe que lê
         prontuário (``medical_history``, ``download`` do lote TISS etc.) não
@@ -125,17 +161,57 @@ class AuditReadMixin:
             )
         return response
 
-    def _log_audit_event(self, request, action, resource_id, new_data=None):
-        try:
-            user = request.user if getattr(request.user, "is_authenticated", False) else None
-            AuditLog.objects.create(
-                user=user,
-                action=action,
-                resource_type=self.audit_resource_type or self.__class__.__name__,
-                resource_id=str(resource_id or ""),
-                new_data=new_data,
-                ip_address=request.META.get("REMOTE_ADDR") or None,
-                user_agent=request.META.get("HTTP_USER_AGENT", "")[:2000],
-            )
-        except Exception:  # noqa: BLE001 — audit logging must never break a read
-            logger.warning("%s audit failed", action, exc_info=True)
+
+class AuditReadAPIViewMixin(_GravaLeitura):
+    """Trilha de leitura para ``APIView`` pura — sem ``queryset``, sem
+    ``retrieve``/``list`` (ordem 030).
+
+    **Por que existe.** ``AuditReadMixin`` intercepta ``retrieve``/``list`` do
+    DRF, e uma ``APIView`` não tem nenhum dos dois: o ``get()`` escrito à mão
+    é o recurso inteiro. Medido em 27/09: 22 views FHIR de leitura
+    (``/api/v1/fhir/Patient/``, ``Condition``, ``Observation``,
+    ``DocumentReference``...) e outras dezenas de ``APIView`` com GET não
+    deixavam rastro, e a guarda nem as enumerava, porque procurava
+    ``queryset``.
+
+    **Como grava.** Em ``finalize_response`` — o único ponto por onde passa toda
+    resposta de uma ``APIView`` —, só em GET 2xx. O modo é DECLARATIVO, para
+    ``apps.core.audit_coverage_routes`` saber a cobertura sem executar a view:
+
+    * ``AUDIT_LOOKUP_KWARG = "patient_id"`` — detalhe: grava ``view_record``
+      com o id do kwarg da URL, como ``retrieve``;
+    * ``AUDIT_LOOKUP_KWARG = None`` (padrão) — busca/lista: grava
+      ``view_record_list`` com os ``AUDIT_LIST_PARAMS`` presentes em
+      ``new_data`` e o alvo em ``resource_id`` (``_alvo_da_busca``). Grava
+      sempre, com ou sem critério: numa ``APIView`` de dado sensível, listar já
+      é o acesso (o ``AUDIT_LIST_ALWAYS = True`` do viewset, sem opção de
+      desligar — quem não deve gravar fica isento, com motivo, na guarda).
+
+    Tem de vir ANTES de ``APIView`` na tupla de bases, como ``AuditReadMixin``:
+    senão o ``finalize_response`` do DRF vence e a trilha morre calada. A guarda
+    confere a posição.
+    """
+
+    #: Kwarg da URL que é o id do recurso lido. ``None`` = busca/lista.
+    AUDIT_LOOKUP_KWARG: str | None = None
+
+    AUDIT_LIST_PARAMS: tuple[str, ...] = ("patient",)
+
+    def finalize_response(self, request, response, *args, **kwargs):
+        response = super().finalize_response(request, response, *args, **kwargs)
+        if request.method == "GET" and 200 <= response.status_code < 300:
+            if self.AUDIT_LOOKUP_KWARG:
+                self._log_audit_event(request, "view_record", kwargs.get(self.AUDIT_LOOKUP_KWARG))
+            else:
+                criteria = {
+                    param: request.query_params[param]
+                    for param in self.AUDIT_LIST_PARAMS
+                    if request.query_params.get(param)
+                }
+                self._log_audit_event(
+                    request,
+                    "view_record_list",
+                    self._alvo_da_busca(criteria),
+                    new_data=criteria,
+                )
+        return response

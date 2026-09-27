@@ -18,7 +18,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.dispensation_signals import dispensation_billable
-from apps.core.mixins import AuditReadMixin
+from apps.core.mixins import AuditReadAPIViewMixin, AuditReadMixin
 from apps.core.models import AuditLog
 from apps.core.permissions import HasPermission, ModuleRequiredPermission
 
@@ -1828,7 +1828,7 @@ def _serialize_controlled_alert(alert) -> dict:
     }
 
 
-class ControlledAlertsView(APIView):
+class ControlledAlertsView(AuditReadAPIViewMixin, APIView):
     """GET /pharmacy/controlled/alerts/ — the controlled-diversion compliance surface.
 
     Lists OPEN ``ControlledAlert`` rows (newest first, capped) for pharmacist /
@@ -1837,6 +1837,9 @@ class ControlledAlertsView(APIView):
     ran). Read-only; ADVISE only — nothing here blocked any dispensation.
     Optional ``?signal_kind=`` filter.
     """
+
+    audit_resource_type = "ControlledSubstanceAlert"
+    AUDIT_LIST_PARAMS: tuple[str, ...] = ()
 
     def get_permissions(self):
         return [IsAuthenticated(), _PHARMACY_MODULE, HasPermission("pharmacy.read")]

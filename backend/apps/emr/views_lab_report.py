@@ -7,6 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.mixins import AuditReadAPIViewMixin
 from apps.core.models import AuditLog
 from apps.core.permissions import HasPermission, ModuleRequiredPermission
 from apps.signatures.models import DigitalSignature, LabReportArtifact
@@ -87,7 +88,10 @@ class LabReportSignView(APIView):
         )
 
 
-class LabReportPDFView(APIView):
+class LabReportPDFView(AuditReadAPIViewMixin, APIView):
+    audit_resource_type = "LabReport"
+    AUDIT_LOOKUP_KWARG = "order_id"
+
     def get_permissions(self):
         return [IsAuthenticated(), _EMR_MODULE, HasPermission("emr.read")]
 

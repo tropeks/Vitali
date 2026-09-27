@@ -15,6 +15,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.mixins import AuditReadAPIViewMixin
 from apps.core.permissions import HasPermission, ModuleRequiredPermission
 
 from .models import TelemedicineSession
@@ -27,8 +28,11 @@ from .serializers import (
 _TELEMED_MODULE = ModuleRequiredPermission("telemedicine")
 
 
-class SessionListCreateView(APIView):
+class SessionListCreateView(AuditReadAPIViewMixin, APIView):
     """GET / POST `/api/v1/telemedicine/sessions/`."""
+
+    audit_resource_type = "TelemedicineSession"
+    AUDIT_LIST_PARAMS: tuple[str, ...] = ("patient", "professional")
 
     def get_permissions(self):
         if self.request.method == "POST":
@@ -66,8 +70,11 @@ class SessionListCreateView(APIView):
         )
 
 
-class SessionDetailView(APIView):
+class SessionDetailView(AuditReadAPIViewMixin, APIView):
     """GET `/api/v1/telemedicine/sessions/{id}/`."""
+
+    audit_resource_type = "TelemedicineSession"
+    AUDIT_LOOKUP_KWARG = "session_id"
 
     def get_permissions(self):
         return [

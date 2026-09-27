@@ -14,6 +14,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.mixins import AuditReadAPIViewMixin
 from apps.core.permissions import HasPermission
 from apps.emr.models import Patient, Professional, WaitlistEntry
 
@@ -121,11 +122,14 @@ class WaitlistCreateSerializer(serializers.Serializer):
 # ─── Views ────────────────────────────────────────────────────────────────────
 
 
-class WaitlistViewSet(APIView):
+class WaitlistViewSet(AuditReadAPIViewMixin, APIView):
     """
     GET  /emr/waitlist/      — list entries
     POST /emr/waitlist/      — create entry
     """
+
+    audit_resource_type = "WaitlistEntry"
+    AUDIT_LIST_PARAMS: tuple[str, ...] = ()
 
     permission_classes = [IsAuthenticated]
 

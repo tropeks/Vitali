@@ -72,6 +72,16 @@ class PatientRightsTest(TenantTestCase):
         self.assertEqual(log.user, self.portal_user)
         self.assertEqual(log.new_data, {"export_format": "json"})
 
+    def test_exportar_em_pdf_tambem_deixa_trilha(self):
+        """O ramo PDF devolve `HttpResponse` cru, não `Response` do DRF — a
+        trilha passa pelo mesmo `finalize_response` (revisão da 030)."""
+        res = self.client.get(f"{EXPORT_URL}?export_format=pdf")
+        self.assertEqual(res.status_code, 200)
+
+        log = AuditLog.objects.get(action="view_record_list", resource_type="PortalExport")
+        self.assertEqual(log.resource_id, str(self.patient.pk))
+        self.assertEqual(log.new_data, {"export_format": "pdf"})
+
     def test_deletion_request(self):
         self.assertEqual(AuditLog.objects.filter(action="patient_deletion_requested").count(), 0)
         res = self.client.post(DELETE_REQ_URL, {"reason": "Privacy concerns"})

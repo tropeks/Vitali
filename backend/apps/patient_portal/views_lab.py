@@ -6,10 +6,13 @@ from apps.core.models import AuditLog
 from apps.emr.models import LabOrder
 
 from .serializers_lab import PortalLabOrderSerializer
-from .views import _SelfView
+from .views import _SelfLeitura, _SelfView
 
 
-class MeLabResultsView(_SelfView):
+class MeLabResultsView(_SelfLeitura):
+    audit_resource_type = "PortalLabResults"
+    AUDIT_LIST_PARAMS: tuple[str, ...] = ()
+
     def get(self, request):
         patient = self._patient(request)
         qs = (
