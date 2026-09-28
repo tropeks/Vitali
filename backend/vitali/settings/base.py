@@ -403,15 +403,25 @@ SCRIBE_SESSION_RETENTION_DAYS = env.int("SCRIBE_SESSION_RETENTION_DAYS", default
 # DROPs the (now cold-archived) partition (apps.core.partitioning) — see the
 # Capitão's amendment to order 020. Fábrica = reter, nunca apagar.
 
-# Local target for the cold-export step above (apps.core.cold_storage_backends
-# .LocalDiskColdStorageBackend) — "alvo local para teste" while no S3/Glacier
-# destination exists yet. Lives next to what scripts/backup.sh already writes
-# to disk; a future S3 Glacier backend is a separate, explicitly-deferred
-# piece of work (see the order-020 report) and would add its own setting(s)
-# rather than repurpose this one.
+# Where the cold export above ends up (apps.core.cold_storage_backends).
+# "local" (default) is the order-020 "alvo local para teste", next to what
+# scripts/backup.sh writes to disk. "s3" is the Capitão's destination (order
+# 020, built in order 032): S3 Glacier Flexible in São Paulo, Object Lock in
+# COMPLIANCE mode for AUDIT_LOG_COLD_LOCK_MONTHS, write-only credential
+# (docs/ops/auditlog-cold-writer-policy.json). Credentials come from boto3's
+# own chain (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY or an instance role) —
+# never from a Vitali setting. Nothing goes live before the AWS account exists.
+AUDIT_LOG_COLD_STORAGE_BACKEND = env("AUDIT_LOG_COLD_STORAGE_BACKEND", default="local")
 AUDIT_LOG_COLD_STORAGE_DIR = env(
     "AUDIT_LOG_COLD_STORAGE_DIR", default=str(BASE_DIR / "var" / "auditlog_cold")
 )
+AUDIT_LOG_COLD_S3_BUCKET = env("AUDIT_LOG_COLD_S3_BUCKET", default="")
+AUDIT_LOG_COLD_S3_REGION = env("AUDIT_LOG_COLD_S3_REGION", default="sa-east-1")
+# Only for an S3-compatible endpoint (the lab MinIO in tests); empty = AWS.
+AUDIT_LOG_COLD_S3_ENDPOINT_URL = env("AUDIT_LOG_COLD_S3_ENDPOINT_URL", default="")
+AUDIT_LOG_COLD_S3_STORAGE_CLASS = env("AUDIT_LOG_COLD_S3_STORAGE_CLASS", default="GLACIER")
+# Object Lock length, in months like the retention itself (ADR-0001: 240).
+AUDIT_LOG_COLD_LOCK_MONTHS = env.int("AUDIT_LOG_COLD_LOCK_MONTHS", default=240)
 
 # Exposed as a plain Django setting (production.py previously only read this
 # inline, via env(), for its own boot-time check) so apps.core.cold_storage

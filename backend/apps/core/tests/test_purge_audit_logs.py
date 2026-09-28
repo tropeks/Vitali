@@ -24,8 +24,8 @@ from django.core.management.base import CommandError
 from django.db import connection
 from django.test import TestCase, override_settings
 
-from apps.core import cold_storage, partitioning
-from apps.core.models import Tenant, TenantAuditRetention
+from apps.core import cold_drill, cold_storage, partitioning
+from apps.core.models import AuditLog, Tenant, TenantAuditRetention
 
 TEST_KEY = "order-020-purge-test-passphrase"
 
@@ -183,7 +183,36 @@ class RetentionWindowTests(TestCase):
 
         self.assertFalse(partitioning.partition_exists(old_name))
         self.assertTrue(partitioning.partition_exists(recent_name))
-        self.assertEqual(partitioning.partition_row_count(recent_name), 1)
+        # A linha semeada continua; a outra é a do próprio expurgo (ordem 032),
+        # que cai na trilha do tenant, no mês corrente.
+        self.assertEqual(partitioning.partition_row_count(recent_name), 2)
+        self.assertEqual(
+            AuditLog.objects.filter(schema_name="acme")
+            .exclude(action="audit_partition_purged")
+            .count(),
+            1,
+        )
+
+    def test_expurgo_grava_na_trilha_onde_ficou_a_copia_fria(self):
+        """Ordem 032: depois do DROP a cópia fria é a única, e o ponteiro para
+        ela não pode morar só no stdout. A trilha do tenant guarda a location e
+        o manifesto, e o drill parte dela."""
+        _tenant("acme", retention_months=1, purge_enabled=True)
+        old_date = datetime.date(2015, 3, 10)
+        _seed_row(old_date, "acme", dedicated=True)
+        old_name = partitioning.tenant_partition_name(
+            partitioning.month_partition_name(old_date), "acme"
+        )
+
+        with override_settings(AUDIT_LOG_COLD_STORAGE_DIR=self.cold_dir):
+            call_command("purge_audit_logs", "--execute", "--schema", "acme", stdout=StringIO())
+
+        log = AuditLog.objects.get(action="audit_partition_purged")
+        self.assertEqual(log.schema_name, "acme")
+        self.assertEqual(log.new_data["partition"], old_name)
+        self.assertEqual(log.new_data["manifest"]["row_count"], 1)
+        drill = cold_drill.drill_cold_copy(log.new_data["stored_location"])
+        self.assertEqual((drill.status, drill.row_count), ("ok", 1))
 
     def test_a_240_month_tenant_keeps_a_15_year_old_partition(self):
         """The number the order names: 240 meses. A partition well inside

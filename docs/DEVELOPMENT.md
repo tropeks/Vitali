@@ -173,7 +173,18 @@ scripts/pytest.sh <target>          # e.g. apps/core/tests/test_auth.py -x
 scripts/pytest.sh                   # the whole suite
 PYTEST_NO_BUILD=1 scripts/pytest.sh <target>              # reuse the images
 PYTEST_CMD="ruff check apps/ vitali/" scripts/pytest.sh   # another command in the image
+PYTEST_MINIO=1 scripts/pytest.sh <target>                 # with the ephemeral MinIO (order 032)
 ```
+
+`PYTEST_MINIO=1` (order 032; the Diretor's authorization: test only, no real data,
+torn down at the end of every receipt) builds `scripts/lab-minio/` (MinIO binaries
+from the GitHub release, sha256 pinned in the Dockerfile: the project withdrew its
+images and `dl.min.io`), starts it on the same network with **no published port**
+and random credentials for this run, applies `docs/ops/auditlog-cold-writer-policy.json`
+to the writer user, passes the endpoint to pytest and removes the container on exit
+whatever the exit code, confirming with `docker --context lab ps -a`. Without it,
+`apps/core/tests/test_cold_storage_minio.py` is skipped (as in CI). A receipt for a
+change to the cold destination is recorded with `PYTEST_MINIO=1`.
 
 What it runs:
 

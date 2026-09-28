@@ -17,7 +17,7 @@ from botocore.stub import Stubber
 from django.core.management import call_command
 from django.test import TestCase, override_settings
 
-from apps.core import cold_storage
+from apps.core import cold_drill
 from apps.core import cold_storage_backends as csb
 from apps.core.tests.cold_s3_fixtures import (
     AGORA,
@@ -75,7 +75,7 @@ class DrillGlacierCicloTests(TestCase):
             },
         )
         with self.stub:
-            result = cold_storage.drill_cold_copy(self.LOCATION, backend=self.backend)
+            result = cold_drill.drill_cold_copy(self.LOCATION, backend=self.backend)
         self.stub.assert_no_pending_responses()
         self.assertEqual(result.status, "pending")
         self.assertIn("restauração pedida", result.detail)
@@ -83,7 +83,7 @@ class DrillGlacierCicloTests(TestCase):
     def test_restauracao_em_andamento_nao_pede_de_novo(self):
         self._head(restore='ongoing-request="true"')
         with self.stub:
-            result = cold_storage.drill_cold_copy(self.LOCATION, backend=self.backend)
+            result = cold_drill.drill_cold_copy(self.LOCATION, backend=self.backend)
         self.stub.assert_no_pending_responses()
         self.assertEqual(result.status, "pending")
         self.assertIn("em andamento", result.detail)
@@ -101,7 +101,7 @@ class DrillGlacierCicloTests(TestCase):
             {"Bucket": BUCKET, "Key": "core_auditlog/p.manifest.json", "VersionId": "m1"},
         )
         with self.stub:
-            result = cold_storage.drill_cold_copy(self.LOCATION, backend=self.backend)
+            result = cold_drill.drill_cold_copy(self.LOCATION, backend=self.backend)
         self.assertEqual(result.status, "ok")
         self.assertEqual(result.row_count, 1)
 
@@ -120,7 +120,7 @@ class DrillLocalTests(TestCase):
         )
 
     def _drill(self):
-        return cold_storage.drill_cold_copy(self.receipt.stored_location, backend=self.guarda.local)
+        return cold_drill.drill_cold_copy(self.receipt.stored_location, backend=self.guarda.local)
 
     def test_copia_integra_passa(self):
         result = self._drill()
@@ -131,19 +131,19 @@ class DrillLocalTests(TestCase):
         manifesto = json.loads(self.manifest.read_text())
         manifesto["row_count"] = 2
         self.manifest.write_text(json.dumps(manifesto))
-        with self.assertRaisesRegex(cold_storage.ColdDrillError, "row_count"):
+        with self.assertRaisesRegex(cold_drill.ColdDrillError, "row_count"):
             self._drill()
 
     def test_cifrado_adulterado_e_recusado(self):
         self.payload.write_bytes(self.payload.read_bytes() + b"x")
-        with self.assertRaisesRegex(cold_storage.ColdDrillError, "sha256_cipher"):
+        with self.assertRaisesRegex(cold_drill.ColdDrillError, "sha256_cipher"):
             self._drill()
 
     def test_claro_divergente_do_manifesto_e_recusado(self):
         manifesto = json.loads(self.manifest.read_text())
         manifesto["sha256_plain"] = "0" * 64
         self.manifest.write_text(json.dumps(manifesto))
-        with self.assertRaisesRegex(cold_storage.ColdDrillError, "sha256_plain"):
+        with self.assertRaisesRegex(cold_drill.ColdDrillError, "sha256_plain"):
             self._drill()
 
     def test_comando_de_drill(self):

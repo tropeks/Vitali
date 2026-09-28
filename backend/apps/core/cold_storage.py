@@ -40,7 +40,11 @@ from psycopg2 import sql
 from psycopg2.extras import execute_values
 
 from apps.core import gpg_crypto
-from apps.core.cold_storage_backends import ColdStorageBackend, LocalDiskColdStorageBackend
+from apps.core.cold_storage_backends import (
+    ColdStorageBackend,
+    ColdStorageError,
+    get_cold_storage_backend,
+)
 from apps.core.file_digest import sha256_file
 
 FORMAT_VERSION = "vitali-auditlog-cold/1"
@@ -252,8 +256,11 @@ def export_and_verify_partition(
     decrypt + restore-and-compare LOCALLY -> store -> confirm what was
     stored. Raises ColdExportError, naming the failing step, otherwise.
     """
-    backend = backend or LocalDiskColdStorageBackend()
     key = _gpg_key()
+    try:
+        backend = backend or get_cold_storage_backend()
+    except ColdStorageError as exc:
+        raise ColdExportError(f"no cold storage backend: {exc}") from exc
     exported_at = datetime.now(UTC)
     key_prefix = f"core_auditlog_{partition_name}_{exported_at.strftime('%Y%m%dT%H%M%SZ')}"
 
@@ -282,10 +289,13 @@ def export_and_verify_partition(
             )
             _restore_and_compare_locally(partition_name, decrypted_check_path, cur)
 
-        location = backend.store(
-            payload_path=ciphertext_path, manifest_path=manifest_path, key_prefix=key_prefix
-        )
-        backend.verify_stored(location, sha256_cipher)
+        try:
+            location = backend.store(
+                payload_path=ciphertext_path, manifest_path=manifest_path, key_prefix=key_prefix
+            )
+            backend.verify_stored(location, sha256_cipher)
+        except ColdStorageError as exc:
+            raise ColdExportError(f"store/verify of {partition_name!r} failed: {exc}") from exc
 
     return ColdExportReceipt(
         partition_name=partition_name, verified=True, manifest=manifest, stored_location=location

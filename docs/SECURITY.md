@@ -239,10 +239,24 @@ the reasons live in `audit_coverage*.py`.
   with a sha256 of the plaintext, gpg-encrypted with the same key as
   `scripts/backup.sh` (`BACKUP_ENCRYPTION_KEY`), a manifest, and a local
   decrypt-restore-compare against the live partition before storing.
-- **Cold destination:** only `LocalDiskColdStorageBackend`
-  (`AUDIT_LOG_COLD_STORAGE_DIR`) exists. The S3 Glacier (São Paulo, Object Lock
-  compliance mode) target chosen by the Capitão in order 020 is **not implemented**
-  (its own order; needs `boto3` and MinIO for the proof).
+- **Cold destination** (`AUDIT_LOG_COLD_STORAGE_BACKEND`): `local` by default
+  (`LocalDiskColdStorageBackend`, `AUDIT_LOG_COLD_STORAGE_DIR`), or `s3` (order 032,
+  `S3ColdStorageBackend`): the Capitão's S3 Glacier Flexible in São Paulo. One
+  object per partition plus the manifest as its own object (STANDARD, readable
+  without a restore); both under **Object Lock COMPLIANCE** for
+  `AUDIT_LOG_COLD_LOCK_MONTHS` (240); a SHA-256 the service checks on arrival;
+  the receipt pins exact object versions. The remote check is a `HeadObject`
+  (checksum, lock mode, lock length), not a download, since GLACIER bodies need a
+  restore. Credential: `docs/ops/auditlog-cold-writer-policy.json` (write, read,
+  restore; explicit `Deny` on delete/bypass/legal hold/bucket reconfiguration).
+  **Built and proven against an ephemeral MinIO in the lab, not live**: there is no
+  AWS account yet (RUNBOOK §8).
+- **Drill** (`manage.py drill_audit_cold_copy <location>`, `apps.core.cold_drill`):
+  downloads, decrypts and checks the copy against its manifest (sha256 of ciphertext
+  and plaintext, row count) without the source database, with Glacier's async
+  restore cycle (exit 75 while pending). Every purge writes an
+  `audit_partition_purged` row with the location and the manifest to the tenant's
+  trail.
 - **Partitions are created on the real path** (order 021):
   `manage.py ensure_audit_partitions` runs after `migrate_schemas`
   (`scripts/migrate_schemas.sh`, `docs/DEPLOY.md`) and daily via Celery Beat
@@ -409,7 +423,7 @@ to the intended controls above. Companion docs hold the operator details.
 | Audit retention 240 months per tenant, purge off by default; partitions ensured on deploy + daily | ✅ Shipped (order 021) | `TenantAuditRetention`, `ensure_audit_partitions`, [ADR-0001](./adr/ADR-0001-retencao-auditoria-20-anos.md) |
 | ICP-Brasil trust store on a volume; empty store refuses signing | ✅ Shipped (orders 014, 015) | `docker-compose.{staging,prod}.yml` (`icp_truststore`), `apps/signatures/services/icp_brasil.py`; see [ICP_BRASIL.md](./ICP_BRASIL.md) |
 | Portal invite secret (`invite_token`) returned only once, in the 201 of the invite; list, read, revoke and activate omit it. Stored in clear text (hashing not built) | ✅ Shipped (order 031) | `apps/patient_portal/serializers.py` (`PatientPortalAccessSerializer` / `PatientPortalInviteSerializer`) |
-| Audit cold copy offsite (S3 Glacier) | ❌ Not built | only `LocalDiskColdStorageBackend` exists |
+| Audit cold copy offsite (S3 Glacier, Object Lock COMPLIANCE, write-only credential) + restore drill | ⚠️ Built, not live (no AWS account) | order 032: `apps/core/cold_storage_backends.py`, `apps/core/cold_drill.py`, `docs/ops/auditlog-cold-writer-policy.json`; proven against MinIO in the lab |
 | ICP-Brasil revocation (CRL/OCSP) enforced | ❌ Off | `ICP_BRASIL_CHECK_REVOCATION=False` everywhere; production prerequisite |
 | Fail-fast secret validation at prod startup | ✅ Shipped | `vitali/settings/_security_checks.py`; see [SECRETS.md](./SECRETS.md) |
 | `X-Forwarded-Host` validated before tenant routing | ✅ Shipped | `apps/core/middleware.py::XForwardedHostValidationMiddleware` |

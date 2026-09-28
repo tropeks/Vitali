@@ -21,6 +21,7 @@ ruff==0.9
 mypy==1.15
 django-stubs==5.1
 djangorestframework-stubs==3.15
+types-python-dateutil>=2.9  # ordem 032: relativedelta no prazo da trava do destino frio
 
 # Import boundary enforcement (P1-01 — domain-independence contract)
 import-linter==2.1

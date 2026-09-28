@@ -59,6 +59,18 @@ sha256 **fixado no Dockerfile**. `PYTEST_MINIO=1 scripts/pytest.sh` sobe o MinIO
 suíte, sem porta publicada, com credenciais aleatórias do recibo, e o derruba na saída com
 qualquer código, conferindo por `docker --context lab ps -a` que sumiu.
 
+## Achado na execução: o ponteiro da cópia fria morava só no stdout
+
+`purge_audit_logs` imprimia a `stored_location` e mais nada. Depois do `DROP`, a cópia
+fria é a única, e o drill precisa da location com as versões exatas. Agora cada expurgo
+grava uma linha `audit_partition_purged` na trilha do próprio tenant, com a location e o
+manifesto; o drill parte dela (teste: expurga, lê a linha, drila, confere). O teste antigo
+que contava 1 linha na partição do mês corrente passa a contar a linha semeada mais a do
+expurgo.
+
+O drill mora em `apps/core/cold_drill.py` (responsabilidade própria; `cold_storage.py`
+passaria de 400 linhas), e os testes publicados no vermelho o chamam por lá.
+
 ## Provas
 
 - **Vermelho primeiro, publicado sozinho**, com a dependência (`boto3` no `base.txt` e no

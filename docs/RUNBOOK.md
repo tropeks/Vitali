@@ -335,10 +335,50 @@ docker compose -f docker-compose.staging.yml exec -T django \
 - Even when enabled, it only drops a tenant's dedicated partition older than
   `retention_months`, never a DEFAULT partition, never with `DELETE`, and
   `drop_partition` refuses without a verified cold-export receipt.
-- Cold copies go to `AUDIT_LOG_COLD_STORAGE_DIR` on local disk
-  (`LocalDiskColdStorageBackend`). There is **no** S3/Glacier backend yet.
+- Cold copies go where `AUDIT_LOG_COLD_STORAGE_BACKEND` says: `local` (default,
+  `AUDIT_LOG_COLD_STORAGE_DIR`) or `s3` (order 032, see below). Every purged
+  partition leaves an `audit_partition_purged` row in that tenant's trail, with the
+  `stored_location` and the manifest: that row is how you find the copy later.
 - **`core_auditlog_pre020`** (the pre-partitioning table) stays. No `DROP` without the
   Imediato's explicit acceptance.
+
+### Cold copy drill — `drill_audit_cold_copy`
+
+```bash
+# location = new_data["stored_location"] of the audit_partition_purged row
+python manage.py drill_audit_cold_copy 's3://vitali-auditlog-cold/core_auditlog/<...>.jsonl.gpg?versionId=<v>&manifestVersionId=<m>'
+```
+
+Downloads the copy, decrypts it with `BACKUP_ENCRYPTION_KEY` and checks sha256 of the
+ciphertext, sha256 of the plaintext and the row count against the manifest, without
+the source database. Exit `0` = checked; exit `75` = a Glacier restore was requested or
+is still running (Standard tier: 3–5 h), run it again later; an error names the check
+that failed. Run it after every purge and on a schedule; a copy nobody restores is a
+hope, not a backup.
+
+### S3 destination (order 032) — built, not live
+
+The Capitão's destination (order 020): S3 Glacier Flexible Retrieval, `sa-east-1`.
+Nothing goes live before the AWS account exists and an order says so. When it does:
+
+1. Bucket `vitali-auditlog-cold` in `sa-east-1`, created **with Object Lock enabled**
+   (it cannot be turned on later for existing objects; it turns versioning on). No
+   default retention is needed: every object carries its own COMPLIANCE lock, and the
+   backend refuses a stored object whose lock is missing, not COMPLIANCE, or shorter
+   than `AUDIT_LOG_COLD_LOCK_MONTHS`.
+2. An IAM user or role for the app with **exactly**
+   `docs/ops/auditlog-cold-writer-policy.json`: write, read, request restore; explicit
+   `Deny` on delete, governance bypass, legal hold and bucket reconfiguration. The lab
+   proves this same file: the writer gets `AccessDenied` on delete, and COMPLIANCE
+   refuses delete, shortening and downgrade even to the root.
+3. Environment: `AUDIT_LOG_COLD_STORAGE_BACKEND=s3`, `AUDIT_LOG_COLD_S3_BUCKET`,
+   `AUDIT_LOG_COLD_S3_REGION=sa-east-1`, and the credential through boto3's own chain
+   (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` or an instance role).
+   `AUDIT_LOG_COLD_S3_STORAGE_CLASS` defaults to `GLACIER`;
+   `AUDIT_LOG_COLD_LOCK_MONTHS` to `240`.
+4. **COMPLIANCE is irreversible.** An object uploaded with a 240-month lock is paid for
+   and undeletable for 20 years, by anyone, including the AWS root. That is why the
+   export is verified locally BEFORE upload (order 020) and never after.
 
 ---
 

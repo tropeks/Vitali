@@ -174,3 +174,12 @@ todo, isso não pode ser uma única transação cobrindo todo o histórico:
   `ensure_audit_partitions` existir. Medido e provado em banco descartável na lab (ver relatório
   de execução da ordem); rodar de verdade em staging/produção segue o plano de lock acima e é
   decisão operacional posterior, fora desta ordem.
+
+## Adendo (ordem 032) — o destino frio existe
+
+O backend S3 que esta ADR deixou "fora desta ordem" foi construído na ordem 032
+(`S3ColdStorageBackend`): Object Lock em modo COMPLIANCE por `AUDIT_LOG_COLD_LOCK_MONTHS`,
+**em meses** (240), pela mesma razão desta ADR — a unidade da trava é a unidade da
+retenção. Provado contra um MinIO efêmero na lab; não está ligado em ambiente nenhum
+(não há conta AWS). Ver `docs/SECURITY.md` §3.6.2 e `docs/RUNBOOK.md` §8.
+

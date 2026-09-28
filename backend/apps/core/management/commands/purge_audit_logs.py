@@ -46,7 +46,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from apps.core import cold_storage, partitioning
-from apps.core.models import Tenant, TenantAuditRetention
+from apps.core.models import AuditLog, Tenant, TenantAuditRetention
 
 
 @dataclass(frozen=True)
@@ -153,9 +153,9 @@ class Command(BaseCommand):
         if not execute:
             self.stdout.write(f"[dry-run] removeria {label}")
             return
-        self._purge_one(leaf, label)
+        self._purge_one(leaf, label, tenant.schema_name)
 
-    def _purge_one(self, target: str, label: str) -> None:
+    def _purge_one(self, target: str, label: str, schema_name: str) -> None:
         try:
             receipt = cold_storage.export_and_verify_partition(target)
         except cold_storage.ColdExportError as exc:
@@ -166,6 +166,20 @@ class Command(BaseCommand):
         except partitioning.PartitioningError as exc:
             self.stderr.write(self.style.ERROR(f"recusando dropar {label}: {exc}"))
             return
+        # Depois do DROP, a única cópia é a fria: onde ela está não pode morar só
+        # no stdout desta execução. A linha vai para a trilha do próprio tenant,
+        # com o manifesto, e é dela que o drill (drill_audit_cold_copy) parte.
+        AuditLog.objects.create(
+            action="audit_partition_purged",
+            resource_type="core_auditlog_partition",
+            resource_id="",
+            schema_name=schema_name,
+            new_data={
+                "partition": target,
+                "stored_location": receipt.stored_location,
+                "manifest": receipt.manifest,
+            },
+        )
         self.stdout.write(
             self.style.SUCCESS(f"removido {label} — cópia fria em {receipt.stored_location}")
         )

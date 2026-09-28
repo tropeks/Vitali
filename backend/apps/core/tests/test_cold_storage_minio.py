@@ -25,7 +25,7 @@ from botocore.exceptions import ClientError
 from dateutil.relativedelta import relativedelta
 from django.test import TestCase, override_settings
 
-from apps.core import cold_storage, partitioning
+from apps.core import cold_drill, cold_storage, partitioning
 from apps.core import cold_storage_backends as csb
 from apps.core.tests.cold_s3_fixtures import BUCKET, exporta_de_verdade
 from apps.core.tests.test_cold_storage import TEST_KEY
@@ -75,7 +75,7 @@ class MinioDestinoFrioTests(TestCase):
             dt.datetime.now(dt.UTC) + relativedelta(months=240) - dt.timedelta(days=1),
         )
 
-        drill = cold_storage.drill_cold_copy(receipt.stored_location, backend=self.backend)
+        drill = cold_drill.drill_cold_copy(receipt.stored_location, backend=self.backend)
         self.assertEqual((drill.status, drill.row_count), ("ok", 1))
 
         partitioning.drop_partition(receipt.partition_name, cold_export_receipt=receipt)
@@ -130,7 +130,14 @@ class MinioDestinoFrioTests(TestCase):
 
     def test_objeto_gravado_sem_lock_nao_passa_na_conferencia(self):
         key = f"core_auditlog/sem-lock-{uuid.uuid4().hex}.jsonl.gpg"
-        resp = self.gravador.put_object(Bucket=BUCKET, Key=key, Body=b"cifrado\n")
+        # Com checksum e sem lock: o único defeito é a falta da trava.
+        resp = self.gravador.put_object(
+            Bucket=BUCKET,
+            Key=key,
+            Body=b"cifrado\n",
+            ChecksumAlgorithm="SHA256",
+            ChecksumSHA256=csb._b64_of_hex(hashlib.sha256(b"cifrado\n").hexdigest()),
+        )
         location = f"s3://{BUCKET}/{key}?versionId={resp['VersionId']}&manifestVersionId=x"
         with self.assertRaisesRegex(csb.ColdStorageError, "COMPLIANCE"):
             self.backend.verify_stored(location, hashlib.sha256(b"cifrado\n").hexdigest())
@@ -155,9 +162,9 @@ class MinioDestinoFrioTests(TestCase):
         adulterada = (
             f"s3://{BUCKET}/{key}?versionId={version}&manifestVersionId={falso['VersionId']}"
         )
-        with self.assertRaisesRegex(cold_storage.ColdDrillError, "row_count"):
-            cold_storage.drill_cold_copy(adulterada, backend=self.backend)
+        with self.assertRaisesRegex(cold_drill.ColdDrillError, "row_count"):
+            cold_drill.drill_cold_copy(adulterada, backend=self.backend)
         # A versão original do manifesto continua lá, travada: sobrescrever cria
         # versão nova, não apaga a antiga.
-        ok = cold_storage.drill_cold_copy(receipt.stored_location, backend=self.backend)
+        ok = cold_drill.drill_cold_copy(receipt.stored_location, backend=self.backend)
         self.assertEqual(ok.status, "ok")
