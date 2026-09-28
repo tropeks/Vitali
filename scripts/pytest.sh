@@ -18,6 +18,14 @@
 #       scripts/pytest.sh apps/core/tests/test_auth.py -x
 #       PYTEST_NO_BUILD=1 scripts/pytest.sh ...        (reusa as imagens já construídas)
 #       PYTEST_CMD="ruff check apps/ vitali/" scripts/pytest.sh   (outro comando na imagem)
+#       PYTEST_MINIO=1 scripts/pytest.sh ...           (com o MinIO efêmero da ordem 032)
+#
+# PYTEST_MINIO=1 (ordem 032; autorização do Diretor de 27/09/2026: só teste, sem
+# dado real, derrubado ao fim de cada recibo): sobe um MinIO na mesma rede, SEM
+# porta publicada, com credenciais aleatórias deste recibo e a política de
+# docs/ops/auditlog-cold-writer-policy.json no usuário gravador; passa o endpoint
+# ao pytest (apps/core/tests/test_cold_storage_minio.py) e o derruba na saída,
+# com qualquer código de saída, conferindo que sumiu.
 set -euo pipefail
 
 unset DOCKER_HOST DOCKER_CONTEXT
@@ -68,9 +76,66 @@ else
   set -- pytest "$@" -q --no-header -p no:cacheprovider
 fi
 
-exec docker --context lab run --rm --name "$name" --network "$LAB_NETWORK" \
-  -e DJANGO_SETTINGS_MODULE=vitali.settings.development \
-  -e DATABASE_URL=postgres://vitali:vitali@postgres:5432/vitali \
-  -e REDIS_URL=redis://redis:6379/0 \
-  -e COVERAGE_FILE=/tmp/.coverage \
-  vitali-test:x-full "$@"
+minio_env=()
+if [ "${PYTEST_MINIO:-0}" = "1" ]; then
+  minio_img="vitali-minio-test:2025-09-07"
+  if [ "${PYTEST_NO_BUILD:-0}" != "1" ] || ! lab image inspect "$minio_img" >/dev/null 2>&1; then
+    mctx="$(mktemp -d)"
+    cp scripts/lab-minio/Dockerfile scripts/lab-minio/setup.sh \
+      docs/ops/auditlog-cold-writer-policy.json "$mctx/"
+    lab build -q -t "$minio_img" "$mctx" >/dev/null
+    rm -rf "$mctx"
+  fi
+  rnd() { head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n'; }
+  minio_name="vminio-${name#vpytest-}"
+  root_key="root$(rnd | head -c 12)"; root_secret="$(rnd)"
+  writer_key="gravador$(rnd | head -c 12)"; writer_secret="$(rnd)"
+  derruba_minio() {
+    lab rm -f "$minio_name" >/dev/null 2>&1 || true
+    if lab ps -a --filter "name=$minio_name" --format '{{.Names}}' | grep -q .; then
+      echo "ERRO: o MinIO $minio_name continua na lab depois do recibo" >&2
+      return 1
+    fi
+    echo "lab: MinIO $minio_name derrubado (docker --context lab ps -a não o lista)" >&2
+  }
+  trap derruba_minio EXIT
+  lab run -d --rm --name "$minio_name" --network "$LAB_NETWORK" \
+    -e MINIO_ROOT_USER="$root_key" -e MINIO_ROOT_PASSWORD="$root_secret" \
+    -e COLD_WRITER_KEY="$writer_key" -e COLD_WRITER_SECRET="$writer_secret" \
+    "$minio_img" >/dev/null
+  for _ in $(seq 1 60); do
+    lab exec "$minio_name" test -f /tmp/pronto 2>/dev/null && break
+    sleep 1
+  done
+  lab exec "$minio_name" test -f /tmp/pronto || {
+    echo "erro: o MinIO $minio_name não ficou pronto em 60 s" >&2
+    lab logs "$minio_name" >&2 || true
+    exit 1
+  }
+  echo "lab: MinIO $minio_name na rede $LAB_NETWORK, sem porta publicada" >&2
+  minio_env=(
+    -e AUDIT_LOG_COLD_S3_TEST_ENDPOINT="http://$minio_name:9000"
+    -e AUDIT_LOG_COLD_S3_TEST_ROOT_KEY="$root_key"
+    -e AUDIT_LOG_COLD_S3_TEST_ROOT_SECRET="$root_secret"
+    -e AUDIT_LOG_COLD_S3_TEST_WRITER_KEY="$writer_key"
+    -e AUDIT_LOG_COLD_S3_TEST_WRITER_SECRET="$writer_secret"
+  )
+fi
+
+run=(docker --context lab run --rm --name "$name" --network "$LAB_NETWORK"
+  -e DJANGO_SETTINGS_MODULE=vitali.settings.development
+  -e DATABASE_URL=postgres://vitali:vitali@postgres:5432/vitali
+  -e REDIS_URL=redis://redis:6379/0
+  -e COVERAGE_FILE=/tmp/.coverage
+  "${minio_env[@]}"
+  vitali-test:x-full "$@")
+
+if [ "${PYTEST_MINIO:-0}" != "1" ]; then
+  exec "${run[@]}"
+fi
+# Sem exec: o trap EXIT tem de rodar depois do pytest para derrubar o MinIO.
+status=0
+"${run[@]}" || status=$?
+derruba_minio || status=1
+trap - EXIT
+exit "$status"

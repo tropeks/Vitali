@@ -39,3 +39,9 @@ opentelemetry-instrumentation-django==0.62b0
 opentelemetry-instrumentation-celery==0.62b0
 opentelemetry-instrumentation-psycopg2==0.62b0
 opentelemetry-instrumentation-requests==0.62b0
+# Ordem 032: destino frio S3 da trilha de auditoria (apps.core.cold_storage_backends
+# .S3ColdStorageBackend — Glacier, Object Lock compliance, credencial só-grava).
+# python-dateutil já vinha transitivo; fica explícito porque o prazo da trava é em
+# meses (relativedelta), a mesma unidade da retenção (ADR-0001).
+boto3>=1.43,<2
+python-dateutil>=2.9
