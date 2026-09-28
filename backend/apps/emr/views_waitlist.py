@@ -17,6 +17,7 @@ from rest_framework.views import APIView
 from apps.core.mixins import AuditReadAPIViewMixin
 from apps.core.permissions import HasPermission
 from apps.emr.models import Patient, Professional, WaitlistEntry
+from apps.patient_portal.models import PatientPortalAccess
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,39 @@ STATUS_BADGE_LABELS = {
     "expired": "Expirado",
     "cancelled": "Cancelado",
 }
+
+
+def _paciente_do_portal(user) -> Patient | None:
+    """The Patient this user is, through an *active* portal access.
+
+    Order 036: `Patient` has no `user` field — the link is `PatientPortalAccess`,
+    the same one `IsPortalSelfAccess` checks. An invited or revoked access
+    identifies no one.
+    """
+    access = (
+        PatientPortalAccess.objects.select_related("patient")
+        .filter(user=user, status=PatientPortalAccess.STATUS_ACTIVE)
+        .first()
+    )
+    return access.patient if access else None
+
+
+def _active_entry_conflict(patient: Patient, professional: Professional) -> Response | None:
+    """409 when the patient already waits (or was notified) for this professional."""
+    existing = WaitlistEntry.objects.filter(
+        patient=patient,
+        professional=professional,
+        status__in=["waiting", "notified"],
+    ).first()
+    if existing is None:
+        return None
+    return Response(
+        {
+            "error": "Já existe uma entrada ativa na lista de espera para este profissional.",
+            "entry_id": str(existing.id),
+        },
+        status=status.HTTP_409_CONFLICT,
+    )
 
 
 # ─── Serializer ───────────────────────────────────────────────────────────────
@@ -142,18 +176,45 @@ class WaitlistViewSet(AuditReadAPIViewMixin, APIView):
         if _SCHEDULE_READ.has_permission(request, self):
             qs = WaitlistEntry.objects.select_related("patient", "professional__user").all()
         else:
-            # Try to find the Patient linked to this user
-            try:
-                patient = Patient.objects.get(user=request.user)
+            patient = _paciente_do_portal(request.user)
+            if patient is None:
+                # No active portal link — show nothing
+                qs = WaitlistEntry.objects.none()
+            else:
                 qs = WaitlistEntry.objects.select_related("patient", "professional__user").filter(
                     patient=patient
                 )
-            except Patient.DoesNotExist:
-                # Non-patient staff user — show nothing
-                qs = WaitlistEntry.objects.none()
 
         serializer = WaitlistEntrySerializer(qs, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def _patient_of_request(self, request, patient_id) -> tuple[Patient | None, Response | None]:
+        """Who the new entry is for: `(patient, None)`, or `(None, refusal)`.
+
+        Staff with schedule.write name the patient; anyone else is the patient
+        of their own active portal access, and nobody else.
+        """
+        if patient_id:
+            if not _SCHEDULE_WRITE.has_permission(request, self):
+                return None, Response(
+                    {"error": "Apenas staff pode especificar patient_id."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            patient = Patient.objects.filter(id=patient_id).first()
+            if patient is None:
+                return None, Response(
+                    {"error": "Paciente não encontrado."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            return patient, None
+
+        patient = _paciente_do_portal(request.user)
+        if patient is None:
+            return None, Response(
+                {"error": "Usuário não está vinculado a um paciente. Use patient_id."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return patient, None
 
     def post(self, request):
         """
@@ -167,30 +228,9 @@ class WaitlistViewSet(AuditReadAPIViewMixin, APIView):
 
         data = serializer.validated_data
 
-        # Resolve patient
-        patient = None
-        patient_id = data.get("patient_id")
-        if patient_id:
-            if not _SCHEDULE_WRITE.has_permission(request, self):
-                return Response(
-                    {"error": "Apenas staff pode especificar patient_id."},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
-            try:
-                patient = Patient.objects.get(id=patient_id)
-            except Patient.DoesNotExist:
-                return Response(
-                    {"error": "Paciente não encontrado."},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-        else:
-            try:
-                patient = Patient.objects.get(user=request.user)
-            except Patient.DoesNotExist:
-                return Response(
-                    {"error": "Usuário não está vinculado a um paciente. Use patient_id."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+        patient, refusal = self._patient_of_request(request, data.get("patient_id"))
+        if refusal is not None:
+            return refusal
 
         # Resolve professional
         try:
@@ -201,20 +241,9 @@ class WaitlistViewSet(AuditReadAPIViewMixin, APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # Check for duplicate active entry
-        existing = WaitlistEntry.objects.filter(
-            patient=patient,
-            professional=professional,
-            status__in=["waiting", "notified"],
-        ).first()
-        if existing:
-            return Response(
-                {
-                    "error": "Já existe uma entrada ativa na lista de espera para este profissional.",
-                    "entry_id": str(existing.id),
-                },
-                status=status.HTTP_409_CONFLICT,
-            )
+        conflict = _active_entry_conflict(patient, professional)
+        if conflict is not None:
+            return conflict
 
         entry = WaitlistEntry.objects.create(
             patient=patient,
