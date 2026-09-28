@@ -1,15 +1,26 @@
-"""Ordem 033 — o banco guarda só o SHA-256 do invite_token.
+"""Ordem 033 — fase 1 de 2: o invite_token passa a ser guardado como hash.
 
-Ordem das operações, e por quê:
+A regra do projeto (docs/TENANT_MIGRATIONS.md): nenhuma migration de tenant
+derruba coluna junto com a criação da nova. ``migrate_schemas`` roda tenant a
+tenant, e a release anterior tem de continuar rodando contra o schema novo,
+para que voltar o código não exija tocar em dado. Então esta migration só
+EXPANDE:
 
-1. ``invite_token_hash`` entra anulável: as linhas existentes ainda não têm hash;
-2. cada linha recebe o SHA-256 do próprio token. **Os convites já enviados
-   continuam valendo**: o link que o paciente tem casa com o hash gravado;
-3. o hash vira obrigatório e único (o token já era único, e o SHA-256 preserva);
-4. só então a coluna em claro sai.
+1. ``invite_token_hash`` entra anulável e único (NULLs não colidem);
+2. a coluna ``invite_token`` perde o NOT NULL: convite novo grava NULL nela. No
+   estado do Django ela passa a se chamar ``invite_token_legado`` (mesma coluna,
+   ``db_column``), para o nome ``invite_token`` ficar com o token em claro que
+   só existe na instância que o cunhou;
+3. cada linha existente recebe o SHA-256 do próprio token. **Os convites já
+   enviados continuam valendo**: o link do paciente casa com o hash.
 
-Reverter recusa: o token em claro não volta de um hash, e recriar a coluna com
-tokens novos invalidaria calado todo convite aberto.
+Reverter é seguro: a RunPython não tem o que desfazer (o claro nunca saiu), o
+NOT NULL não volta (convite criado nesta fase tem a coluna em NULL, e a release
+anterior sempre grava o token, então a coluna anulável não a atrapalha) e o
+hash sai.
+
+A ordem 034 (fase 2, depois de esta rodar em todos os tenants e de todo convite
+anterior expirar, 7 dias) torna o hash obrigatório e derruba a coluna em claro.
 
 ``sha256_hex`` é a mesma conta de ``apps.patient_portal.models.hash_invite_token``
 (o teste ``test_o_hash_da_migration_e_o_do_model`` prende as duas); fica aqui
@@ -19,7 +30,6 @@ para a migration não depender de código de model que pode mudar depois.
 import hashlib
 
 from django.db import migrations, models
-from django.db.migrations.exceptions import IrreversibleError
 
 
 def sha256_hex(token: str) -> str:
@@ -29,15 +39,9 @@ def sha256_hex(token: str) -> str:
 def hash_existing_invite_tokens(apps, schema_editor):
     PatientPortalAccess = apps.get_model("patient_portal", "PatientPortalAccess")
     for access in PatientPortalAccess.objects.all().iterator():
-        access.invite_token_hash = sha256_hex(access.invite_token)
-        access.save(update_fields=["invite_token_hash"])
-
-
-def refuse_to_restore_plaintext(apps, schema_editor):
-    raise IrreversibleError(
-        "patient_portal 0004: o invite_token em claro não volta de um hash, e recriar a "
-        "coluna com tokens novos invalidaria calado todo convite aberto (ordem 033)"
-    )
+        if access.invite_token_legado and not access.invite_token_hash:
+            access.invite_token_hash = sha256_hex(access.invite_token_legado)
+            access.save(update_fields=["invite_token_hash"])
 
 
 class Migration(migrations.Migration):
@@ -49,16 +53,34 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name="patientportalaccess",
             name="invite_token_hash",
-            field=models.CharField(max_length=64, null=True, editable=False),
+            field=models.CharField(max_length=64, unique=True, null=True, editable=False),
         ),
-        migrations.RunPython(hash_existing_invite_tokens, refuse_to_restore_plaintext),
-        migrations.AlterField(
-            model_name="patientportalaccess",
-            name="invite_token_hash",
-            field=models.CharField(max_length=64, unique=True, db_index=True, editable=False),
+        migrations.SeparateDatabaseAndState(
+            state_operations=[
+                migrations.RenameField(
+                    model_name="patientportalaccess",
+                    old_name="invite_token",
+                    new_name="invite_token_legado",
+                ),
+                migrations.AlterField(
+                    model_name="patientportalaccess",
+                    name="invite_token_legado",
+                    field=models.CharField(
+                        max_length=64,
+                        db_column="invite_token",
+                        unique=True,
+                        null=True,
+                        editable=False,
+                    ),
+                ),
+            ],
+            database_operations=[
+                migrations.RunSQL(
+                    "ALTER TABLE patient_portal_patientportalaccess "
+                    "ALTER COLUMN invite_token DROP NOT NULL",
+                    reverse_sql=migrations.RunSQL.noop,
+                ),
+            ],
         ),
-        migrations.RemoveField(
-            model_name="patientportalaccess",
-            name="invite_token",
-        ),
+        migrations.RunPython(hash_existing_invite_tokens, migrations.RunPython.noop),
     ]

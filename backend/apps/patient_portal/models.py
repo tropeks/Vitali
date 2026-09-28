@@ -68,11 +68,24 @@ class PatientPortalAccess(models.Model):
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES, default=STATUS_INVITED, db_index=True
     )
-    # Only the hash is stored (order 033): a dump or backup of this table must
-    # not hand out every open invite. The plaintext exists on the instance that
-    # minted it (``invite_token`` below), for delivery and the 201, and never
-    # comes back from the database.
-    invite_token_hash = models.CharField(max_length=64, unique=True, db_index=True, editable=False)
+    # Only the hash is stored for new invites (order 033): a dump or backup of
+    # this table must not hand out every open invite. The plaintext exists on
+    # the instance that minted it (``invite_token`` below), for delivery and the
+    # 201, and never comes back from the database.
+    #
+    # Phase 1 of the two-phase rule (docs/TENANT_MIGRATIONS.md): the hash is
+    # nullable and the pre-033 plaintext column stays, nullable, as
+    # ``invite_token_legado``, so the previous release still runs against this
+    # schema. Order 034 (phase 2) makes the hash NOT NULL and drops the column.
+    #
+    # NULL, not "", on both (DJ001 silenced on purpose): they are unique, and
+    # only NULLs do not collide — two empty strings would.
+    invite_token_hash = models.CharField(  # noqa: DJ001
+        max_length=64, unique=True, null=True, editable=False
+    )
+    invite_token_legado = models.CharField(  # noqa: DJ001
+        max_length=64, db_column="invite_token", unique=True, null=True, editable=False
+    )
     invite_expires_at = models.DateTimeField()
 
     invited_at = models.DateTimeField(auto_now_add=True)
@@ -103,7 +116,7 @@ class PatientPortalAccess(models.Model):
     invite_token: str | None = None
 
     def save(self, *args, **kwargs):
-        if not self.invite_token_hash:
+        if self._state.adding and not self.invite_token_hash:
             self.invite_token = _generate_invite_token()
             self.invite_token_hash = hash_invite_token(self.invite_token)
         if not self.invite_expires_at:
@@ -112,8 +125,20 @@ class PatientPortalAccess(models.Model):
 
     @classmethod
     def find_by_invite_token(cls, token: str) -> PatientPortalAccess:
-        """The access whose invite *token* this is — by hash, never by value."""
-        return cls.objects.get(invite_token_hash=hash_invite_token(token))
+        """The access whose invite *token* this is — by hash.
+
+        Fallback (phase 1 only, removed by order 034): a row written by the
+        previous release has the plaintext and no hash. It is matched by value
+        only when its hash is NULL, and gets its hash on the way out.
+        """
+        digest = hash_invite_token(token)
+        try:
+            return cls.objects.get(invite_token_hash=digest)
+        except cls.DoesNotExist:
+            access = cls.objects.get(invite_token_hash__isnull=True, invite_token_legado=token)
+            access.invite_token_hash = digest
+            access.save(update_fields=["invite_token_hash"])
+            return access
 
     # ─── State transitions ────────────────────────────────────────────────────
 
@@ -133,14 +158,17 @@ class PatientPortalAccess(models.Model):
             raise ValueError("Invite token has expired.")
         self.status = self.STATUS_ACTIVE
         self.activated_at = timezone.now()
-        self.save(update_fields=["status", "activated_at"])
+        # A spent invite needs no token: the pre-033 plaintext goes with it.
+        self.invite_token_legado = None
+        self.save(update_fields=["status", "activated_at", "invite_token_legado"])
 
     def revoke(self) -> None:
         if self.status == self.STATUS_REVOKED:
             return
         self.status = self.STATUS_REVOKED
         self.revoked_at = timezone.now()
-        self.save(update_fields=["status", "revoked_at"])
+        self.invite_token_legado = None
+        self.save(update_fields=["status", "revoked_at", "invite_token_legado"])
 
     def touch(self) -> None:
         """Update last_seen_at on every authenticated self-data request."""

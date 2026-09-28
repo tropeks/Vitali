@@ -2,15 +2,14 @@
 
 A 031 tirou o token das respostas de leitura, mas ele continuava em texto claro
 na tabela ``patient_portal_patientportalaccess``: quem lê o banco, um dump ou um
-backup, tinha o link de ativação de todo convite em aberto. Agora a coluna em
-claro some; fica o SHA-256 (o token tem 256 bits aleatórios, então um hash
-rápido basta: não há dicionário a atacar). O token em claro existe só na
-instância que o cunhou — é ela que a entrega e o 201 usam — e nunca volta do
-banco.
+backup, tinha o link de ativação de todo convite em aberto. Agora convite novo
+grava só o SHA-256 (o token tem 256 bits aleatórios, então um hash rápido basta:
+não há dicionário a atacar). O token em claro existe só na instância que o
+cunhou — é ela que a entrega e o 201 usam — e nunca volta do banco.
 
-Os convites já enviados continuam valendo: a migration grava o hash do token de
-cada linha antes de derrubar a coluna, e o link que o paciente recebeu casa com
-esse hash.
+Fase 1 de 2 (docs/TENANT_MIGRATIONS.md): a coluna em claro fica, anulável, para
+a release anterior continuar rodando contra o schema novo; a ordem 034 a derruba.
+Os convites já enviados continuam valendo: a migration grava o hash de cada um.
 """
 
 from __future__ import annotations
@@ -23,7 +22,6 @@ from unittest.mock import MagicMock, patch
 
 from django.contrib.admin.sites import AdminSite
 from django.db import connection
-from django.db.migrations.exceptions import IrreversibleError
 from django.test import RequestFactory, SimpleTestCase
 from rest_framework.test import APIClient
 
@@ -72,11 +70,16 @@ class _Base(TenantTestCase):
 
 
 class BancoGuardaSoOHashTests(_Base):
-    def test_a_coluna_em_claro_nao_existe(self):
+    def test_convite_novo_grava_null_na_coluna_em_claro(self):
+        access = self._convite()
         with connection.cursor() as cur:
-            colunas = {c.name for c in connection.introspection.get_table_description(cur, TABELA)}
-        self.assertNotIn("invite_token", colunas)
-        self.assertIn("invite_token_hash", colunas)
+            cur.execute(
+                f'SELECT invite_token, invite_token_hash FROM "{TABELA}" WHERE id = %s',
+                [access.pk],
+            )
+            em_claro, digest = cur.fetchone()
+        self.assertIsNone(em_claro)
+        self.assertEqual(digest, _sha256(access.invite_token))
 
     def test_nenhuma_coluna_guarda_o_token_em_claro(self):
         access = self._convite()
@@ -134,6 +137,45 @@ class AtivacaoPeloHashTests(_Base):
         )
 
 
+class ConviteDaReleaseAnteriorTests(_Base):
+    """Linha gravada pela release anterior (token em claro, hash NULL) — o que
+    acontece se o código voltar durante a fase 1 e depois avançar de novo."""
+
+    def _convite_legado(self, token: str) -> PatientPortalAccess:
+        access = self._convite()
+        with connection.cursor() as cur:
+            cur.execute(
+                f'UPDATE "{TABELA}" SET invite_token = %s, invite_token_hash = NULL WHERE id = %s',
+                [token, access.pk],
+            )
+        return access
+
+    def test_ativa_pelo_token_ganha_o_hash_e_perde_o_claro(self):
+        access = self._convite_legado("token-da-release-anterior")
+        self.client.force_authenticate(user=self.portal_user)
+        resp = self.client.post(
+            ACTIVATE_URL, {"invite_token": "token-da-release-anterior"}, format="json"
+        )
+        self.assertEqual(resp.status_code, 200, resp.data)
+        relida = PatientPortalAccess.objects.get(pk=access.pk)
+        self.assertEqual(relida.invite_token_hash, _sha256("token-da-release-anterior"))
+        self.assertIsNone(relida.invite_token_legado)
+
+    def test_hash_colado_nao_casa_com_o_claro_legado(self):
+        self._convite_legado("token-legado-b")
+        self.client.force_authenticate(user=self.portal_user)
+        resp = self.client.post(
+            ACTIVATE_URL, {"invite_token": _sha256("token-legado-b")}, format="json"
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_revogar_apaga_o_claro_legado(self):
+        access = self._convite_legado("token-legado-c")
+        access.refresh_from_db()
+        access.revoke()
+        self.assertIsNone(PatientPortalAccess.objects.get(pk=access.pk).invite_token_legado)
+
+
 class EntregaSoComOTokenCunhadoTests(_Base):
     def test_link_de_instancia_relida_recusa(self):
         """Sem o token em claro, montar ``?token=None`` seria um link quebrado
@@ -187,9 +229,9 @@ class AdminTests(_Base):
 
 
 class _Linha:
-    def __init__(self, token: str):
-        self.invite_token = token
-        self.invite_token_hash = None
+    def __init__(self, token: str | None, digest: str | None = None):
+        self.invite_token_legado = token
+        self.invite_token_hash = digest
         self.salvo_com = None
 
     def save(self, update_fields=None):
@@ -216,8 +258,16 @@ class MigrationDeDadosTests(SimpleTestCase):
         linhas = [_Linha("token-a"), _Linha("token-b")]
         modulo.hash_existing_invite_tokens(_Apps(linhas), None)
         for linha in linhas:
-            self.assertEqual(linha.invite_token_hash, _sha256(linha.invite_token))
+            self.assertEqual(linha.invite_token_hash, _sha256(linha.invite_token_legado))
             self.assertEqual(linha.salvo_com, ["invite_token_hash"])
+
+    def test_nao_toca_linha_sem_claro_ou_ja_com_hash(self):
+        modulo = importlib.import_module(MIGRATION)
+        sem_claro, com_hash = _Linha(None), _Linha("token-c", digest="ja-tem")
+        modulo.hash_existing_invite_tokens(_Apps([sem_claro, com_hash]), None)
+        self.assertIsNone(sem_claro.salvo_com)
+        self.assertIsNone(com_hash.salvo_com)
+        self.assertEqual(com_hash.invite_token_hash, "ja-tem")
 
     def test_o_hash_da_migration_e_o_do_model(self):
         """Se divergirem, todo convite aberto morre calado na virada."""
@@ -225,8 +275,3 @@ class MigrationDeDadosTests(SimpleTestCase):
 
         modulo = importlib.import_module(MIGRATION)
         self.assertEqual(modulo.sha256_hex("abc"), hash_invite_token("abc"))
-
-    def test_reverter_recusa_nomeando_o_motivo(self):
-        modulo = importlib.import_module(MIGRATION)
-        with self.assertRaisesRegex(IrreversibleError, "em claro"):
-            modulo.refuse_to_restore_plaintext(_Apps([]), None)
