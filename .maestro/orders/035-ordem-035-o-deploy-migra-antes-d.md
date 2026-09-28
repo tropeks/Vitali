@@ -150,3 +150,7 @@ tenant que falhou).
 - Direção vigente na criação: INTENT v6 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 035` (você não fecha a própria ordem).
+accepted_at: 2026-09-28T10:14:52-03:00
+accepted_session: desconhecido
+accepted_tree: ea2f9d63238dc99d5986df8acf474a0a92d1168f
+accepted_intent: 6
