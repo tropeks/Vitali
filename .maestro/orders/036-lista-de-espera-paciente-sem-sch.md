@@ -36,3 +36,7 @@ reemitir token novo sobre o mesmo registro, preservando a trilha.
 - Direção vigente na criação: INTENT v6 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 036` (você não fecha a própria ordem).
+accepted_at: 2026-09-28T17:28:00-03:00
+accepted_session: desconhecido
+accepted_tree: b9a36d7c5c94196b12e488b97fcf0331700f5560
+accepted_intent: 6
