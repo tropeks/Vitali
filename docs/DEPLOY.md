@@ -26,22 +26,23 @@ cp .env.staging.example .env.staging
 # 3. Log in to GHCR to pull images
 echo $GITHUB_TOKEN | docker login ghcr.io -u tropeks --password-stdin
 
-# 4. Pull images (first time uses :latest tag)
-GHCR_REPO=tropeks IMAGE_TAG=latest \
-  docker compose -f docker-compose.staging.yml pull
+# 4. Database, schema and first tenant, with the image that will serve (ordem 035).
+#    Nothing of the app is up yet. The django healthcheck asks /readiness/ with
+#    Host: $HEALTHCHECK_HOST, which only resolves once the public tenant has that
+#    domain, so bootstrap before the first `up` (see "Database bootstrap" below).
+export GHCR_REPO=tropeks IMAGE_TAG=latest \
+  COMPOSE_FILE=docker-compose.staging.yml COMPOSE_ENV_FILE=.env.staging
+docker compose --env-file .env.staging pull
+docker compose --env-file .env.staging up -d --wait postgres redis
+bash scripts/migrate_schemas.sh
+BOOTSTRAP_ADMIN_PASSWORD='<generated>' docker compose --env-file .env.staging \
+  run --rm --no-deps -T -e BOOTSTRAP_ADMIN_PASSWORD django python manage.py bootstrap_beta \
+  --public-domain <HEALTHCHECK_HOST> --clinic-slug <slug> --clinic-domain <clinic-host> \
+  --admin-email <admin-email>
 
-# 5. Start services
-GHCR_REPO=tropeks IMAGE_TAG=latest \
-  docker compose -f docker-compose.staging.yml up -d
-
-# 6. Run database migrations
-docker compose -f docker-compose.staging.yml exec django \
-  python manage.py migrate_schemas --shared --noinput
-
-# 6b. Ensure core_auditlog has a partition ready for every tenant (ordem 021,
-#     Emenda do Imediato) — idempotent, safe to re-run on every deploy.
-docker compose -f docker-compose.staging.yml exec django \
-  python manage.py ensure_audit_partitions
+# 5-6b. Start everything. From here on, every deploy is this one script: it
+#       migrates with the new image BEFORE `up` (see "Release Pipeline" below).
+bash scripts/deploy.sh
 
 # 7. Collect static files
 docker compose -f docker-compose.staging.yml exec django \
@@ -61,7 +62,7 @@ COMPOSE_ENV_FILE=.env.staging \
   bash scripts/smoke_test.sh
 ```
 
-Subsequent deploys are **manual**: `.github/workflows/deploy-staging.yml` only builds and publishes images to GHCR on push to `master` — it never connects to a host (see "Correção de um erro deste documento" below). With the new `IMAGE_TAG`, repeat steps 4, 5, 6, 6b and 10.
+Subsequent deploys are **manual**: `.github/workflows/deploy-staging.yml` only builds and publishes images to GHCR on push to `master` — it never connects to a host (see "Correção de um erro deste documento" below). With the new `IMAGE_TAG`, run `scripts/deploy.sh` and the smoke test (step 10), exactly as in "Release Pipeline" below.
 
 ---
 
@@ -182,7 +183,7 @@ docker compose -p vitali-staging \
 ### 2. Database bootstrap
 
 ```bash
-docker compose -p vitali-staging ... exec django python manage.py migrate_schemas --shared
+docker compose -p vitali-staging ... run --rm django python manage.py migrate_schemas --shared
 BOOTSTRAP_ADMIN_PASSWORD='<generated>' docker compose -p vitali-staging ... exec \
   -e BOOTSTRAP_ADMIN_PASSWORD django python manage.py bootstrap_beta \
   --public-domain vitali.example.com \
@@ -242,20 +243,44 @@ above.
 
 A semver tag builds and publishes backend, frontend, and viewer images to GHCR. GitHub Actions never connects to the PVE host and has no deployment credentials.
 
-Deployment is run locally on the PVE host with the explicit Compose project and env file. Use the desired immutable image tag, then run shared and tenant migrations and the smoke test.
+Deployment is run locally on the PVE host with the explicit Compose project and env file, through `scripts/deploy.sh` (ordem 035). The script is the order; do not run its steps by hand in another order.
 
 ```bash
-IMAGE_TAG=sha-<commit> GHCR_REPO=tropeks docker compose -p vitali-staging --env-file .env.staging -f docker-compose.staging.yml pull
-IMAGE_TAG=sha-<commit> GHCR_REPO=tropeks docker compose -p vitali-staging --env-file .env.staging -f docker-compose.staging.yml up -d
-docker compose -p vitali-staging --env-file .env.staging -f docker-compose.staging.yml exec -T django python manage.py migrate_schemas --shared --noinput
-docker compose -p vitali-staging --env-file .env.staging -f docker-compose.staging.yml exec -T django python manage.py migrate_schemas --tenant --noinput
-# Ordem 021, Emenda do Imediato: pré-cria a partição de core_auditlog do mês
-# corrente/seguinte para cada tenant — sem isto toda escrita cai na DEFAULT e
-# o expurgo por tenant nunca tem o que derrubar. Idempotente; o Celery Beat
-# diário (core.ensure_audit_partitions) cobre o mês virando sem deploy no meio.
-docker compose -p vitali-staging --env-file .env.staging -f docker-compose.staging.yml exec -T django python manage.py ensure_audit_partitions
+IMAGE_TAG=sha-<commit> GHCR_REPO=tropeks COMPOSE_PROJECT_NAME=vitali-staging COMPOSE_FILE=docker-compose.staging.yml COMPOSE_ENV_FILE=.env.staging bash scripts/deploy.sh
 COMPOSE_PROJECT_NAME=vitali-staging COMPOSE_FILE=docker-compose.staging.yml COMPOSE_ENV_FILE=.env.staging BASE_URL=https://vitali.qtec.me bash scripts/smoke_test.sh
 ```
+
+What `scripts/deploy.sh` does, in this order:
+
+1. `pull` the new release's images.
+2. `up -d --wait postgres redis`. The code that is serving is not touched.
+3. `scripts/migrate_schemas.sh`: `migrate_schemas --shared`, `migrate_schemas --tenant` and
+   `ensure_audit_partitions`, each in a throwaway container of the **new** image
+   (`compose run --rm --no-deps django`), while the previous release keeps serving.
+4. `up -d --wait`: the new code comes up against a schema that already expects it, and the
+   script only returns once the healthchecks pass.
+
+**Why migrate before `up`.** Tenant migrations are additive, phase 1 of 2
+([TENANT_MIGRATIONS.md](./TENANT_MIGRATIONS.md)), precisely so that the **previous**
+release runs against the new schema. The reverse does not hold. Until order 035 this
+section said `up -d` first and `migrate_schemas` after, so every tenant `AddField` opened a
+window in which the new code queried a column that did not exist yet. With order 033, the
+whole patient portal of a tenant not yet migrated would have answered 500, because
+`IsPortalSelfAccess` reads `PatientPortalAccess` on every request.
+
+**Why `run --rm` and not `exec`.** `exec` enters the container that is up, which during a
+deploy is the **previous** image. It does not have the new migrations: it would "migrate"
+nothing, print OK, and the new code would then come up against the old schema.
+
+**If a migration fails** (tenant 47 of 200), the script stops before the `up`. The previous
+release stays up, serving the tenants already migrated and the ones not yet migrated,
+which is what phase 1 guarantees. Fix the cause and run `scripts/deploy.sh` again:
+`migrate_schemas` is idempotent. To retry one tenant, see
+[TENANT_MIGRATIONS.md](./TENANT_MIGRATIONS.md) §Retrying a Single Failed Tenant.
+
+The lab proof of this order, with the real staging compose file, the production images
+from before and after order 033 and an HTTP probe running during the whole deploy, is
+`scripts/lab-deploy-prova/prova.sh` (receipt `order-35-prova`).
 
 ## Environment Variables
 
@@ -361,6 +386,13 @@ ele ainda não tinha.
 ## Rollback Procedure
 
 ### Manual rollback
+
+Rolling back the image does **not** undo migrations, and it does not have to: tenant
+migrations are additive (phase 1 of 2, [TENANT_MIGRATIONS.md](./TENANT_MIGRATIONS.md)), so
+the previous image runs against the new schema. The order 035 lab proof measures this: the
+previous release keeps answering 200 against the already-migrated schema. A phase 2
+migration (drop, NOT NULL) is the exception: it only ships after the previous release no
+longer needs the old shape, so check its order before rolling back past it.
 
 ```bash
 cd /opt/vitali

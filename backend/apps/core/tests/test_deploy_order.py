@@ -191,6 +191,7 @@ class DeployShTests(SimpleTestCase):
 
     def test_compose_recebe_projeto_arquivos_e_env_file(self):
         _, chamadas = self._roda(COMPOSE_FILE="docker-compose.staging.yml:docker-compose.lab.yml")
+        self.assertTrue(chamadas.linhas)
         for linha in chamadas.linhas:
             argv = linha["argv"]
             self.assertEqual(argv[0], "compose")
@@ -222,4 +223,6 @@ class DocsDoDeployTests(SimpleTestCase):
         secao = texto.split("## Release Pipeline", 1)[1].split("\n## ", 1)[0]
         self.assertIn("scripts/deploy.sh", secao)
         for bloco in re.findall(r"```(?:bash)?\n(.*?)```", secao, re.S):
-            self.assertNotIn("up -d", bloco, "o Release Pipeline sobe o código à mão, fora da ordem")
+            self.assertNotIn(
+                "up -d", bloco, "o Release Pipeline sobe o código à mão, fora da ordem"
+            )

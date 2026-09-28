@@ -77,6 +77,51 @@ tenant que falhou).
     schema já migrado; o convite gravado pela release anterior ganha o hash.
 - Recibo `order-35` na lab, suíte inteira, no tip do branch.
 
+## O que a prova mediu (rodada de 28/09, antes do recibo)
+
+- **Controle, ordem antiga:** 3 de 3 amostras com 5xx com o código novo no ar antes do
+  migrate; depois do migrate, 5 de 5 com 200.
+- **`deploy.sh`:** 0 5xx em 209 amostras. Marcos, contados do início do migrate:
+  - o migrate de tenant termina em 26,0 s;
+  - o django anterior cai em 35,3 s;
+  - o novo fica saudável em 52,0 s.
+- **Por faixa:**
+  - release anterior durante o migrate: 79 amostras 200;
+  - **release anterior com o schema já migrado: 36 amostras 200**;
+  - release nova saudável: 60 amostras 200.
+- **Convite gravado pela release anterior:**
+  - ativa pela API na nova: 200;
+  - no banco, o hash confere, o claro foi apagado e o status é `active`.
+- **Prova interrompida no meio** (SIGTERM): sai com 130 e não deixa contêiner, volume nem
+  rede na lab.
+
+## Achados desta ordem
+
+- **A troca de contêiner ainda derruba o serviço por alguns segundos.** Na prova, a sonda
+  ficou 32 amostras sem resposta entre a queda do django anterior e o healthcheck do novo
+  (até ~17 s, com a sonda direto no django, sem nginx). Isso é o `recreate` do compose, não
+  a janela do schema, e já existia antes desta ordem. No staging, o nginx responde 502
+  nesse intervalo. Zero downtime exige duas instâncias atrás do nginx (blue/green); fica
+  registrado, fora desta ordem.
+- **Incidente contido na primeira rodada da prova:**
+  - O que aconteceu: o `env_file` do django no `docker-compose.staging.yml` é
+    `${STAGING_ENV_FILE:-.env.staging}`, e `--env-file` só alimenta a interpolação. Sem
+    `STAGING_ENV_FILE` exportado, o contêiner do `bootstrap_beta` na lab leu o
+    `.env.staging` real da forge (arquivo 0600, de 24/07, fora do git).
+  - O desfecho: ele morreu na importação dos settings, porque o arquivo não tem
+    `BACKUP_ENCRYPTION_KEY`. Nada foi impresso (conferido: nenhum valor do arquivo no log)
+    e o contêiner era `--rm`.
+  - A correção: o `prova.sh` exporta `STAGING_ENV_FILE` para o env efêmero e recusa rodar
+    se algum `env_file` do `compose config` apontar para fora do diretório temporário.
+- **A primeira rodada também deixou o projeto de pé ao ser interrompida.** A limpeza
+  dependia do env file e da lista de projetos, que se perdia no subshell. Ela passou a
+  derrubar por rótulo, e o caminho interrompido foi medido.
+- **Mudança de `.github/workflows/` fica fora:** incluir `deploy.sh` e `migrate_schemas.sh`
+  no `bash -n` do CI exige ordem com gate do Imediato (DEPLOY.md §Quem edita). A guarda
+  `test_deploy_order` já executa o `deploy.sh` no CI, o que é mais que checar a sintaxe.
+- **`collectstatic` só roda no primeiro deploy:** o volume `static_files` não se atualiza
+  sozinho em deploys seguintes. É anterior a esta ordem; fica registrado.
+
 ## Contrato de execução
 - Trabalhe APENAS no branch `order/035-deploy-migra-antes-do-up`; NUNCA no main/master.
 - Prove com o ledger: `maestro evidence --record --label order-35 -- <suíte>` no tip do branch.

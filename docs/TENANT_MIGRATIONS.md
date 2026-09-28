@@ -59,22 +59,42 @@ ls -lh /opt/vitali/backups/${TIMESTAMP}/
 
 ## Running Migrations Safely
 
+### The deploy order (order 035)
+
+Every deploy migrates with the **new** image **before** the new code comes up, through
+`scripts/deploy.sh` ([DEPLOY.md](./DEPLOY.md) §Release Pipeline):
+
+1. `pull` the new release;
+2. `scripts/migrate_schemas.sh`, with the previous release still serving;
+3. `up -d --wait`: only now the new code comes up.
+
+This is the other half of the additive-only rule above. Phase 1 exists so that the
+**previous** release runs against the new schema, and that only helps if the previous
+release is the one serving while `migrate_schemas` walks the tenants. With `up` first, the
+new code serves tenants whose schema does not have its columns yet.
+
+`scripts/migrate_schemas.sh` runs each step in a throwaway container of the image the
+compose file points to: `compose run --rm --no-deps django`. **Never `exec`** during a
+deploy: `exec` enters the container that is up, which is still the previous image, and
+the previous image does not have the new migrations. The commands below use `run --rm`
+for the same reason. With `IMAGE_TAG` set to the new release, that is the new image.
+
 ### Step 1: Run shared (public schema) migrations first
 
 The `public` schema holds tenant registry data (`tenants_tenant`, `tenants_domain`). Always migrate shared first.
 
 ```bash
-docker compose -f docker-compose.staging.yml exec -T django \
+IMAGE_TAG=sha-<new> docker compose -f docker-compose.staging.yml run --rm --no-deps -T django \
   python manage.py migrate_schemas --shared --noinput
 ```
 
-Check output for errors before proceeding. Any failure here is blocking — do not migrate tenant schemas if shared migration fails.
+Check output for errors before proceeding. Any failure here is blocking — do not migrate tenant schemas if shared migration fails. `scripts/deploy.sh` stops here on its own, before the `up`.
 
 ### Step 2: Run all tenant migrations
 
 ```bash
-docker compose -f docker-compose.staging.yml exec -T django \
-  python manage.py migrate_schemas --noinput
+IMAGE_TAG=sha-<new> docker compose -f docker-compose.staging.yml run --rm --no-deps -T django \
+  python manage.py migrate_schemas --tenant --noinput
 ```
 
 This iterates every tenant schema in sequence. Output looks like:
@@ -89,16 +109,19 @@ This iterates every tenant schema in sequence. Output looks like:
 
 ### Step 3: Verify no unapplied migrations remain
 
+With the new image, like the migration itself: `exec` would list the previous release's
+migrations and miss exactly the new ones.
+
 ```bash
-docker compose -f docker-compose.staging.yml exec -T django \
+IMAGE_TAG=sha-<new> docker compose -f docker-compose.staging.yml run --rm --no-deps -T django \
   python manage.py showmigrations | grep "\[ \]"
 # Should be empty
 ```
 
 ### Step 4: Ensure `core_auditlog` partitions (order 021)
 
-Every deploy runs this **after** `migrate_schemas` — `scripts/migrate_schemas.sh`
-already does it as its last step:
+Every deploy runs this **after** `migrate_schemas` and before the `up` —
+`scripts/migrate_schemas.sh` already does it as its last step. By hand, after a deploy:
 
 ```bash
 docker compose -f docker-compose.staging.yml exec -T django \
@@ -162,13 +185,15 @@ cleared and reserve a maintenance window first. The dry-run is always safe.
 
 ## Retrying a Single Failed Tenant
 
-If one tenant's migration fails (network hiccup, schema corruption, lock timeout), retry it individually without touching the others:
+If one tenant's migration fails (network hiccup, schema corruption, lock timeout), `scripts/deploy.sh` stops before the `up`, and the previous release keeps serving every tenant. Retry the failed one individually, **with the new image** (`run --rm`, not `exec`: the container that is up is still the previous release):
 
 ```bash
 # Replace "clinica_beta" with the failed tenant's schema_name
-docker compose -f docker-compose.staging.yml exec -T django \
+IMAGE_TAG=sha-<new> docker compose -f docker-compose.staging.yml run --rm --no-deps -T django \
   python manage.py migrate_schemas --schema=clinica_beta --noinput
 ```
+
+Then run `scripts/deploy.sh` again: the tenants already migrated are no-ops, and the `up` only happens once every schema is migrated.
 
 If this also fails, examine the migration manually:
 
@@ -223,7 +248,7 @@ docker compose -f docker-compose.staging.yml exec -T postgres \
   -c "SET search_path TO ${SCHEMA}; DELETE FROM django_migrations WHERE name='0004_add_invoice_notes';"
 
 # 3. Verify the tenant schema is clean
-docker compose -f docker-compose.staging.yml exec -T django \
+docker compose -f docker-compose.staging.yml run --rm --no-deps -T django \
   python manage.py migrate_schemas --schema=${SCHEMA} --run-syncdb --noinput
 ```
 
@@ -242,6 +267,7 @@ If the migration was catastrophic and affects all tenants, restore from the full
 
 - [ ] Pre-migration snapshot taken and verified (non-zero size)
 - [ ] Migration is additive-only (no drops, no renames, no type changes)
+- [ ] Deploy runs through `scripts/deploy.sh`: migrate with the new image, then `up` (order 035)
 - [ ] Migration tested on a staging tenant first
 - [ ] Peak traffic window avoided (prefer early morning or scheduled maintenance)
 - [ ] At least one engineer monitoring logs during `migrate_schemas` run

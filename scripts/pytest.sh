@@ -10,7 +10,8 @@
 #   1. imagem de teste vitali-test:x com INSTALL_DEV=true, a partir de ./backend;
 #   2. overlay vitali-test:x-full com scripts/ em /scripts (o test_drill_metric
 #      executa /scripts/drill_metric.sh) e os arquivos de compose de dev na raiz
-#      (a guarda test_compose_exposure os lê);
+#      (a guarda test_compose_exposure os lê), e os docs de deploy em /docs
+#      (a guarda test_deploy_order da ordem 035 os lê);
 #   3. contêiner efêmero com --name único, na rede $LAB_NETWORK (padrão v018net:
 #      postgres e redis sem porta publicada), COVERAGE_FILE=/tmp/.coverage.
 #
@@ -59,8 +60,9 @@ if [ "${PYTEST_NO_BUILD:-0}" != "1" ]; then
   trap 'rm -rf "$ctx"' EXIT
   cp -r scripts "$ctx/scripts"
   cp docker-compose.yml docker-compose.override.yml "$ctx/"
+  mkdir "$ctx/docs" && cp docs/DEPLOY.md docs/TENANT_MIGRATIONS.md "$ctx/docs/"
   printf '%s\n' 'FROM vitali-test:x' 'COPY scripts /scripts' \
-    'COPY docker-compose.yml docker-compose.override.yml /' > "$ctx/Dockerfile"
+    'COPY docker-compose.yml docker-compose.override.yml /' 'COPY docs /docs' > "$ctx/Dockerfile"
   lab build -q -t vitali-test:x-full "$ctx" >/dev/null
   rm -rf "$ctx"
   trap - EXIT
