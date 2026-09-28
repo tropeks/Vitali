@@ -3,9 +3,10 @@ Ordem 036: lista de espera para quem não tem schedule.read.
 
 Esse ramo fazia ``Patient.objects.get(user=...)``, e ``Patient`` não tem campo
 ``user``: 500 na listagem e no POST, inclusive para o paciente do portal, a quem
-o ramo se destina. O paciente agora é identificado pelo ``PatientPortalAccess``
-ativo, o mesmo vínculo de ``IsPortalSelfAccess``. Sem vínculo ativo, a lista
-volta vazia e o POST sem ``patient_id`` responde 400.
+o ramo se destina. O paciente agora é identificado pelo mesmo guard de
+``/portal/me/*`` (``IsPortalSelfAccess``): ``PatientPortalAccess`` ativo e papel
+com ``portal.self_access``. Sem isso, a lista volta vazia e o POST sem
+``patient_id`` responde 400.
 """
 
 import datetime
@@ -131,6 +132,19 @@ class TestWaitlistSemScheduleRead(TenantTestCase):
                 resp = self._client(self.ana_user).get("/api/v1/waitlist/")
                 self.assertEqual(resp.status_code, 200)
                 self.assertEqual(resp.data, [])
+
+    def test_papel_sem_portal_self_access_nao_identifica_paciente(self):
+        """Mesmo critério de `IsPortalSelfAccess`: vínculo ativo não basta."""
+        from apps.core.models import Role
+
+        self.ana_user.role = Role.objects.create(name="sem-portal-036", permissions=[])
+        self.ana_user.save(update_fields=["role"])
+
+        client = self._client(self.ana_user)
+        resp = client.get("/api/v1/waitlist/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data, [])
+        self.assertEqual(client.post("/api/v1/waitlist/", self._corpo_post()).status_code, 400)
 
     # ── criação ──────────────────────────────────────────────────────────────
 

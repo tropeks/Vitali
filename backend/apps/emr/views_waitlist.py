@@ -2,9 +2,9 @@
 S-066: DRF views for waitlist management.
 
 WaitlistViewSet:
-  GET    /emr/waitlist/       — list entries (staff sees all, patients see own)
+  GET    /emr/waitlist/       — list entries (staff sees all, portal patients see own)
   POST   /emr/waitlist/       — create new entry
-  DELETE /emr/waitlist/{id}/  — cancel entry (owner or staff only)
+  DELETE /emr/waitlist/{id}/  — cancel entry (staff with schedule.write only)
 """
 
 import logging
@@ -17,7 +17,7 @@ from rest_framework.views import APIView
 from apps.core.mixins import AuditReadAPIViewMixin
 from apps.core.permissions import HasPermission
 from apps.emr.models import Patient, Professional, WaitlistEntry
-from apps.patient_portal.models import PatientPortalAccess
+from apps.patient_portal.views import IsPortalSelfAccess
 
 logger = logging.getLogger(__name__)
 
@@ -42,19 +42,20 @@ STATUS_BADGE_LABELS = {
 }
 
 
-def _paciente_do_portal(user) -> Patient | None:
-    """The Patient this user is, through an *active* portal access.
+_PORTAL_SELF = IsPortalSelfAccess()
 
-    Order 036: `Patient` has no `user` field — the link is `PatientPortalAccess`,
-    the same one `IsPortalSelfAccess` checks. An invited or revoked access
-    identifies no one.
+
+def _paciente_do_portal(request, view) -> Patient | None:
+    """The Patient this user is, by the same guard as `/portal/me/*`.
+
+    Order 036: `Patient` has no `user` field — the link is `PatientPortalAccess`.
+    `IsPortalSelfAccess` demands it *active* and the role's `portal.self_access`,
+    so an invited or revoked access, or a role without portal permission,
+    identifies no one here either.
     """
-    access = (
-        PatientPortalAccess.objects.select_related("patient")
-        .filter(user=user, status=PatientPortalAccess.STATUS_ACTIVE)
-        .first()
-    )
-    return access.patient if access else None
+    if not _PORTAL_SELF.has_permission(request, view):
+        return None
+    return request.user.patient_portal_access.patient
 
 
 def _active_entry_conflict(patient: Patient, professional: Professional) -> Response | None:
@@ -176,7 +177,7 @@ class WaitlistViewSet(AuditReadAPIViewMixin, APIView):
         if _SCHEDULE_READ.has_permission(request, self):
             qs = WaitlistEntry.objects.select_related("patient", "professional__user").all()
         else:
-            patient = _paciente_do_portal(request.user)
+            patient = _paciente_do_portal(request, self)
             if patient is None:
                 # No active portal link — show nothing
                 qs = WaitlistEntry.objects.none()
@@ -208,7 +209,7 @@ class WaitlistViewSet(AuditReadAPIViewMixin, APIView):
                 )
             return patient, None
 
-        patient = _paciente_do_portal(request.user)
+        patient = _paciente_do_portal(request, self)
         if patient is None:
             return None, Response(
                 {"error": "Usuário não está vinculado a um paciente. Use patient_id."},
@@ -285,7 +286,8 @@ class WaitlistDetailView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # Authorization: staff only (Patient has no user FK)
+        # Authorization: staff only. A portal patient cancelling their own entry
+        # would be new behaviour, not part of order 036.
         if not _SCHEDULE_WRITE.has_permission(request, self):
             return Response(
                 {"error": "Sem permissão para cancelar esta entrada."},
