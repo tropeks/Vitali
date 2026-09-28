@@ -31,6 +31,13 @@
 #                            prova da lab); o padrão é fazer
 #   DEPLOY_SERVICES        — serviços do `up` final, separados por espaço; vazio = todos
 #
+#
+# IMAGE_TAG é uma tag (sha-<commit>) ou um digest (sha256:...). Antes de qualquer passo,
+# o script confere a imagem que o compose RESOLVE para django, celery-worker e
+# celery-beat: ela tem de terminar em `:IMAGE_TAG` ou `@IMAGE_TAG`. Um overlay que fixa
+# imagem por digest (o docker-compose.lab.yml do staging da lab) ignora IMAGE_TAG; sem
+# esta conferência o script "subiria" a release nova com a imagem velha e diria verde.
+#
 # O smoke continua passo próprio, depois deste script (docs/DEPLOY.md).
 set -euo pipefail
 
@@ -51,6 +58,22 @@ if [[ -n "${COMPOSE_ENV_FILE:-}" ]]; then
   export STAGING_ENV_FILE="$COMPOSE_ENV_FILE"
   compose_cmd+=(--env-file "$COMPOSE_ENV_FILE")
 fi
+
+echo "deploy: conferindo a imagem que o compose resolve para a release ${IMAGE_TAG}..."
+# `config --images` lista também as dependências (postgres, redis): só a imagem do
+# backend interessa, e ela tem de aparecer.
+imagens="$("${compose_cmd[@]}" config --images django celery-worker celery-beat | grep '/vitali-backend[:@]' || true)"
+[[ -n "$imagens" ]] || { echo "deploy: RECUSADO — o compose não resolveu a imagem vitali-backend" >&2; exit 1; }
+while read -r imagem; do
+  case "$imagem" in
+    *":${IMAGE_TAG}" | *"@${IMAGE_TAG}") ;;
+    *)
+      echo "deploy: RECUSADO — o compose resolve '${imagem}', que não é a release ${IMAGE_TAG}." >&2
+      echo "deploy: algum overlay fixa a imagem (digest?). Atualize o pin ou passe o digest em IMAGE_TAG." >&2
+      exit 1
+      ;;
+  esac
+done <<< "$imagens"
 
 if [[ "${DEPLOY_PULL:-1}" != "0" ]]; then
   echo "deploy: pull da release ${IMAGE_TAG}..."

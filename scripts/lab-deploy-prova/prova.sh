@@ -57,7 +57,7 @@ tmp="$(mktemp -d)"
 # ainda, ou já ter sumido): contêineres, volumes e rede de cada projeto da prova.
 limpa() {
   local status=$? p resto=0 ids
-  for p in prova035a prova035b; do
+  for p in prova035a prova035b prova035c; do
     docker rm -f "$p-sonda" >/dev/null 2>&1 || true
     ids="$(docker ps -aq --filter "label=com.docker.compose.project=$p")"
     [ -z "$ids" ] || docker rm -f $ids >/dev/null 2>&1 || true
@@ -70,7 +70,7 @@ limpa() {
       resto=1
     fi
   done
-  [ "$resto" = 1 ] || echo "lab: projetos prova035a e prova035b derrubados (nenhum contêiner nem volume)" >&2
+  [ "$resto" = 1 ] || echo "lab: projetos prova035a, prova035b e prova035c derrubados (nenhum contêiner nem volume)" >&2
   rm -rf "$tmp"
   [ "$resto" = 0 ] || status=1
   exit "$status"
@@ -227,5 +227,20 @@ veredito="$(IMAGE_TAG=nova compose prova035b run --rm --no-deps -T \
 echo "  banco: $veredito"
 [ "$(campo "$veredito" hash_confere)" = True ] && [ "$(campo "$veredito" claro_apagado)" = True ] ||
   { echo "FALHA: convite no banco: $veredito" >&2; exit 1; }
+
+# ── C: o staging da lab fixa imagem por digest ──────────────────────────────
+# O docker-compose.lab.yml de verdade ignora IMAGE_TAG. O deploy.sh tem de recusar
+# antes de tocar em qualquer coisa (só `compose config`), em vez de subir a imagem
+# velha e dizer que a release nova está no ar. Nada deste passo cria contêiner.
+echo "== prova035c: docker-compose.lab.yml fixa digest; o deploy.sh recusa sem tocar em nada"
+if deploy_env prova035c nova env COMPOSE_FILE="docker-compose.staging.yml:docker-compose.lab.yml:$tmp/prova.yml" \
+  bash scripts/deploy.sh > /dev/null 2> "$tmp/c.err"; then
+  echo "FALHA: o deploy.sh aceitou IMAGE_TAG=nova com a imagem fixada por digest" >&2; exit 1
+fi
+grep -q RECUSADO "$tmp/c.err" || { echo "FALHA: recusa sem motivo: $(cat "$tmp/c.err")" >&2; exit 1; }
+if docker ps -aq --filter "label=com.docker.compose.project=prova035c" | grep -q .; then
+  echo "FALHA: a recusa criou contêiner" >&2; exit 1
+fi
+echo "  recusado: $(grep RECUSADO "$tmp/c.err")"
 
 echo "== PROVA 035 OK: a ordem antiga quebra (controle), a do deploy.sh não."

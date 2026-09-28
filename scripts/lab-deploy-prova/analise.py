@@ -70,9 +70,10 @@ def _marcos(eventos: list[dict]) -> dict[str, float]:
     def avulso(e):
         return e["Actor"]["Attributes"].get("com.docker.compose.oneoff") == "True"
 
-    # Os três últimos avulsos da janela são os do deploy (shared, tenant, partições);
-    # antes deles pode entrar o do prepara.py, que termina logo antes da sonda ligar.
-    avulsos = [e["Actor"]["ID"] for e in django if avulso(e) and e["Action"] == "start"][-3:]
+    # Os eventos são capturados ao vivo, de logo antes do deploy.sh até o fim dele: os
+    # únicos avulsos na janela são os três do migrate_schemas.sh, nesta ordem (shared,
+    # tenant, partições; o script é sequencial). Qualquer outro número reprova.
+    avulsos = [e["Actor"]["ID"] for e in django if avulso(e) and e["Action"] == "start"]
     if len(avulsos) != 3:
         raise SystemExit(f"esperava 3 contêineres de migração (shared, tenant, partições): {avulsos}")
     fim_migracao = max(

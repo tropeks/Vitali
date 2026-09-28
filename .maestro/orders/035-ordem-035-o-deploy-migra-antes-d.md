@@ -77,7 +77,7 @@ tenant que falhou).
     schema já migrado; o convite gravado pela release anterior ganha o hash.
 - Recibo `order-35` na lab, suíte inteira, no tip do branch.
 
-## O que a prova mediu (rodada de 28/09, antes do recibo)
+## O que a prova mediu (rodada de 28/09, antes da revisão)
 
 - **Controle, ordem antiga:** 3 de 3 amostras com 5xx com o código novo no ar antes do
   migrate; depois do migrate, 5 de 5 com 200.
@@ -94,6 +94,28 @@ tenant que falhou).
   - no banco, o hash confere, o claro foi apagado e o status é `active`.
 - **Prova interrompida no meio** (SIGTERM): sai com 130 e não deixa contêiner, volume nem
   rede na lab.
+
+## Revisão (revisor, antes do PR)
+
+- **P1, corrigido:** o host real do staging (a lab) sobe com o `docker-compose.lab.yml`,
+  que fixa django, celery-worker e celery-beat por digest e ignora `IMAGE_TAG`.
+  - O risco: o `deploy.sh` migraria e subiria a imagem VELHA e terminaria dizendo que a
+    release nova estava no ar. A guarda com docker falso não enxergava isso, e a prova não
+    usava o overlay da lab.
+  - A correção: antes de qualquer passo, o `deploy.sh` confere a imagem `vitali-backend`
+    que o `compose config` resolve. Ela tem de terminar em `:IMAGE_TAG` ou `@IMAGE_TAG`
+    (o `IMAGE_TAG` aceita digest), senão o script recusa sem tocar em nada.
+  - Os testes: imagem fixada recusa, e só `config` roda; digest em `IMAGE_TAG` casa com o
+    pin; sem imagem do backend, recusa.
+  - A prova ganhou a parte C: o `docker-compose.lab.yml` de verdade, com
+    `IMAGE_TAG=nova`, é recusado, e nenhum contêiner é criado.
+  - O DEPLOY.md diz como fazer o deploy na lab: atualizar o pin e passar o digest.
+- **P2, corrigido:** o `analise.py` identificava os três contêineres de migração pelos
+  "três últimos". Como os eventos agora são capturados ao vivo, só da janela do deploy, ele
+  exige exatamente três.
+- P3, sem mudança: o snapshot e o rollback em TENANT_MIGRATIONS usam `exec` para leitura e
+  restauração, não para migração; `collectstatic` e `createsuperuser` do quickstart estão
+  sem `-p`. Os dois são anteriores a esta ordem.
 
 ## Achados desta ordem
 

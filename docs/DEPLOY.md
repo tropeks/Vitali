@@ -272,6 +272,19 @@ whole patient portal of a tenant not yet migrated would have answered 500, becau
 deploy is the **previous** image. It does not have the new migrations: it would "migrate"
 nothing, print OK, and the new code would then come up against the old schema.
 
+**Images pinned by digest (the lab staging host).** `docker-compose.lab.yml` pins
+`django`, `celery-worker` and `celery-beat` (and the frontend and viewer) by digest, so
+`IMAGE_TAG` does not change the image there. Before anything else, `scripts/deploy.sh`
+checks the image the compose files actually resolve for the three backend services: it
+must end in `:$IMAGE_TAG` or `@$IMAGE_TAG`, or the script refuses without touching
+anything. Without that check the script would migrate and restart the OLD image and then
+report the new release as up. On the lab host, update the pins in `docker-compose.lab.yml`
+first, then pass the new backend digest as `IMAGE_TAG`:
+
+```bash
+IMAGE_TAG=sha256:<new-backend-digest> COMPOSE_PROJECT_NAME=vitali-lab COMPOSE_FILE=docker-compose.staging.yml:docker-compose.lab.yml COMPOSE_ENV_FILE=.env.staging bash scripts/deploy.sh
+```
+
 **If a migration fails** (tenant 47 of 200), the script stops before the `up`. The previous
 release stays up, serving the tenants already migrated and the ones not yet migrated,
 which is what phase 1 guarantees. Fix the cause and run `scripts/deploy.sh` again:

@@ -50,6 +50,12 @@ import json, os, sys
 argv = sys.argv[1:]
 with open(os.environ["FAKE_DOCKER_LOG"], "a") as log:
     log.write(json.dumps({{"argv": argv, "IMAGE_TAG": os.environ.get("IMAGE_TAG")}}) + "\\n")
+if "config" in argv and "--images" in argv:
+    padrao = "ghcr.io/tropeks/vitali-backend:" + os.environ.get("IMAGE_TAG", "")
+    # Como o compose de verdade: `config --images <serviços>` inclui as dependências.
+    print("postgres:16-alpine")
+    print("redis:7-alpine")
+    print(os.environ.get("FAKE_DOCKER_IMAGEM", padrao))
 falha = os.environ.get("FAKE_DOCKER_FALHA")
 if falha and falha in argv:
     sys.exit(1)
@@ -183,6 +189,37 @@ class DeployShTests(SimpleTestCase):
         proc, chamadas = self._roda(FAKE_DOCKER_FALHA="--tenant")
         self.assertNotEqual(proc.returncode, 0)
         self.assertEqual(chamadas.ups_da_aplicacao(), [])
+
+    def test_imagem_fixada_por_overlay_recusa_antes_de_tocar_em_qualquer_coisa(self):
+        """Revisão da 035: o docker-compose.lab.yml fixa as imagens por digest e
+        ignora IMAGE_TAG. Sem a conferência, o deploy migraria e subiria a imagem
+        VELHA e terminaria dizendo que a release nova está no ar."""
+        proc, chamadas = self._roda(
+            FAKE_DOCKER_IMAGEM="ghcr.io/tropeks/vitali-backend@sha256:velho"
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("RECUSADO", proc.stderr)
+        subcomandos = [_subcomando(linha["argv"])[0] for linha in chamadas.linhas]
+        self.assertEqual(subcomandos, ["config"])
+
+    def test_digest_em_image_tag_casa_com_o_pin(self):
+        proc, chamadas = self._roda(
+            IMAGE_TAG="sha256:novo",
+            FAKE_DOCKER_IMAGEM="ghcr.io/tropeks/vitali-backend@sha256:novo",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertTrue(chamadas.ups_da_aplicacao())
+
+    def test_sem_imagem_do_backend_recusa(self):
+        proc, _ = self._roda(FAKE_DOCKER_IMAGEM="busybox:latest")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("vitali-backend", proc.stderr)
+
+    def test_confere_a_imagem_antes_do_pull(self):
+        _, chamadas = self._roda()
+        subcomandos = [_subcomando(linha["argv"])[0] for linha in chamadas.linhas]
+        self.assertEqual(subcomandos[0], "config")
+        self.assertIn("--images", chamadas.linhas[0]["argv"])
 
     def test_up_espera_a_aplicacao_ficar_saudavel(self):
         _, chamadas = self._roda()
