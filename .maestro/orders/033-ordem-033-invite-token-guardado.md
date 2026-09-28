@@ -60,6 +60,11 @@ fixture o grava.
   token na busca e no read-only, e com o link na mensagem só quando a entrega falha; a
   função de dados da migration grava o hash de cada convite, o hash da migration é o do
   model, e reverter recusa.
+- **A migration no caminho real** (`test_invite_token_hash_migration.py`): no schema do
+  tenant de teste, a tabela volta fisicamente ao formato anterior à 0004 (coluna em claro,
+  hash anulável), um convite é gravado pelo model histórico com token em claro, as
+  operações da 0004 rodam para frente, e o convite ativa pela API com o token antigo. Sem a
+  função de dados, o `AlterField` para `NOT NULL` quebraria: o teste não passa por acaso.
 - Recibo `order-33` na lab, suíte inteira, no tip do branch.
 
 ## Fora desta ordem
