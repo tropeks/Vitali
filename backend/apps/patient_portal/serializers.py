@@ -96,9 +96,13 @@ class PatientPortalInviteSerializer(PatientPortalAccessSerializer):
     como chave de API, mostrada uma vez, na criação.
     """
 
+    # Not a model field since order 033 (the database keeps only the hash): the
+    # plaintext lives on the instance that minted it, which is the one the
+    # create view serializes.
+    invite_token = serializers.CharField(read_only=True)
+
     class Meta(PatientPortalAccessSerializer.Meta):
         fields = [*PatientPortalAccessSerializer.Meta.fields, "invite_token"]
-        read_only_fields = [*PatientPortalAccessSerializer.Meta.read_only_fields, "invite_token"]
 
 
 class PatientPortalAccessCreateSerializer(serializers.ModelSerializer):

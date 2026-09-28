@@ -9,7 +9,7 @@ from rest_framework.test import APIClient
 
 from apps.core.models import FeatureFlag, Role, User
 from apps.emr.models import Allergy, Appointment, Encounter, Patient, Professional
-from apps.patient_portal.models import PatientPortalAccess
+from apps.patient_portal.models import PatientPortalAccess, hash_invite_token
 from apps.test_utils import TenantTestCase
 
 ACCESS_URL = "/api/v1/portal/access/"
@@ -239,7 +239,8 @@ class PatientPortalViewsTest(TenantTestCase):
         )
         self.assertEqual(resp.status_code, 201, resp.data)
         access = PatientPortalAccess.objects.get(pk=resp.data["id"])
-        self.assertEqual(resp.data["invite_token"], access.invite_token)
+        # Desde a 033 o banco só tem o hash: o token do 201 é o que casa com ele.
+        self.assertEqual(hash_invite_token(resp.data["invite_token"]), access.invite_token_hash)
 
     # ─── Activate ────────────────────────────────────────────────────────────
 

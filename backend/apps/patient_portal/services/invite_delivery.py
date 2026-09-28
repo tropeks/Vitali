@@ -1,8 +1,10 @@
 """
 Patient Portal invite delivery (issue #117).
 
-`PatientPortalAccess.invite_token` is minted by the model, but on its own the
-activation link never reaches the patient. This module wires the token to two
+`PatientPortalAccess` mints the invite token, but on its own the activation
+link never reaches the patient. Since order 033 the database keeps only its
+hash: the plaintext exists on the instance that minted it, so delivery must be
+called with THAT instance (the create view and the admin do). This module wires the token to two
 delivery channels:
 
 1. **WhatsApp** (primary) — via `WhatsAppGateway.send_text()`. Gated on an
@@ -27,6 +29,11 @@ logger = logging.getLogger(__name__)
 
 def build_activation_url(access) -> str:
     """Frontend activation link the patient consumes to go invited → active."""
+    if not access.invite_token:
+        raise ValueError(
+            "no plaintext invite_token on this PatientPortalAccess: only the instance "
+            "that minted it has one (the database keeps the hash, order 033)"
+        )
     base = getattr(settings, "FRONTEND_URL", "http://localhost:3000").rstrip("/")
     return f"{base}/portal/activate?token={access.invite_token}"
 
@@ -50,7 +57,11 @@ def deliver_portal_invite(access) -> list[str]:
     or ``["email"]``; ``[]`` when no channel was available). Never raises.
     """
     patient = access.patient
-    link = build_activation_url(access)
+    try:
+        link = build_activation_url(access)
+    except ValueError as exc:
+        logger.error("portal_invite.undelivered access=%s reason=%s", access.id, exc)
+        return []
     delivered: list[str] = []
 
     if _try_whatsapp(patient, link):

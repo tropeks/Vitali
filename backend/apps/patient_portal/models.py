@@ -8,8 +8,8 @@ include:
 - LGPD consent flows beyond the audit-trail of `invited_at` /
   `activated_at` / `revoked_at` timestamps — full consent UI lives in the
   portal frontend.
-- WhatsApp / email invite delivery — the invite_token is materialised here
-  and the actual delivery is a follow-up integration.
+- WhatsApp / email invite delivery — the invite token is minted here and
+  delivered by ``apps.patient_portal.services.invite_delivery``.
 
 The split is deliberate: clinics can mint portal access for patients today
 (via REST or admin), and an integrator can deliver the invite token through
@@ -19,6 +19,7 @@ useful on day one for partners building their own patient app.
 
 from __future__ import annotations
 
+import hashlib
 import secrets
 import uuid
 from datetime import timedelta
@@ -33,6 +34,16 @@ from apps.emr.models import Patient
 def _generate_invite_token() -> str:
     """A URL-safe 32-byte token, ~43 chars."""
     return secrets.token_urlsafe(32)
+
+
+def hash_invite_token(token: str) -> str:
+    """What the database keeps instead of the token (order 033).
+
+    SHA-256 is enough: the token is 256 random bits, so there is no dictionary
+    to attack, and the lookup stays an index hit. Migration 0004 hashes the
+    tokens of existing rows with this same function (``sha256_hex`` there).
+    """
+    return hashlib.sha256(token.encode()).hexdigest()
 
 
 class PatientPortalAccess(models.Model):
@@ -57,9 +68,11 @@ class PatientPortalAccess(models.Model):
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES, default=STATUS_INVITED, db_index=True
     )
-    invite_token = models.CharField(
-        max_length=64, default=_generate_invite_token, unique=True, db_index=True
-    )
+    # Only the hash is stored (order 033): a dump or backup of this table must
+    # not hand out every open invite. The plaintext exists on the instance that
+    # minted it (``invite_token`` below), for delivery and the 201, and never
+    # comes back from the database.
+    invite_token_hash = models.CharField(max_length=64, unique=True, db_index=True, editable=False)
     invite_expires_at = models.DateTimeField()
 
     invited_at = models.DateTimeField(auto_now_add=True)
@@ -85,10 +98,22 @@ class PatientPortalAccess(models.Model):
     def __str__(self) -> str:
         return f"Portal {self.patient_id} ({self.status})"
 
+    #: Plaintext invite token: set only on the instance that minted it, never
+    #: persisted. ``None`` on any instance loaded from the database.
+    invite_token: str | None = None
+
     def save(self, *args, **kwargs):
+        if not self.invite_token_hash:
+            self.invite_token = _generate_invite_token()
+            self.invite_token_hash = hash_invite_token(self.invite_token)
         if not self.invite_expires_at:
             self.invite_expires_at = timezone.now() + timedelta(days=7)
         super().save(*args, **kwargs)
+
+    @classmethod
+    def find_by_invite_token(cls, token: str) -> PatientPortalAccess:
+        """The access whose invite *token* this is — by hash, never by value."""
+        return cls.objects.get(invite_token_hash=hash_invite_token(token))
 
     # ─── State transitions ────────────────────────────────────────────────────
 

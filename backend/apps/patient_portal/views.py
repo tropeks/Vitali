@@ -181,7 +181,7 @@ class AccessActivateView(APIView):
     def post(self, request):
         token = request.data.get("invite_token") or ""
         try:
-            access = PatientPortalAccess.objects.get(invite_token=token)
+            access = PatientPortalAccess.find_by_invite_token(token)
         except PatientPortalAccess.DoesNotExist:
             return Response(
                 {"detail": "Invalid invite token."},
