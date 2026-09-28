@@ -376,7 +376,14 @@ Nothing goes live before the AWS account exists and an order says so. When it do
    (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` or an instance role).
    `AUDIT_LOG_COLD_S3_STORAGE_CLASS` defaults to `GLACIER`;
    `AUDIT_LOG_COLD_LOCK_MONTHS` to `240`.
-4. **COMPLIANCE is irreversible.** An object uploaded with a 240-month lock is paid for
+4. **A failed upload leaves a locked orphan.** `store()` writes the payload, then the
+   manifest, each under COMPLIANCE; S3 has no multi-object transaction. If the second
+   PUT fails, the payload stays locked (and billed) for the full period without its
+   manifest, the purge refuses to DROP, and a retry writes a NEW pair under a new
+   timestamped key. Expect this only on network failure; the refusal is printed in red
+   by `purge_audit_logs`. Nothing to clean up is possible with the write-only
+   credential, by design.
+5. **COMPLIANCE is irreversible.** An object uploaded with a 240-month lock is paid for
    and undeletable for 20 years, by anyone, including the AWS root. That is why the
    export is verified locally BEFORE upload (order 020) and never after.
 

@@ -241,7 +241,7 @@ the reasons live in `audit_coverage*.py`.
   decrypt-restore-compare against the live partition before storing.
 - **Cold destination** (`AUDIT_LOG_COLD_STORAGE_BACKEND`): `local` by default
   (`LocalDiskColdStorageBackend`, `AUDIT_LOG_COLD_STORAGE_DIR`), or `s3` (order 032,
-  `S3ColdStorageBackend`): the Capitão's S3 Glacier Flexible in São Paulo. One
+  `apps.core.cold_storage_s3.S3ColdStorageBackend`): the Capitão's S3 Glacier Flexible in São Paulo. One
   object per partition plus the manifest as its own object (STANDARD, readable
   without a restore); both under **Object Lock COMPLIANCE** for
   `AUDIT_LOG_COLD_LOCK_MONTHS` (240); a SHA-256 the service checks on arrival;
@@ -423,7 +423,7 @@ to the intended controls above. Companion docs hold the operator details.
 | Audit retention 240 months per tenant, purge off by default; partitions ensured on deploy + daily | ✅ Shipped (order 021) | `TenantAuditRetention`, `ensure_audit_partitions`, [ADR-0001](./adr/ADR-0001-retencao-auditoria-20-anos.md) |
 | ICP-Brasil trust store on a volume; empty store refuses signing | ✅ Shipped (orders 014, 015) | `docker-compose.{staging,prod}.yml` (`icp_truststore`), `apps/signatures/services/icp_brasil.py`; see [ICP_BRASIL.md](./ICP_BRASIL.md) |
 | Portal invite secret (`invite_token`) returned only once, in the 201 of the invite; list, read, revoke and activate omit it. Stored in clear text (hashing not built) | ✅ Shipped (order 031) | `apps/patient_portal/serializers.py` (`PatientPortalAccessSerializer` / `PatientPortalInviteSerializer`) |
-| Audit cold copy offsite (S3 Glacier, Object Lock COMPLIANCE, write-only credential) + restore drill | ⚠️ Built, not live (no AWS account) | order 032: `apps/core/cold_storage_backends.py`, `apps/core/cold_drill.py`, `docs/ops/auditlog-cold-writer-policy.json`; proven against MinIO in the lab |
+| Audit cold copy offsite (S3 Glacier, Object Lock COMPLIANCE, write-only credential) + restore drill | ⚠️ Built, not live (no AWS account) | order 032: `apps/core/cold_storage_s3.py`, `apps/core/cold_drill.py`, `docs/ops/auditlog-cold-writer-policy.json`; proven against MinIO in the lab |
 | ICP-Brasil revocation (CRL/OCSP) enforced | ❌ Off | `ICP_BRASIL_CHECK_REVOCATION=False` everywhere; production prerequisite |
 | Fail-fast secret validation at prod startup | ✅ Shipped | `vitali/settings/_security_checks.py`; see [SECRETS.md](./SECRETS.md) |
 | `X-Forwarded-Host` validated before tenant routing | ✅ Shipped | `apps/core/middleware.py::XForwardedHostValidationMiddleware` |

@@ -134,8 +134,14 @@ if [ "${PYTEST_MINIO:-0}" != "1" ]; then
   exec "${run[@]}"
 fi
 # Sem exec: o trap EXIT tem de rodar depois do pytest para derrubar o MinIO.
+# O pytest vai em segundo plano com `wait`: o bash só atende um sinal quando o
+# filho em primeiro plano termina, e o `docker run` não repassa o SIGTERM. Com
+# `wait`, um recibo interrompido (kill, Ctrl-C) derruba o pytest e o MinIO na hora.
+trap 'lab rm -f "$name" >/dev/null 2>&1; exit 130' INT TERM HUP
 status=0
-"${run[@]}" || status=$?
+"${run[@]}" &
+wait "$!" || status=$?
+trap - INT TERM HUP
 derruba_minio || status=1
 trap - EXIT
 exit "$status"

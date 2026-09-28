@@ -169,6 +169,23 @@ class Command(BaseCommand):
         # Depois do DROP, a única cópia é a fria: onde ela está não pode morar só
         # no stdout desta execução. A linha vai para a trilha do próprio tenant,
         # com o manifesto, e é dela que o drill (drill_audit_cold_copy) parte.
+        try:
+            self._record_purge(target, schema_name, receipt)
+        except Exception:
+            # O DROP já aconteceu: se a trilha falhar, o ponteiro sai pelo stderr
+            # antes do erro subir, para não sumir com a única cópia.
+            self.stderr.write(
+                self.style.ERROR(
+                    f"{label} FOI removido, mas a trilha do expurgo falhou — cópia fria em "
+                    f"{receipt.stored_location}"
+                )
+            )
+            raise
+        self.stdout.write(
+            self.style.SUCCESS(f"removido {label} — cópia fria em {receipt.stored_location}")
+        )
+
+    def _record_purge(self, target: str, schema_name: str, receipt) -> None:
         AuditLog.objects.create(
             action="audit_partition_purged",
             resource_type="core_auditlog_partition",
@@ -179,7 +196,4 @@ class Command(BaseCommand):
                 "stored_location": receipt.stored_location,
                 "manifest": receipt.manifest,
             },
-        )
-        self.stdout.write(
-            self.style.SUCCESS(f"removido {label} — cópia fria em {receipt.stored_location}")
         )

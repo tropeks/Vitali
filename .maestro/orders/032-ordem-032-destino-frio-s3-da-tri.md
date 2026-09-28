@@ -71,6 +71,25 @@ expurgo.
 O drill mora em `apps/core/cold_drill.py` (responsabilidade própria; `cold_storage.py`
 passaria de 400 linhas), e os testes publicados no vermelho o chamam por lá.
 
+## Revisão (revisor, antes do PR)
+
+- **P1, corrigido:** `verify_stored` conferia só o payload. O manifesto, sem o qual o
+  drill não prova a cópia, podia subir sem trava e o `DROP` rodava assim mesmo. Agora o
+  `HeadObject` da versão exata do manifesto exige checksum SHA-256 e a mesma trava
+  COMPLIANCE e o mesmo prazo. Provado no Stubber (sem lock, trava curta, sem checksum) e no
+  MinIO (payload travado e manifesto solto: recusado).
+- **P2, corrigido:** se a linha `audit_partition_purged` falhar depois do `DROP`, o
+  ponteiro sai no stderr antes do erro subir.
+- **P2, documentado:** o PUT do manifesto falhando deixa o payload travado e órfão
+  (S3 não tem transação entre objetos; a credencial só-grava não limpa, de propósito).
+  Está no RUNBOOK §8.
+- **Achado meu na mesma rodada:** um SIGTERM no `scripts/pytest.sh` NÃO derrubava o
+  MinIO (o bash só atende o sinal quando o `docker run` em primeiro plano termina). Agora
+  o pytest roda com `wait`, e o trap de INT/TERM/HUP remove o contêiner do pytest e o
+  MinIO. Provado: SIGTERM no meio do recibo, saída 130, `docker --context lab ps -a` vazio.
+- O backend S3 foi para `apps/core/cold_storage_s3.py` (`cold_storage_backends.py`
+  passaria de 400 linhas); protocolo, alvo local e escolha do backend ficam onde estavam.
+
 ## Provas
 
 - **Vermelho primeiro, publicado sozinho**, com a dependência (`boto3` no `base.txt` e no

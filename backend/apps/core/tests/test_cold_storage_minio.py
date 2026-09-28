@@ -27,6 +27,7 @@ from django.test import TestCase, override_settings
 
 from apps.core import cold_drill, cold_storage, partitioning
 from apps.core import cold_storage_backends as csb
+from apps.core import cold_storage_s3 as s3b
 from apps.core.tests.cold_s3_fixtures import BUCKET, exporta_de_verdade
 from apps.core.tests.test_cold_storage import TEST_KEY
 
@@ -56,13 +57,13 @@ class MinioDestinoFrioTests(TestCase):
         )
         # O MinIO não aceita a classe GLACIER; o resto é o backend de produção,
         # com a credencial de produção (a política de docs/ops/).
-        self.backend = csb.S3ColdStorageBackend(
+        self.backend = s3b.S3ColdStorageBackend(
             bucket=BUCKET, client=self.gravador, storage_class="STANDARD"
         )
 
     def _exporta(self):
         receipt = exporta_de_verdade(self.backend)
-        bucket, key, versions = csb.parse_s3_location(receipt.stored_location)
+        bucket, key, versions = s3b.parse_s3_location(receipt.stored_location)
         return receipt, key, versions["versionId"]
 
     def test_exporta_verifica_drila_e_so_entao_dropa(self):
@@ -122,7 +123,7 @@ class MinioDestinoFrioTests(TestCase):
     def test_bucket_sem_object_lock_e_recusado(self):
         """Com o root, para isolar a causa: o gravador nem tem direito nesse
         bucket, e a recusa tem de vir da falta de lock, não da política."""
-        backend = csb.S3ColdStorageBackend(
+        backend = s3b.S3ColdStorageBackend(
             bucket=f"{BUCKET}-sem-lock", client=self.root, storage_class="STANDARD"
         )
         with self.assertRaisesRegex(cold_storage.ColdExportError, "ObjectLockConfiguration"):
@@ -136,15 +137,32 @@ class MinioDestinoFrioTests(TestCase):
             Key=key,
             Body=b"cifrado\n",
             ChecksumAlgorithm="SHA256",
-            ChecksumSHA256=csb._b64_of_hex(hashlib.sha256(b"cifrado\n").hexdigest()),
+            ChecksumSHA256=s3b._b64_of_hex(hashlib.sha256(b"cifrado\n").hexdigest()),
         )
         location = f"s3://{BUCKET}/{key}?versionId={resp['VersionId']}&manifestVersionId=x"
         with self.assertRaisesRegex(csb.ColdStorageError, "COMPLIANCE"):
             self.backend.verify_stored(location, hashlib.sha256(b"cifrado\n").hexdigest())
 
+    def test_manifesto_gravado_sem_lock_nao_passa_na_conferencia(self):
+        """Revisão da 032: payload travado e certo, manifesto sem trava — a
+        conferência antes do DROP recusa."""
+        receipt, key, version = self._exporta()
+        manifest_key = key.replace(".jsonl.gpg", ".manifest.json")
+        corpo = b'{"row_count": 1}'
+        solto = self.gravador.put_object(
+            Bucket=BUCKET,
+            Key=manifest_key,
+            Body=corpo,
+            ChecksumAlgorithm="SHA256",
+            ChecksumSHA256=s3b._b64_of_hex(hashlib.sha256(corpo).hexdigest()),
+        )
+        location = s3b.format_s3_location(BUCKET, key, version, solto["VersionId"])
+        with self.assertRaisesRegex(csb.ColdStorageError, "manifest.*COMPLIANCE"):
+            self.backend.verify_stored(location, receipt.manifest["sha256_cipher"])
+
     def test_drill_reprova_manifesto_adulterado_no_bucket(self):
         receipt, key, version = self._exporta()
-        _, _, versions = csb.parse_s3_location(receipt.stored_location)
+        _, _, versions = s3b.parse_s3_location(receipt.stored_location)
         manifest_key = key.replace(".jsonl.gpg", ".manifest.json")
         manifesto = json.loads(
             self.gravador.get_object(

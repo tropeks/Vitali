@@ -19,6 +19,7 @@ from dateutil.relativedelta import relativedelta
 from django.test import SimpleTestCase, override_settings
 
 from apps.core import cold_storage_backends as csb
+from apps.core import cold_storage_s3 as s3b
 from apps.core.tests.cold_s3_fixtures import (
     AGORA,
     BUCKET,
@@ -34,7 +35,7 @@ class S3StoreParametrosTests(SimpleTestCase):
         self.tmp = Path(tempfile.mkdtemp(prefix="cold-s3-"))
         self.client = cliente_falso()
         self.stub = Stubber(self.client)
-        self.backend = csb.S3ColdStorageBackend(
+        self.backend = s3b.S3ColdStorageBackend(
             bucket=BUCKET, client=self.client, clock=lambda: AGORA
         )
 
@@ -105,7 +106,7 @@ class S3VerifyStoredTests(SimpleTestCase):
     def setUp(self):
         self.client = cliente_falso()
         self.stub = Stubber(self.client)
-        self.backend = csb.S3ColdStorageBackend(
+        self.backend = s3b.S3ColdStorageBackend(
             bucket=BUCKET, client=self.client, clock=lambda: AGORA
         )
 
@@ -131,9 +132,47 @@ class S3VerifyStoredTests(SimpleTestCase):
             },
         )
 
+    def _espera_head_do_manifesto(self, resposta):
+        self.stub.add_response(
+            "head_object",
+            resposta,
+            {
+                "Bucket": BUCKET,
+                "Key": "core_auditlog/p.manifest.json",
+                "VersionId": "m1",
+                "ChecksumMode": "ENABLED",
+            },
+        )
+
     def test_objeto_certo_passa(self):
         self._espera_head(self._head())
+        self._espera_head_do_manifesto(self._head(VersionId="m1"))
         with self.stub:
+            self.backend.verify_stored(self.LOCATION, self.SHA_HEX)
+        self.stub.assert_no_pending_responses()
+
+    def test_manifesto_sem_lock_e_recusado(self):
+        """Revisão da 032: o drill não prova a cópia sem o manifesto, então ele
+        passa pela mesma conferência antes do DROP."""
+        self._espera_head(self._head())
+        self._espera_head_do_manifesto(
+            self._head(VersionId="m1", ObjectLockMode=None, ObjectLockRetainUntilDate=None)
+        )
+        with self.stub, self.assertRaisesRegex(csb.ColdStorageError, "manifest.*COMPLIANCE"):
+            self.backend.verify_stored(self.LOCATION, self.SHA_HEX)
+
+    def test_manifesto_com_trava_curta_e_recusado(self):
+        self._espera_head(self._head())
+        self._espera_head_do_manifesto(
+            self._head(VersionId="m1", ObjectLockRetainUntilDate=AGORA + relativedelta(months=1))
+        )
+        with self.stub, self.assertRaisesRegex(csb.ColdStorageError, "manifest.*retain"):
+            self.backend.verify_stored(self.LOCATION, self.SHA_HEX)
+
+    def test_manifesto_sem_checksum_e_recusado(self):
+        self._espera_head(self._head())
+        self._espera_head_do_manifesto(self._head(VersionId="m1", ChecksumSHA256=None))
+        with self.stub, self.assertRaisesRegex(csb.ColdStorageError, "manifest.*SHA-256"):
             self.backend.verify_stored(self.LOCATION, self.SHA_HEX)
 
     def test_checksum_diferente_e_recusado(self):
@@ -183,7 +222,7 @@ class EscolhaDoBackendTests(SimpleTestCase):
     )
     def test_s3_pelas_settings(self):
         backend = csb.get_cold_storage_backend()
-        self.assertIsInstance(backend, csb.S3ColdStorageBackend)
+        self.assertIsInstance(backend, s3b.S3ColdStorageBackend)
         self.assertEqual(backend.bucket, BUCKET)
         self.assertEqual(backend.storage_class, "GLACIER")
         self.assertEqual(backend.lock_months, 240)
@@ -192,4 +231,4 @@ class EscolhaDoBackendTests(SimpleTestCase):
     @override_settings(AUDIT_LOG_COLD_LOCK_MONTHS=0)
     def test_trava_de_zero_meses_recusa(self):
         with self.assertRaisesRegex(csb.ColdStorageError, "AUDIT_LOG_COLD_LOCK_MONTHS"):
-            csb.S3ColdStorageBackend(bucket=BUCKET, client=cliente_falso())
+            s3b.S3ColdStorageBackend(bucket=BUCKET, client=cliente_falso())

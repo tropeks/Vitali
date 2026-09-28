@@ -18,7 +18,7 @@ from django.core.management import call_command
 from django.test import TestCase, override_settings
 
 from apps.core import cold_drill
-from apps.core import cold_storage_backends as csb
+from apps.core import cold_storage_s3 as s3b
 from apps.core.tests.cold_s3_fixtures import (
     AGORA,
     BUCKET,
@@ -41,7 +41,7 @@ class DrillGlacierCicloTests(TestCase):
     def setUp(self):
         self.client = cliente_falso()
         self.stub = Stubber(self.client)
-        self.backend = csb.S3ColdStorageBackend(
+        self.backend = s3b.S3ColdStorageBackend(
             bucket=BUCKET, client=self.client, clock=lambda: AGORA
         )
         guarda = Guarda()
