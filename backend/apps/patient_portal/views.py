@@ -26,13 +26,13 @@ from django.http import HttpResponse
 from django.template.loader import render_to_string
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.permissions import BasePermission, IsAuthenticated
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.mixins import AuditReadAPIViewMixin
 from apps.core.models import AuditLog
-from apps.core.permissions import HasPermission, ModuleRequiredPermission
+from apps.core.permissions import HasPermission, IsPortalSelfAccess, ModuleRequiredPermission
 from apps.emr.models import Allergy, Appointment, Encounter, Prescription
 
 from .models import PatientPortalAccess, PortalConsent
@@ -52,29 +52,11 @@ from .services import deliver_portal_invite
 
 _PORTAL_MODULE = ModuleRequiredPermission("patient_portal")
 
-
-class IsPortalSelfAccess(BasePermission):
-    """
-    Permission guard for `/portal/me/*` endpoints.
-
-    Requires:
-    - Authenticated user.
-    - User has the `portal.self_access` permission in their Role.
-    - There is a `PatientPortalAccess` row linking the user to a Patient AND
-      its status is `active` (not `invited` / `revoked`).
-    """
-
-    message = "Portal self-access not granted for this user."
-
-    def has_permission(self, request, view):
-        user = request.user
-        if not user or not user.is_authenticated:
-            return False
-        role = getattr(user, "role", None)
-        if not role or "portal.self_access" not in role.permissions:
-            return False
-        access = getattr(user, "patient_portal_access", None)
-        return access is not None and access.status == PatientPortalAccess.STATUS_ACTIVE
+# `IsPortalSelfAccess` mudou para `apps.core.permissions` (ordem 036) para que
+# `apps.emr` (lista de espera) reuse o mesmo guard sem importar
+# `apps.patient_portal` — o contrato `domain-independence` do import-linter
+# proíbe essa aresta. Reexportado aqui para não quebrar quem importa deste
+# módulo.
 
 
 # ─── Admin surface ───────────────────────────────────────────────────────────

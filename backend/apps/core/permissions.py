@@ -6,6 +6,15 @@ from rest_framework.permissions import BasePermission
 
 from apps.core.utils import tenant_has_feature
 
+# Ordem 036: `PatientPortalAccess.STATUS_ACTIVE` literal, não importado. Este
+# módulo é o hub permitido pelo contrato `domain-independence` (backend/.importlinter)
+# e `apps.core` não pode importar `apps.patient_portal` — isso abriria um caminho
+# transitivo `apps.emr -> apps.core -> apps.patient_portal` que o contrato não
+# mascara (só `core -> emr/billing/pharmacy/hr` estão na baseline). Um teste em
+# `apps.patient_portal.tests.test_views_portal` fixa que esse literal bate com
+# `PatientPortalAccess.STATUS_ACTIVE`.
+_PORTAL_ACCESS_STATUS_ACTIVE = "active"
+
 
 def is_platform_admin(user) -> bool:
     """
@@ -172,6 +181,35 @@ class HasPermission(BasePermission):
         if self.permission_required == "admin" and role_has_admin_capability(role):
             return True
         return self.permission_required in role.permissions
+
+
+class IsPortalSelfAccess(BasePermission):
+    """
+    Permission guard for `/portal/me/*` (and portal self-service endpoints in
+    other domains, e.g. the patient waitlist) endpoints.
+
+    Requires:
+    - Authenticated user.
+    - User has the `portal.self_access` permission in their Role.
+    - There is a `PatientPortalAccess` row linking the user to a Patient AND
+      its status is `active` (not `invited` / `revoked`).
+
+    Moved here from `apps.patient_portal.views` (ordem 036) so `apps.emr` can
+    reuse it without importing `apps.patient_portal` — see
+    `_PORTAL_ACCESS_STATUS_ACTIVE` for why the status is a literal.
+    """
+
+    message = "Portal self-access not granted for this user."
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+        role = getattr(user, "role", None)
+        if not role or "portal.self_access" not in role.permissions:
+            return False
+        access = getattr(user, "patient_portal_access", None)
+        return access is not None and access.status == _PORTAL_ACCESS_STATUS_ACTIVE
 
 
 # ─── Convenience factory ──────────────────────────────────────────────────────

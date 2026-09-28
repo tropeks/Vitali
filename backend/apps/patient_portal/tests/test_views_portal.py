@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
+from types import SimpleNamespace
 
 from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.core.models import FeatureFlag, Role, User
+from apps.core.permissions import IsPortalSelfAccess
 from apps.emr.models import Allergy, Appointment, Encounter, Patient, Professional
 from apps.patient_portal.models import PatientPortalAccess, hash_invite_token
 from apps.test_utils import TenantTestCase
@@ -342,6 +344,34 @@ class PatientPortalViewsTest(TenantTestCase):
         self.client.force_authenticate(user=self.admin)
         resp = self.client.get(ME_URL)
         self.assertEqual(resp.status_code, 403)
+
+    def test_is_portal_self_access_literal_matches_status_active(self):
+        # Ordem 036: `IsPortalSelfAccess` mora em `apps.core.permissions` e
+        # compara contra o literal `"active"` — `apps.core` não pode importar
+        # `apps.patient_portal.models` (contrato `domain-independence`). Este
+        # teste pina o literal contra a constante real: se `STATUS_ACTIVE`
+        # mudar de valor sem o guard acompanhar, o acesso ativo passa a ser
+        # recusado aqui.
+        self.assertEqual(PatientPortalAccess.STATUS_ACTIVE, "active")
+
+        access = self._activate_ana()
+        guard = IsPortalSelfAccess()
+        # Instância "fresca" do usuário a cada checagem — como no fluxo real,
+        # onde a autenticação por JWT recarrega `request.user` do banco a cada
+        # request (nada de cache do relacionamento reverso entre chamadas).
+        self.assertTrue(
+            guard.has_permission(
+                SimpleNamespace(user=User.objects.get(pk=self.patient_user.pk)), None
+            )
+        )
+
+        access.status = PatientPortalAccess.STATUS_REVOKED
+        access.save(update_fields=["status"])
+        self.assertFalse(
+            guard.has_permission(
+                SimpleNamespace(user=User.objects.get(pk=self.patient_user.pk)), None
+            )
+        )
 
     # ─── Module + auth gates ──────────────────────────────────────────────────
 

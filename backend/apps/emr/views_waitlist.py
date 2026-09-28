@@ -15,9 +15,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.mixins import AuditReadAPIViewMixin
-from apps.core.permissions import HasPermission
+from apps.core.permissions import HasPermission, IsPortalSelfAccess
 from apps.emr.models import Patient, Professional, WaitlistEntry
-from apps.patient_portal.views import IsPortalSelfAccess
 
 logger = logging.getLogger(__name__)
 
