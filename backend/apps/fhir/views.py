@@ -740,7 +740,7 @@ def _medication_request_self_link(request, item) -> str:
 # ─── Observation ─────────────────────────────────────────────────────────────
 #
 # A Vitali VitalSigns row produces N FHIR Observation resources (one per
-# vital, by LOINC code). The FHIR id is composed as `<encounter-id>-<loinc>`
+# vital, by LOINC code). The FHIR id is composed as `<encounter-id>_<loinc>`
 # so it's stable across reads.
 
 
