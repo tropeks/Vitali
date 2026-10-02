@@ -73,6 +73,8 @@ def _marcos(eventos: list[dict]) -> dict[str, float]:
     # Os eventos são capturados ao vivo, de logo antes do deploy.sh até o fim dele: os
     # únicos avulsos na janela são os três do migrate_schemas.sh, nesta ordem (shared,
     # tenant, partições; o script é sequencial). Qualquer outro número reprova.
+    # Ordem 038: em banco com trilha legada o caminho muda (ensure, dry-run, backfill, ensure) e
+    # sobem mais avulsos; esta prova roda em banco limpo e precisa continuar assim.
     avulsos = [e["Actor"]["ID"] for e in django if avulso(e) and e["Action"] == "start"]
     if len(avulsos) != 3:
         raise SystemExit(f"esperava 3 contêineres de migração (shared, tenant, partições): {avulsos}")

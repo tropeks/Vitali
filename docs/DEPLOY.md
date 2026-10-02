@@ -263,6 +263,11 @@ What `scripts/deploy.sh` does, in this order:
    refuses to create the dedicated leaf on top of them. The backfill moves them, one
    transaction per month and tenant ([ADR-0001](./adr/ADR-0001-retencao-auditoria-20-anos.md)
    has the lock scope), so on a clinic with a large trail the deploy takes as long as the move.
+   A dry-run with the row counts is printed first and stays in the deploy log. **While each
+   group moves, writes to `core_auditlog` from the release that is still serving wait**
+   (the backfill disables the table's trigger; `lock_timeout` only bounds the wait for the
+   lock, not how long it is held). Before the first deploy of a legacy database, run
+   `backfill_audit_partitions` (dry-run) by hand to measure, and deploy outside peak hours.
    If the second `ensure_audit_partitions` fails too, the cause was not the DEFAULT leaf and
    the script stops before the `up`. When the trail is clean, none of this runs.
 4. `up -d --wait`: the new code comes up against a schema that already expects it, and the

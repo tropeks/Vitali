@@ -58,7 +58,10 @@ echo "Ensuring core_auditlog partitions for the current and next month..."
 # causa não era a DEFAULT e o `set -e` aborta o deploy antes do `up`. Sem falha, nada disso
 # roda.
 if ! "${manage[@]}" ensure_audit_partitions; then
-    echo "ensure_audit_partitions falhou: provável linha de trilha antiga na folha DEFAULT." >&2
+    echo "ensure_audit_partitions falhou (a causa está na saída acima). Se for linha de trilha" >&2
+    echo "antiga na folha DEFAULT, o backfill resolve; se não for, o ensure falha de novo." >&2
+    echo "Contagem do que será movido (dry-run, fica no log do deploy)..."
+    "${manage[@]}" backfill_audit_partitions
     echo "Movendo as linhas com backfill_audit_partitions --execute..."
     "${manage[@]}" backfill_audit_partitions --execute
     echo "Repetindo ensure_audit_partitions depois do backfill..."

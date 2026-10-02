@@ -300,7 +300,7 @@ class DeployBackfillTests(SimpleTestCase):
 
     def test_backfill_roda_em_conteiner_descartavel_da_imagem_nova(self):
         _, chamadas = self._roda(FAKE_DOCKER_FALHA_VEZES="ensure_audit_partitions:1")
-        (i,) = self._idx(chamadas, "backfill_audit_partitions")
+        (i,) = self._idx(chamadas, "backfill_audit_partitions", "--execute")
         sub, args = _subcomando(chamadas.linhas[i]["argv"])
         self.assertEqual(sub, "run")
         self.assertIn("--rm", args)
@@ -316,7 +316,20 @@ class DeployBackfillTests(SimpleTestCase):
         proc, chamadas = self._roda(FAKE_DOCKER_FALHA_VEZES="ensure_audit_partitions:2")
         self.assertNotEqual(proc.returncode, 0)
         self.assertEqual(chamadas.ups_da_aplicacao(), [])
-        self.assertEqual(len(self._idx(chamadas, "backfill_audit_partitions")), 1)
+        self.assertEqual(len(self._idx(chamadas, "backfill_audit_partitions", "--execute")), 1)
+
+    def test_dry_run_do_backfill_vem_antes_do_execute(self):
+        _, chamadas = self._roda(FAKE_DOCKER_FALHA_VEZES="ensure_audit_partitions:1")
+        todas = self._idx(chamadas, "backfill_audit_partitions")
+        (execute,) = self._idx(chamadas, "backfill_audit_partitions", "--execute")
+        self.assertEqual(len(todas), 2)
+        self.assertLess(todas[0], execute)
+
+    def test_migracao_de_tenant_que_falha_nao_chega_ao_ensure_nem_ao_backfill(self):
+        proc, chamadas = self._roda(FAKE_DOCKER_FALHA="--tenant")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertEqual(self._idx(chamadas, "ensure_audit_partitions"), [])
+        self.assertEqual(self._idx(chamadas, "backfill_audit_partitions"), [])
 
     def test_backfill_que_falha_aborta_o_deploy(self):
         proc, chamadas = self._roda(
@@ -327,4 +340,7 @@ class DeployBackfillTests(SimpleTestCase):
 
     def test_deploy_md_documenta_o_backfill_automatico(self):
         texto = _arquivo("docs/DEPLOY.md").read_text()
-        self.assertIn("backfill_audit_partitions", texto)
+        passo3 = texto.split("`scripts/migrate_schemas.sh`:", 1)[1].split("4. `up -d --wait`", 1)[0]
+        self.assertIn("backfill_audit_partitions --execute", passo3)
+        self.assertIn("order 038", passo3)
+        self.assertIn("writes to `core_auditlog`", passo3)
