@@ -59,6 +59,16 @@ if "config" in argv and "--images" in argv:
 falha = os.environ.get("FAKE_DOCKER_FALHA")
 if falha and falha in argv:
     sys.exit(1)
+# "chave:n" = a chave falha nas n primeiras chamadas e passa nas seguintes.
+vezes = os.environ.get("FAKE_DOCKER_FALHA_VEZES")
+if vezes:
+    chave, n = vezes.rsplit(":", 1)
+    if chave in argv:
+        contador = os.environ["FAKE_DOCKER_LOG"] + ".contador"
+        feitas = int(open(contador).read()) if os.path.exists(contador) else 0
+        open(contador, "w").write(str(feitas + 1))
+        if feitas < int(n):
+            sys.exit(1)
 """
 
 
@@ -263,3 +273,58 @@ class DocsDoDeployTests(SimpleTestCase):
             self.assertNotIn(
                 "up -d", bloco, "o Release Pipeline sobe o código à mão, fora da ordem"
             )
+
+
+class DeployBackfillTests(SimpleTestCase):
+    """Ordem 038 — o deploy de um banco com trilha antiga parava no
+    ``ensure_audit_partitions`` (as linhas legadas vão para a DEFAULT) e exigia o
+    ``backfill_audit_partitions --execute`` à mão, mais um segundo deploy. Achado
+    do ship de 28/09; produção bate no mesmo ponto."""
+
+    def _roda(self, **env_extra):
+        return DeployShTests("test_migra_antes_de_subir_o_codigo_novo")._roda(**env_extra)
+
+    def _idx(self, chamadas, *palavras):
+        return chamadas.indices(lambda linha: all(p in linha["argv"] for p in palavras))
+
+    def test_ensure_que_acusa_default_dispara_o_backfill_e_repete_o_ensure(self):
+        proc, chamadas = self._roda(FAKE_DOCKER_FALHA_VEZES="ensure_audit_partitions:1")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        ensures = self._idx(chamadas, "ensure_audit_partitions")
+        backfills = self._idx(chamadas, "backfill_audit_partitions", "--execute")
+        self.assertEqual(len(ensures), 2, "o ensure tem de repetir depois do backfill")
+        self.assertEqual(len(backfills), 1)
+        self.assertLess(ensures[0], backfills[0])
+        self.assertLess(backfills[0], ensures[1])
+        self.assertLess(ensures[1], min(chamadas.ups_da_aplicacao()))
+
+    def test_backfill_roda_em_conteiner_descartavel_da_imagem_nova(self):
+        _, chamadas = self._roda(FAKE_DOCKER_FALHA_VEZES="ensure_audit_partitions:1")
+        (i,) = self._idx(chamadas, "backfill_audit_partitions")
+        sub, args = _subcomando(chamadas.linhas[i]["argv"])
+        self.assertEqual(sub, "run")
+        self.assertIn("--rm", args)
+        self.assertEqual(chamadas.linhas[i]["IMAGE_TAG"], "sha-nova")
+
+    def test_sem_linha_na_default_nao_ha_backfill(self):
+        proc, chamadas = self._roda()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self._idx(chamadas, "backfill_audit_partitions"), [])
+        self.assertEqual(len(self._idx(chamadas, "ensure_audit_partitions")), 1)
+
+    def test_ensure_que_continua_falhando_depois_do_backfill_aborta_o_deploy(self):
+        proc, chamadas = self._roda(FAKE_DOCKER_FALHA_VEZES="ensure_audit_partitions:2")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertEqual(chamadas.ups_da_aplicacao(), [])
+        self.assertEqual(len(self._idx(chamadas, "backfill_audit_partitions")), 1)
+
+    def test_backfill_que_falha_aborta_o_deploy(self):
+        proc, chamadas = self._roda(
+            FAKE_DOCKER_FALHA_VEZES="ensure_audit_partitions:1", FAKE_DOCKER_FALHA="--execute"
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertEqual(chamadas.ups_da_aplicacao(), [])
+
+    def test_deploy_md_documenta_o_backfill_automatico(self):
+        texto = _arquivo("docs/DEPLOY.md").read_text()
+        self.assertIn("backfill_audit_partitions", texto)
