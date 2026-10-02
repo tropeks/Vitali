@@ -57,7 +57,19 @@ echo "Ensuring core_auditlog partitions for the current and next month..."
 # tenant) e é idempotente. Depois do backfill o ensure roda de novo; se falhar outra vez, a
 # causa não era a DEFAULT e o `set -e` aborta o deploy antes do `up`. Sem falha, nada disso
 # roda.
+#
+# O backfill automático é DESLIGADO por padrão (DEPLOY_AUTO_BACKFILL=1 liga). O ADR-0001 trata
+# rodar o backfill em staging ou produção como decisão operacional posterior, a medir antes
+# e fora do pico, e o backfill desliga o trigger da tabela por grupo: as escritas de auditoria
+# da release ainda no ar esperam. Até o Capitão emendar o ADR, o deploy só avisa e aborta.
 if ! "${manage[@]}" ensure_audit_partitions; then
+    if [[ "${DEPLOY_AUTO_BACKFILL:-0}" != "1" ]]; then
+        echo "ensure_audit_partitions falhou (a causa está na saída acima)." >&2
+        echo "Se for linha de trilha antiga na folha DEFAULT: rode backfill_audit_partitions (dry-run)" >&2
+        echo "para medir, depois --execute fora do pico (ADR-0001), e repita o deploy." >&2
+        echo "O backfill automático está desligado; DEPLOY_AUTO_BACKFILL=1 o liga." >&2
+        exit 1
+    fi
     echo "ensure_audit_partitions falhou (a causa está na saída acima). Se for linha de trilha" >&2
     echo "antiga na folha DEFAULT, o backfill resolve; se não for, o ensure falha de novo." >&2
     echo "Contagem do que será movido (dry-run, fica no log do deploy)..."

@@ -30,6 +30,8 @@
 #   DEPLOY_PULL=0          — não faz pull (imagem construída no próprio host, como na
 #                            prova da lab); o padrão é fazer
 #   DEPLOY_SERVICES        — serviços do `up` final, separados por espaço; vazio = todos
+#   DEPLOY_AUTO_BACKFILL=1 — se o ensure_audit_partitions falhar, roda o backfill da trilha e
+#                            repete o ensure (ordem 038). Desligado por padrão: ADR-0001.
 #
 #
 # IMAGE_TAG é uma tag (sha-<commit>) ou um digest (sha256:...). Antes de qualquer passo,
