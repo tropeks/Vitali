@@ -330,12 +330,10 @@ class PatientReadView(_LeituraFHIR):
     def get(self, request, patient_id: str):
         try:
             patient = Patient.objects.get(pk=patient_id)
-        except (Patient.DoesNotExist, ValueError, Exception) as exc:
+        except (Patient.DoesNotExist, ValueError) as exc:
             # FHIR R4 §3.2.0.4 — read on a non-existent id returns 404 with an
             # OperationOutcome resource.
-            if isinstance(exc, Patient.DoesNotExist) or isinstance(exc, ValueError):
-                raise Http404 from exc
-            raise
+            raise Http404 from exc
         if not _context_allows(request, patient.pk):
             raise Http404
         return Response(patient_to_fhir(patient))
@@ -747,7 +745,7 @@ def _medication_request_self_link(request, item) -> str:
 
 
 class ObservationReadView(_LeituraFHIR):
-    """GET /api/v1/fhir/Observation/<encounter-id>-<loinc>/"""
+    """GET /api/v1/fhir/Observation/<encounter-id>_<loinc>/"""
 
     audit_resource_type = "Observation"
     AUDIT_LOOKUP_KWARG = "observation_id"

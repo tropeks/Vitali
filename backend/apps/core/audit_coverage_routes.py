@@ -350,10 +350,6 @@ APIVIEWS_ISENTAS: dict[str, str] = {
         "PractitionerReadView e de emr.Professional (ordem 029)."
     ),
     # portões de autorização de imagem
-    "apps.imaging.views.ViewerAuthorizationView": (
-        "Devolve 204 vazio sem ler nada, e o nginx não usa esta rota (usa "
-        "portal/me/imaging-viewer-auth/). Achado registrado na ordem 030."
-    ),
     "apps.patient_portal.views_imaging.MeImagingStudyAuthorizationView": (
         "Devolve 204 ou 404 sem corpo: confirma se o estudo é do titular. O "
         "estudo é listado com trilha em MeImagingStudiesView."
