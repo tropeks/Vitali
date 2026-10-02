@@ -347,6 +347,8 @@ class DeployBackfillTests(SimpleTestCase):
         self.assertIn("order 038", passo3)
         self.assertIn("DEPLOY_AUTO_BACKFILL=1", passo3)
         self.assertIn("off by default", passo3)
+        self.assertIn("authorized by the Capitão", passo3)
+        self.assertNotIn("once the ADR is amended", passo3)
         self.assertIn("writes to `core_auditlog`", passo3)
 
     def test_por_padrao_o_backfill_automatico_esta_desligado(self):
