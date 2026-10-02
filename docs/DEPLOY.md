@@ -269,8 +269,9 @@ What `scripts/deploy.sh` does, in this order:
    on staging or production as a later operational decision: it moves rows one transaction per
    month and tenant, and **while each group moves, writes to `core_auditlog` from the release
    that is still serving wait** (the backfill disables the table's trigger; `lock_timeout` only
-   bounds the wait for the lock, not how long it is held). Turn it on only once the ADR is
-   amended. When the trail is clean, none of this runs.
+   bounds the wait for the lock, not how long it is held). ADR-0001 stays as it is; set the flag only for a deploy
+   authorized by the Capitão.
+   When the trail is clean, none of this runs.
 4. `up -d --wait`: the new code comes up against a schema that already expects it, and the
    script only returns once the healthchecks pass.
 

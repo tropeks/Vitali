@@ -31,7 +31,8 @@
 #                            prova da lab); o padrão é fazer
 #   DEPLOY_SERVICES        — serviços do `up` final, separados por espaço; vazio = todos
 #   DEPLOY_AUTO_BACKFILL=1 — se o ensure_audit_partitions falhar, roda o backfill da trilha e
-#                            repete o ensure (ordem 038). Desligado por padrão: ADR-0001.
+#                            repete o ensure (ordem 038). Desligado por padrão (ADR-0001);
+#                            só liga em deploy autorizado pelo Capitão.
 #
 #
 # IMAGE_TAG é uma tag (sha-<commit>) ou um digest (sha256:...). Antes de qualquer passo,

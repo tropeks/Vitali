@@ -61,7 +61,8 @@ echo "Ensuring core_auditlog partitions for the current and next month..."
 # O backfill automático é DESLIGADO por padrão (DEPLOY_AUTO_BACKFILL=1 liga). O ADR-0001 trata
 # rodar o backfill em staging ou produção como decisão operacional posterior, a medir antes
 # e fora do pico, e o backfill desliga o trigger da tabela por grupo: as escritas de auditoria
-# da release ainda no ar esperam. Até o Capitão emendar o ADR, o deploy só avisa e aborta.
+# da release ainda no ar esperam. O ADR-0001 fica como está: a flag só liga em deploy autorizado pelo Capitão; sem ela, o deploy
+# só avisa e aborta.
 if ! "${manage[@]}" ensure_audit_partitions; then
     if [[ "${DEPLOY_AUTO_BACKFILL:-0}" != "1" ]]; then
         echo "ensure_audit_partitions falhou (a causa está na saída acima)." >&2

@@ -18,11 +18,13 @@ author_session: desconhecido
 > `deploy.sh`. Produção vai bater no mesmo ponto.
 
 ## O que fazer
-- `scripts/migrate_schemas.sh`: se o `ensure_audit_partitions` falhar, roda
+- `scripts/migrate_schemas.sh`: por padrão, se o `ensure_audit_partitions` falhar, avisa e aborta
+  antes do `up`. Com `DEPLOY_AUTO_BACKFILL=1` (só em deploy autorizado pelo Capitão; o ADR-0001
+  fica como está), roda
   `backfill_audit_partitions --execute` (contêiner descartável da imagem nova) e repete o
   `ensure`. Segunda falha aborta o deploy antes do `up`. Sem falha, nenhum backfill.
-- `docs/DEPLOY.md`: o passo 3 descreve o backfill automático, o que ele move e o aviso de
-  que o backfill trava por grupo (ADR-0001), então em clínica grande o deploy demora.
+- `docs/DEPLOY.md`: o passo 3 descreve o backfill manual, a flag desligada por padrão, o que o
+  backfill move e o aviso de que ele bloqueia a escrita da trilha por grupo (ADR-0001).
 - Provas: vermelho primeiro (`test_deploy_order.py`, `docker` falso); recibo `order-38`.
 
 ## Fora desta ordem
