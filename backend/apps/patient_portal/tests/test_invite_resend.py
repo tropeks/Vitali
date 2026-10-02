@@ -51,7 +51,9 @@ class ReenvioTests(_Base):
         self.assertTrue(novo)
         self.assertNotEqual(novo, antigo)
         self.assertEqual(PatientPortalAccess.objects.count(), 1)
-        self.assertEqual(PatientPortalAccess.objects.get(pk=access.pk).invite_token_hash, _sha256(novo))
+        self.assertEqual(
+            PatientPortalAccess.objects.get(pk=access.pk).invite_token_hash, _sha256(novo)
+        )
 
     def test_token_antigo_deixa_de_ativar_e_o_novo_ativa(self):
         access = self._convite()

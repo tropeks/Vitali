@@ -22,6 +22,8 @@ role) from poking the `/portal/me/` endpoints.
 
 from __future__ import annotations
 
+import logging
+
 from django.http import HttpResponse
 from django.template.loader import render_to_string
 from django.utils import timezone
@@ -49,6 +51,8 @@ from .serializers import (
     PortalPrescriptionSerializer,
 )
 from .services import deliver_portal_invite
+
+logger = logging.getLogger(__name__)
 
 _PORTAL_MODULE = ModuleRequiredPermission("patient_portal")
 
@@ -145,6 +149,43 @@ class AccessRevokeView(APIView):
             )
         access.revoke()
         return Response(PatientPortalAccessSerializer(access).data)
+
+
+class AccessResendView(APIView):
+    """POST `/api/v1/portal/access/{id}/resend/` — new invite token, same record (order 039)."""
+
+    def get_permissions(self):
+        return [IsAuthenticated(), _PORTAL_MODULE, HasPermission("users.write")]
+
+    def post(self, request, access_id):
+        try:
+            access = PatientPortalAccess.objects.get(pk=access_id)
+        except (PatientPortalAccess.DoesNotExist, ValueError):
+            return Response(
+                {"detail": "Portal access not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        try:
+            access.reissue_invite()
+        except ValueError:
+            return Response(
+                {"detail": "Only an invited access can be re-sent."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        # The token itself never goes to the trail: only who re-sent and until when.
+        AuditLog.objects.create(
+            user=request.user,
+            action="portal_invite_resent",
+            resource_type="PatientPortalAccess",
+            resource_id=str(access.pk),
+            new_data={"invite_expires_at": access.invite_expires_at.isoformat()},
+        )
+        # Fail-open, like the creation: a delivery problem never fails the re-send.
+        try:
+            deliver_portal_invite(access)
+        except Exception:  # noqa: BLE001 — o token novo já está salvo e vai na resposta
+            logger.exception("portal: falha ao entregar o convite reenviado %s", access.pk)
+        return Response(PatientPortalInviteSerializer(access).data)
 
 
 class AccessActivateView(APIView):

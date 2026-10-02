@@ -162,6 +162,23 @@ class PatientPortalAccess(models.Model):
         self.invite_token_legado = None
         self.save(update_fields=["status", "activated_at", "invite_token_legado"])
 
+    def reissue_invite(self) -> None:
+        """New token over the SAME record (order 039).
+
+        Only an ``invited`` access can be re-sent, expired or not: ``active`` has
+        nothing to send and ``revoked`` is not reopened. The old hash is replaced,
+        so the old token stops working; ``id``, ``invited_at`` and ``created_by``
+        stay. The plaintext lives on this instance only (``invite_token``), as at
+        creation, and only the hash is stored.
+        """
+        if self.status != self.STATUS_INVITED:
+            raise ValueError(f"Only an 'invited' access can be re-sent (was '{self.status}').")
+        self.invite_token = _generate_invite_token()
+        self.invite_token_hash = hash_invite_token(self.invite_token)
+        self.invite_token_legado = None
+        self.invite_expires_at = timezone.now() + timedelta(days=7)
+        self.save(update_fields=["invite_token_hash", "invite_token_legado", "invite_expires_at"])
+
     def revoke(self) -> None:
         if self.status == self.STATUS_REVOKED:
             return

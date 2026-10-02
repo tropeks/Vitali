@@ -4,6 +4,7 @@ from .views import (
     AccessActivateView,
     AccessDetailView,
     AccessListCreateView,
+    AccessResendView,
     AccessRevokeView,
     MeAllergiesView,
     MeAppointmentsView,
@@ -44,6 +45,11 @@ urlpatterns = [
         "portal/access/<uuid:access_id>/",
         AccessDetailView.as_view(),
         name="portal-access-detail",
+    ),
+    path(
+        "portal/access/<uuid:access_id>/resend/",
+        AccessResendView.as_view(),
+        name="portal-access-resend",
     ),
     path(
         "portal/access/<uuid:access_id>/revoke/",
