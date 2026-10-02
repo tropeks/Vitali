@@ -51,4 +51,16 @@ echo "All schemas migrated successfully."
 # do migrate (o Celery Beat diário cobre o mês virando sem deploy no meio —
 # ver apps.core.tasks.ensure_audit_partitions).
 echo "Ensuring core_auditlog partitions for the current and next month..."
-"${manage[@]}" ensure_audit_partitions
+# Ordem 038. Banco com trilha anterior à 0043: as linhas legadas estão na folha DEFAULT, e
+# o ensure recusa criar a folha dedicada do mês por cima delas (sai com erro, nomeando os
+# tenants). O remédio é o backfill, que move as linhas por grupo (uma transação por mês e
+# tenant) e é idempotente. Depois do backfill o ensure roda de novo; se falhar outra vez, a
+# causa não era a DEFAULT e o `set -e` aborta o deploy antes do `up`. Sem falha, nada disso
+# roda.
+if ! "${manage[@]}" ensure_audit_partitions; then
+    echo "ensure_audit_partitions falhou: provável linha de trilha antiga na folha DEFAULT." >&2
+    echo "Movendo as linhas com backfill_audit_partitions --execute..."
+    "${manage[@]}" backfill_audit_partitions --execute
+    echo "Repetindo ensure_audit_partitions depois do backfill..."
+    "${manage[@]}" ensure_audit_partitions
+fi

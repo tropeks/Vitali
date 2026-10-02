@@ -257,6 +257,14 @@ What `scripts/deploy.sh` does, in this order:
 3. `scripts/migrate_schemas.sh`: `migrate_schemas --shared`, `migrate_schemas --tenant` and
    `ensure_audit_partitions`, each in a throwaway container of the **new** image
    (`compose run --rm --no-deps django`), while the previous release keeps serving.
+   If `ensure_audit_partitions` fails, the script runs `backfill_audit_partitions --execute`
+   and then `ensure_audit_partitions` again (order 038). That is what a database with audit
+   rows from before `core.0043` needs: those rows sit in the DEFAULT leaf and the command
+   refuses to create the dedicated leaf on top of them. The backfill moves them, one
+   transaction per month and tenant ([ADR-0001](./adr/ADR-0001-retencao-auditoria-20-anos.md)
+   has the lock scope), so on a clinic with a large trail the deploy takes as long as the move.
+   If the second `ensure_audit_partitions` fails too, the cause was not the DEFAULT leaf and
+   the script stops before the `up`. When the trail is clean, none of this runs.
 4. `up -d --wait`: the new code comes up against a schema that already expects it, and the
    script only returns once the healthchecks pass.
 
