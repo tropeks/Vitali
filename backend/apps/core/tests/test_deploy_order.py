@@ -288,7 +288,7 @@ class DeployBackfillTests(SimpleTestCase):
         return chamadas.indices(lambda linha: all(p in linha["argv"] for p in palavras))
 
     def test_ensure_que_acusa_default_dispara_o_backfill_e_repete_o_ensure(self):
-        proc, chamadas = self._roda(FAKE_DOCKER_FALHA_VEZES="ensure_audit_partitions:1")
+        proc, chamadas = self._roda(FAKE_DOCKER_FALHA_VEZES="ensure_audit_partitions:1", DEPLOY_AUTO_BACKFILL="1")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         ensures = self._idx(chamadas, "ensure_audit_partitions")
         backfills = self._idx(chamadas, "backfill_audit_partitions", "--execute")
@@ -299,7 +299,7 @@ class DeployBackfillTests(SimpleTestCase):
         self.assertLess(ensures[1], min(chamadas.ups_da_aplicacao()))
 
     def test_backfill_roda_em_conteiner_descartavel_da_imagem_nova(self):
-        _, chamadas = self._roda(FAKE_DOCKER_FALHA_VEZES="ensure_audit_partitions:1")
+        _, chamadas = self._roda(FAKE_DOCKER_FALHA_VEZES="ensure_audit_partitions:1", DEPLOY_AUTO_BACKFILL="1")
         (i,) = self._idx(chamadas, "backfill_audit_partitions", "--execute")
         sub, args = _subcomando(chamadas.linhas[i]["argv"])
         self.assertEqual(sub, "run")
@@ -313,13 +313,13 @@ class DeployBackfillTests(SimpleTestCase):
         self.assertEqual(len(self._idx(chamadas, "ensure_audit_partitions")), 1)
 
     def test_ensure_que_continua_falhando_depois_do_backfill_aborta_o_deploy(self):
-        proc, chamadas = self._roda(FAKE_DOCKER_FALHA_VEZES="ensure_audit_partitions:2")
+        proc, chamadas = self._roda(FAKE_DOCKER_FALHA_VEZES="ensure_audit_partitions:2", DEPLOY_AUTO_BACKFILL="1")
         self.assertNotEqual(proc.returncode, 0)
         self.assertEqual(chamadas.ups_da_aplicacao(), [])
         self.assertEqual(len(self._idx(chamadas, "backfill_audit_partitions", "--execute")), 1)
 
     def test_dry_run_do_backfill_vem_antes_do_execute(self):
-        _, chamadas = self._roda(FAKE_DOCKER_FALHA_VEZES="ensure_audit_partitions:1")
+        _, chamadas = self._roda(FAKE_DOCKER_FALHA_VEZES="ensure_audit_partitions:1", DEPLOY_AUTO_BACKFILL="1")
         todas = self._idx(chamadas, "backfill_audit_partitions")
         (execute,) = self._idx(chamadas, "backfill_audit_partitions", "--execute")
         self.assertEqual(len(todas), 2)
@@ -333,7 +333,9 @@ class DeployBackfillTests(SimpleTestCase):
 
     def test_backfill_que_falha_aborta_o_deploy(self):
         proc, chamadas = self._roda(
-            FAKE_DOCKER_FALHA_VEZES="ensure_audit_partitions:1", FAKE_DOCKER_FALHA="--execute"
+            FAKE_DOCKER_FALHA_VEZES="ensure_audit_partitions:1",
+            FAKE_DOCKER_FALHA="--execute",
+            DEPLOY_AUTO_BACKFILL="1"
         )
         self.assertNotEqual(proc.returncode, 0)
         self.assertEqual(chamadas.ups_da_aplicacao(), [])
@@ -343,4 +345,22 @@ class DeployBackfillTests(SimpleTestCase):
         passo3 = texto.split("`scripts/migrate_schemas.sh`:", 1)[1].split("4. `up -d --wait`", 1)[0]
         self.assertIn("backfill_audit_partitions --execute", passo3)
         self.assertIn("order 038", passo3)
+        self.assertIn("DEPLOY_AUTO_BACKFILL=1", passo3)
+        self.assertIn("off by default", passo3)
         self.assertIn("writes to `core_auditlog`", passo3)
+
+    def test_por_padrao_o_backfill_automatico_esta_desligado(self):
+        """ADR-0001: rodar o backfill em staging/produção é decisão posterior, a
+        medir antes e fora do pico. Sem a flag, o deploy avisa e aborta antes do up."""
+        proc, chamadas = self._roda(FAKE_DOCKER_FALHA_VEZES="ensure_audit_partitions:1")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertEqual(self._idx(chamadas, "backfill_audit_partitions"), [])
+        self.assertEqual(chamadas.ups_da_aplicacao(), [])
+        self.assertIn("DEPLOY_AUTO_BACKFILL", proc.stderr)
+
+    def test_flag_diferente_de_1_continua_desligada(self):
+        proc, chamadas = self._roda(
+            FAKE_DOCKER_FALHA_VEZES="ensure_audit_partitions:1", DEPLOY_AUTO_BACKFILL="0"
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertEqual(self._idx(chamadas, "backfill_audit_partitions"), [])
