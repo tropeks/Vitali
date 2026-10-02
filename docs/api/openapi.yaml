@@ -9568,15 +9568,6 @@ paths:
       responses:
         '200':
           description: No response body
-  /api/v1/imaging/viewer-auth/:
-    get:
-      operationId: v1_imaging_viewer_auth_retrieve
-      description: Cheap nginx ``auth_request`` target for OHIF and DICOMweb access.
-      tags:
-      - v1
-      responses:
-        '200':
-          description: No response body
   /api/v1/imaging/worklist/:
     get:
       operationId: v1_imaging_worklist_list
